@@ -33,6 +33,7 @@ export const ICONS = {
   pencil: "M4 20l4-1 11-11-3-3L5 16l-1 4z",
   info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v7M12 17h.01",
   doc: "M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M9 13h6M9 17h6",
+  slider: "M3 12h6M15 12h6M10 12a2 2 0 1 0 4 0 2 2 0 1 0 -4 0",
 } as const;
 
 export function Icon({

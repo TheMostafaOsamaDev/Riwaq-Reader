@@ -83,6 +83,7 @@ export function MobileReader({
   onBack,
 }: Props) {
   const [showChrome, setShowChrome] = useState(true);
+  const [showProgress, setShowProgress] = useState(true);
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const resumeRef = useRef(resumeParagraph);
@@ -413,6 +414,7 @@ export function MobileReader({
             background: `linear-gradient(0deg, ${theme.chrome} 70%, transparent)`,
           }}
         >
+          {showProgress && (
           <div
             style={{
               display: "flex",
@@ -503,6 +505,7 @@ export function MobileReader({
               <Icon name="arrowR" size={14} />
             </button>
           </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-around" }}>
             <button
               onClick={() => setSheet("toc")}
@@ -517,6 +520,14 @@ export function MobileReader({
               aria-label="Highlights"
             >
               <Icon name="highlight" size={18} />
+            </button>
+            <button
+              onClick={() => setShowProgress((s) => !s)}
+              style={mobileTab(theme)}
+              aria-label={showProgress ? "Hide progress bar" : "Show progress bar"}
+              aria-pressed={showProgress}
+            >
+              <Icon name="slider" size={18} />
             </button>
             <button
               onClick={() => setSheet("progress")}
