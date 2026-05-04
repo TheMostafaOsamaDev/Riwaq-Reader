@@ -13,6 +13,8 @@ export const DEFAULT_TWEAKS: Tweaks = {
   readingMode: "paginated-2",
   contentWidth: 100,
   mobileTapNav: true,
+  mobileTapZoneWidth: 33,
+  mobileTapStride: 90,
 };
 
 function load(): Tweaks {
