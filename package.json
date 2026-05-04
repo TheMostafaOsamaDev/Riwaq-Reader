@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build --apk --target aarch64",
+    "android:build:universal": "tauri android build --apk",
+    "android:build:debug": "tauri android build --apk --debug --target aarch64"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
