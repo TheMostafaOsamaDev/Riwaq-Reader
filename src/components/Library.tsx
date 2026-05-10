@@ -993,19 +993,27 @@ function MobileLibrary({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
+                // minmax(0, 1fr) lets columns shrink below the cover's
+                // intrinsic width so 3 fluid covers fit any phone width
+                // instead of overflowing past the right edge.
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                 gap: 16,
                 rowGap: 22,
               }}
             >
               {others.map((b) => (
-                <div key={b.id} onClick={() => onOpen(b.id)}>
+                <div
+                  key={b.id}
+                  onClick={() => onOpen(b.id)}
+                  style={{ minWidth: 0 }}
+                >
                   <BookCover
                     title={b.title}
                     author={b.author}
                     palette={paletteForId(b.id)}
                     size="sm"
                     src={covers[b.id]}
+                    fluid
                   />
                   <div
                     style={{
@@ -1016,6 +1024,11 @@ function MobileLibrary({
                       lineHeight: 1.3,
                       color: theme.ink,
                       letterSpacing: "-0.005em",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                      wordBreak: "break-word",
                     }}
                   >
                     {b.title}
