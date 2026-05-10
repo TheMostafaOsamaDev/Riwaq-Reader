@@ -12,6 +12,12 @@ interface Props {
    * back to the palette rendering automatically.
    */
   src?: string | null;
+  /**
+   * Fill the parent's width (using the size's aspect ratio for height) instead
+   * of rendering at the fixed pixel dimensions. Used by the mobile shelf grid,
+   * where 3 fixed-width sm covers overflow narrower phones.
+   */
+  fluid?: boolean;
 }
 
 export const BOOK_COVER_DIMS = {
@@ -20,21 +26,28 @@ export const BOOK_COVER_DIMS = {
   lg: { w: 200, h: 296 },
 } as const;
 
-export function BookCover({ title, author, palette, size = "md", src }: Props) {
+export function BookCover({
+  title,
+  author,
+  palette,
+  size = "md",
+  src,
+  fluid = false,
+}: Props) {
   const { w, h } = BOOK_COVER_DIMS[size];
   const [p1, p2, p3] = palette;
   const [failed, setFailed] = useState(false);
   const showImage = !!src && !failed;
 
   const shellStyle = {
-    width: w,
-    height: h,
+    ...(fluid
+      ? { width: "100%", aspectRatio: `${w} / ${h}` }
+      : { width: w, height: h, flexShrink: 0 }),
     borderRadius: 6,
     position: "relative" as const,
     boxShadow:
       "0 1px 2px rgba(0,0,0,0.1), 0 6px 18px rgba(0,0,0,0.15), inset 1px 0 0 rgba(255,255,255,0.08), inset -1px 0 0 rgba(0,0,0,0.2)",
     overflow: "hidden" as const,
-    flexShrink: 0,
   };
 
   if (showImage) {
