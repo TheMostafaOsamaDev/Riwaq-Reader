@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLongPress } from "../hooks/useLongPress";
 import { Icon } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
 import { Toast, type ToastMessage } from "./Toast";
@@ -748,16 +749,21 @@ function MobileLibrary({
   onImportDocx,
   onImportFolder,
   onClearAll,
+  onCardContextMenu,
 }: LayoutProps) {
-  // `onEdit` and `onDelete` are accepted in LayoutProps but mobile cards
-  // don't expose per-book actions yet — long-press menu is a TODO. The
-  // desktop layout is the only consumer today.
   // Hero is the actually-last-read book, not the one most-recently-added.
   // `listBooks()` already sorts read books above unread by lastReadAt, so
   // the first entry with lastReadAt defined is the right pick. If no book
   // has been opened yet, there's no hero — everything lands on the shelf.
   const hero = books.find((b) => b.lastReadAt !== undefined);
   const others = hero ? books.filter((b) => b.id !== hero.id) : books;
+
+  // Hero is at most one card per render — a single hook instance covers it.
+  // Shelf cards each need their own long-press state, so they live in a
+  // subcomponent (MobileShelfCard) that calls the hook itself.
+  const heroLongPress = useLongPress((x, y) => {
+    if (hero) onCardContextMenu(hero.id, x, y);
+  });
 
   return (
     <div
@@ -901,7 +907,11 @@ function MobileLibrary({
           <>
             {hero && (
               <div
-                onClick={() => onOpen(hero.id)}
+                onClick={() => {
+                  if (heroLongPress.consumeLongPress()) return;
+                  onOpen(hero.id);
+                }}
+                {...heroLongPress.bind}
                 role="button"
                 tabIndex={0}
                 style={{
@@ -913,6 +923,11 @@ function MobileLibrary({
                   marginBottom: 28,
                   alignItems: "center",
                   cursor: "pointer",
+                  // Suppress the default long-press text-selection / callout
+                  // so the menu opens cleanly without a stray selection box.
+                  WebkitUserSelect: "none",
+                  userSelect: "none",
+                  WebkitTouchCallout: "none",
                 }}
               >
                 <BookCover
@@ -999,57 +1014,94 @@ function MobileLibrary({
               }}
             >
               {others.map((b) => (
-                <div key={b.id} onClick={() => onOpen(b.id)}>
-                  <BookCover
-                    title={b.title}
-                    author={b.author}
-                    palette={paletteForId(b.id)}
-                    size="sm"
-                    src={covers[b.id]}
-                  />
-                  <div
-                    style={{
-                      fontFamily: titleFontFor(b.title),
-                      fontSize: 12,
-                      fontWeight: 500,
-                      marginTop: 8,
-                      lineHeight: 1.3,
-                      color: theme.ink,
-                      letterSpacing: "-0.005em",
-                    }}
-                  >
-                    {b.title}
-                  </div>
-                  <div
-                    style={{ fontSize: 9.5, color: theme.muted, marginTop: 2 }}
-                  >
-                    {b.author}
-                  </div>
-                  {b.progress > 0 && b.progress < 1 && (
-                    <div
-                      style={{
-                        height: 2,
-                        background: theme.rule,
-                        borderRadius: 1,
-                        marginTop: 6,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${b.progress * 100}%`,
-                          height: "100%",
-                          background: theme.muted,
-                          borderRadius: 1,
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
+                <MobileShelfCard
+                  key={b.id}
+                  theme={theme}
+                  book={b}
+                  coverSrc={covers[b.id]}
+                  onOpen={() => onOpen(b.id)}
+                  onContextMenu={(x, y) => onCardContextMenu(b.id, x, y)}
+                />
               ))}
             </div>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function MobileShelfCard({
+  theme,
+  book,
+  coverSrc,
+  onOpen,
+  onContextMenu,
+}: {
+  theme: Theme;
+  book: BookIndexEntry;
+  coverSrc?: string;
+  onOpen: () => void;
+  onContextMenu: (x: number, y: number) => void;
+}) {
+  const longPress = useLongPress(onContextMenu);
+  return (
+    <div
+      onClick={() => {
+        if (longPress.consumeLongPress()) return;
+        onOpen();
+      }}
+      {...longPress.bind}
+      style={{
+        // Suppress the platform long-press text-selection / callout so the
+        // menu opens cleanly without a stray selection box flickering in.
+        WebkitUserSelect: "none",
+        userSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
+    >
+      <BookCover
+        title={book.title}
+        author={book.author}
+        palette={paletteForId(book.id)}
+        size="sm"
+        src={coverSrc}
+      />
+      <div
+        style={{
+          fontFamily: titleFontFor(book.title),
+          fontSize: 12,
+          fontWeight: 500,
+          marginTop: 8,
+          lineHeight: 1.3,
+          color: theme.ink,
+          letterSpacing: "-0.005em",
+        }}
+      >
+        {book.title}
+      </div>
+      <div style={{ fontSize: 9.5, color: theme.muted, marginTop: 2 }}>
+        {book.author}
+      </div>
+      {book.progress > 0 && book.progress < 1 && (
+        <div
+          style={{
+            height: 2,
+            background: theme.rule,
+            borderRadius: 1,
+            marginTop: 6,
+          }}
+        >
+          <div
+            style={{
+              width: `${book.progress * 100}%`,
+              height: "100%",
+              background: theme.muted,
+              borderRadius: 1,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
