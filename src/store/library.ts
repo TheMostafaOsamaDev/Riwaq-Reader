@@ -73,6 +73,18 @@ export interface BookIndexEntry {
       via the right-click menu on a shelf card. Undefined for older books
       that predate this field. */
   status?: BookStatus;
+  /** What kind of library entry this is. Older entries (and any EPUB /
+   *  DOCX import) don't carry the field — they're treated as "epub" by
+   *  callers. "source" entries are lightweight bookmarks: no book.json,
+   *  no book.epub on disk; the chapter list and content live on the
+   *  source website and are fetched on demand. */
+  kind?: "epub" | "source";
+  /** Source extension id (e.g. "kolnovel"). Present only on
+   *  kind === "source" entries. */
+  sourceId?: string;
+  /** Novel index page URL — the canonical handle this source uses to
+   *  identify the novel. Present only on kind === "source" entries. */
+  novelUrl?: string;
 }
 
 export interface BookState {
@@ -481,6 +493,113 @@ export async function importEpubBytes(
   idx.books.push(entry);
   await writeIndex(idx);
   return entry;
+}
+
+/**
+ * Lightweight "Add to library" for a source-backed novel. Doesn't
+ * scrape chapter content — just fetches the novel index page for its
+ * metadata + downloads the cover image, then writes a `kind: "source"`
+ * entry to the library index. The user can later open the entry,
+ * stream-read it, or trigger a Download Range to materialize part of
+ * the novel as a regular EPUB entry.
+ *
+ * If the same (sourceId, novelUrl) is already in the library, this
+ * returns the existing entry — duplicate adds are a no-op.
+ */
+export async function addNovelToLibrary(
+  sourceId: string,
+  novelUrl: string,
+): Promise<BookIndexEntry> {
+  const existing = await findSourceEntry(sourceId, novelUrl);
+  if (existing) return existing;
+
+  const { getSource } = await import("../sources/registry");
+  const { createHost } = await import("../sources/host");
+  const source = getSource(sourceId);
+  if (!source) throw new Error(`Unknown source: ${sourceId}`);
+
+  const novel = await source.getNovel(novelUrl);
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  await ensureRoot();
+  const dir = bookDir(id);
+  await mkdir(dir, { baseDir: BASE, recursive: true });
+
+  // Download the cover up front so the library card has something to
+  // render without going back over the network on every list refresh.
+  // Cover failure isn't fatal — the entry still works, just without a
+  // thumbnail.
+  let coverFile: string | undefined;
+  if (novel.coverUrl) {
+    try {
+      const host = createHost(sourceId);
+      const bytes = await host.fetchBytes(novel.coverUrl);
+      const ext = extensionFromCoverUrl(novel.coverUrl);
+      coverFile = `cover.${ext}`;
+      await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[library] couldn't download cover:", e);
+    }
+  }
+
+  const chapterCount = novel.volumes.reduce(
+    (a, v) => a + v.chapters.length,
+    0,
+  );
+
+  const entry: BookIndexEntry = {
+    id,
+    title: novel.title,
+    author: novel.author,
+    language: novel.language,
+    chapterCount,
+    addedAt: Date.now(),
+    progress: 0,
+    kind: "source",
+    sourceId,
+    novelUrl,
+    ...(coverFile ? { coverFile } : {}),
+    ...(novel.description ? { description: novel.description } : {}),
+  };
+
+  const idx = await readIndex();
+  idx.books.push(entry);
+  await writeIndex(idx);
+  return entry;
+}
+
+/** Find a source-backed entry for the given (sourceId, novelUrl), if
+ *  one exists. Returns null when the novel hasn't been added yet. */
+export async function findSourceEntry(
+  sourceId: string,
+  novelUrl: string,
+): Promise<BookIndexEntry | null> {
+  const idx = await readIndex();
+  return (
+    idx.books.find(
+      (b) =>
+        b.kind === "source" &&
+        b.sourceId === sourceId &&
+        b.novelUrl === novelUrl,
+    ) ?? null
+  );
+}
+
+/** Pluck a sane file extension from a cover URL (`/foo/bar/cover.jpg?x=1`
+ *  → `jpg`). Falls back to `jpg` when nothing maps. The cover doesn't
+ *  need to round-trip through a MIME detector since the EPUB pipeline
+ *  isn't involved for source entries. */
+function extensionFromCoverUrl(url: string): string {
+  const path = url.split("?")[0].split("#")[0];
+  const m = path.match(/\.([a-z0-9]{2,5})$/i);
+  if (!m) return "jpg";
+  const ext = m[1].toLowerCase();
+  if (ext === "jpeg") return "jpg";
+  return ext;
 }
 
 /**
