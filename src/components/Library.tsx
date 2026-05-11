@@ -430,6 +430,8 @@ export function Library({ theme, layout, onOpen }: Props) {
           theme={theme}
           x={menu.x}
           y={menu.y}
+          title={menuBook.title}
+          author={menuBook.author}
           status={menuBook.status}
           onPickStatus={(s) => onPickStatus(menuBook.id, s)}
           onEdit={() => {
