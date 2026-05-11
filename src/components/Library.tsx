@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLongPress } from "../hooks/useLongPress";
 import { Icon } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
@@ -753,12 +760,35 @@ function MobileLibrary({
   onClearAll,
   onCardContextMenu,
 }: LayoutProps) {
+  const [tab, setTab] = useState<LibraryTab>("all");
+
+  // Per-tab counts shown inside each pill. Single pass over books — cheaper
+  // than running matchesTab four times — and memoized so we only recompute
+  // when the library actually changes.
+  const counts = useMemo(() => {
+    let reading = 0;
+    let finished = 0;
+    let wishlist = 0;
+    for (const b of books) {
+      if (isReading(b)) reading++;
+      if (b.status === "finished") finished++;
+      if (b.status === "wishlist") wishlist++;
+    }
+    return { all: books.length, reading, finished, wishlist };
+  }, [books]);
+
+  const visible = books.filter((b) => matchesTab(b, tab));
+
   // Hero is the actually-last-read book, not the one most-recently-added.
   // `listBooks()` already sorts read books above unread by lastReadAt, so
-  // the first entry with lastReadAt defined is the right pick. If no book
-  // has been opened yet, there's no hero — everything lands on the shelf.
-  const hero = books.find((b) => b.lastReadAt !== undefined);
-  const others = hero ? books.filter((b) => b.id !== hero.id) : books;
+  // the first entry with lastReadAt defined is the right pick. Hero is
+  // also "all"-only: filtered tabs render a flat shelf so every match is
+  // equally weighted (no synthetic "continue" prompt inside a Wishlist).
+  const hero =
+    tab === "all"
+      ? visible.find((b) => b.lastReadAt !== undefined)
+      : undefined;
+  const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
 
   // Hero is at most one card per render — a single hook instance covers it.
   // Shelf cards each need their own long-press state, so they live in a
@@ -897,6 +927,19 @@ function MobileLibrary({
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "0 22px 40px" }}>
+        {/* Tab strip is sticky inside the scroll container so it pins
+            directly under the "Library" header as the shelf scrolls. Only
+            shown once there's content — no point offering filters when
+            the library is empty / still loading. */}
+        {!loading && books.length > 0 && (
+          <MobileTabStrip
+            theme={theme}
+            tab={tab}
+            counts={counts}
+            onChange={setTab}
+          />
+        )}
+
         {error && <ErrorBanner theme={theme} message={error} />}
 
         {loading && books.length === 0 ? (
@@ -905,6 +948,8 @@ function MobileLibrary({
           </div>
         ) : books.length === 0 ? (
           <EmptyState theme={theme} onImport={onImport} importing={importing} />
+        ) : visible.length === 0 ? (
+          <FilteredEmptyState theme={theme} tab={tab} gesture="long-press" />
         ) : (
           <>
             {hero && (
@@ -995,18 +1040,24 @@ function MobileLibrary({
               </div>
             )}
 
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 600,
-                color: theme.muted,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                marginBottom: 14,
-              }}
-            >
-              Your shelf
-            </div>
+            {/* "Your shelf" only carries useful structure on the all-tab
+                where a hero card sits above it. Filtered tabs render a flat
+                shelf and the active pill already states what's filtered, so
+                a heading underneath is redundant. */}
+            {tab === "all" && hero && (
+              <div
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: theme.muted,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  marginBottom: 14,
+                }}
+              >
+                Your shelf
+              </div>
+            )}
             <div
               style={{
                 display: "grid",
@@ -1033,6 +1084,178 @@ function MobileLibrary({
         )}
       </div>
     </div>
+  );
+}
+
+function MobileTabStrip({
+  theme,
+  tab,
+  counts,
+  onChange,
+}: {
+  theme: Theme;
+  tab: LibraryTab;
+  counts: Record<LibraryTab, number>;
+  onChange: (t: LibraryTab) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Pixel position of the sliding indicator behind the active pill. Updated
+  // by a layout effect whenever `tab` changes or any pill resizes (text
+  // metrics shift when counts change).
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+  // Hold the transition off for the first paint so the indicator appears at
+  // its real position instead of sliding in from (0, 0).
+  const [animEnabled, setAnimEnabled] = useState(false);
+
+  useLayoutEffect(() => {
+    const strip = scrollRef.current;
+    if (!strip) return;
+    const measure = () => {
+      const active = strip.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+      if (active) {
+        setIndicator({ left: active.offsetLeft, width: active.offsetWidth });
+      }
+    };
+    measure();
+    // Re-measure on container *or* pill resize (text width shifts when
+    // counts cross a digit boundary, on font load, on orientation change).
+    const ro = new ResizeObserver(measure);
+    ro.observe(strip);
+    for (const child of Array.from(strip.children)) {
+      if (child instanceof HTMLElement) ro.observe(child);
+    }
+    return () => ro.disconnect();
+  }, [tab]);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setAnimEnabled(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Keep the selected pill in view when the strip overflows horizontally on
+  // narrow phones. Scrolls the strip only — not the page — by writing
+  // scrollLeft directly, which is safer than scrollIntoView (which can
+  // scroll ancestor containers).
+  useEffect(() => {
+    const strip = scrollRef.current;
+    if (!strip) return;
+    const active = strip.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    if (!active) return;
+    const stripWidth = strip.clientWidth;
+    const target =
+      active.offsetLeft - (stripWidth - active.offsetWidth) / 2;
+    const max = strip.scrollWidth - stripWidth;
+    strip.scrollTo({
+      left: Math.max(0, Math.min(max, target)),
+      behavior: "smooth",
+    });
+  }, [tab]);
+
+  return (
+    <>
+      {/* Hide the horizontal scrollbar — Firefox uses scrollbar-width via
+          inline style, Chromium/WebKit need this pseudo. */}
+      <style>{`.leaflet-tab-scroll::-webkit-scrollbar { display: none; }`}</style>
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          // Escape the scroll container's 22px horizontal padding so the
+          // strip and its bottom rule run edge-to-edge under the header.
+          margin: "0 -22px",
+          padding: "10px 22px 12px",
+          background: theme.bg,
+          borderBottom: `0.5px solid ${theme.rule}`,
+          // Above the hero card and shelf grid so they slide cleanly
+          // underneath the sticky strip on scroll.
+          zIndex: 5,
+        }}
+      >
+        <div
+          ref={scrollRef}
+          className="leaflet-tab-scroll"
+          style={{
+            position: "relative",
+            display: "flex",
+            gap: 8,
+            overflowX: "auto",
+            scrollbarWidth: "none",
+            // 2px bottom padding so a rare horizontal scrollbar (desktop
+            // simulators) doesn't clip the pill rounding.
+            paddingBottom: 2,
+          }}
+        >
+          {/* Sliding indicator — sits behind the pills via z-index. */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 2,
+              left: 0,
+              transform: `translateX(${indicator.left}px)`,
+              width: indicator.width,
+              background: theme.ink,
+              borderRadius: 999,
+              transition: animEnabled
+                ? "transform 300ms cubic-bezier(0.32, 0.72, 0, 1), width 300ms cubic-bezier(0.32, 0.72, 0, 1)"
+                : "none",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+          {TABS.map(({ key, label }) => {
+            const active = key === tab;
+            const count = counts[key];
+            return (
+              <button
+                key={key}
+                data-tab={key}
+                onClick={() => onChange(key)}
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  flexShrink: 0,
+                  border: "none",
+                  background: "transparent",
+                  color: active ? theme.bg : theme.muted,
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  fontSize: 13.5,
+                  fontWeight: active ? 600 : 500,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  whiteSpace: "nowrap",
+                  fontFamily: FONT_STACKS.sans,
+                  // Match the indicator's easing/duration so the label's
+                  // colour swap stays roughly in sync with the slide.
+                  transition: "color 260ms cubic-bezier(0.32, 0.72, 0, 1)",
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <span>{label}</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: active ? 600 : 500,
+                    // Slight transparency so the count reads as secondary
+                    // info next to the label without losing legibility on
+                    // the dark active background.
+                    opacity: active ? 0.78 : 0.78,
+                  }}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1488,9 +1711,13 @@ function shelfHeadingFor(tab: BookStatus): string {
 function FilteredEmptyState({
   theme,
   tab,
+  gesture = "right-click",
 }: {
   theme: Theme;
   tab: LibraryTab;
+  /** Which input gesture the hint should reference. On mobile we long-press
+      cards to open the status menu; on desktop it's a right-click. */
+  gesture?: "right-click" | "long-press";
 }) {
   const message =
     tab === "reading"
@@ -1500,6 +1727,10 @@ function FilteredEmptyState({
       : tab === "wishlist"
       ? "Nothing on your wishlist yet."
       : "Nothing here.";
+  const hint =
+    gesture === "long-press"
+      ? "Long-press a book to set its status."
+      : "Right-click a book to set its status.";
   return (
     <div
       style={{
@@ -1513,9 +1744,7 @@ function FilteredEmptyState({
       }}
     >
       {message}
-      <div style={{ marginTop: 8, fontSize: 12 }}>
-        Right-click a book to set its status.
-      </div>
+      <div style={{ marginTop: 8, fontSize: 12 }}>{hint}</div>
     </div>
   );
 }
