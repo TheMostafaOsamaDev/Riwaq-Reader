@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { Icon } from "./Icon";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { BookStatus } from "../store/library";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
 
@@ -44,6 +45,12 @@ export function ContextMenu({
   const [statusOpen, setStatusOpen] = useState(false);
   const [submenuSide, setSubmenuSide] = useState<"right" | "left">("right");
   const [submenuReady, setSubmenuReady] = useState(false);
+  // On touch devices the OS synthesizes a mouseenter on the element under the
+  // touch point when the menu mounts under the user's finger. That used to
+  // highlight Status and pop open its submenu before the user actually meant
+  // to interact with anything. Swap the hover-driven open for a tap-driven
+  // one on coarse pointers, and suppress the synthetic hover styling in Item.
+  const isTouch = useMediaQuery("(hover: none)");
 
   // Keep the menu inside the viewport — measure after mount and shift
   // left/up if the requested coords would push it off-screen.
@@ -123,8 +130,10 @@ export function ContextMenu({
     >
       <Item
         theme={theme}
-        onMouseEnter={() => setStatusOpen(true)}
-        onMouseLeave={() => setStatusOpen(false)}
+        suppressHover={isTouch}
+        onMouseEnter={isTouch ? undefined : () => setStatusOpen(true)}
+        onMouseLeave={isTouch ? undefined : () => setStatusOpen(false)}
+        onClick={isTouch ? () => setStatusOpen((v) => !v) : undefined}
         right={<Icon name="chevronR" size={14} />}
       >
         Status{status ? ` · ${labelFor(status)}` : ""}
@@ -150,6 +159,7 @@ export function ContextMenu({
               <Item
                 key={o.value}
                 theme={theme}
+                suppressHover={isTouch}
                 onClick={() => onPickStatus(o.value)}
                 right={
                   status === o.value ? (
@@ -163,7 +173,7 @@ export function ContextMenu({
           </div>
         )}
       </Item>
-      <Item theme={theme} onClick={onEdit}>
+      <Item theme={theme} onClick={onEdit} suppressHover={isTouch}>
         Edit book info
       </Item>
       <div
@@ -173,7 +183,7 @@ export function ContextMenu({
           margin: "4px 6px",
         }}
       />
-      <Item theme={theme} onClick={onDelete} destructive>
+      <Item theme={theme} onClick={onDelete} suppressHover={isTouch} destructive>
         Remove book
       </Item>
     </div>
@@ -191,6 +201,7 @@ function Item({
   onMouseLeave,
   right,
   destructive,
+  suppressHover,
   children,
 }: {
   theme: Theme;
@@ -199,6 +210,10 @@ function Item({
   onMouseLeave?: () => void;
   right?: ReactNode;
   destructive?: boolean;
+  /** Skip the hover-state background swap. Set on coarse-pointer devices
+      where the synthetic mouseenter from a touch shouldn't auto-highlight
+      the item just because the menu opened under the user's finger. */
+  suppressHover?: boolean;
   children: ReactNode;
 }) {
   const [hover, setHover] = useState(false);
@@ -207,11 +222,11 @@ function Item({
       role="menuitem"
       onClick={onClick}
       onMouseEnter={() => {
-        setHover(true);
+        if (!suppressHover) setHover(true);
         onMouseEnter?.();
       }}
       onMouseLeave={() => {
-        setHover(false);
+        if (!suppressHover) setHover(false);
         onMouseLeave?.();
       }}
       style={{
@@ -224,7 +239,7 @@ function Item({
         justifyContent: "space-between",
         gap: 12,
         color: destructive ? "#c04a3a" : theme.ink,
-        background: hover ? theme.hover : "transparent",
+        background: hover && !suppressHover ? theme.hover : "transparent",
       }}
     >
       <span>{children}</span>
