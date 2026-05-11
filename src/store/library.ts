@@ -725,6 +725,23 @@ export async function deleteBook(id: string): Promise<void> {
   }
 }
 
+/**
+ * Stamp a book's `lastReadAt` to "now" without touching its reading
+ * position. Called when the user opens a book, so the Library's
+ * "Continue reading" hero picks the most-recently-opened book even when
+ * the user exits before a chapter change has run `updateReadingPosition`
+ * (e.g. they opened a book, scrolled within the current chapter, and
+ * tapped back). Without this, the hero would still point at whichever
+ * book the user previously switched chapters in.
+ */
+export async function markBookOpened(id: string): Promise<void> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return;
+  entry.lastReadAt = Date.now();
+  await writeIndex(idx);
+}
+
 export async function updateReadingPosition(
   id: string,
   currentChapter: number,

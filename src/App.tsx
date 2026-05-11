@@ -9,6 +9,7 @@ import { useTweaks } from "./hooks/useTweaks";
 import {
   deleteHighlight,
   loadBook,
+  markBookOpened,
   saveHighlight,
   updateHighlightNote,
   updateParagraphPosition,
@@ -64,6 +65,12 @@ function App() {
     setError(null);
     try {
       const { book, state } = await loadBook(id);
+      // Stamp `lastReadAt` on open so the Library's "Continue reading"
+      // hero picks the book the user just opened, even when they exit
+      // before a chapter change has triggered `updateReadingPosition`.
+      // Awaited so the write commits before the Library remounts on
+      // back-out and re-fetches the index.
+      await markBookOpened(id);
       setLoaded({
         book,
         state,
