@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Icon } from "./Icon";
 import type { BookStatus } from "../store/library";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
@@ -33,8 +39,11 @@ export function ContextMenu({
   onClose,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   const [statusOpen, setStatusOpen] = useState(false);
+  const [submenuSide, setSubmenuSide] = useState<"right" | "left">("right");
+  const [submenuReady, setSubmenuReady] = useState(false);
 
   // Keep the menu inside the viewport — measure after mount and shift
   // left/up if the requested coords would push it off-screen.
@@ -51,21 +60,42 @@ export function ContextMenu({
     setPos({ x: nx, y: ny });
   }, [x, y]);
 
-  // Click-outside / Esc to dismiss. mousedown fires before any click handler
-  // inside the menu re-renders, so we read the event target instead of
-  // closing on every mousedown.
+  // Flip the Status submenu to the left side when opening to the right would
+  // overflow the viewport (e.g. when the parent menu is pinned near the right
+  // edge on a narrow screen).
+  useLayoutEffect(() => {
+    if (!statusOpen) {
+      setSubmenuReady(false);
+      return;
+    }
+    const parent = menuRef.current;
+    const submenu = submenuRef.current;
+    if (!parent || !submenu) return;
+    const parentRect = parent.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const overflowsRight =
+      parentRect.right + submenuRect.width + 2 > vw - 8;
+    setSubmenuSide(overflowsRight ? "left" : "right");
+    setSubmenuReady(true);
+  }, [statusOpen]);
+
+  // Click-outside / Esc to dismiss. pointerdown covers both touch and mouse
+  // and fires immediately on touchstart — on touch devices the synthetic
+  // mousedown is delayed until after touchend, so listening for pointerdown
+  // dismisses the menu the moment the user taps outside.
   useEffect(() => {
-    const onDocMouse = (e: MouseEvent) => {
+    const onDocPointer = (e: PointerEvent) => {
       const el = menuRef.current;
       if (el && !el.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    document.addEventListener("mousedown", onDocMouse);
+    document.addEventListener("pointerdown", onDocPointer);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDocMouse);
+      document.removeEventListener("pointerdown", onDocPointer);
       document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
@@ -100,17 +130,20 @@ export function ContextMenu({
         Status{status ? ` · ${labelFor(status)}` : ""}
         {statusOpen && (
           <div
+            ref={submenuRef}
             style={{
               position: "absolute",
               top: -4,
-              left: "100%",
-              marginLeft: 2,
+              ...(submenuSide === "right"
+                ? { left: "100%", marginLeft: 2 }
+                : { right: "100%", marginRight: 2 }),
               background: theme.bg,
               border: `0.5px solid ${theme.rule}`,
               borderRadius: 8,
               boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
               padding: 4,
               minWidth: 140,
+              visibility: submenuReady ? "visible" : "hidden",
             }}
           >
             {STATUS_OPTIONS.map((o) => (
