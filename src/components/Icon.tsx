@@ -34,6 +34,8 @@ export const ICONS = {
   info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v7M12 17h.01",
   doc: "M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M9 13h6M9 17h6",
   slider: "M3 12h6M15 12h6M10 12a2 2 0 1 0 4 0 2 2 0 1 0 -4 0",
+  trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6",
+  bookmark: "M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z",
 } as const;
 
 export function Icon({
