@@ -1008,7 +1008,10 @@ function MobileLibrary({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
+                // minmax(0, 1fr) lets columns shrink below the cover's
+                // intrinsic width so 3 fluid covers fit any phone width
+                // instead of overflowing past the right edge.
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                 gap: 16,
                 rowGap: 22,
               }}
@@ -1053,6 +1056,9 @@ function MobileShelfCard({
       }}
       {...longPress.bind}
       style={{
+        // `minWidth: 0` so a wide unbreakable string inside this grid item
+        // doesn't push the cell past its `minmax(0, 1fr)` track.
+        minWidth: 0,
         // Suppress the platform long-press text-selection / callout so the
         // menu opens cleanly without a stray selection box flickering in.
         WebkitUserSelect: "none",
@@ -1066,6 +1072,9 @@ function MobileShelfCard({
         palette={paletteForId(book.id)}
         size="sm"
         src={coverSrc}
+        // Stretch the cover to the (constrained) cell width — the fixed
+        // 110px `sm` size would overflow a 3-column grid on narrow phones.
+        fluid
       />
       <div
         style={{
@@ -1076,6 +1085,14 @@ function MobileShelfCard({
           lineHeight: 1.3,
           color: theme.ink,
           letterSpacing: "-0.005em",
+          // Clamp the title to 2 lines so cards keep a consistent height
+          // instead of jumping to 3+ lines on long titles, and let unbreakable
+          // tokens wrap so they don't blow out the cell.
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          wordBreak: "break-word",
         }}
       >
         {book.title}
