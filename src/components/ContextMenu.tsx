@@ -18,10 +18,14 @@ export interface ContextMenuProps {
       and ignores these. */
   x: number;
   y: number;
-  /** Book title shown in the action-sheet header on touch. Desktop ignores. */
+  /** Book title shown in the header on both touch and desktop. */
   title?: string;
-  /** Book author shown as a subtitle in the action-sheet header on touch. */
+  /** Book author shown as a subtitle below the title. */
   author?: string;
+  /** Optional cover URL rendered as a tiny thumbnail in the desktop header
+      so the user can identify which book the menu belongs to after clicking
+      through several cards. */
+  coverSrc?: string;
   status: BookStatus | undefined;
   onPickStatus: (s: BookStatus) => void;
   onEdit: () => void;
@@ -69,6 +73,7 @@ export function ContextMenu({
   y,
   title,
   author,
+  coverSrc,
   status,
   onPickStatus,
   onEdit,
@@ -102,6 +107,13 @@ export function ContextMenu({
   // animation frame so the browser interpolates to translateY 0.
   const [entered, setEntered] = useState(false);
   const closingRef = useRef(false);
+
+  // Desktop-only: which row is currently highlighted. Both mouse hover and
+  // keyboard arrows feed `mainFocus` / `subFocus`, so we never end up with
+  // two rows lit at once. -1 means "nothing highlighted yet" (initial state
+  // before the user has interacted).
+  const [mainFocus, setMainFocus] = useState(-1);
+  const [subFocus, setSubFocus] = useState(-1);
 
   // Touch slider: height container is sized to the active panel.
   const [panelHeight, setPanelHeight] = useState<number | undefined>(undefined);
@@ -215,22 +227,130 @@ export function ContextMenu({
     [runWithExit, onPickStatus],
   );
 
-  // Outside-click / Esc dismiss.
+  // Outside-click dismiss. pointerdown fires on both touchstart and mousedown
+  // so the menu closes the moment a finger or cursor lands outside it.
   useEffect(() => {
     const onDocPointer = (e: PointerEvent) => {
       const el = menuRef.current;
       if (el && !el.contains(e.target as Node)) requestClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") requestClose();
-    };
     document.addEventListener("pointerdown", onDocPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onDocPointer);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("pointerdown", onDocPointer);
   }, [requestClose]);
+
+  // Keyboard handler — touch gets a minimal Esc-closes; desktop gets full
+  // arrow navigation, Enter to activate, letter shortcuts, and right/left
+  // for submenu traversal.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (leaving) return;
+      if (isTouch) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          requestClose();
+        }
+        return;
+      }
+      const inSubmenu = subFocus >= 0;
+      const n = STATUS_OPTIONS.length;
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          if (inSubmenu) {
+            setSubFocus((p) => (p + 1) % n);
+          } else {
+            setMainFocus((p) => (p < 0 ? 0 : (p + 1) % 3));
+          }
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          if (inSubmenu) {
+            setSubFocus((p) => (p - 1 + n) % n);
+          } else {
+            setMainFocus((p) => (p < 0 ? 2 : (p - 1 + 3) % 3));
+          }
+          break;
+        case "ArrowRight":
+          // From the Status row, enter the submenu and focus the first
+          // option (or the current status, if one is already set).
+          e.preventDefault();
+          if (!inSubmenu && mainFocus === 0) {
+            const initial = status
+              ? STATUS_OPTIONS.findIndex((o) => o.value === status)
+              : 0;
+            setStatusOpen(true);
+            setSubFocus(initial >= 0 ? initial : 0);
+          }
+          break;
+        case "ArrowLeft":
+          // Exits the submenu back to the Status row.
+          e.preventDefault();
+          if (inSubmenu) {
+            setStatusOpen(false);
+            setSubFocus(-1);
+          }
+          break;
+        case "Enter":
+          e.preventDefault();
+          if (inSubmenu) {
+            handlePickStatus(STATUS_OPTIONS[subFocus].value);
+          } else if (mainFocus === 0) {
+            // Enter on Status toggles the submenu so a returning user
+            // doesn't have to remember which arrow opens it.
+            if (statusOpen) {
+              setStatusOpen(false);
+              setSubFocus(-1);
+            } else {
+              const initial = status
+                ? STATUS_OPTIONS.findIndex((o) => o.value === status)
+                : 0;
+              setStatusOpen(true);
+              setSubFocus(initial >= 0 ? initial : 0);
+            }
+          } else if (mainFocus === 1) {
+            handleEdit();
+          } else if (mainFocus === 2) {
+            handleDelete();
+          }
+          break;
+        case "Escape":
+          e.preventDefault();
+          // Esc inside the submenu only closes the submenu; a second Esc
+          // closes the whole menu. Standard menu pattern.
+          if (inSubmenu || statusOpen) {
+            setStatusOpen(false);
+            setSubFocus(-1);
+          } else {
+            requestClose();
+          }
+          break;
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [
+    isTouch,
+    leaving,
+    mainFocus,
+    subFocus,
+    statusOpen,
+    status,
+    handleEdit,
+    handleDelete,
+    handlePickStatus,
+    requestClose,
+  ]);
+
+  // Desktop: collapse the submenu the moment the highlight moves off the
+  // Status row (hover onto Edit, ArrowDown past it, etc.) so the flyout
+  // doesn't linger contradicting the new highlight.
+  useEffect(() => {
+    if (isTouch) return;
+    if (mainFocus > 0 && statusOpen) {
+      setStatusOpen(false);
+      setSubFocus(-1);
+    }
+  }, [mainFocus, statusOpen, isTouch]);
 
   // Desktop animations.
   const mainAnim = leaving
@@ -378,6 +498,203 @@ export function ContextMenu({
           </SheetRow>
         </div>
       ))}
+    </>
+  );
+
+  // Desktop-only book header — keeps the user oriented after right-clicking
+  // through several cards. Shows nothing if neither title nor author was
+  // passed in (back-compat with older call sites).
+  const desktopHeader =
+    title || author ? (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          // Sit within the menu's 4px inner padding — keeps the divider
+          // clear of the rounded corners and avoids overlap with the
+          // side-flyout submenu (which positions absolute past the right
+          // edge and would otherwise be clipped if we used overflow:hidden
+          // to contain a margin-escaped divider).
+          padding: "8px 8px 10px",
+          marginBottom: 4,
+          borderBottom: `0.5px solid ${theme.rule}`,
+        }}
+      >
+        {coverSrc && (
+          <img
+            src={coverSrc}
+            alt=""
+            style={{
+              width: 28,
+              height: 42,
+              objectFit: "cover",
+              borderRadius: 3,
+              flexShrink: 0,
+              boxShadow:
+                "0 1px 2px rgba(0,0,0,0.18), inset 1px 0 0 rgba(255,255,255,0.08), inset -1px 0 0 rgba(0,0,0,0.18)",
+            }}
+          />
+        )}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            gap: 2,
+            flex: 1,
+          }}
+        >
+          {title && (
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: theme.ink,
+                lineHeight: 1.25,
+                // Two-line clamp so long titles don't push the menu absurdly
+                // tall — the rest stays visible in the Edit modal anyway.
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {title}
+            </div>
+          )}
+          {author && (
+            <div
+              style={{
+                fontSize: 11,
+                color: theme.muted,
+                lineHeight: 1.3,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {author}
+            </div>
+          )}
+        </div>
+      </div>
+    ) : null;
+
+  // Desktop main items — separate from `mainItems` (touch) because the
+  // desktop layout adds icons, shortcut hints, and parent-driven focus
+  // state. The submenu flyout still lives inside the Status row so its
+  // position stays anchored to that row.
+  const desktopMainItems = (
+    <>
+      <SheetRow
+        theme={theme}
+        compact
+        icon="bookmark"
+        forceHighlight={mainFocus === 0}
+        onMouseEnter={() => {
+          setMainFocus(0);
+          if (!statusOpen) setStatusOpen(true);
+        }}
+        onClick={() => {
+          // Click on Status (rare — hover already opens it) toggles the
+          // submenu so trackpad users who tap can dismiss it without
+          // leaving the row.
+          if (statusOpen) {
+            setStatusOpen(false);
+            setSubFocus(-1);
+          } else {
+            const initial = status
+              ? STATUS_OPTIONS.findIndex((o) => o.value === status)
+              : 0;
+            setStatusOpen(true);
+            setSubFocus(initial >= 0 ? initial : 0);
+          }
+        }}
+        trailing={
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              color: theme.muted,
+              fontSize: 12,
+            }}
+          >
+            {status ? labelFor(status) : null}
+            <Icon name="chevronR" size={13} />
+          </span>
+        }
+      >
+        Status
+        {submenuMounted && (
+          <div
+            ref={submenuRef}
+            style={{
+              position: "absolute",
+              top: -4,
+              ...(submenuSide === "right"
+                ? { left: "100%", marginLeft: 2 }
+                : { right: "100%", marginRight: 2 }),
+              background: theme.bg,
+              border: `0.5px solid ${theme.rule}`,
+              borderRadius: 8,
+              boxShadow:
+                submenuSide === "right"
+                  ? "6px 10px 24px rgba(0,0,0,0.18)"
+                  : "-6px 10px 24px rgba(0,0,0,0.18)",
+              padding: 4,
+              minWidth: 160,
+              visibility: submenuMeasured ? "visible" : "hidden",
+              transformOrigin:
+                submenuSide === "right" ? "top left" : "top right",
+              animation: submenuAnim,
+              pointerEvents: submenuLeaving ? "none" : "auto",
+            }}
+          >
+            {STATUS_OPTIONS.map((o, i) => (
+              <SheetRow
+                key={o.value}
+                theme={theme}
+                compact
+                forceHighlight={subFocus === i}
+                onMouseEnter={() => setSubFocus(i)}
+                onClick={() => handlePickStatus(o.value)}
+                trailing={
+                  status === o.value ? (
+                    <Icon name="check" size={13} />
+                  ) : null
+                }
+              >
+                {o.label}
+              </SheetRow>
+            ))}
+          </div>
+        )}
+      </SheetRow>
+      <SheetDivider theme={theme} />
+      <SheetRow
+        theme={theme}
+        compact
+        icon="pencil"
+        forceHighlight={mainFocus === 1}
+        onMouseEnter={() => setMainFocus(1)}
+        onClick={handleEdit}
+      >
+        Edit book info
+      </SheetRow>
+      <SheetDivider theme={theme} />
+      <SheetRow
+        theme={theme}
+        compact
+        icon="trash"
+        destructive
+        forceHighlight={mainFocus === 2}
+        onMouseEnter={() => setMainFocus(2)}
+        onClick={handleDelete}
+      >
+        Remove book
+      </SheetRow>
     </>
   );
 
@@ -536,7 +853,8 @@ export function ContextMenu({
     );
   }
 
-  // Desktop / hover-capable: anchored popover with the original side flyout.
+  // Desktop / hover-capable: anchored popover with a book-context header,
+  // icon + shortcut-hint rows, and the original side flyout submenu.
   return (
     <div
       ref={menuRef}
@@ -546,7 +864,7 @@ export function ContextMenu({
         background: theme.bg,
         color: theme.ink,
         border: `0.5px solid ${theme.rule}`,
-        borderRadius: 8,
+        borderRadius: 10,
         boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
         fontFamily: FONT_STACKS.sans,
         fontSize: 13,
@@ -559,13 +877,18 @@ export function ContextMenu({
         left: pos.x,
         top: pos.y,
         zIndex: 9500,
-        minWidth: 200,
+        // Wider than the original 200px so the book header and status
+        // label sit comfortably without crowding the rows.
+        minWidth: 240,
         padding: 4,
+        // overflow stays visible so the side flyout submenu can extend
+        // past the menu's right edge.
         transformOrigin: "top left",
       }}
     >
       <style>{KEYFRAMES}</style>
-      {mainItems}
+      {desktopHeader}
+      {desktopMainItems}
     </div>
   );
 }
@@ -631,6 +954,11 @@ interface SheetRowProps {
   suppressHover?: boolean;
   /** Tighter desktop-style padding instead of the touch-sized row. */
   compact?: boolean;
+  /** When defined, parent fully controls the highlight (overrides internal
+      hover state). True paints theme.hover; false paints transparent. Used by
+      the desktop menu to keep keyboard focus and mouse hover in a single
+      source of truth so two rows can't light up at once. */
+  forceHighlight?: boolean;
   children: ReactNode;
 }
 
@@ -648,18 +976,22 @@ function SheetRow({
   muted,
   suppressHover,
   compact,
+  forceHighlight,
   children,
 }: SheetRowProps) {
   const [hover, setHover] = useState(false);
   const [pressed, setPressed] = useState(false);
 
-  // Pressed wins over hover so the brief flash on tap is visible regardless
-  // of which background paint is otherwise active.
-  const bg = pressed
-    ? theme.hover
-    : hover && !suppressHover
-      ? theme.hover
-      : "transparent";
+  // Pressed wins over hover/forceHighlight so the brief flash on tap is
+  // visible regardless of which background paint is otherwise active. When
+  // forceHighlight is set (desktop, parent-driven), it overrides the local
+  // hover entirely so kb focus and mouse hover share one source of truth.
+  const highlighted =
+    pressed ||
+    (forceHighlight !== undefined
+      ? forceHighlight
+      : hover && !suppressHover);
+  const bg = highlighted ? theme.hover : "transparent";
 
   const padding = compact ? "8px 12px" : "14px 16px";
   const fontSize = compact ? 13 : 15.5;
