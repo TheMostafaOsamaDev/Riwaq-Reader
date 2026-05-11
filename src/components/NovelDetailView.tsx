@@ -15,7 +15,11 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { getSource } from "../sources/registry";
-import { importFromSourceUrl } from "../store/library";
+import {
+  addNovelToLibrary,
+  deleteBook,
+  findSourceEntry,
+} from "../store/library";
 import {
   looksLikeMissingPlaceholder,
   optimizedCoverUrl,
@@ -63,7 +67,13 @@ export function NovelDetailView({
     error: null,
     novel: null,
   });
-  const [importing, setImporting] = useState(false);
+  // Tracks whether this novel is in the library and, if so, the entry's
+  // id (so Remove can target it). Null = not in library, undefined =
+  // not yet checked (initial mount, before findSourceEntry resolves).
+  const [libraryEntryId, setLibraryEntryId] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [working, setWorking] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
 
   useEffect(() => {
@@ -89,21 +99,57 @@ export function NovelDetailView({
     };
   }, [source, novelUrl]);
 
-  const onImportAll = useCallback(async () => {
-    if (importing) return;
-    setImporting(true);
+  // Look up whether this novel is already in the library. Done in
+  // parallel with the metadata fetch — the two pieces of data are
+  // independent and we want both ready by the time the page renders.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entry = await findSourceEntry(sourceId, novelUrl);
+      if (cancelled) return;
+      setLibraryEntryId(entry?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceId, novelUrl]);
+
+  const onAddToLibrary = useCallback(async () => {
+    if (working) return;
+    setWorking(true);
     try {
-      await importFromSourceUrl(sourceId, novelUrl);
+      const entry = await addNovelToLibrary(sourceId, novelUrl);
+      setLibraryEntryId(entry.id);
       onImportComplete();
     } catch (e) {
-      // The import-progress modal also surfaces the error; we don't
-      // need to render a second copy inline.
       // eslint-disable-next-line no-console
-      console.error("import failed:", e);
+      console.error("addNovelToLibrary failed:", e);
     } finally {
-      setImporting(false);
+      setWorking(false);
     }
-  }, [importing, sourceId, novelUrl, onImportComplete]);
+  }, [working, sourceId, novelUrl, onImportComplete]);
+
+  const onRemoveFromLibrary = useCallback(async () => {
+    if (working || !libraryEntryId) return;
+    if (
+      !confirm(
+        "Remove this novel from your library? Your downloaded chapter ranges (if any) are kept.",
+      )
+    ) {
+      return;
+    }
+    setWorking(true);
+    try {
+      await deleteBook(libraryEntryId);
+      setLibraryEntryId(null);
+      onImportComplete();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("deleteBook failed:", e);
+    } finally {
+      setWorking(false);
+    }
+  }, [working, libraryEntryId, onImportComplete]);
 
   if (!source) {
     return (
@@ -192,13 +238,16 @@ export function NovelDetailView({
           <ActionRow
             theme={theme}
             layout={layout}
-            importing={importing}
+            working={working}
             chapterCount={state.novel.volumes.reduce(
               (a, v) => a + v.chapters.length,
               0,
             )}
+            inLibrary={libraryEntryId != null}
+            libraryCheckDone={libraryEntryId !== undefined}
             onRead={() => onStreamRead(undefined)}
-            onImportAll={onImportAll}
+            onAddToLibrary={onAddToLibrary}
+            onRemoveFromLibrary={onRemoveFromLibrary}
             onOpenRangeDialog={onOpenRangeDialog}
           />
           <VolumesAccordion
@@ -453,20 +502,32 @@ function NovelCoverImage({
 interface ActionRowProps {
   theme: Theme;
   layout: "desktop" | "mobile";
-  importing: boolean;
+  working: boolean;
   chapterCount: number;
+  /** True when the novel is already a library entry — swaps the Add
+   *  button for Remove. */
+  inLibrary: boolean;
+  /** False while we haven't yet checked the library — the Add/Remove
+   *  button stays in a disabled state until we know which to render so
+   *  the user doesn't accidentally double-add by clicking before the
+   *  lookup resolves. */
+  libraryCheckDone: boolean;
   onRead: () => void;
-  onImportAll: () => void;
+  onAddToLibrary: () => void;
+  onRemoveFromLibrary: () => void;
   onOpenRangeDialog: () => void;
 }
 
 function ActionRow({
   theme,
   layout,
-  importing,
+  working,
   chapterCount,
+  inLibrary,
+  libraryCheckDone,
   onRead,
-  onImportAll,
+  onAddToLibrary,
+  onRemoveFromLibrary,
   onOpenRangeDialog,
 }: ActionRowProps) {
   return (
@@ -488,24 +549,35 @@ function ActionRow({
       >
         Read
       </Button>
-      <Button
-        theme={theme}
-        variant="outline"
-        size="md"
-        onClick={onImportAll}
-        disabled={importing || chapterCount === 0}
-        leadingIcon={<Icon name="download" size={14} />}
-      >
-        {importing
-          ? "Importing…"
-          : `Add to library (${chapterCount} ch.)`}
-      </Button>
+      {inLibrary ? (
+        <Button
+          theme={theme}
+          variant="outline"
+          size="md"
+          onClick={onRemoveFromLibrary}
+          disabled={working || !libraryCheckDone}
+          leadingIcon={<Icon name="trash" size={14} />}
+        >
+          {working ? "Removing…" : "Remove from library"}
+        </Button>
+      ) : (
+        <Button
+          theme={theme}
+          variant="outline"
+          size="md"
+          onClick={onAddToLibrary}
+          disabled={working || !libraryCheckDone}
+          leadingIcon={<Icon name="bookmark" size={14} />}
+        >
+          {working ? "Adding…" : "Add to library"}
+        </Button>
+      )}
       <Button
         theme={theme}
         variant="outline"
         size="md"
         onClick={onOpenRangeDialog}
-        disabled={importing || chapterCount === 0}
+        disabled={working || chapterCount === 0}
         leadingIcon={<Icon name="slider" size={14} />}
       >
         Download range
