@@ -213,63 +213,82 @@ function HomeHeader({
   canSearch,
 }: HomeHeaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMobile = layout === "mobile";
 
+  // Mobile lays out as two rows (title row + search row below) so the
+  // source name has the full width it needs to display without
+  // truncating to "KolNo…" the way a single-row layout did. Desktop
+  // keeps the existing single-row layout — there's room for both.
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: layout === "mobile" ? "18px 18px 10px" : "24px 40px 14px",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: isMobile ? "stretch" : "center",
+        gap: isMobile ? 10 : 14,
+        padding: isMobile ? "16px 18px 12px" : "24px 40px 14px",
         borderBottom: `0.5px solid ${theme.rule}`,
       }}
     >
-      <button
-        onClick={onBack}
-        aria-label="Back to sources"
+      <div
         style={{
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          border: `0.5px solid ${theme.rule}`,
-          background: theme.bg,
-          color: theme.ink,
-          cursor: "pointer",
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
+          gap: 12,
+          minWidth: 0,
+          flex: isMobile ? "0 0 auto" : "0 1 auto",
         }}
       >
-        <Icon name="arrowL" size={16} />
-      </button>
-      <div style={{ minWidth: 0, flex: layout === "mobile" ? "0 1 auto" : "0" }}>
-        <div
+        <button
+          onClick={onBack}
+          aria-label="Back to sources"
           style={{
-            fontFamily: FONT_SERIF_DISPLAY,
-            fontStyle: "italic",
-            fontSize: 22,
-            letterSpacing: "-0.01em",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            border: `0.5px solid ${theme.rule}`,
+            background: theme.bg,
+            color: theme.ink,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
           }}
         >
-          {source.meta.name}
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: theme.muted,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            fontWeight: 500,
-          }}
-        >
-          {source.meta.baseUrl.replace(/^https?:\/\//, "")}
+          <Icon name="arrowL" size={16} />
+        </button>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontFamily: FONT_SERIF_DISPLAY,
+              fontStyle: "italic",
+              fontSize: isMobile ? 20 : 22,
+              letterSpacing: "-0.01em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {source.meta.name}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: theme.muted,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {source.meta.baseUrl.replace(/^https?:\/\//, "")}
+          </div>
         </div>
       </div>
-      <div style={{ flex: 1 }} />
+      {!isMobile && <div style={{ flex: 1 }} />}
       {canSearch && (
         <div
           style={{
@@ -279,8 +298,11 @@ function HomeHeader({
             background: theme.chrome,
             border: `0.5px solid ${theme.rule}`,
             borderRadius: 9,
-            padding: "4px 8px",
-            width: layout === "mobile" ? 180 : 320,
+            padding: "6px 10px",
+            // Mobile: full-width below the title row. Desktop:
+            // sized to fit comfortably to the right of the title.
+            width: isMobile ? "100%" : 320,
+            boxSizing: "border-box",
           }}
         >
           <Icon name="search" size={14} style={{ color: theme.muted }} />
