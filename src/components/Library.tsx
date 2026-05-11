@@ -887,7 +887,10 @@ function MobileLibrary({
   onOpen,
   onImport,
   onImportDocx,
-  onImportFolder,
+  // Folder import is desktop-only — the button was removed from this
+  // layout. Keep the prop in the destructure (underscored) so the
+  // LayoutProps shape doesn't fork.
+  onImportFolder: _onImportFolder,
   onStreamRead,
   onSourceImportComplete,
   sourceDetailView,
@@ -975,26 +978,11 @@ function MobileLibrary({
               <Icon name="close" size={16} />
             </button>
           )}
-          <button
-            onClick={onImportFolder}
-            disabled={importing}
-            aria-label="Import folder of EPUBs"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              border: `0.5px solid ${theme.rule}`,
-              background: "transparent",
-              color: theme.ink,
-              cursor: importing ? "progress" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: importing ? 0.6 : 1,
-            }}
-          >
-            <Icon name="folder" size={16} />
-          </button>
+          {/* "Import folder" was here on mobile but the underlying
+              folder picker doesn't work reliably under Android's
+              Storage Access Framework — the user couldn't import
+              anything that way, so the button was just noise.
+              Desktop still exposes it through the toolbar. */}
           <button
             onClick={() => setTab(tab === "store" ? "all" : "store")}
             aria-label={tab === "store" ? "Back to library" : "Open store"}
