@@ -5,13 +5,21 @@
 //   source_fetch              static HTTP. CORS-free since this runs in Rust,
 //                             with caller-controlled headers/method/body. The
 //                             frontend uses this for sites whose data lives
-//                             in the initial HTML.
+//                             in the initial HTML. Works on desktop AND
+//                             mobile (Android, iOS).
 //
 //   source_render_and_extract spawns a hidden WebviewWindow, navigates it to
 //                             the target URL, runs a caller-provided JS
 //                             predicate-then-extractor inside the page, and
 //                             returns the extracted JSON. Used for sites that
-//                             render content via JS after page load.
+//                             render content via JS after page load. DESKTOP
+//                             ONLY — mobile Tauri (Android/iOS) doesn't
+//                             support spawning hidden secondary windows, so
+//                             WebviewWindowBuilder lacks `.visible(false)`
+//                             on those targets. The mobile stub returns
+//                             a clear error if any source ever calls this
+//                             path; in practice the KolNovel scraper does
+//                             everything via static fetch and never hits it.
 //
 // Exfiltration from the headless webview is done via `document.title`. The
 // init script wraps the caller's predicate + extractor in a wait loop, then
@@ -23,10 +31,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(desktop)]
 use std::time::Duration;
+#[cfg(desktop)]
 use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(desktop)]
 const TITLE_DATA_PREFIX: &str = "__LEAFLET_DATA__:";
+#[cfg(desktop)]
 const TITLE_ERROR_PREFIX: &str = "__LEAFLET_ERROR__:";
 
 #[derive(Debug, Serialize)]
@@ -115,6 +127,11 @@ pub async fn source_fetch_bytes(
     Ok(bytes.to_vec())
 }
 
+// Fields here are all used by serde's deserializer + by the desktop
+// implementation. On mobile we keep the same shape so the JS frontend
+// can call the stub identically, but the fields don't get touched —
+// suppress the dead-code warning there.
+#[cfg_attr(not(desktop), allow(dead_code))]
 #[derive(Debug, Deserialize)]
 pub struct RenderExtractInput {
     url: String,
@@ -127,6 +144,7 @@ pub struct RenderExtractInput {
     timeout_ms: Option<u64>,
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn source_render_and_extract(
     app: AppHandle,
@@ -215,6 +233,24 @@ pub async fn source_render_and_extract(
     outcome
 }
 
+/// Mobile stub. WebviewWindowBuilder on Android / iOS lacks `.visible()`
+/// (Tauri's mobile runtime only supports a single foreground webview),
+/// so the headless-render path is desktop-only. Sources that need
+/// JS-rendered pages on mobile will see this error and can either fall
+/// back to static fetch or surface a UI message; the bundled KolNovel
+/// scraper does all of its work via `source_fetch` and never hits this.
+#[cfg(not(desktop))]
+#[tauri::command]
+pub async fn source_render_and_extract(
+    _input: RenderExtractInput,
+) -> Result<String, String> {
+    Err(
+        "Headless render-and-extract isn't available on mobile — this \
+         source requires a desktop build to fetch JS-rendered pages."
+            .to_string(),
+    )
+}
+
 fn build_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(
@@ -226,6 +262,7 @@ fn build_client() -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+#[cfg(desktop)]
 fn build_predicate_js(input: &RenderExtractInput) -> String {
     // If both predicate and selector are given, predicate wins. If neither
     // is given, default to document.readyState === 'complete'.
@@ -253,6 +290,7 @@ fn build_predicate_js(input: &RenderExtractInput) -> String {
     "return document.readyState === 'complete'".to_string()
 }
 
+#[cfg(desktop)]
 fn build_init_script(predicate_js: &str, script_js: &str, timeout_ms: u64) -> String {
     // Run as soon as the document is available. The wrapping IIFE swallows
     // errors and reports them via the title channel instead of crashing
