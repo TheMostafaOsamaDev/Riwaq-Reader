@@ -324,39 +324,6 @@ export function ContextMenu({
             requestClose();
           }
           break;
-        case "e":
-        case "E":
-          // Mod-free single-letter shortcuts only — don't steal Ctrl-E /
-          // Cmd-E which the host might use for something else.
-          if (!inSubmenu && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            handleEdit();
-          }
-          break;
-        case "Backspace":
-        case "Delete":
-          if (!inSubmenu) {
-            e.preventDefault();
-            handleDelete();
-          }
-          break;
-        case "s":
-        case "S":
-          if (!inSubmenu && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            setMainFocus(0);
-            if (statusOpen) {
-              setStatusOpen(false);
-              setSubFocus(-1);
-            } else {
-              const initial = status
-                ? STATUS_OPTIONS.findIndex((o) => o.value === status)
-                : 0;
-              setStatusOpen(true);
-              setSubFocus(initial >= 0 ? initial : 0);
-            }
-          }
-          break;
       }
     };
     document.addEventListener("keydown", onKey);
@@ -544,10 +511,13 @@ export function ContextMenu({
           display: "flex",
           alignItems: "center",
           gap: 10,
-          // Negative horizontal margins escape the menu div's 4px inner
-          // padding so the divider runs edge-to-edge.
-          margin: "-4px -4px 4px -4px",
-          padding: "10px 12px",
+          // Sit within the menu's 4px inner padding — keeps the divider
+          // clear of the rounded corners and avoids overlap with the
+          // side-flyout submenu (which positions absolute past the right
+          // edge and would otherwise be clipped if we used overflow:hidden
+          // to contain a margin-escaped divider).
+          padding: "8px 8px 10px",
+          marginBottom: 4,
           borderBottom: `0.5px solid ${theme.rule}`,
         }}
       >
@@ -710,7 +680,6 @@ export function ContextMenu({
         forceHighlight={mainFocus === 1}
         onMouseEnter={() => setMainFocus(1)}
         onClick={handleEdit}
-        trailing={<ShortcutHint theme={theme}>E</ShortcutHint>}
       >
         Edit book info
       </SheetRow>
@@ -723,7 +692,6 @@ export function ContextMenu({
         forceHighlight={mainFocus === 2}
         onMouseEnter={() => setMainFocus(2)}
         onClick={handleDelete}
-        trailing={<ShortcutHint theme={theme}>⌫</ShortcutHint>}
       >
         Remove book
       </SheetRow>
@@ -909,13 +877,12 @@ export function ContextMenu({
         left: pos.x,
         top: pos.y,
         zIndex: 9500,
-        // Wider than the original 200px so the book header, status label,
-        // and shortcut hints all sit comfortably without crowding.
+        // Wider than the original 200px so the book header and status
+        // label sit comfortably without crowding the rows.
         minWidth: 240,
         padding: 4,
-        // Hide the header's negative-margin overflow inside the rounded
-        // corners so the divider line doesn't peek past the corner radius.
-        overflow: "hidden",
+        // overflow stays visible so the side flyout submenu can extend
+        // past the menu's right edge.
         transformOrigin: "top left",
       }}
     >
@@ -928,38 +895,6 @@ export function ContextMenu({
 
 function labelFor(s: BookStatus): string {
   return s === "reading" ? "Reading" : s === "finished" ? "Finished" : "Wishlist";
-}
-
-function ShortcutHint({
-  theme,
-  children,
-}: {
-  theme: Theme;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minWidth: 20,
-        height: 18,
-        padding: "0 5px",
-        borderRadius: 4,
-        border: `0.5px solid ${theme.rule}`,
-        color: theme.muted,
-        fontSize: 11,
-        // Monospace so single-character hints (E / ⌫) sit at a consistent
-        // visual weight regardless of the host's sans-serif font.
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        lineHeight: 1,
-        flexShrink: 0,
-      }}
-    >
-      {children}
-    </span>
-  );
 }
 
 function SheetCard({
