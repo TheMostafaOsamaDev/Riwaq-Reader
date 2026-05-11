@@ -38,7 +38,11 @@ export function PanelShell({
       style={{
         width,
         height: "100%",
-        background: theme.chrome,
+        // Match the reader body so the panel reads as continuous with
+        // the page — only the rule border separates them. Using
+        // theme.chrome here produced a subtle but visible step against
+        // the reader column, which looked like a theming bug.
+        background: theme.bg,
         color: theme.ink,
         display: "flex",
         flexDirection: "column",
