@@ -116,6 +116,18 @@ export function completeStep(id: string): void {
   set({ steps, overall: recomputeOverall(steps) });
 }
 
+/**
+ * Mutate a step's label without changing its status. Used by long-running
+ * steps that fan out into many sub-units (e.g. the Sources importer
+ * fetching N chapters) so the stepper can show "Chapter 47 of 213" live
+ * without us inflating the step count and over-counting "active * 0.5"
+ * in `recomputeOverall`.
+ */
+export function setStepLabel(id: string, label: string): void {
+  const steps = state.steps.map((s) => (s.id === id ? { ...s, label } : s));
+  set({ steps });
+}
+
 export function failStep(id: string, message: string): void {
   const steps = state.steps.map((s) =>
     s.id === id ? { ...s, status: "error" as const } : s,

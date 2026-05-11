@@ -9,10 +9,13 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "./Button";
 import { ImportChoiceModal } from "./ImportChoiceModal";
 import { DocxManageView } from "./DocxManageView";
+import { SourceImportDialog } from "./SourceImportDialog";
+import { Store } from "./Store";
 import {
   clearLibrary,
   commitStagedDocx,
   coverSrcFor,
+  importFromSourceUrl,
   listBooks,
   pickAndImportDocx,
   pickAndImportEpub,
@@ -40,6 +43,10 @@ interface Props {
   theme: Theme;
   layout: "desktop" | "mobile";
   onOpen: (bookId: string) => void;
+  /** Open the Source streaming reader at a specific novel + chapter. The
+   *  Library hands this off to App.tsx, which renders the reader at top
+   *  level (covering Library + Store). */
+  onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
 }
 
 function useBooks() {
@@ -79,11 +86,15 @@ function useBooks() {
   return { books, covers, loading, error, refresh, setError };
 }
 
-export function Library({ theme, layout, onOpen }: Props) {
+export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
+  // Top-level tab — owned here so the Store can be reached from either
+  // layout (desktop or mobile) and so the choice persists across layout
+  // switches if the window is resized.
+  const [tab, setTab] = useState<LibraryTab>("all");
 
   const showToast = useCallback((kind: ToastMessage["kind"], text: string) => {
     toastIdRef.current += 1;
@@ -232,6 +243,41 @@ export function Library({ theme, layout, onOpen }: Props) {
     };
   }, [stagedDocx]);
 
+  // "Add from source" — opens the SourceImportDialog. The dialog itself
+  // hands off to importFromSourceUrl, which streams progress through the
+  // existing import-progress UI; we close the dialog immediately on submit
+  // so the progress modal becomes the focused surface.
+  const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
+
+  const onImportFromSource = () => {
+    if (importing) return;
+    setError(null);
+    setSourceDialogOpen(true);
+  };
+
+  const onSourceDialogSubmit = (sourceId: string, url: string) => {
+    setSourceDialogOpen(false);
+    // Fire-and-forget — progress UI is the source of truth from here on.
+    // We re-list when it resolves to surface the new book in the shelf.
+    void (async () => {
+      try {
+        const entry = await importFromSourceUrl(sourceId, url);
+        await refresh();
+        showToast(
+          "info",
+          `Imported “${entry.title}” — ${entry.chapterCount} chapter${
+            entry.chapterCount === 1 ? "" : "s"
+          }.`,
+        );
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error("source import failed:", e);
+        setError(message);
+        showToast("error", `Import failed: ${message}`);
+      }
+    })();
+  };
+
   const onImportFolder = async () => {
     if (importing) return;
     setImporting(true);
@@ -362,6 +408,10 @@ export function Library({ theme, layout, onOpen }: Props) {
     requestDelete(bookId, title);
   };
 
+  const onSourceImportComplete = useCallback(() => {
+    void refresh();
+  }, [refresh]);
+
   const layoutEl =
     layout === "mobile" ? (
       <MobileLibrary
@@ -371,10 +421,15 @@ export function Library({ theme, layout, onOpen }: Props) {
         loading={loading}
         error={error}
         importing={importing}
+        tab={tab}
+        setTab={setTab}
         onOpen={onOpen}
         onImport={onImport}
         onImportDocx={onImportDocx}
         onImportFolder={onImportFolder}
+        onImportFromSource={onImportFromSource}
+        onStreamRead={onStreamRead}
+        onSourceImportComplete={onSourceImportComplete}
         onClearAll={onClearAll}
         onDelete={(id) => {
           const b = books.find((x) => x.id === id);
@@ -391,10 +446,15 @@ export function Library({ theme, layout, onOpen }: Props) {
         loading={loading}
         error={error}
         importing={importing}
+        tab={tab}
+        setTab={setTab}
         onOpen={onOpen}
         onImport={onImport}
         onImportDocx={onImportDocx}
         onImportFolder={onImportFolder}
+        onImportFromSource={onImportFromSource}
+        onStreamRead={onStreamRead}
+        onSourceImportComplete={onSourceImportComplete}
         onClearAll={onClearAll}
         onDelete={(id) => {
           const b = books.find((x) => x.id === id);
@@ -470,6 +530,13 @@ export function Library({ theme, layout, onOpen }: Props) {
           onCancel={() => setDocxChoiceOpen(false)}
         />
       )}
+      {sourceDialogOpen && (
+        <SourceImportDialog
+          theme={theme}
+          onCancel={() => setSourceDialogOpen(false)}
+          onSubmit={onSourceDialogSubmit}
+        />
+      )}
       {stagedDocx && (
         <DocxManageView
           theme={theme}
@@ -490,23 +557,36 @@ interface LayoutProps {
   loading: boolean;
   error: string | null;
   importing: boolean;
+  /** Active library tab, owned by the parent Library component so both
+   *  layouts (and the Store) share it. */
+  tab: LibraryTab;
+  setTab: (t: LibraryTab) => void;
   onOpen: (id: string) => void;
   onImport: () => void;
   onImportDocx: () => void;
   onImportFolder: () => void;
+  /** Opens the SourceImportDialog — paste a URL, pick a source, scrape. */
+  onImportFromSource: () => void;
+  /** Open a novel from a source in the streaming reader. */
+  onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
+  /** Imported via a source — refresh shelf after the new entry lands. */
+  onSourceImportComplete: () => void;
   onClearAll: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onCardContextMenu: (id: string, x: number, y: number) => void;
 }
 
-type LibraryTab = "all" | BookStatus;
+/** "store" is a top-level destination, not a book filter — when the tab
+ *  is set to "store" the body swaps out the shelf for the source browser. */
+type LibraryTab = "all" | BookStatus | "store";
 
 const TABS: { key: LibraryTab; label: string }[] = [
   { key: "all", label: "Library" },
   { key: "reading", label: "Reading" },
   { key: "finished", label: "Finished" },
   { key: "wishlist", label: "Wishlist" },
+  { key: "store", label: "Store" },
 ];
 
 // "Reading" is partly derived: a book the user has actually started but not
@@ -521,6 +601,11 @@ function isReading(b: BookIndexEntry): boolean {
 
 function matchesTab(b: BookIndexEntry, tab: LibraryTab): boolean {
   if (tab === "all") return true;
+  // "store" is a destination tab, not a filter — when active, the shelf
+  // is replaced wholesale, so the predicate never actually runs against
+  // a visible list. Returning false keeps the filtered view empty in
+  // case something does call this.
+  if (tab === "store") return false;
   if (tab === "reading") return isReading(b);
   return b.status === tab;
 }
@@ -532,16 +617,20 @@ function DesktopLibrary({
   loading,
   error,
   importing,
+  tab,
+  setTab,
   onOpen,
   onImport,
   onImportDocx,
   onImportFolder,
+  onImportFromSource,
+  onStreamRead,
+  onSourceImportComplete,
   onClearAll,
   onDelete,
   onEdit,
   onCardContextMenu,
 }: LayoutProps) {
-  const [tab, setTab] = useState<LibraryTab>("all");
   const visible = books.filter((b) => matchesTab(b, tab));
   // Hero is the "continue reading" affordance — only meaningful on the full
   // library view. On a filtered tab we render a flat shelf so every match is
@@ -609,55 +698,83 @@ function DesktopLibrary({
           })}
         </div>
         <div style={{ flex: 1 }} />
-        {import.meta.env.DEV && (
-          <Button
-            theme={theme}
-            variant="destructive"
-            size="sm"
-            onClick={onClearAll}
-            disabled={importing}
-            title="Dev only — wipes every book from the library"
-            leadingIcon={<Icon name="close" size={13} />}
-            style={{ marginRight: 8 }}
-          >
-            Clear all
-          </Button>
+        {/* Import buttons only make sense in library mode. Store mode is
+            self-contained (browse → click → import lives in the Novel
+            detail view), so we hide the whole cluster to avoid
+            duplicate paths in the header. */}
+        {tab !== "store" && (
+          <>
+            {import.meta.env.DEV && (
+              <Button
+                theme={theme}
+                variant="destructive"
+                size="sm"
+                onClick={onClearAll}
+                disabled={importing}
+                title="Dev only — wipes every book from the library"
+                leadingIcon={<Icon name="close" size={13} />}
+                style={{ marginRight: 8 }}
+              >
+                Clear all
+              </Button>
+            )}
+            <Button
+              theme={theme}
+              variant="outline"
+              size="sm"
+              onClick={onImportFolder}
+              disabled={importing}
+              leadingIcon={<Icon name="folder" size={13} />}
+              style={{ marginRight: 8 }}
+            >
+              Import folder
+            </Button>
+            <Button
+              theme={theme}
+              variant="outline"
+              size="sm"
+              onClick={onImportFromSource}
+              disabled={importing}
+              leadingIcon={<Icon name="globe" size={13} />}
+              title="Scrape a novel from a supported website (URL)"
+              style={{ marginRight: 8 }}
+            >
+              From URL
+            </Button>
+            <Button
+              theme={theme}
+              variant="outline"
+              size="sm"
+              onClick={onImportDocx}
+              disabled={importing}
+              leadingIcon={<Icon name="doc" size={13} />}
+              title="Convert a Word document to EPUB on import"
+              style={{ marginRight: 8 }}
+            >
+              Import .docx
+            </Button>
+            <Button
+              theme={theme}
+              variant="primary"
+              size="sm"
+              onClick={onImport}
+              disabled={importing}
+              leadingIcon={<Icon name="plus" size={13} />}
+            >
+              {importing ? "Importing…" : "Import EPUB"}
+            </Button>
+          </>
         )}
-        <Button
-          theme={theme}
-          variant="outline"
-          size="sm"
-          onClick={onImportFolder}
-          disabled={importing}
-          leadingIcon={<Icon name="folder" size={13} />}
-          style={{ marginRight: 8 }}
-        >
-          Import folder
-        </Button>
-        <Button
-          theme={theme}
-          variant="outline"
-          size="sm"
-          onClick={onImportDocx}
-          disabled={importing}
-          leadingIcon={<Icon name="doc" size={13} />}
-          title="Convert a Word document to EPUB on import"
-          style={{ marginRight: 8 }}
-        >
-          Import .docx
-        </Button>
-        <Button
-          theme={theme}
-          variant="primary"
-          size="sm"
-          onClick={onImport}
-          disabled={importing}
-          leadingIcon={<Icon name="plus" size={13} />}
-        >
-          {importing ? "Importing…" : "Import EPUB"}
-        </Button>
       </div>
 
+      {tab === "store" ? (
+        <Store
+          theme={theme}
+          layout="desktop"
+          onStreamRead={onStreamRead}
+          onImportComplete={onSourceImportComplete}
+        />
+      ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
 
@@ -735,6 +852,7 @@ function DesktopLibrary({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -746,10 +864,15 @@ function MobileLibrary({
   loading,
   error,
   importing,
+  tab,
+  setTab,
   onOpen,
   onImport,
   onImportDocx,
   onImportFolder,
+  onImportFromSource: _onImportFromSource,
+  onStreamRead,
+  onSourceImportComplete,
   onClearAll,
   onCardContextMenu,
 }: LayoutProps) {
@@ -853,6 +976,28 @@ function MobileLibrary({
             <Icon name="folder" size={16} />
           </button>
           <button
+            onClick={() => setTab(tab === "store" ? "all" : "store")}
+            aria-label={tab === "store" ? "Back to library" : "Open store"}
+            title={tab === "store" ? "Back to library" : "Browse the store"}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              border:
+                tab === "store"
+                  ? "none"
+                  : `0.5px solid ${theme.rule}`,
+              background: tab === "store" ? theme.ink : "transparent",
+              color: tab === "store" ? theme.bg : theme.ink,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="globe" size={16} />
+          </button>
+          <button
             onClick={onImportDocx}
             disabled={importing}
             aria-label="Import Word document"
@@ -896,6 +1041,14 @@ function MobileLibrary({
         </div>
       </div>
 
+      {tab === "store" ? (
+        <Store
+          theme={theme}
+          layout="mobile"
+          onStreamRead={onStreamRead}
+          onImportComplete={onSourceImportComplete}
+        />
+      ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "0 22px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
 
@@ -1032,6 +1185,7 @@ function MobileLibrary({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -1477,12 +1631,14 @@ function EmptyState({
   );
 }
 
-function shelfHeadingFor(tab: BookStatus): string {
-  return tab === "reading"
-    ? "Currently reading"
-    : tab === "finished"
-    ? "Finished"
-    : "Wishlist";
+function shelfHeadingFor(tab: LibraryTab): string {
+  // "all" and "store" are handled by the caller before they get here —
+  // we keep them in the union so the call site doesn't need a separate
+  // narrowing helper.
+  if (tab === "reading") return "Currently reading";
+  if (tab === "finished") return "Finished";
+  if (tab === "wishlist") return "Wishlist";
+  return "Shelf";
 }
 
 function FilteredEmptyState({

@@ -483,6 +483,35 @@ export async function importEpubBytes(
   return entry;
 }
 
+/**
+ * Run a Source (scraper extension) against a URL and add the resulting
+ * EPUB to the library. Driven by the existing import-progress store so
+ * the modal + minimized dock surface the long scrape automatically.
+ *
+ * Source lookup is dynamic to avoid eagerly loading every extension file
+ * on app start — the registry resolves only the requested id.
+ */
+export async function importFromSourceUrl(
+  sourceId: string,
+  url: string,
+  options?: {
+    /** Inclusive chapter id range. When set, only those chapters are
+     *  scraped and the resulting EPUB's title is suffixed with the range. */
+    chapterIdRange?: { start: number; end: number };
+  },
+): Promise<BookIndexEntry> {
+  const { getSource } = await import("../sources/registry");
+  const { runFullSourceImport } = await import("../sources/importer");
+
+  const source = getSource(sourceId);
+  if (!source) {
+    throw new Error(`Unknown source: ${sourceId}`);
+  }
+  return runFullSourceImport(source, url, importEpubBytes, options) as Promise<
+    BookIndexEntry
+  >;
+}
+
 export interface ImportFolderResult {
   imported: BookIndexEntry[];
   errors: { file: string; message: string }[];
@@ -640,11 +669,21 @@ export async function coverSrcFor(
 
 /** Resolve a chapter image's storage-relative `src` (e.g. `images/img-001.jpg`)
  *  into an asset-protocol URL the webview can load. The file lives at
- *  `$APPDATA/leaflet/books/<bookId>/<src>`, which is in the Tauri asset scope. */
+ *  `$APPDATA/leaflet/books/<bookId>/<src>`, which is in the Tauri asset scope.
+ *
+ *  Absolute URLs (http/https/data:) pass through unchanged so the same
+ *  resolver works for the streaming reader, which mounts a virtual EpubBook
+ *  whose image items reference remote URLs directly without a local copy. */
 export async function chapterImageSrcFor(
   bookId: string,
   src: string,
 ): Promise<string> {
+  // Streaming books reference images by their origin URL. Don't try to
+  // join them against a non-existent local storage path; the webview can
+  // fetch them directly.
+  if (/^(https?:|data:|asset:|blob:)/i.test(src)) {
+    return src;
+  }
   const root = await getAppDataDir();
   // Split on `/` so the path joins are platform-correct (Windows backslashes
   // come from `join`, not from the stored hrefs).
