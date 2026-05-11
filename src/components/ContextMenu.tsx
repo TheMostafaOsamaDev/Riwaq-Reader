@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -29,6 +30,26 @@ const STATUS_OPTIONS: { value: BookStatus; label: string }[] = [
   { value: "wishlist", label: "Wishlist" },
 ];
 
+// Enter and exit run at different durations on purpose: a snappy enter feels
+// responsive, a slightly shorter exit gets out of the user's way faster.
+const ENTER_MS = 140;
+const EXIT_MS = 110;
+// Snappy ease-out for entry — fast at the start, gentle at the end so the
+// menu "lands" rather than "snapping".
+const ENTER_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const EXIT_EASE = "cubic-bezier(0.4, 0, 1, 1)";
+
+const KEYFRAMES = `
+@keyframes leaflet-ctxmenu-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes leaflet-ctxmenu-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+`;
+
 export function ContextMenu({
   theme,
   x,
@@ -44,7 +65,21 @@ export function ContextMenu({
   const [pos, setPos] = useState({ x, y });
   const [statusOpen, setStatusOpen] = useState(false);
   const [submenuSide, setSubmenuSide] = useState<"right" | "left">("right");
-  const [submenuReady, setSubmenuReady] = useState(false);
+  // Three flags drive the submenu lifecycle independently of `statusOpen` so
+  // the exit animation has time to play before unmounting:
+  //   • mounted    — is the submenu in the DOM right now?
+  //   • leaving    — is the exit animation in flight?
+  //   • measured   — has the layout-effect placed it? (controls the
+  //                  initial visibility-hidden flash prevention)
+  const [submenuMounted, setSubmenuMounted] = useState(false);
+  const [submenuLeaving, setSubmenuLeaving] = useState(false);
+  const [submenuMeasured, setSubmenuMeasured] = useState(false);
+  // Main-menu exit flag. The component stays mounted while leaving so the
+  // closing animation plays, then onClose() fires after EXIT_MS to let the
+  // parent actually unmount us.
+  const [leaving, setLeaving] = useState(false);
+  // Guards against double-firing requestClose (e.g. outside-tap + Esc).
+  const closingRef = useRef(false);
   // On touch devices the OS synthesizes a mouseenter on the element under the
   // touch point when the menu mounts under the user's finger. That used to
   // highlight Status and pop open its submenu before the user actually meant
@@ -67,14 +102,31 @@ export function ContextMenu({
     setPos({ x: nx, y: ny });
   }, [x, y]);
 
-  // Flip the Status submenu to the left side when opening to the right would
-  // overflow the viewport (e.g. when the parent menu is pinned near the right
-  // edge on a narrow screen).
-  useLayoutEffect(() => {
-    if (!statusOpen) {
-      setSubmenuReady(false);
+  // Drive the submenu's mount/unmount + leaving flag from statusOpen.
+  // statusOpen=true → mount and clear `leaving`.
+  // statusOpen=false → start the exit animation, unmount after EXIT_MS.
+  useEffect(() => {
+    if (statusOpen) {
+      setSubmenuMounted(true);
+      setSubmenuLeaving(false);
       return;
     }
+    if (!submenuMounted) return;
+    setSubmenuLeaving(true);
+    const t = window.setTimeout(() => {
+      setSubmenuMounted(false);
+      setSubmenuLeaving(false);
+      setSubmenuMeasured(false);
+    }, EXIT_MS);
+    return () => window.clearTimeout(t);
+  }, [statusOpen, submenuMounted]);
+
+  // Flip the submenu to the left side when opening to the right would overflow
+  // the viewport (e.g. when the parent menu is pinned near the right edge on a
+  // narrow screen). Runs only on mount-entry so a mid-exit measurement can't
+  // jitter the position.
+  useLayoutEffect(() => {
+    if (!submenuMounted || submenuLeaving) return;
     const parent = menuRef.current;
     const submenu = submenuRef.current;
     if (!parent || !submenu) return;
@@ -84,8 +136,45 @@ export function ContextMenu({
     const overflowsRight =
       parentRect.right + submenuRect.width + 2 > vw - 8;
     setSubmenuSide(overflowsRight ? "left" : "right");
-    setSubmenuReady(true);
-  }, [statusOpen]);
+    setSubmenuMeasured(true);
+  }, [submenuMounted, submenuLeaving]);
+
+  // Start the exit animation on outside tap, Esc, or an item that closes
+  // the whole menu. Idempotent — repeated calls during the animation are
+  // no-ops so the close-timer doesn't get rescheduled.
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setLeaving(true);
+    window.setTimeout(() => onClose(), EXIT_MS);
+  }, [onClose]);
+
+  // Wrap parent actions so the menu's exit animation plays first, then the
+  // action fires (which usually mounts the next surface — modal, confirm
+  // dialog, status change). Calling onClose at the end is belt-and-braces
+  // in case the parent's handler doesn't itself unmount us on error.
+  const runWithExit = useCallback(
+    (action: () => void) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      setLeaving(true);
+      window.setTimeout(() => {
+        action();
+        onClose();
+      }, EXIT_MS);
+    },
+    [onClose],
+  );
+
+  const handleEdit = useCallback(() => runWithExit(onEdit), [runWithExit, onEdit]);
+  const handleDelete = useCallback(
+    () => runWithExit(onDelete),
+    [runWithExit, onDelete],
+  );
+  const handlePickStatus = useCallback(
+    (s: BookStatus) => runWithExit(() => onPickStatus(s)),
+    [runWithExit, onPickStatus],
+  );
 
   // Click-outside / Esc to dismiss. pointerdown covers both touch and mouse
   // and fires immediately on touchstart — on touch devices the synthetic
@@ -94,10 +183,10 @@ export function ContextMenu({
   useEffect(() => {
     const onDocPointer = (e: PointerEvent) => {
       const el = menuRef.current;
-      if (el && !el.contains(e.target as Node)) onClose();
+      if (el && !el.contains(e.target as Node)) requestClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") requestClose();
     };
     document.addEventListener("pointerdown", onDocPointer);
     document.addEventListener("keydown", onKey);
@@ -105,7 +194,14 @@ export function ContextMenu({
       document.removeEventListener("pointerdown", onDocPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [requestClose]);
+
+  const mainAnim = leaving
+    ? `leaflet-ctxmenu-out ${EXIT_MS}ms ${EXIT_EASE} forwards`
+    : `leaflet-ctxmenu-in ${ENTER_MS}ms ${ENTER_EASE}`;
+  const submenuAnim = submenuLeaving
+    ? `leaflet-ctxmenu-out ${EXIT_MS}ms ${EXIT_EASE} forwards`
+    : `leaflet-ctxmenu-in ${ENTER_MS}ms ${ENTER_EASE}`;
 
   return (
     <div
@@ -126,8 +222,16 @@ export function ContextMenu({
         padding: 4,
         fontFamily: FONT_STACKS.sans,
         fontSize: 13,
+        // Origin at top-left so the menu "grows out of" the click point
+        // rather than puffing up symmetrically from its centre.
+        transformOrigin: "top left",
+        animation: mainAnim,
+        // Pointer events get cut during the exit animation so a late tap
+        // can't trigger another action on a menu that's about to disappear.
+        pointerEvents: leaving ? "none" : "auto",
       }}
     >
+      <style>{KEYFRAMES}</style>
       <Item
         theme={theme}
         suppressHover={isTouch}
@@ -137,7 +241,7 @@ export function ContextMenu({
         right={<Icon name="chevronR" size={14} />}
       >
         Status{status ? ` · ${labelFor(status)}` : ""}
-        {statusOpen && (
+        {submenuMounted && (
           <div
             ref={submenuRef}
             style={{
@@ -159,7 +263,13 @@ export function ContextMenu({
                   : "-6px 10px 24px rgba(0,0,0,0.18)",
               padding: 4,
               minWidth: 140,
-              visibility: submenuReady ? "visible" : "hidden",
+              visibility: submenuMeasured ? "visible" : "hidden",
+              // Anchor the scale to the edge attached to the parent so the
+              // submenu appears to "spring out of" the Status row.
+              transformOrigin:
+                submenuSide === "right" ? "top left" : "top right",
+              animation: submenuAnim,
+              pointerEvents: submenuLeaving ? "none" : "auto",
             }}
           >
             {STATUS_OPTIONS.map((o) => (
@@ -167,7 +277,7 @@ export function ContextMenu({
                 key={o.value}
                 theme={theme}
                 suppressHover={isTouch}
-                onClick={() => onPickStatus(o.value)}
+                onClick={() => handlePickStatus(o.value)}
                 right={
                   status === o.value ? (
                     <Icon name="check" size={13} />
@@ -180,7 +290,7 @@ export function ContextMenu({
           </div>
         )}
       </Item>
-      <Item theme={theme} onClick={onEdit} suppressHover={isTouch}>
+      <Item theme={theme} onClick={handleEdit} suppressHover={isTouch}>
         Edit book info
       </Item>
       <div
@@ -190,7 +300,12 @@ export function ContextMenu({
           margin: "4px 6px",
         }}
       />
-      <Item theme={theme} onClick={onDelete} suppressHover={isTouch} destructive>
+      <Item
+        theme={theme}
+        onClick={handleDelete}
+        suppressHover={isTouch}
+        destructive
+      >
         Remove book
       </Item>
     </div>
@@ -247,6 +362,9 @@ function Item({
         gap: 12,
         color: destructive ? "#c04a3a" : theme.ink,
         background: hover && !suppressHover ? theme.hover : "transparent",
+        // Smooth the hover swap so the row doesn't snap on/off — keeps the
+        // menu feeling "soft" alongside the scale-in animation.
+        transition: "background 110ms ease",
       }}
     >
       <span>{children}</span>
