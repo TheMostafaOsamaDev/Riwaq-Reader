@@ -9,13 +9,13 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "./Button";
 import { ImportChoiceModal } from "./ImportChoiceModal";
 import { DocxManageView } from "./DocxManageView";
-import { SourceImportDialog } from "./SourceImportDialog";
+import { DownloadRangeDialog } from "./DownloadRangeDialog";
+import { NovelDetailView } from "./NovelDetailView";
 import { Store } from "./Store";
 import {
   clearLibrary,
   commitStagedDocx,
   coverSrcFor,
-  importFromSourceUrl,
   listBooks,
   pickAndImportDocx,
   pickAndImportEpub,
@@ -95,11 +95,51 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
   // layout (desktop or mobile) and so the choice persists across layout
   // switches if the window is resized.
   const [tab, setTab] = useState<LibraryTab>("all");
+  // Source-backed library entries open their NovelDetailView instead of
+  // the reader. That view replaces the shelf body until the user backs
+  // out or switches tabs. Holding the state here means the user can
+  // pop into the streaming reader (which mounts above us at App
+  // level) and come back to the same detail page intact.
+  const [sourceDetailView, setSourceDetailView] = useState<{
+    sourceId: string;
+    novelUrl: string;
+  } | null>(null);
+  const [sourceDetailRangeDialog, setSourceDetailRangeDialog] = useState<{
+    sourceId: string;
+    novelUrl: string;
+  } | null>(null);
+
+  // Switching tabs leaves any open source-detail view — the tabs are
+  // the natural "exit" affordance, same way the Store tab's internal
+  // nav reverts to the sources list when the user re-enters.
+  const onTabChange = useCallback((next: LibraryTab) => {
+    setTab(next);
+    setSourceDetailView(null);
+  }, []);
 
   const showToast = useCallback((kind: ToastMessage["kind"], text: string) => {
     toastIdRef.current += 1;
     setToast({ id: toastIdRef.current, kind, text });
   }, []);
+
+  // Card click dispatch. Source-backed entries open their detail page
+  // inside this Library; everything else flows through the parent's
+  // onOpen and lands in the regular reader. Doing the routing here
+  // means callers don't have to know about entry kinds.
+  const handleOpen = useCallback(
+    (id: string) => {
+      const book = books.find((b) => b.id === id);
+      if (book?.kind === "source" && book.sourceId && book.novelUrl) {
+        setSourceDetailView({
+          sourceId: book.sourceId,
+          novelUrl: book.novelUrl,
+        });
+        return;
+      }
+      onOpen(id);
+    },
+    [books, onOpen],
+  );
 
   const onImport = async () => {
     if (importing) return;
@@ -243,41 +283,6 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
     };
   }, [stagedDocx]);
 
-  // "Add from source" — opens the SourceImportDialog. The dialog itself
-  // hands off to importFromSourceUrl, which streams progress through the
-  // existing import-progress UI; we close the dialog immediately on submit
-  // so the progress modal becomes the focused surface.
-  const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
-
-  const onImportFromSource = () => {
-    if (importing) return;
-    setError(null);
-    setSourceDialogOpen(true);
-  };
-
-  const onSourceDialogSubmit = (sourceId: string, url: string) => {
-    setSourceDialogOpen(false);
-    // Fire-and-forget — progress UI is the source of truth from here on.
-    // We re-list when it resolves to surface the new book in the shelf.
-    void (async () => {
-      try {
-        const entry = await importFromSourceUrl(sourceId, url);
-        await refresh();
-        showToast(
-          "info",
-          `Imported “${entry.title}” — ${entry.chapterCount} chapter${
-            entry.chapterCount === 1 ? "" : "s"
-          }.`,
-        );
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error("source import failed:", e);
-        setError(message);
-        showToast("error", `Import failed: ${message}`);
-      }
-    })();
-  };
-
   const onImportFolder = async () => {
     if (importing) return;
     setImporting(true);
@@ -412,57 +417,40 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
     void refresh();
   }, [refresh]);
 
+  const layoutCommonProps = {
+    theme,
+    books,
+    covers,
+    loading,
+    error,
+    importing,
+    tab,
+    setTab: onTabChange,
+    onOpen: handleOpen,
+    onImport,
+    onImportDocx,
+    onImportFolder,
+    onStreamRead,
+    onSourceImportComplete,
+    sourceDetailView,
+    onCloseSourceDetailView: () => setSourceDetailView(null),
+    onOpenSourceDetailRangeDialog: () => {
+      if (sourceDetailView) setSourceDetailRangeDialog(sourceDetailView);
+    },
+    onClearAll,
+    onDelete: (id: string) => {
+      const b = books.find((x) => x.id === id);
+      if (b) requestDelete(b.id, b.title);
+    },
+    onEdit: (id: string) => setEditingId(id),
+    onCardContextMenu: openContextMenu,
+  };
+
   const layoutEl =
     layout === "mobile" ? (
-      <MobileLibrary
-        theme={theme}
-        books={books}
-        covers={covers}
-        loading={loading}
-        error={error}
-        importing={importing}
-        tab={tab}
-        setTab={setTab}
-        onOpen={onOpen}
-        onImport={onImport}
-        onImportDocx={onImportDocx}
-        onImportFolder={onImportFolder}
-        onImportFromSource={onImportFromSource}
-        onStreamRead={onStreamRead}
-        onSourceImportComplete={onSourceImportComplete}
-        onClearAll={onClearAll}
-        onDelete={(id) => {
-          const b = books.find((x) => x.id === id);
-          if (b) requestDelete(b.id, b.title);
-        }}
-        onEdit={(id) => setEditingId(id)}
-        onCardContextMenu={openContextMenu}
-      />
+      <MobileLibrary {...layoutCommonProps} />
     ) : (
-      <DesktopLibrary
-        theme={theme}
-        books={books}
-        covers={covers}
-        loading={loading}
-        error={error}
-        importing={importing}
-        tab={tab}
-        setTab={setTab}
-        onOpen={onOpen}
-        onImport={onImport}
-        onImportDocx={onImportDocx}
-        onImportFolder={onImportFolder}
-        onImportFromSource={onImportFromSource}
-        onStreamRead={onStreamRead}
-        onSourceImportComplete={onSourceImportComplete}
-        onClearAll={onClearAll}
-        onDelete={(id) => {
-          const b = books.find((x) => x.id === id);
-          if (b) requestDelete(b.id, b.title);
-        }}
-        onEdit={(id) => setEditingId(id)}
-        onCardContextMenu={openContextMenu}
-      />
+      <DesktopLibrary {...layoutCommonProps} />
     );
 
   return (
@@ -530,11 +518,14 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
           onCancel={() => setDocxChoiceOpen(false)}
         />
       )}
-      {sourceDialogOpen && (
-        <SourceImportDialog
+      {sourceDetailRangeDialog && (
+        <DownloadRangeDialog
           theme={theme}
-          onCancel={() => setSourceDialogOpen(false)}
-          onSubmit={onSourceDialogSubmit}
+          sourceId={sourceDetailRangeDialog.sourceId}
+          novelUrl={sourceDetailRangeDialog.novelUrl}
+          onCancel={() => setSourceDetailRangeDialog(null)}
+          onStarted={() => setSourceDetailRangeDialog(null)}
+          onCompleted={() => void refresh()}
         />
       )}
       {stagedDocx && (
@@ -565,12 +556,19 @@ interface LayoutProps {
   onImport: () => void;
   onImportDocx: () => void;
   onImportFolder: () => void;
-  /** Opens the SourceImportDialog — paste a URL, pick a source, scrape. */
-  onImportFromSource: () => void;
   /** Open a novel from a source in the streaming reader. */
   onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
   /** Imported via a source — refresh shelf after the new entry lands. */
   onSourceImportComplete: () => void;
+  /** When non-null, the body shows NovelDetailView for a library-backed
+   *  source entry instead of the shelf. Set by `handleOpen` in the parent
+   *  when the user clicks a `kind: "source"` card. */
+  sourceDetailView: { sourceId: string; novelUrl: string } | null;
+  /** Close the source detail view (returns the body to its normal shelf
+   *  / Store rendering). */
+  onCloseSourceDetailView: () => void;
+  /** Open the range download dialog for the currently-shown source detail. */
+  onOpenSourceDetailRangeDialog: () => void;
   onClearAll: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
@@ -623,9 +621,11 @@ function DesktopLibrary({
   onImport,
   onImportDocx,
   onImportFolder,
-  onImportFromSource,
   onStreamRead,
   onSourceImportComplete,
+  sourceDetailView,
+  onCloseSourceDetailView,
+  onOpenSourceDetailRangeDialog,
   onClearAll,
   onDelete,
   onEdit,
@@ -733,18 +733,6 @@ function DesktopLibrary({
               theme={theme}
               variant="outline"
               size="sm"
-              onClick={onImportFromSource}
-              disabled={importing}
-              leadingIcon={<Icon name="globe" size={13} />}
-              title="Scrape a novel from a supported website (URL)"
-              style={{ marginRight: 8 }}
-            >
-              From URL
-            </Button>
-            <Button
-              theme={theme}
-              variant="outline"
-              size="sm"
               onClick={onImportDocx}
               disabled={importing}
               leadingIcon={<Icon name="doc" size={13} />}
@@ -767,7 +755,37 @@ function DesktopLibrary({
         )}
       </div>
 
-      {tab === "store" ? (
+      {sourceDetailView ? (
+        // Source-backed library entries replace the shelf with the same
+        // NovelDetailView the Store uses for browsing. Tabs above stay
+        // visible — clicking any tab exits the detail view.
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <NovelDetailView
+            theme={theme}
+            layout="desktop"
+            sourceId={sourceDetailView.sourceId}
+            novelUrl={sourceDetailView.novelUrl}
+            onBack={onCloseSourceDetailView}
+            onStreamRead={(chapterId) =>
+              onStreamRead(
+                sourceDetailView.sourceId,
+                sourceDetailView.novelUrl,
+                chapterId,
+              )
+            }
+            onImportComplete={onSourceImportComplete}
+            onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+          />
+        </div>
+      ) : tab === "store" ? (
         <Store
           theme={theme}
           layout="desktop"
@@ -870,9 +888,11 @@ function MobileLibrary({
   onImport,
   onImportDocx,
   onImportFolder,
-  onImportFromSource: _onImportFromSource,
   onStreamRead,
   onSourceImportComplete,
+  sourceDetailView,
+  onCloseSourceDetailView,
+  onOpenSourceDetailRangeDialog,
   onClearAll,
   onCardContextMenu,
 }: LayoutProps) {
@@ -1041,7 +1061,34 @@ function MobileLibrary({
         </div>
       </div>
 
-      {tab === "store" ? (
+      {sourceDetailView ? (
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <NovelDetailView
+            theme={theme}
+            layout="mobile"
+            sourceId={sourceDetailView.sourceId}
+            novelUrl={sourceDetailView.novelUrl}
+            onBack={onCloseSourceDetailView}
+            onStreamRead={(chapterId) =>
+              onStreamRead(
+                sourceDetailView.sourceId,
+                sourceDetailView.novelUrl,
+                chapterId,
+              )
+            }
+            onImportComplete={onSourceImportComplete}
+            onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+          />
+        </div>
+      ) : tab === "store" ? (
         <Store
           theme={theme}
           layout="mobile"
