@@ -1,13 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window — file picker + scoped FS access to app data dir for the book library.",
+  "description": "Main window — file picker + scoped FS access to app data dir for the book library. The Sources subsystem invokes custom commands (source_fetch, source_render_and_extract) which don't require permission entries here in Tauri 2; they're authorized by being listed in invoke_handler.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "opener:default",
     "dialog:default",
     "fs:default",
+    "notification:default",
     "fs:allow-app-read-recursive",
     "fs:allow-app-write-recursive",
     "fs:allow-app-meta-recursive",
