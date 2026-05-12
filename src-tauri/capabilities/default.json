@@ -8,6 +8,7 @@
     "opener:default",
     "dialog:default",
     "fs:default",
+    "notification:default",
     "fs:allow-app-read-recursive",
     "fs:allow-app-write-recursive",
     "fs:allow-app-meta-recursive",

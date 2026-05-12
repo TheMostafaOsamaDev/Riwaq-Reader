@@ -37,6 +37,14 @@ import { Icon } from "./Icon";
 import type { ChapterItem, EpubBook, EpubChapter } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
+import { findSourceEntry } from "../store/library";
+import {
+  chapterImageSrc,
+  markChapterRead,
+  readChapterContent,
+  readSnapshot,
+  snapshotToSourceNovel,
+} from "../store/sourceLibrary";
 import type {
   Source,
   SourceLine,
@@ -115,13 +123,41 @@ export function SourceStreamReader({
     [sourceId, novelUrl],
   );
 
+  // Library entry id, if this novel is on the shelf. When set, the
+  // reader prefers offline content from `chapters/<id>/content.json`
+  // and persists read flags into source.json. When null, the reader
+  // behaves identically to the pre-library streaming mode (network
+  // fetches, localStorage state).
+  const [libraryEntryId, setLibraryEntryId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entry = await findSourceEntry(sourceId, novelUrl);
+      if (!cancelled) setLibraryEntryId(entry?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceId, novelUrl]);
+
   // ── load novel + chapter stubs ──────────────────────────────────────────
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
     (async () => {
       try {
-        const fetchedNovel = await source.getNovel(novelUrl);
+        // Library-backed novels read from the persisted snapshot
+        // first — the chapter listing is then identical to what the
+        // detail view shows, and the reader works fully offline if
+        // the relevant chapters are already downloaded.
+        let fetchedNovel: SourceNovel | null = null;
+        if (libraryEntryId) {
+          const snap = await readSnapshot(libraryEntryId);
+          if (snap) fetchedNovel = snapshotToSourceNovel(snap);
+        }
+        if (!fetchedNovel) {
+          fetchedNovel = await source.getNovel(novelUrl);
+        }
         if (cancelled) return;
         const flatList: ChapterStub[] = fetchedNovel.volumes.flatMap((v) =>
           v.chapters.map((c) => ({
@@ -171,7 +207,7 @@ export function SourceStreamReader({
     return () => {
       cancelled = true;
     };
-  }, [source, novelUrl, sourceId, startChapterId, persistKey]);
+  }, [source, novelUrl, sourceId, startChapterId, persistKey, libraryEntryId]);
 
   // ── fetch a specific chapter's content (cached) ─────────────────────────
   // Splices new chapter items into the book by producing a fresh object
@@ -191,22 +227,43 @@ export function SourceStreamReader({
       setChapterLoading(true);
       setChapterError(null);
       try {
-        const lines = await source.getChapterContent({
-          id: stub.sourceId,
-          title: stub.title,
-          url: stub.url,
-          lines: [],
-        });
-        const items = sourceLinesToChapterItems(lines);
+        // Local-first: if the chapter has been downloaded into the
+        // library entry, read its content.json from disk and rewrite
+        // image basenames to asset:// URLs. Falls back to a network
+        // fetch when the chapter isn't on disk OR when we don't have
+        // a library entry to consult.
+        let items: ChapterItem[] | null = null;
+        if (libraryEntryId) {
+          const local = await readChapterContent(
+            libraryEntryId,
+            stub.sourceId,
+          );
+          if (local) {
+            items = await persistedLinesToChapterItems(
+              libraryEntryId,
+              stub.sourceId,
+              local.lines,
+            );
+          }
+        }
+        if (!items) {
+          const lines = await source.getChapterContent({
+            id: stub.sourceId,
+            title: stub.title,
+            url: stub.url,
+            lines: [],
+          });
+          items = sourceLinesToChapterItems(lines);
+        }
         cacheRef.current.set(idx, items);
-        setBook((prev) => spliceChapter(prev, idx, items));
+        setBook((prev) => spliceChapter(prev, idx, items!));
         setChapterLoading(false);
       } catch (e) {
         setChapterError(e instanceof Error ? e.message : String(e));
         setChapterLoading(false);
       }
     },
-    [source, flat],
+    [source, flat, libraryEntryId],
   );
 
   // Fetch on chapter change + prefetch the next one in the background.
@@ -235,6 +292,18 @@ export function SourceStreamReader({
     (order: number) => {
       if (!book) return;
       const clamped = Math.max(0, Math.min(book.chapters.length - 1, order));
+      // Mark the chapter we're leaving as read — moving forward (or
+      // backward) past a chapter is a strong "I've engaged with this"
+      // signal, the same intent the existing library reader uses for
+      // updateReadingPosition. Only persist when this novel has a
+      // library entry; pure streaming sessions are ephemeral.
+      const prev = currentChapter;
+      if (libraryEntryId && prev !== clamped) {
+        const stub = flat[prev];
+        if (stub) {
+          void markChapterRead(libraryEntryId, stub.sourceId);
+        }
+      }
       setCurrentChapter(clamped);
       // New chapter starts at the top — match the library reader's
       // behavior so the user never lands halfway through chapter N+1
@@ -242,12 +311,30 @@ export function SourceStreamReader({
       setResumeParagraph(0);
       setParagraphIndex(0);
     },
-    [book],
+    [book, currentChapter, libraryEntryId, flat],
   );
 
-  const onParagraphChange = useCallback((idx: number) => {
-    setParagraphIndex(idx);
-  }, []);
+  const onParagraphChange = useCallback(
+    (idx: number) => {
+      setParagraphIndex(idx);
+      // Hitting the last paragraph of a chapter is the second "read"
+      // signal — the user scrolled all the way through. We persist
+      // here too so a chapter the user finishes without advancing to
+      // the next (e.g. the last chapter, or pausing at the end)
+      // still gets dimmed in the volumes accordion.
+      if (!libraryEntryId || !book) return;
+      const ch = book.chapters[currentChapter];
+      if (!ch) return;
+      const last = (ch.paragraphs?.length ?? 0) - 1;
+      if (last >= 0 && idx >= last) {
+        const stub = flat[currentChapter];
+        if (stub) {
+          void markChapterRead(libraryEntryId, stub.sourceId);
+        }
+      }
+    },
+    [book, currentChapter, libraryEntryId, flat],
+  );
 
   const onCreateHighlight = useCallback(
     (input: {
@@ -424,6 +511,40 @@ function sourceLinesToChapterItems(lines: SourceLine[]): ChapterItem[] {
   return lines.map((l) =>
     l.type === "image" ? { src: l.content, alt: "" } : { text: l.content },
   );
+}
+
+/** Same as `sourceLinesToChapterItems` but for the persisted shape,
+ *  where image lines reference a local basename (img-001.webp) rather
+ *  than an absolute URL. Each basename is resolved to an asset:// URL
+ *  the webview can render directly. Image resolution failures (e.g.
+ *  the file was deleted out-of-band) fall back to a text placeholder
+ *  so the chapter still reads cleanly. */
+async function persistedLinesToChapterItems(
+  entryId: string,
+  chapterId: number,
+  lines: SourceLine[],
+): Promise<ChapterItem[]> {
+  const out: ChapterItem[] = [];
+  for (const l of lines) {
+    if (l.type === "text") {
+      out.push({ text: l.content });
+      continue;
+    }
+    // image line: try to resolve the local basename. If `content` is
+    // already an absolute URL (a chapter downloaded before we
+    // rewrote URLs to basenames), use it verbatim.
+    if (/^https?:\/\//i.test(l.content)) {
+      out.push({ src: l.content, alt: "" });
+      continue;
+    }
+    const src = await chapterImageSrc(entryId, chapterId, l.content);
+    if (src) {
+      out.push({ src, alt: "" });
+    } else {
+      out.push({ text: `[Missing image: ${l.content}]` });
+    }
+  }
+  return out;
 }
 
 /** Replace a single chapter's paragraphs in an EpubBook, producing a
