@@ -1,0 +1,562 @@
+// Persisted state for source-backed library entries.
+//
+// Layout under $APPDATA/leaflet/books/<id>/:
+//
+//   source.json                  the novel snapshot — metadata, volumes,
+//                                chapters with per-chapter flags
+//   cover.<ext>                  cover (written by addNovelToLibrary)
+//   chapters/<padded-id>/        per-chapter content; created on download
+//     content.json               { lines: SourceLine[], fetchedAt }
+//     img-001.<ext>              inline images, referenced from content.json
+//                                via the bare basename (e.g. "img-001.webp")
+//   state.json                   reading state — shared with EPUB entries
+//
+// Why source.json instead of book.json:
+//  - book.json is the EPUB parse output (full chapter bodies, paragraph
+//    objects, etc.). Source entries don't have a single EPUB; chapters
+//    are downloaded individually and may not all be present.
+//  - source.json is the canonical chapter LISTING + per-chapter flags
+//    (downloadedAt, readAt). It's small (a few KB even for novels with
+//    thousands of chapters) and lets the library/UI render the
+//    volumes accordion offline.
+//
+// The chapter content lives in chapters/<id>/content.json, separately,
+// so partial downloads stay efficient: re-reading the snapshot doesn't
+// re-load any chapter body.
+
+import {
+  BaseDirectory,
+  exists,
+  mkdir,
+  readTextFile,
+  remove,
+  writeFile,
+  writeTextFile,
+} from "@tauri-apps/plugin-fs";
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import type {
+  SourceChapter,
+  SourceLine,
+  SourceNovel,
+  SourceNovelMeta,
+  SourceVolume,
+} from "../sources/types";
+
+const BASE = BaseDirectory.AppData;
+const ROOT = "leaflet";
+const BOOKS = `${ROOT}/books`;
+
+// ── persisted shapes ───────────────────────────────────────────────────────
+
+export interface PersistedSourceChapter {
+  /** 1-based monotonic id across the whole novel. Matches the
+   *  SourceChapter.id assigned during getNovel. */
+  id: number;
+  title: string;
+  url: string;
+  /** Epoch ms when content.json was last written. Absent = not
+   *  downloaded. The presence of this field is the source of truth for
+   *  "is this chapter offline-readable?". */
+  downloadedAt?: number;
+  /** Epoch ms when the user finished the chapter (scrolled to the
+   *  end or advanced to the next). Absent = unread. */
+  readAt?: number;
+}
+
+export interface PersistedSourceVolume {
+  id: number;
+  title: string;
+  chapters: PersistedSourceChapter[];
+  /** Total chapter count when the source knew it before chapters
+   *  were fetched. Persisted so the volumes accordion can show
+   *  "(N chapters)" before the user expands the volume + render a
+   *  skeleton of the right size while lazy-loading. */
+  chapterCount?: number;
+  /** Opaque source-specific token mirroring SourceVolume.key. Lets
+   *  the source's getVolumeChapters call recover its internal volume
+   *  identifier without re-fetching the novel page. */
+  key?: string;
+  /** True when chapters[] was populated by an explicit fetch. The
+   *  absence is the signal to lazy-load on first expand. */
+  chaptersLoaded?: boolean;
+}
+
+export interface SourceSnapshot {
+  version: 1;
+  sourceId: string;
+  novelUrl: string;
+  /** Free-form display title from the source. Authoritative copy
+   *  (BookIndexEntry has a duplicate to keep listing cheap). */
+  title: string;
+  author: string;
+  originalTitle?: string;
+  language: string;
+  direction: "ltr" | "rtl";
+  coverUrl?: string;
+  description?: string;
+  tags: string[];
+  status?: string;
+  meta: SourceNovelMeta[];
+  volumes: PersistedSourceVolume[];
+  /** Epoch ms when the metadata + volume listing was last fetched
+   *  from the source. The detail view can show "Last updated <X>" and
+   *  decide whether to refresh in the background. */
+  fetchedAt: number;
+}
+
+export interface PersistedChapterContent {
+  version: 1;
+  id: number;
+  /** Same shape as SourceLine, but image lines store the local
+   *  basename (e.g. "img-001.webp") rather than an absolute URL.
+   *  Reader code passes this through `chapterImageSrc(entryId, id, basename)`
+   *  to get an asset:// URL. */
+  lines: SourceLine[];
+  fetchedAt: number;
+}
+
+// ── path helpers ───────────────────────────────────────────────────────────
+
+function bookDir(id: string): string {
+  return `${BOOKS}/${id}`;
+}
+
+function snapshotPath(entryId: string): string {
+  return `${bookDir(entryId)}/source.json`;
+}
+
+function chaptersDir(entryId: string): string {
+  return `${bookDir(entryId)}/chapters`;
+}
+
+function paddedChapterId(chapterId: number): string {
+  return String(chapterId).padStart(5, "0");
+}
+
+function chapterDir(entryId: string, chapterId: number): string {
+  return `${chaptersDir(entryId)}/${paddedChapterId(chapterId)}`;
+}
+
+function chapterContentPath(entryId: string, chapterId: number): string {
+  return `${chapterDir(entryId, chapterId)}/content.json`;
+}
+
+// ── snapshot I/O ───────────────────────────────────────────────────────────
+
+/**
+ * Write the snapshot built from a freshly-fetched SourceNovel. Used by
+ * addNovelToLibrary right after `source.getNovel`. Idempotent — the file
+ * just gets overwritten with the latest metadata.
+ *
+ * Per-chapter flags (downloadedAt, readAt) are preserved when an
+ * existing snapshot is present: we don't want a re-fetch to wipe the
+ * user's progress. The merge keys on chapter URL since the source's id
+ * sequence isn't guaranteed stable between fetches (new chapters can
+ * slot in mid-volume on an updating ongoing novel).
+ */
+export async function writeSnapshotFromSourceNovel(
+  entryId: string,
+  sourceId: string,
+  novelUrl: string,
+  novel: SourceNovel,
+): Promise<SourceSnapshot> {
+  const dir = bookDir(entryId);
+  if (!(await exists(dir, { baseDir: BASE }))) {
+    await mkdir(dir, { baseDir: BASE, recursive: true });
+  }
+
+  const prev = await readSnapshot(entryId);
+  const prevByUrl = new Map<string, PersistedSourceChapter>();
+  if (prev) {
+    for (const v of prev.volumes) {
+      for (const c of v.chapters) {
+        prevByUrl.set(c.url, c);
+      }
+    }
+  }
+
+  // Volume-level merge. We carry forward the chapters of any volume
+  // that the prior snapshot had marked `chaptersLoaded` — the
+  // incoming `novel.volumes` may have empty chapters[] (lazy sources)
+  // and we don't want to lose listings the user already expanded.
+  const prevVolByKey = new Map<string, PersistedSourceVolume>();
+  const prevVolById = new Map<number, PersistedSourceVolume>();
+  if (prev) {
+    for (const v of prev.volumes) {
+      if (v.key !== undefined) prevVolByKey.set(v.key, v);
+      prevVolById.set(v.id, v);
+    }
+  }
+
+  const volumes: PersistedSourceVolume[] = novel.volumes.map((v) => {
+    const prevVol =
+      (v.key !== undefined ? prevVolByKey.get(v.key) : undefined) ??
+      prevVolById.get(v.id);
+    const incomingHasChapters = v.chapters.length > 0;
+    // Three cases:
+    //   1. incoming chapters populated → use them (with prior flags
+    //      merged by URL).
+    //   2. incoming empty + prior had chapters → carry the prior
+    //      chapters forward, with their flags.
+    //   3. both empty → leave empty; lazy fetch will fill later.
+    let chapters: PersistedSourceChapter[];
+    let chaptersLoaded = false;
+    if (incomingHasChapters) {
+      chapters = v.chapters.map<PersistedSourceChapter>((c) => {
+        const carry = prevByUrl.get(c.url);
+        return {
+          id: c.id,
+          title: c.title,
+          url: c.url,
+          ...(carry?.downloadedAt ? { downloadedAt: carry.downloadedAt } : {}),
+          ...(carry?.readAt ? { readAt: carry.readAt } : {}),
+        };
+      });
+      chaptersLoaded = true;
+    } else if (prevVol && prevVol.chapters.length > 0) {
+      chapters = prevVol.chapters;
+      chaptersLoaded = prevVol.chaptersLoaded ?? true;
+    } else {
+      chapters = [];
+      chaptersLoaded = false;
+    }
+    return {
+      id: v.id,
+      title: v.title,
+      chapters,
+      chapterCount: v.chapterCount ?? prevVol?.chapterCount ?? chapters.length,
+      key: v.key ?? prevVol?.key,
+      chaptersLoaded,
+    };
+  });
+
+  const snapshot: SourceSnapshot = {
+    version: 1,
+    sourceId,
+    novelUrl,
+    title: novel.title,
+    author: novel.author,
+    originalTitle: novel.originalTitle,
+    language: novel.language,
+    direction: novel.direction,
+    coverUrl: novel.coverUrl,
+    description: novel.description,
+    tags: novel.tags,
+    status: novel.status,
+    meta: novel.meta,
+    volumes,
+    fetchedAt: Date.now(),
+  };
+
+  await writeTextFile(snapshotPath(entryId), JSON.stringify(snapshot), {
+    baseDir: BASE,
+  });
+  return snapshot;
+}
+
+export async function readSnapshot(
+  entryId: string,
+): Promise<SourceSnapshot | null> {
+  const path = snapshotPath(entryId);
+  if (!(await exists(path, { baseDir: BASE }))) return null;
+  try {
+    const raw = await readTextFile(path, { baseDir: BASE });
+    const parsed = JSON.parse(raw) as SourceSnapshot;
+    if (!parsed || parsed.version !== 1) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Convert the persisted shape back into the SourceNovel shape callers
+ *  already know how to render. Identical to the data the source returned
+ *  at fetch time, plus the persisted per-chapter flags exposed
+ *  through a parallel `chapters[].downloadedAt / readAt` lookup. */
+export function snapshotToSourceNovel(snapshot: SourceSnapshot): SourceNovel {
+  return {
+    title: snapshot.title,
+    author: snapshot.author,
+    originalTitle: snapshot.originalTitle,
+    language: snapshot.language,
+    direction: snapshot.direction,
+    coverUrl: snapshot.coverUrl,
+    description: snapshot.description,
+    tags: snapshot.tags,
+    status: snapshot.status,
+    meta: snapshot.meta,
+    volumes: snapshot.volumes.map<SourceVolume>((v) => ({
+      id: v.id,
+      title: v.title,
+      chapters: v.chapters.map<SourceChapter>((c) => ({
+        id: c.id,
+        title: c.title,
+        url: c.url,
+        lines: [],
+      })),
+      ...(v.chapterCount !== undefined ? { chapterCount: v.chapterCount } : {}),
+      ...(v.key !== undefined ? { key: v.key } : {}),
+    })),
+  };
+}
+
+/** Write a single volume's freshly-fetched chapter list into the
+ *  snapshot. Used by the lazy-volume path: NovelDetailView calls
+ *  source.getVolumeChapters → stuffs the result back here so the
+ *  volume sticks across reopens.
+ *
+ *  Merge semantics:
+ *   - chapters are replaced wholesale by the incoming list (the
+ *     source-side ordering wins).
+ *   - per-chapter flags (downloadedAt, readAt) are preserved by
+ *     URL — a previously-downloaded chapter that re-appears in
+ *     the same volume keeps its flag without losing data on disk.
+ *   - chaptersLoaded flips to true. */
+export async function setVolumeChapters(
+  entryId: string,
+  volumeId: number,
+  chapters: SourceChapter[],
+): Promise<SourceSnapshot | null> {
+  const snap = await readSnapshot(entryId);
+  if (!snap) return null;
+  const vol = snap.volumes.find((v) => v.id === volumeId);
+  if (!vol) return null;
+  const prevByUrl = new Map<string, PersistedSourceChapter>();
+  for (const c of vol.chapters) prevByUrl.set(c.url, c);
+  vol.chapters = chapters.map<PersistedSourceChapter>((c) => {
+    const carry = prevByUrl.get(c.url);
+    return {
+      id: c.id,
+      title: c.title,
+      url: c.url,
+      ...(carry?.downloadedAt ? { downloadedAt: carry.downloadedAt } : {}),
+      ...(carry?.readAt ? { readAt: carry.readAt } : {}),
+    };
+  });
+  vol.chaptersLoaded = true;
+  // Update chapterCount to reflect what we actually got back —
+  // useful when the upstream count was stale.
+  vol.chapterCount = chapters.length;
+  await writeTextFile(snapshotPath(entryId), JSON.stringify(snap), {
+    baseDir: BASE,
+  });
+  return snap;
+}
+
+// ── chapter flag mutations ─────────────────────────────────────────────────
+
+/** Update a single chapter's flags in source.json. The mutator can
+ *  return null to leave it unchanged; otherwise the partial it returns
+ *  is merged over the existing record. Returns the new snapshot so
+ *  callers can re-render the UI without a separate read. */
+async function patchChapter(
+  entryId: string,
+  chapterId: number,
+  mutator: (
+    c: PersistedSourceChapter,
+  ) => Partial<PersistedSourceChapter> | null,
+): Promise<SourceSnapshot | null> {
+  const snap = await readSnapshot(entryId);
+  if (!snap) return null;
+  let changed = false;
+  for (const v of snap.volumes) {
+    for (let i = 0; i < v.chapters.length; i++) {
+      const c = v.chapters[i];
+      if (c.id !== chapterId) continue;
+      const patch = mutator(c);
+      if (!patch) return snap;
+      v.chapters[i] = { ...c, ...patch };
+      changed = true;
+      break;
+    }
+    if (changed) break;
+  }
+  if (!changed) return snap;
+  await writeTextFile(snapshotPath(entryId), JSON.stringify(snap), {
+    baseDir: BASE,
+  });
+  return snap;
+}
+
+export async function markChapterDownloaded(
+  entryId: string,
+  chapterId: number,
+  ts: number = Date.now(),
+): Promise<SourceSnapshot | null> {
+  return patchChapter(entryId, chapterId, () => ({ downloadedAt: ts }));
+}
+
+export async function markChapterRead(
+  entryId: string,
+  chapterId: number,
+  ts: number = Date.now(),
+): Promise<SourceSnapshot | null> {
+  return patchChapter(entryId, chapterId, (c) =>
+    c.readAt ? null : { readAt: ts },
+  );
+}
+
+export async function markChapterUnread(
+  entryId: string,
+  chapterId: number,
+): Promise<SourceSnapshot | null> {
+  return patchChapter(entryId, chapterId, (c) => {
+    if (!c.readAt) return null;
+    const next: Partial<PersistedSourceChapter> = { readAt: undefined };
+    return next;
+  });
+}
+
+/** Drop a chapter's downloaded content + image files, and clear its
+ *  downloadedAt flag. Used by "Delete download" UI. */
+export async function deleteChapterDownload(
+  entryId: string,
+  chapterId: number,
+): Promise<SourceSnapshot | null> {
+  const dir = chapterDir(entryId, chapterId);
+  if (await exists(dir, { baseDir: BASE })) {
+    // Tauri's plugin-fs lacks a recursive-remove. List + unlink instead.
+    // The dir is shallow (content.json + a handful of img-XXX.ext), so
+    // a manual sweep is cheap.
+    try {
+      const { readDir } = await import("@tauri-apps/plugin-fs");
+      const entries = await readDir(dir, { baseDir: BASE });
+      for (const e of entries) {
+        if (!e.isFile) continue;
+        await remove(`${dir}/${e.name}`, { baseDir: BASE });
+      }
+      await remove(dir, { baseDir: BASE });
+    } catch {
+      // Best-effort cleanup; if it fails the next download will
+      // overwrite content.json and the flag flip below still happens.
+    }
+  }
+  return patchChapter(entryId, chapterId, () => ({ downloadedAt: undefined }));
+}
+
+// ── chapter content I/O ────────────────────────────────────────────────────
+
+/** True when the chapter has been downloaded to disk (content.json
+ *  exists). Cheaper than reading the snapshot for a single check. */
+export async function chapterIsDownloaded(
+  entryId: string,
+  chapterId: number,
+): Promise<boolean> {
+  return exists(chapterContentPath(entryId, chapterId), { baseDir: BASE });
+}
+
+export async function readChapterContent(
+  entryId: string,
+  chapterId: number,
+): Promise<PersistedChapterContent | null> {
+  const path = chapterContentPath(entryId, chapterId);
+  if (!(await exists(path, { baseDir: BASE }))) return null;
+  try {
+    const raw = await readTextFile(path, { baseDir: BASE });
+    const parsed = JSON.parse(raw) as PersistedChapterContent;
+    if (!parsed || parsed.version !== 1) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Write a chapter's downloaded content + inline image files in one
+ *  call. The `lines` argument is in its persisted form already —
+ *  image lines must reference local basenames, not remote URLs.
+ *  Callers building the lines from a network scrape are expected to
+ *  rewrite image URLs before passing them in. */
+export async function writeChapterContent(
+  entryId: string,
+  chapterId: number,
+  lines: SourceLine[],
+  imageFiles: Array<{ basename: string; bytes: Uint8Array }>,
+): Promise<void> {
+  const dir = chapterDir(entryId, chapterId);
+  if (!(await exists(dir, { baseDir: BASE }))) {
+    await mkdir(dir, { baseDir: BASE, recursive: true });
+  }
+  for (const img of imageFiles) {
+    await writeFile(`${dir}/${img.basename}`, img.bytes, { baseDir: BASE });
+  }
+  const payload: PersistedChapterContent = {
+    version: 1,
+    id: chapterId,
+    lines,
+    fetchedAt: Date.now(),
+  };
+  await writeTextFile(chapterContentPath(entryId, chapterId), JSON.stringify(payload), {
+    baseDir: BASE,
+  });
+}
+
+/** Resolve a chapter image basename to an asset:// URL the webview can
+ *  load. Mirrors coverSrcFor in library.ts. Returns null on filesystem
+ *  errors — callers should fall back to the original remote URL when
+ *  the asset path can't be resolved. */
+export async function chapterImageSrc(
+  entryId: string,
+  chapterId: number,
+  basename: string,
+  cacheBuster?: number,
+): Promise<string | null> {
+  try {
+    const root = await appDataDir();
+    const abs = await join(
+      root,
+      "leaflet",
+      "books",
+      entryId,
+      "chapters",
+      paddedChapterId(chapterId),
+      basename,
+    );
+    const url = convertFileSrc(abs);
+    return cacheBuster ? `${url}?v=${cacheBuster}` : url;
+  } catch {
+    return null;
+  }
+}
+
+// ── stats convenience ─────────────────────────────────────────────────────
+
+export interface SnapshotStats {
+  chapterCount: number;
+  downloadedCount: number;
+  readCount: number;
+}
+
+export function statsFromSnapshot(snapshot: SourceSnapshot): SnapshotStats {
+  let downloadedCount = 0;
+  let readCount = 0;
+  let chapterCount = 0;
+  for (const v of snapshot.volumes) {
+    for (const c of v.chapters) {
+      chapterCount++;
+      if (c.downloadedAt) downloadedCount++;
+      if (c.readAt) readCount++;
+    }
+  }
+  return { chapterCount, downloadedCount, readCount };
+}
+
+/** Flat list of (volume, chapter) pairs in their natural source order —
+ *  for pickers and the importer-style "all chapters" iteration. */
+export interface FlatPersistedChapter {
+  volumeId: number;
+  volumeTitle: string;
+  chapter: PersistedSourceChapter;
+}
+
+export function flattenSnapshotChapters(
+  snapshot: SourceSnapshot,
+): FlatPersistedChapter[] {
+  const out: FlatPersistedChapter[] = [];
+  for (const v of snapshot.volumes) {
+    for (const c of v.chapters) {
+      out.push({ volumeId: v.id, volumeTitle: v.title, chapter: c });
+    }
+  }
+  return out;
+}

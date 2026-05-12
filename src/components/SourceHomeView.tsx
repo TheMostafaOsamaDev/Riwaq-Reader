@@ -45,6 +45,22 @@ interface SearchState {
   query: string;
 }
 
+interface SuggestState {
+  loading: boolean;
+  error: string | null;
+  /** null while no query is in flight; empty array means "searched, zero
+   *  matches" (so the dropdown can render an empty-state row). */
+  items: NovelCardData[] | null;
+  query: string;
+}
+
+/** Debounce window for live-suggestion calls. 220ms ≈ Cenele's own
+ *  in-page debounce (180-250ms) and below the typical inter-keystroke
+ *  interval for ordinary typing, so we don't fire a request per
+ *  keystroke but still feel instant. */
+const SUGGEST_DEBOUNCE_MS = 220;
+const SUGGEST_MIN_CHARS = 2;
+
 export function SourceHomeView({
   theme,
   layout,
@@ -66,6 +82,15 @@ export function SourceHomeView({
     query: "",
   });
   const [searchInput, setSearchInput] = useState("");
+  const [suggestState, setSuggestState] = useState<SuggestState>({
+    loading: false,
+    error: null,
+    items: null,
+    query: "",
+  });
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const canSuggest = typeof source?.searchSuggest === "function";
+  const canSearch = typeof source?.search === "function";
 
   // Load sections on mount (and whenever the source changes — though in
   // practice sourceId is stable until the user backs out and picks a
@@ -125,6 +150,71 @@ export function SourceHomeView({
     [source],
   );
 
+  // Debounced live suggestion fetch. Fires `SUGGEST_DEBOUNCE_MS` after the
+  // user stops typing, and only when the source advertises `searchSuggest`.
+  // We track the inflight query against the current input so a stale
+  // response from an older keystroke can't overwrite a fresh one.
+  useEffect(() => {
+    if (!source || !canSuggest) return;
+    const trimmed = searchInput.trim();
+    if (trimmed.length < SUGGEST_MIN_CHARS) {
+      // Below the minimum: clear any previous result + close dropdown,
+      // but don't call the source (the typical site behavior).
+      setSuggestState({ loading: false, error: null, items: null, query: "" });
+      setSuggestOpen(false);
+      return;
+    }
+    setSuggestOpen(true);
+    setSuggestState((s) => ({ ...s, loading: true, error: null, query: trimmed }));
+    const handle = setTimeout(async () => {
+      try {
+        const items = await source.searchSuggest!(trimmed);
+        // Drop the response if the user typed something else while we
+        // were waiting — the latest keystroke wins.
+        setSuggestState((s) =>
+          s.query === trimmed
+            ? { loading: false, error: null, items, query: trimmed }
+            : s,
+        );
+      } catch (e) {
+        setSuggestState((s) =>
+          s.query === trimmed
+            ? {
+                loading: false,
+                error: e instanceof Error ? e.message : String(e),
+                items: null,
+                query: trimmed,
+              }
+            : s,
+        );
+      }
+    }, SUGGEST_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [source, canSuggest, searchInput]);
+
+  // Enter on the search input. Behavior depends on which capabilities
+  // the source declares:
+  //   - has search() → submit to the full-results grid (existing flow).
+  //   - has only searchSuggest → there's no results page; open the first
+  //     suggestion as if the user had clicked it (per the design choice
+  //     for cenele).
+  //   - has neither → noop (the input is hidden in this case so we
+  //     shouldn't see this path).
+  const onSubmitSearch = useCallback(() => {
+    if (canSearch) {
+      void runSearch(searchInput);
+      setSuggestOpen(false);
+      return;
+    }
+    if (canSuggest) {
+      const items = suggestState.items;
+      if (items && items.length > 0) {
+        setSuggestOpen(false);
+        onOpenNovel(items[0].url);
+      }
+    }
+  }, [canSearch, canSuggest, runSearch, searchInput, suggestState.items, onOpenNovel]);
+
   if (!source) {
     return (
       <div
@@ -157,8 +247,16 @@ export function SourceHomeView({
         searchInput={searchInput}
         setSearchInput={setSearchInput}
         onBack={onBack}
-        onSubmitSearch={() => void runSearch(searchInput)}
-        canSearch={typeof source.search === "function"}
+        onSubmitSearch={onSubmitSearch}
+        canSearch={canSearch}
+        canSuggest={canSuggest}
+        suggestOpen={suggestOpen && canSuggest && searchInput.trim().length >= SUGGEST_MIN_CHARS}
+        onCloseSuggest={() => setSuggestOpen(false)}
+        suggestState={suggestState}
+        onOpenSuggestion={(url) => {
+          setSuggestOpen(false);
+          onOpenNovel(url);
+        }}
       />
 
       <div style={{ padding: layout === "mobile" ? "8px 18px 40px" : "8px 40px 40px" }}>
@@ -200,6 +298,11 @@ interface HomeHeaderProps {
   onBack: () => void;
   onSubmitSearch: () => void;
   canSearch: boolean;
+  canSuggest: boolean;
+  suggestOpen: boolean;
+  onCloseSuggest: () => void;
+  suggestState: SuggestState;
+  onOpenSuggestion: (url: string) => void;
 }
 
 function HomeHeader({
@@ -211,6 +314,11 @@ function HomeHeader({
   onBack,
   onSubmitSearch,
   canSearch,
+  canSuggest,
+  suggestOpen,
+  onCloseSuggest,
+  suggestState,
+  onOpenSuggestion,
 }: HomeHeaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isMobile = layout === "mobile";
@@ -289,48 +397,239 @@ function HomeHeader({
         </div>
       </div>
       {!isMobile && <div style={{ flex: 1 }} />}
-      {canSearch && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            background: theme.chrome,
-            border: `0.5px solid ${theme.rule}`,
-            borderRadius: 9,
-            padding: "6px 10px",
-            // Mobile: full-width below the title row. Desktop:
-            // sized to fit comfortably to the right of the title.
-            width: isMobile ? "100%" : 320,
-            boxSizing: "border-box",
+      {(canSearch || canSuggest) && (
+        <SearchInputWithSuggest
+          theme={theme}
+          isMobile={isMobile}
+          inputRef={inputRef}
+          searchInput={searchInput}
+          setSearchInput={setSearchInput}
+          onSubmitSearch={onSubmitSearch}
+          canSuggest={canSuggest}
+          suggestOpen={suggestOpen}
+          onCloseSuggest={onCloseSuggest}
+          suggestState={suggestState}
+          onOpenSuggestion={onOpenSuggestion}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── search input + live-suggest dropdown ───────────────────────────────────
+
+interface SearchInputWithSuggestProps {
+  theme: Theme;
+  isMobile: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  searchInput: string;
+  setSearchInput: (v: string) => void;
+  onSubmitSearch: () => void;
+  canSuggest: boolean;
+  suggestOpen: boolean;
+  onCloseSuggest: () => void;
+  suggestState: SuggestState;
+  onOpenSuggestion: (url: string) => void;
+}
+
+function SearchInputWithSuggest({
+  theme,
+  isMobile,
+  inputRef,
+  searchInput,
+  setSearchInput,
+  onSubmitSearch,
+  canSuggest,
+  suggestOpen,
+  onCloseSuggest,
+  suggestState,
+  onOpenSuggestion,
+}: SearchInputWithSuggestProps) {
+  // Click-outside dismissal. Walk composedPath instead of contains() so
+  // dropdown clicks on portals or shadow-DOM children would still count
+  // as inside (we don't use any here yet but it future-proofs cheaply).
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!suggestOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const root = containerRef.current;
+      if (!root) return;
+      const path = (e.composedPath?.() ?? []) as Node[];
+      if (path.includes(root) || root.contains(e.target as Node)) return;
+      onCloseSuggest();
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [suggestOpen, onCloseSuggest]);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "relative",
+        width: isMobile ? "100%" : 320,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          background: theme.chrome,
+          border: `0.5px solid ${theme.rule}`,
+          borderRadius: 9,
+          padding: "6px 10px",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      >
+        <Icon name="search" size={14} style={{ color: theme.muted }} />
+        <input
+          ref={inputRef}
+          type="search"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSubmitSearch();
+            } else if (e.key === "Escape") {
+              onCloseSuggest();
+            }
           }}
+          placeholder="Search…"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: "transparent",
+            color: theme.ink,
+            border: "none",
+            outline: "none",
+            fontSize: 13,
+            fontFamily: "inherit",
+            padding: "4px 0",
+          }}
+        />
+      </div>
+      {canSuggest && suggestOpen && (
+        <SuggestDropdown
+          theme={theme}
+          state={suggestState}
+          onPick={onOpenSuggestion}
+        />
+      )}
+    </div>
+  );
+}
+
+interface SuggestDropdownProps {
+  theme: Theme;
+  state: SuggestState;
+  onPick: (url: string) => void;
+}
+
+function SuggestDropdown({ theme, state, onPick }: SuggestDropdownProps) {
+  return (
+    <div
+      // Float over the page content; absolute is enough because the
+      // parent positioned itself relatively.
+      style={{
+        position: "absolute",
+        top: "calc(100% + 4px)",
+        left: 0,
+        right: 0,
+        zIndex: 50,
+        background: theme.bg,
+        border: `0.5px solid ${theme.rule}`,
+        borderRadius: 10,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+        overflow: "hidden",
+        maxHeight: 360,
+        overflowY: "auto",
+      }}
+    >
+      {state.loading && state.items === null ? (
+        <div
+          style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
         >
-          <Icon name="search" size={14} style={{ color: theme.muted }} />
-          <input
-            ref={inputRef}
-            type="search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onSubmitSearch();
-              }
-            }}
-            placeholder="Search…"
-            style={{
-              flex: 1,
-              minWidth: 0,
-              background: "transparent",
-              color: theme.ink,
-              border: "none",
-              outline: "none",
-              fontSize: 13,
-              fontFamily: "inherit",
-              padding: "4px 0",
-            }}
-          />
+          Searching…
         </div>
+      ) : state.error ? (
+        <div
+          style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
+        >
+          Couldn't load suggestions — {state.error}
+        </div>
+      ) : state.items && state.items.length === 0 ? (
+        <div
+          style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
+        >
+          No matches for “{state.query}”.
+        </div>
+      ) : (
+        (state.items ?? []).map((card, i) => (
+          <button
+            key={card.url}
+            onMouseDown={(e) => {
+              // mousedown (not click) so we fire before the input's
+              // blur dismisses us via the click-outside listener.
+              e.preventDefault();
+              onPick(card.url);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              width: "100%",
+              padding: "8px 12px",
+              border: "none",
+              background: i === 0 ? theme.hover : "transparent",
+              color: theme.ink,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 13,
+              textAlign: "start",
+              borderBottom: `0.5px solid ${theme.rule}`,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = theme.hover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = i === 0 ? theme.hover : "transparent";
+            }}
+          >
+            {card.coverUrl && (
+              <img
+                src={card.coverUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                style={{
+                  width: 34,
+                  height: 48,
+                  objectFit: "cover",
+                  borderRadius: 4,
+                  flexShrink: 0,
+                  background: theme.chrome,
+                }}
+              />
+            )}
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                lineHeight: 1.35,
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical" as const,
+                WebkitLineClamp: 2 as const,
+                overflow: "hidden",
+              }}
+            >
+              {card.title}
+            </span>
+          </button>
+        ))
       )}
     </div>
   );

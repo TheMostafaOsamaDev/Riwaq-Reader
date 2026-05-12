@@ -12,6 +12,7 @@
 // doesn't need to know whether a source is built-in or sideloaded.
 
 import { createHost } from "./host";
+import { createCeneleSource } from "./extensions/cenele";
 import { createKolNovelSource } from "./extensions/kolnovel";
 import type { Source, SourceHost, SourceMetadata } from "./types";
 
@@ -25,6 +26,18 @@ interface RegistryEntry {
 // Built-in extensions. Add new entries here as we port more sites. Keep
 // them alphabetized by id so the panel listing has a stable order.
 const BUILTINS: RegistryEntry[] = [
+  {
+    meta: {
+      id: "cenele",
+      name: "Cenele",
+      baseUrl: "https://cenele.com",
+      language: "ar",
+      description:
+        "Arabic translations of Asian web novels from cenele.com (فضاء الروايات).",
+      version: "0.1.0",
+    },
+    factory: (host) => createCeneleSource(host),
+  },
   {
     meta: {
       id: "kolnovel",
