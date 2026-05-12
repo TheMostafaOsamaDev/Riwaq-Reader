@@ -966,11 +966,18 @@ function MobileLibrary({
   onClearAll: _onClearAll,
   onCardContextMenu,
 }: LayoutProps) {
-  // `listBooks()` already sorts read books above unread by lastReadAt, so
-  // the first entry with lastReadAt defined is the right pick. If no book
-  // has been opened yet, there's no hero — everything lands on the shelf.
-  const hero = books.find((b) => b.lastReadAt !== undefined);
-  const others = hero ? books.filter((b) => b.id !== hero.id) : books;
+  // Filter to the selected status tab. "store" is handled separately
+  // (a body swap, not a filter); the tab pills exclude it on mobile
+  // because Store toggling lives in the bottom nav.
+  const visible = books.filter((b) => matchesTab(b, tab));
+  // Hero is the "continue reading" affordance — only meaningful on the
+  // full library view. On a filtered tab we render a flat shelf so every
+  // match is equally weighted.
+  const hero =
+    tab === "all"
+      ? visible.find((b) => b.lastReadAt !== undefined)
+      : undefined;
+  const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
 
   // Hero is at most one card per render — a single hook instance covers it.
   // Shelf cards each need their own long-press state, so they live in a
@@ -999,9 +1006,37 @@ function MobileLibrary({
         paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
-      {/* No top header on mobile — actions live in the bottom nav.
-          Side pages (NovelDetailView, Store, DownloadQueueView) have
-          their own headers with back arrows. */}
+      {/* Top header — title + filter tabs. Hidden inside the source
+          detail view (NovelDetailView has its own header with a back
+          arrow). The Store tab is omitted from the pills since the
+          bottom nav owns Store toggling. Action buttons live in the
+          bottom nav, so the right side of the title row is empty. */}
+      {!sourceDetailView && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            padding: "16px 22px 10px",
+            borderBottom: `0.5px solid ${theme.rule}`,
+          }}
+        >
+          <h1
+            style={{
+              fontFamily: FONT_SERIF_DISPLAY,
+              fontStyle: "italic",
+              fontWeight: 400,
+              fontSize: 28,
+              margin: 0,
+              letterSpacing: "-0.02em",
+              color: theme.ink,
+            }}
+          >
+            Library
+          </h1>
+          <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
+        </div>
+      )}
 
       {sourceDetailView ? (
         <div
@@ -1039,7 +1074,7 @@ function MobileLibrary({
           onImportComplete={onSourceImportComplete}
         />
       ) : (
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 22px 40px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
 
         {loading && books.length === 0 ? (
@@ -1048,6 +1083,8 @@ function MobileLibrary({
           </div>
         ) : books.length === 0 ? (
           <EmptyState theme={theme} onImport={onImport} importing={importing} />
+        ) : visible.length === 0 ? (
+          <FilteredEmptyState theme={theme} tab={tab} />
         ) : (
           <>
             {hero && (
@@ -1221,6 +1258,59 @@ interface MobileBottomNavProps {
  *  indicator by way of the safe-area inset the outer wrapper
  *  already provides.
  */
+interface MobileTabRowProps {
+  theme: Theme;
+  tab: LibraryTab;
+  setTab: (t: LibraryTab) => void;
+}
+
+/** Status filter pills under the mobile "Library" header.
+ *
+ *  The Store tab from the desktop TABS list is intentionally
+ *  skipped — Store toggling lives in the bottom nav (`globe` icon),
+ *  so the pill would be a redundant second affordance. The row
+ *  scrolls horizontally on very narrow screens so the four labels
+ *  always reach. */
+function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
+  const items = TABS.filter((t) => t.key !== "store");
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 6,
+        overflowX: "auto",
+        // Hide scrollbar visually — chrome only renders the thin
+        // wide-screen one anyway, but Android can show a thick bar.
+        scrollbarWidth: "none",
+      }}
+    >
+      {items.map(({ key, label }) => {
+        const active = key === tab;
+        return (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            style={{
+              flexShrink: 0,
+              border: active ? "none" : `0.5px solid ${theme.rule}`,
+              background: active ? theme.ink : "transparent",
+              color: active ? theme.bg : theme.muted,
+              padding: "7px 14px",
+              borderRadius: 18,
+              fontSize: 12.5,
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function MobileBottomNav({
   theme,
   importing,
