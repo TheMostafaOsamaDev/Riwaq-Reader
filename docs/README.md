@@ -8,6 +8,7 @@ This folder tracks the implementation of the **Leaflet** e-book reader, rebuilt 
 - [`design-notes.md`](./design-notes.md) — design-system tokens, scope, and what was deliberately left out.
 - [`architecture.md`](./architecture.md) — project layout, module boundaries, data flow.
 - [`setup.md`](./setup.md) — how to run, build, and bundle for desktop + Android.
+- [`store-feature/`](./store-feature/README.md) — Store tab, Source extensions, and the per-site sub-docs (KolNovel, Cenele).
 
 ## Source design
 

@@ -209,6 +209,29 @@ input:focus-visible,
     forwards;
 }
 
+/* Skeleton shimmer. Used by the Store's loading placeholders — the
+   gradient sweeps across to give the user a sense of progress while the
+   real content is being fetched. Colors live on the element via
+   `--skel-base` and `--skel-shine` so each theme can tune contrast. */
+@keyframes leaflet-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.leaflet-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--skel-base, rgba(0, 0, 0, 0.06)) 0%,
+    var(--skel-shine, rgba(0, 0, 0, 0.12)) 50%,
+    var(--skel-base, rgba(0, 0, 0, 0.06)) 100%
+  );
+  background-size: 200% 100%;
+  animation: leaflet-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

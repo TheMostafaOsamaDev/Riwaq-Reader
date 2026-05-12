@@ -2,10 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DesktopReader } from "./components/DesktopReader";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
+import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
+import { SourceStreamReader } from "./components/SourceStreamReader";
+import { startDownloadNotifier } from "./store/downloadNotifier";
 import type { EpubBook } from "./epub/types";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
+import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
   deleteHighlight,
   loadBook,
@@ -35,12 +39,32 @@ interface Loaded {
   resumeParagraph: number;
 }
 
+interface StreamingSession {
+  sourceId: string;
+  novelUrl: string;
+  startChapterId?: number;
+}
+
 function App() {
   const [t, setTweak] = useTweaks();
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const lightbox = useLightbox();
+  // Streaming reader — opened from the Store when the user clicks "Read"
+  // on a novel detail page. Non-null = full-viewport reader overlays
+  // everything else (Library + Store). Closing returns to the Store at
+  // the same novel.
+  const [streaming, setStreaming] = useState<StreamingSession | null>(null);
+
+  const openStream = useCallback(
+    (sourceId: string, novelUrl: string, chapterId?: number) => {
+      setStreaming({ sourceId, novelUrl, startChapterId: chapterId });
+    },
+    [],
+  );
+  const closeStream = useCallback(() => setStreaming(null), []);
 
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
@@ -59,6 +83,13 @@ function App() {
     );
     if (meta) meta.content = theme.bg;
   }, [theme.bg, theme.ink]);
+
+  // Bridge the download queue to the system notification tray.
+  // Idempotent — subsequent calls are no-ops, so React 18 dev
+  // re-mount doesn't double-subscribe.
+  useEffect(() => {
+    startDownloadNotifier();
+  }, []);
 
   const openBook = useCallback(async (id: string) => {
     setLoading(true);
@@ -277,11 +308,27 @@ function App() {
           {error}
         </div>
       )}
+      {streaming && (
+        <SourceStreamReader
+          theme={theme}
+          themeKey={themeKey}
+          t={t}
+          setTweak={setTweak}
+          layout={isMobile ? "mobile" : "desktop"}
+          sourceId={streaming.sourceId}
+          novelUrl={streaming.novelUrl}
+          startChapterId={streaming.startChapterId}
+          onClose={closeStream}
+        />
+      )}
       {!inReader ? (
         <Library
           theme={theme}
+          themeKey={themeKey}
+          setTweak={setTweak}
           layout={isMobile ? "mobile" : "desktop"}
           onOpen={openBook}
+          onStreamRead={openStream}
         />
       ) : isMobile ? (
         <MobileReader
@@ -326,6 +373,8 @@ function App() {
           Library → Reader transition (e.g. user clicks "Continue in
           background" then opens an existing book while the import finishes). */}
       <ImportProgress theme={theme} />
+      {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
+      <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
     </div>
   );
 }

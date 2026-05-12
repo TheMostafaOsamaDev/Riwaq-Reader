@@ -31,7 +31,7 @@ export function MobileSheet({
           left: 0,
           right: 0,
           height,
-          background: theme.chrome,
+          background: theme.bg,
           color: theme.ink,
           borderTopLeftRadius: 18,
           borderTopRightRadius: 18,

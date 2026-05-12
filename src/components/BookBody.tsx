@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { isImageItem, type ChapterItem, type EpubChapter } from "../epub/types";
 import { chapterImageSrcFor, type Highlight } from "../store/library";
+import { open as openLightbox } from "../store/lightbox";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -193,6 +194,10 @@ export function BookBody({
               src={imageUrls.get(p.src)}
               alt={p.alt ?? ""}
               loading="lazy"
+              onClick={() => {
+                const url = imageUrls.get(p.src);
+                if (url) openLightbox(url, p.alt);
+              }}
               style={{
                 maxWidth: "100%",
                 height: "auto",
@@ -201,6 +206,7 @@ export function BookBody({
                 // radius so unstyled photos look intentional in-flow.
                 borderRadius: 6,
                 background: theme.chrome,
+                cursor: "zoom-in",
               }}
             />
           </figure>
