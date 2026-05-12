@@ -11,6 +11,13 @@ import { ImportChoiceModal } from "./ImportChoiceModal";
 import { DocxManageView } from "./DocxManageView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { NovelDetailView } from "./NovelDetailView";
+import { DownloadQueueView } from "./DownloadQueueView";
+import { SettingsSheet } from "./SettingsSheet";
+import type { Tweaks } from "../types/reader";
+import {
+  getState as getQueueState,
+  subscribe as subscribeToQueue,
+} from "../store/downloadQueue";
 import { Store } from "./Store";
 import {
   clearLibrary,
@@ -37,10 +44,17 @@ import {
   isArabicTitle,
   titleFontFor,
   type Theme,
+  type ThemeKey,
 } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
+  /** Selected theme id (one of the THEME_SWATCHES). Threaded through
+   *  so the mobile Settings sheet can show which swatch is currently
+   *  active and dispatch theme changes without forcing the user
+   *  into the reader to find the picker. */
+  themeKey: ThemeKey;
+  setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onOpen: (bookId: string) => void;
   /** Open the Source streaming reader at a specific novel + chapter. The
@@ -86,7 +100,14 @@ function useBooks() {
   return { books, covers, loading, error, refresh, setError };
 }
 
-export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
+export function Library({
+  theme,
+  themeKey,
+  setTweak,
+  layout,
+  onOpen,
+  onStreamRead,
+}: Props) {
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -103,10 +124,16 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
   const [sourceDetailView, setSourceDetailView] = useState<{
     sourceId: string;
     novelUrl: string;
+    /** Library entry id when the detail view is opened from a shelf
+     *  card; the view uses it to load offline data from source.json
+     *  and to enqueue per-chapter downloads. Undefined when opened
+     *  from the Store before the novel is in the library. */
+    libraryEntryId?: string;
   } | null>(null);
   const [sourceDetailRangeDialog, setSourceDetailRangeDialog] = useState<{
     sourceId: string;
     novelUrl: string;
+    libraryEntryId?: string;
   } | null>(null);
 
   // Switching tabs leaves any open source-detail view — the tabs are
@@ -133,6 +160,7 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
         setSourceDetailView({
           sourceId: book.sourceId,
           novelUrl: book.novelUrl,
+          libraryEntryId: book.id,
         });
         return;
       }
@@ -417,6 +445,9 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
     void refresh();
   }, [refresh]);
 
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const layoutCommonProps = {
     theme,
     books,
@@ -437,6 +468,8 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
     onOpenSourceDetailRangeDialog: () => {
       if (sourceDetailView) setSourceDetailRangeDialog(sourceDetailView);
     },
+    onOpenQueue: () => setQueueOpen(true),
+    onOpenSettings: () => setSettingsOpen(true),
     onClearAll,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
@@ -523,9 +556,26 @@ export function Library({ theme, layout, onOpen, onStreamRead }: Props) {
           theme={theme}
           sourceId={sourceDetailRangeDialog.sourceId}
           novelUrl={sourceDetailRangeDialog.novelUrl}
+          libraryEntryId={sourceDetailRangeDialog.libraryEntryId}
           onCancel={() => setSourceDetailRangeDialog(null)}
           onStarted={() => setSourceDetailRangeDialog(null)}
           onCompleted={() => void refresh()}
+        />
+      )}
+      {queueOpen && (
+        <DownloadQueueView
+          theme={theme}
+          layout={layout}
+          onClose={() => setQueueOpen(false)}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsSheet
+          theme={theme}
+          themeKey={themeKey}
+          setTweak={setTweak}
+          layout={layout}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
       {stagedDocx && (
@@ -563,12 +613,20 @@ interface LayoutProps {
   /** When non-null, the body shows NovelDetailView for a library-backed
    *  source entry instead of the shelf. Set by `handleOpen` in the parent
    *  when the user clicks a `kind: "source"` card. */
-  sourceDetailView: { sourceId: string; novelUrl: string } | null;
+  sourceDetailView: {
+    sourceId: string;
+    novelUrl: string;
+    libraryEntryId?: string;
+  } | null;
   /** Close the source detail view (returns the body to its normal shelf
    *  / Store rendering). */
   onCloseSourceDetailView: () => void;
   /** Open the range download dialog for the currently-shown source detail. */
   onOpenSourceDetailRangeDialog: () => void;
+  /** Open the download-queue sheet. */
+  onOpenQueue: () => void;
+  /** Open the settings sheet (mobile theme picker for now). */
+  onOpenSettings: () => void;
   onClearAll: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
@@ -626,6 +684,7 @@ function DesktopLibrary({
   sourceDetailView,
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
+  onOpenQueue,
   onClearAll,
   onDelete,
   onEdit,
@@ -718,6 +777,7 @@ function DesktopLibrary({
                 Clear all
               </Button>
             )}
+            <QueueIconButton theme={theme} onClick={onOpenQueue} />
             <Button
               theme={theme}
               variant="outline"
@@ -773,6 +833,7 @@ function DesktopLibrary({
             layout="desktop"
             sourceId={sourceDetailView.sourceId}
             novelUrl={sourceDetailView.novelUrl}
+            libraryEntryId={sourceDetailView.libraryEntryId}
             onBack={onCloseSourceDetailView}
             onStreamRead={(chapterId) =>
               onStreamRead(
@@ -896,10 +957,14 @@ function MobileLibrary({
   sourceDetailView,
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
-  onClearAll,
+  onOpenQueue,
+  onOpenSettings,
+  // `onClearAll` is only used by the desktop layout; the mobile shell
+  // dropped its dev "clear all" button when the top header moved to a
+  // bottom nav.
+  onClearAll: _onClearAll,
   onCardContextMenu,
 }: LayoutProps) {
-  // Hero is the actually-last-read book, not the one most-recently-added.
   // `listBooks()` already sorts read books above unread by lastReadAt, so
   // the first entry with lastReadAt defined is the right pick. If no book
   // has been opened yet, there's no hero — everything lands on the shelf.
@@ -933,121 +998,9 @@ function MobileLibrary({
         paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
-      <div
-        style={{
-          padding: "16px 22px 14px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <h1
-          style={{
-            fontFamily: FONT_SERIF_DISPLAY,
-            fontStyle: "italic",
-            fontWeight: 400,
-            fontSize: 28,
-            margin: 0,
-            letterSpacing: "-0.02em",
-            color: theme.ink,
-          }}
-        >
-          Library
-        </h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          {import.meta.env.DEV && (
-            <button
-              onClick={onClearAll}
-              disabled={importing}
-              aria-label="Clear library (dev)"
-              title="Dev only — wipes every book"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                border: "0.5px solid #c04a3a",
-                background: "transparent",
-                color: "#c04a3a",
-                cursor: importing ? "progress" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: importing ? 0.6 : 1,
-              }}
-            >
-              <Icon name="close" size={16} />
-            </button>
-          )}
-          {/* "Import folder" was here on mobile but the underlying
-              folder picker doesn't work reliably under Android's
-              Storage Access Framework — the user couldn't import
-              anything that way, so the button was just noise.
-              Desktop still exposes it through the toolbar. */}
-          <button
-            onClick={() => setTab(tab === "store" ? "all" : "store")}
-            aria-label={tab === "store" ? "Back to library" : "Open store"}
-            title={tab === "store" ? "Back to library" : "Browse the store"}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              border:
-                tab === "store"
-                  ? "none"
-                  : `0.5px solid ${theme.rule}`,
-              background: tab === "store" ? theme.ink : "transparent",
-              color: tab === "store" ? theme.bg : theme.ink,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name="globe" size={16} />
-          </button>
-          <button
-            onClick={onImportDocx}
-            disabled={importing}
-            aria-label="Import Word document"
-            title="Convert a Word document to EPUB on import"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              border: `0.5px solid ${theme.rule}`,
-              background: "transparent",
-              color: theme.ink,
-              cursor: importing ? "progress" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: importing ? 0.6 : 1,
-            }}
-          >
-            <Icon name="doc" size={16} />
-          </button>
-          <button
-            onClick={onImport}
-            disabled={importing}
-            aria-label="Import EPUB"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              border: "none",
-              background: theme.ink,
-              color: theme.bg,
-              cursor: importing ? "progress" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: importing ? 0.6 : 1,
-            }}
-          >
-            <Icon name="plus" size={16} />
-          </button>
-        </div>
-      </div>
+      {/* No top header on mobile — actions live in the bottom nav.
+          Side pages (NovelDetailView, Store, DownloadQueueView) have
+          their own headers with back arrows. */}
 
       {sourceDetailView ? (
         <div
@@ -1064,6 +1017,7 @@ function MobileLibrary({
             layout="mobile"
             sourceId={sourceDetailView.sourceId}
             novelUrl={sourceDetailView.novelUrl}
+            libraryEntryId={sourceDetailView.libraryEntryId}
             onBack={onCloseSourceDetailView}
             onStreamRead={(chapterId) =>
               onStreamRead(
@@ -1221,7 +1175,228 @@ function MobileLibrary({
         )}
       </div>
       )}
+      {/* Bottom navigation. Hidden while the source detail view owns
+          the body (NovelDetailView has its own back-arrow header).
+          Visible on the shelf and on the Store so the user always
+          has the import + queue + store toggle within thumb reach. */}
+      {!sourceDetailView && (
+        <MobileBottomNav
+          theme={theme}
+          importing={importing}
+          tab={tab}
+          onSetStore={() => setTab(tab === "store" ? "all" : "store")}
+          onOpenQueue={onOpenQueue}
+          onImport={onImport}
+          onImportDocx={onImportDocx}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
     </div>
+  );
+}
+
+interface MobileBottomNavProps {
+  theme: Theme;
+  importing: boolean;
+  tab: LibraryTab;
+  onSetStore: () => void;
+  onOpenQueue: () => void;
+  onImport: () => void;
+  onImportDocx: () => void;
+  onOpenSettings: () => void;
+}
+
+/** Bottom nav for the mobile Library shell. Four slots arranged
+ *  symmetrically around the central focal "import EPUB" button:
+ *
+ *    [Store]  [Queue]   ( + )   [Docx]
+ *
+ *  The "+" button is taller, filled, and slightly elevated so the
+ *  primary action is visually obvious. The other three are circular
+ *  outlines matching the existing icon-button style.
+ *
+ *  Visibility: rendered from MobileLibrary when no source-detail
+ *  view is open. The bar sits above the Android nav bar / iOS home
+ *  indicator by way of the safe-area inset the outer wrapper
+ *  already provides.
+ */
+function MobileBottomNav({
+  theme,
+  importing,
+  tab,
+  onSetStore,
+  onOpenQueue,
+  onImport,
+  onImportDocx,
+  onOpenSettings,
+}: MobileBottomNavProps) {
+  return (
+    <div
+      style={{
+        flexShrink: 0,
+        position: "relative",
+        // Vertical room for the FAB to bulge above the bar without
+        // covering shelf content (the body div above is flex:1, so
+        // it shrinks to make room here).
+        padding: "8px 14px 14px",
+        background: theme.bg,
+        borderTop: `0.5px solid ${theme.rule}`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-around",
+        gap: 6,
+      }}
+    >
+      <NavIconButton
+        theme={theme}
+        icon="globe"
+        ariaLabel={tab === "store" ? "Back to library" : "Open store"}
+        active={tab === "store"}
+        onClick={onSetStore}
+      />
+      <NavIconButton
+        theme={theme}
+        icon="download"
+        ariaLabel="Open downloads"
+        onClick={onOpenQueue}
+        showQueueBadge
+      />
+      <NavFabButton
+        theme={theme}
+        importing={importing}
+        onClick={onImport}
+      />
+      <NavIconButton
+        theme={theme}
+        icon="doc"
+        ariaLabel="Import Word document"
+        onClick={onImportDocx}
+        disabled={importing}
+      />
+      <NavIconButton
+        theme={theme}
+        icon="type"
+        ariaLabel="Settings"
+        onClick={onOpenSettings}
+      />
+    </div>
+  );
+}
+
+interface NavIconButtonProps {
+  theme: Theme;
+  icon: "globe" | "download" | "doc" | "type";
+  ariaLabel: string;
+  active?: boolean;
+  disabled?: boolean;
+  showQueueBadge?: boolean;
+  onClick: () => void;
+}
+
+function NavIconButton({
+  theme,
+  icon,
+  ariaLabel,
+  active,
+  disabled,
+  showQueueBadge,
+  onClick,
+}: NavIconButtonProps) {
+  const [activeCount, setActiveCount] = useState(() =>
+    activeJobCount(getQueueState()),
+  );
+  useEffect(() => {
+    if (!showQueueBadge) return;
+    const off = subscribeToQueue((s) => setActiveCount(activeJobCount(s)));
+    return off;
+  }, [showQueueBadge]);
+  const showBadge = !!showQueueBadge && activeCount > 0;
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      style={{
+        position: "relative",
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        border: active ? "none" : `0.5px solid ${theme.rule}`,
+        background: active ? theme.ink : "transparent",
+        color: active ? theme.bg : theme.ink,
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <Icon name={icon} size={18} />
+      {showBadge && (
+        <span
+          style={{
+            position: "absolute",
+            top: -2,
+            right: -2,
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            borderRadius: 9,
+            background: theme.ink,
+            color: theme.bg,
+            fontSize: 10,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            border: `2px solid ${theme.bg}`,
+          }}
+        >
+          {activeCount > 99 ? "99+" : activeCount}
+        </span>
+      )}
+    </button>
+  );
+}
+
+interface NavFabButtonProps {
+  theme: Theme;
+  importing: boolean;
+  onClick: () => void;
+}
+
+function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
+  // The focal action — taller + lifted so it reads as the primary
+  // affordance in the bar. The lift is achieved by negative margin
+  // bracketed by extra space in the bar wrapper (`padding-top: 8`)
+  // so the button protrudes above the bar's top edge.
+  return (
+    <button
+      onClick={onClick}
+      disabled={importing}
+      aria-label="Import EPUB"
+      title={importing ? "Importing…" : "Import EPUB"}
+      style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        marginTop: -22,
+        border: "none",
+        background: theme.ink,
+        color: theme.bg,
+        cursor: importing ? "progress" : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 6px 16px rgba(0,0,0,0.22)",
+        opacity: importing ? 0.6 : 1,
+        flexShrink: 0,
+      }}
+    >
+      <Icon name="plus" size={24} />
+    </button>
   );
 }
 
@@ -1748,4 +1923,83 @@ function relTime(ts: number): string {
   if (w < 5) return `${w}w ago`;
   const mo = Math.floor(d / 30);
   return `${mo}mo ago`;
+}
+
+// ── queue icon button (header) ─────────────────────────────────────────────
+//
+// Subscribes to the download queue so the badge reflects in-flight
+// jobs in real time. Same visual shape in desktop + mobile headers.
+
+function QueueIconButton({
+  theme,
+  onClick,
+}: {
+  theme: Theme;
+  onClick: () => void;
+}) {
+  // Active = queued or running. We don't include terminal jobs in the
+  // badge since the user has already seen them.
+  const [active, setActive] = useState(() => activeJobCount(getQueueState()));
+  useEffect(() => {
+    const off = subscribeToQueue((s) => setActive(activeJobCount(s)));
+    return off;
+  }, []);
+  return (
+    <button
+      onClick={onClick}
+      aria-label={
+        active === 0
+          ? "Open downloads"
+          : `Open downloads — ${active} active`
+      }
+      title="Downloads"
+      style={{
+        position: "relative",
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        border: `0.5px solid ${theme.rule}`,
+        background: "transparent",
+        color: theme.ink,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 8,
+      }}
+    >
+      <Icon name="download" size={16} />
+      {active > 0 && (
+        <span
+          style={{
+            position: "absolute",
+            top: -3,
+            right: -3,
+            minWidth: 16,
+            height: 16,
+            padding: "0 4px",
+            borderRadius: 8,
+            background: theme.ink,
+            color: theme.bg,
+            fontSize: 10,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+          }}
+        >
+          {active > 99 ? "99+" : active}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function activeJobCount(s: { jobs: { status: string }[] }): number {
+  let n = 0;
+  for (const j of s.jobs) {
+    if (j.status === "queued" || j.status === "running") n++;
+  }
+  return n;
 }

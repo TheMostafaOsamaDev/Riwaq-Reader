@@ -5,6 +5,7 @@ import { Library } from "./components/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { SourceStreamReader } from "./components/SourceStreamReader";
+import { startDownloadNotifier } from "./store/downloadNotifier";
 import type { EpubBook } from "./epub/types";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
@@ -82,6 +83,13 @@ function App() {
     );
     if (meta) meta.content = theme.bg;
   }, [theme.bg, theme.ink]);
+
+  // Bridge the download queue to the system notification tray.
+  // Idempotent — subsequent calls are no-ops, so React 18 dev
+  // re-mount doesn't double-subscribe.
+  useEffect(() => {
+    startDownloadNotifier();
+  }, []);
 
   const openBook = useCallback(async (id: string) => {
     setLoading(true);
@@ -316,6 +324,8 @@ function App() {
       {!inReader ? (
         <Library
           theme={theme}
+          themeKey={themeKey}
+          setTweak={setTweak}
           layout={isMobile ? "mobile" : "desktop"}
           onOpen={openBook}
           onStreamRead={openStream}

@@ -496,44 +496,48 @@ export async function importEpubBytes(
 }
 
 /**
- * Lightweight "Add to library" for a source-backed novel. Doesn't
- * scrape chapter content — just fetches the novel index page for its
- * metadata + downloads the cover image, then writes a `kind: "source"`
- * entry to the library index. The user can later open the entry,
- * stream-read it, or trigger a Download Range to materialize part of
- * the novel as a regular EPUB entry.
+ * Lightweight "Add to library" for a source-backed novel. Persists the
+ * novel snapshot (metadata + volumes + chapter index — see
+ * `store/sourceLibrary.ts`) and downloads the cover. Does NOT download
+ * chapter content; that happens per-chapter via the download queue.
  *
  * If the same (sourceId, novelUrl) is already in the library, this
- * returns the existing entry — duplicate adds are a no-op.
+ * returns the existing entry but refreshes its snapshot from the source
+ * so reopening picks up any newly published chapters. The refresh is
+ * best-effort — when the network is unavailable the existing snapshot
+ * stays put.
  */
 export async function addNovelToLibrary(
   sourceId: string,
   novelUrl: string,
 ): Promise<BookIndexEntry> {
-  const existing = await findSourceEntry(sourceId, novelUrl);
-  if (existing) return existing;
-
   const { getSource } = await import("../sources/registry");
   const { createHost } = await import("../sources/host");
+  const { writeSnapshotFromSourceNovel } = await import("./sourceLibrary");
   const source = getSource(sourceId);
   if (!source) throw new Error(`Unknown source: ${sourceId}`);
 
+  const existing = await findSourceEntry(sourceId, novelUrl);
+
   const novel = await source.getNovel(novelUrl);
   const id =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
+    existing?.id ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
-      : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   await ensureRoot();
   const dir = bookDir(id);
-  await mkdir(dir, { baseDir: BASE, recursive: true });
+  if (!(await exists(dir, { baseDir: BASE }))) {
+    await mkdir(dir, { baseDir: BASE, recursive: true });
+  }
 
   // Download the cover up front so the library card has something to
   // render without going back over the network on every list refresh.
   // Cover failure isn't fatal — the entry still works, just without a
   // thumbnail.
-  let coverFile: string | undefined;
-  if (novel.coverUrl) {
+  let coverFile: string | undefined = existing?.coverFile;
+  if (novel.coverUrl && !existing?.coverFile) {
     try {
       const host = createHost(sourceId);
       const bytes = await host.fetchBytes(novel.coverUrl);
@@ -546,19 +550,24 @@ export async function addNovelToLibrary(
     }
   }
 
+  // Persist the snapshot (volumes + chapters with downloadedAt/readAt
+  // carried over from any prior snapshot).
+  await writeSnapshotFromSourceNovel(id, sourceId, novelUrl, novel);
+
   const chapterCount = novel.volumes.reduce(
     (a, v) => a + v.chapters.length,
     0,
   );
 
   const entry: BookIndexEntry = {
+    ...(existing ?? {}),
     id,
     title: novel.title,
     author: novel.author,
     language: novel.language,
     chapterCount,
-    addedAt: Date.now(),
-    progress: 0,
+    addedAt: existing?.addedAt ?? Date.now(),
+    progress: existing?.progress ?? 0,
     kind: "source",
     sourceId,
     novelUrl,
@@ -567,7 +576,12 @@ export async function addNovelToLibrary(
   };
 
   const idx = await readIndex();
-  idx.books.push(entry);
+  const at = idx.books.findIndex((b) => b.id === id);
+  if (at === -1) {
+    idx.books.push(entry);
+  } else {
+    idx.books[at] = entry;
+  }
   await writeIndex(idx);
   return entry;
 }

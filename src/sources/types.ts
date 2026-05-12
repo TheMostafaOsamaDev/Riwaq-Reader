@@ -45,6 +45,18 @@ export interface SourceVolume {
   id: number;
   title: string;
   chapters: SourceChapter[];
+  /** Total chapter count when the source knows it before the chapters
+   *  themselves have been fetched. Used by the lazy-volume path: the
+   *  detail view can render a "(N chapters)" badge before expanding,
+   *  and the skeleton renders the right number of placeholder rows. */
+  chapterCount?: number;
+  /** Opaque source-specific token to identify this volume on a later
+   *  `getVolumeChapters` call. Required by sources that declare
+   *  `hasLazyVolumes` because our 1-based `id` doesn't always match
+   *  the source's internal volume numbering (e.g. cenele uses 0 for
+   *  the "no volumes" pseudo-volume; our id is monotonic). Sources
+   *  with eager chapter loading can leave this undefined. */
+  key?: string;
 }
 
 // ── novel header / card shapes ──────────────────────────────────────────────
@@ -219,9 +231,53 @@ export interface Source {
    *  which case `hasMore` should be false. */
   search?(query: string, page?: number): Promise<SourceSearchResult>;
 
+  /** Live as-you-type suggestion search. Sources that surface only an
+   *  inline-dropdown search (no separate results page) implement this and
+   *  leave `search` undefined — the store UI then runs a debounced
+   *  `searchSuggest` while the user types and shows results as a dropdown
+   *  beneath the input. Sources with both can drive the dropdown via
+   *  suggest and the full grid via search. Result count is whatever the
+   *  source returns (typically 5-10). */
+  searchSuggest?(query: string): Promise<NovelCard[]>;
+
+  /** True when this source's chapter listing is loaded per-volume on
+   *  demand: `getNovel` returns volumes with empty `chapters[]` arrays
+   *  (and `chapterCount` filled in when known), and the UI calls
+   *  `getVolumeChapters` to populate one volume at a time. False or
+   *  absent means `getNovel` returns fully-populated volumes. */
+  readonly hasLazyVolumes?: boolean;
+
   /** Full novel metadata + chapter listing (without chapter bodies). The
-   *  `url` here is the novel's index/series page URL (matches NovelCard.url). */
+   *  `url` here is the novel's index/series page URL (matches NovelCard.url).
+   *  When `hasLazyVolumes` is true, the returned volumes may have empty
+   *  `chapters[]` arrays; the UI calls `getVolumeChapters` for each
+   *  volume the user expands. */
   getNovel(url: string): Promise<SourceNovel>;
+
+  /** Populate the chapters of one volume. Required when
+   *  `hasLazyVolumes` is true; ignored otherwise. The `novelUrl`
+   *  argument is the same URL that was passed to `getNovel`, and the
+   *  `volume` argument is the SourceVolume the source returned from
+   *  that call (so the source can recover any opaque state stashed in
+   *  `volume.key`). Returns the chapters in source order. */
+  getVolumeChapters?(
+    novelUrl: string,
+    volume: SourceVolume,
+  ): Promise<SourceChapter[]>;
+
+  /** Search inside one novel's chapter list. Used for novels with too
+   *  many chapters to browse comfortably through the volumes accordion —
+   *  the detail view surfaces a chapter-search input above the accordion
+   *  when this method is present. `novelUrl` is the same URL that was
+   *  passed to getNovel() in this session, so the source can look up any
+   *  per-novel state it cached (manga ids, nonces, …). Returns chapter
+   *  stubs in the same shape `getNovel` populates the volumes with —
+   *  identity is via `.url`, not `.id`, since search results often span
+   *  volumes and a fresh id sequence wouldn't line up. */
+  searchChapters?(
+    novelUrl: string,
+    query: string,
+  ): Promise<SourceChapter[]>;
 
   /** Populate `lines` for one chapter. */
   getChapterContent(chapter: SourceChapter): Promise<SourceLine[]>;
