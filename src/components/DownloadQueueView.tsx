@@ -44,9 +44,21 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
     return off;
   }, []);
 
-  const active = jobs.filter(
-    (j) => j.status === "queued" || j.status === "running",
+  // Split active jobs by kind so conversions get their own section —
+  // they're slower (whole-novel scope) and produce a more dramatic
+  // outcome (one or more new library entries), so calling them out
+  // separately matches what the user expects when starting one.
+  const activeConversions = jobs.filter(
+    (j) =>
+      j.kind === "conversion" &&
+      (j.status === "queued" || j.status === "running"),
   );
+  const activeDownloads = jobs.filter(
+    (j) =>
+      j.kind === "chapter" &&
+      (j.status === "queued" || j.status === "running"),
+  );
+  const activeCount = activeConversions.length + activeDownloads.length;
   const recent = jobs
     .filter(
       (j) =>
@@ -105,7 +117,7 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
       >
         <Header
           theme={theme}
-          activeCount={active.length}
+          activeCount={activeCount}
           onClose={onClose}
           onClearCompleted={recent.length > 0 ? clearTerminals : undefined}
         />
@@ -117,7 +129,7 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
             padding: "8px 0 16px",
           }}
         >
-          {active.length === 0 && recent.length === 0 && (
+          {activeCount === 0 && recent.length === 0 && (
             <div
               style={{
                 padding: "40px 24px",
@@ -128,18 +140,30 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
               }}
             >
               No downloads yet. Tap the download icon on any chapter to
-              save it offline.
+              save it offline, or use "Save as offline book" from a
+              novel's detail page to bake it into your library.
             </div>
           )}
-          {active.length > 0 && (
-            <Section title="Active">
-              {active.map((j) => (
+          {activeConversions.length > 0 && (
+            <Section
+              title="Saving as offline book"
+              tone="accent"
+              theme={theme}
+            >
+              {activeConversions.map((j) => (
+                <JobRow key={j.id} theme={theme} job={j} />
+              ))}
+            </Section>
+          )}
+          {activeDownloads.length > 0 && (
+            <Section title="Downloading chapters" theme={theme}>
+              {activeDownloads.map((j) => (
                 <JobRow key={j.id} theme={theme} job={j} />
               ))}
             </Section>
           )}
           {recent.length > 0 && (
-            <Section title="Recent">
+            <Section title="Recent" theme={theme}>
               {recent.map((j) => (
                 <JobRow key={j.id} theme={theme} job={j} />
               ))}
@@ -240,22 +264,54 @@ function Header({ theme, activeCount, onClose, onClearCompleted }: HeaderProps) 
 function Section({
   title,
   children,
+  tone,
+  theme,
 }: {
   title: string;
   children: React.ReactNode;
+  /** "accent" gives the section a tinted band so it visually
+   *  separates from regular chapter-download rows. Used for the
+   *  Conversions group — the user just kicked off a big
+   *  whole-novel operation and the queue page should reflect
+   *  that visually. */
+  tone?: "accent";
+  theme: Theme;
 }) {
+  const accent = tone === "accent";
   return (
-    <div style={{ marginTop: 8 }}>
+    <div
+      style={{
+        marginTop: 8,
+        ...(accent
+          ? {
+              background: theme.chrome,
+              borderTop: `0.5px solid ${theme.rule}`,
+              borderBottom: `0.5px solid ${theme.rule}`,
+            }
+          : null),
+      }}
+    >
       <h3
         style={{
           margin: "10px 18px 6px",
           fontSize: 11,
-          fontWeight: 600,
+          fontWeight: 700,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
-          opacity: 0.6,
+          color: accent ? theme.ink : theme.muted,
+          opacity: accent ? 0.85 : 0.6,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
         }}
       >
+        {accent && (
+          <Icon
+            name="bookmark"
+            size={12}
+            style={{ color: theme.ink, opacity: 0.85 }}
+          />
+        )}
         {title}
       </h3>
       {children}
@@ -301,9 +357,9 @@ function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
-          title={job.chapterTitle}
+          title={subtitleFor(job)}
         >
-          {job.chapterTitle}
+          {subtitleFor(job)}
         </div>
         <div style={{ marginTop: 6 }}>
           <ProgressBar theme={theme} job={job} />
@@ -380,12 +436,32 @@ function describe(job: DownloadJob): string {
     case "queued":
       return "Waiting…";
     case "running":
+      // Conversion jobs carry a free-form `phase` label that's more
+      // useful than a bare percentage ("Building EPUB" / "Saving to
+      // library" / "Fetching chapter 47 / 213"). For chapter jobs we
+      // just show the percent.
+      if (job.kind === "conversion") {
+        return `${job.phase} · ${Math.round(job.progress * 100)}%`;
+      }
       return `${Math.round(job.progress * 100)}%`;
     case "done":
+      if (job.kind === "conversion") {
+        const n = job.producedEntryIds.length;
+        return n === 1 ? "Saved 1 book" : `Saved ${n} books`;
+      }
       return "Downloaded";
     case "error":
       return `Failed: ${job.error ?? "unknown error"}`;
     case "cancelled":
       return "Cancelled";
   }
+}
+
+/** Second line of each row: chapter title for chapter jobs, mode
+ *  description for conversion jobs. */
+function subtitleFor(job: DownloadJob): string {
+  if (job.kind === "chapter") return job.chapterTitle;
+  return job.mode === "single"
+    ? "Save as one book"
+    : "Save each volume as its own book";
 }

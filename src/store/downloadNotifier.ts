@@ -31,6 +31,11 @@ const NOTIFICATION_ID = 1001;
 
 interface Snapshot {
   active: number;
+  /** Subset of `active` whose kind is "conversion". Drives the
+   *  notification title — a conversion is a bigger deal than a
+   *  chapter download (whole-novel scope, lands new library entries)
+   *  so the user gets a clearer label when one is in flight. */
+  activeConversions: number;
   done: number;
   error: number;
   cancelled: number;
@@ -73,11 +78,14 @@ function summarize(jobs: DownloadJob[]): Snapshot {
   let done = 0;
   let error = 0;
   let cancelled = 0;
+  let activeConversions = 0;
   let lastTerminal: DownloadJob | null = null;
   let lastTerminalTs = 0;
   for (const j of jobs) {
-    if (j.status === "queued" || j.status === "running") active++;
-    else if (j.status === "done") done++;
+    if (j.status === "queued" || j.status === "running") {
+      active++;
+      if (j.kind === "conversion") activeConversions++;
+    } else if (j.status === "done") done++;
     else if (j.status === "error") error++;
     else if (j.status === "cancelled") cancelled++;
     if (
@@ -93,6 +101,7 @@ function summarize(jobs: DownloadJob[]): Snapshot {
   }
   return {
     active,
+    activeConversions,
     done,
     error,
     cancelled,
@@ -116,28 +125,42 @@ async function publish(snap: Snapshot) {
   const liveTotal = snap.active + completedThisBurst;
   if (liveTotal > burstTotal) burstTotal = liveTotal;
 
-  // Compose what to display.
+  // Compose what to display. A conversion in flight gets first
+  // billing — it's whole-novel work that produces a library entry,
+  // versus chapter downloads which are per-row.
   let title: string;
   let body: string;
   if (snap.active > 0) {
     summaryShown = false;
-    title = "Downloading chapters";
-    body = `${completedThisBurst} of ${burstTotal} done`;
+    if (snap.activeConversions > 0) {
+      title = "Saving as offline book";
+      // Use the latest running conversion's phase as the body so
+      // the user gets "Fetching chapter 47 / 213" or "Building
+      // EPUB" rather than a bare percentage. Falls back to a
+      // generic burst tally when phase is empty.
+      const runningConversion = findRunningConversion();
+      body = runningConversion?.phase
+        ? `${runningConversion.phase} · ${Math.round(runningConversion.progress * 100)}%`
+        : `${completedThisBurst} of ${burstTotal} jobs done`;
+    } else {
+      title = "Downloading chapters";
+      body = `${completedThisBurst} of ${burstTotal} done`;
+    }
   } else {
     if (summaryShown) return;
     summaryShown = true;
     if (snap.error > 0 || snap.cancelled > 0) {
-      title = "Chapter downloads finished";
+      title = "Background work finished";
       const bits: string[] = [];
-      if (snap.done > 0) bits.push(`${snap.done} downloaded`);
+      if (snap.done > 0) bits.push(`${snap.done} completed`);
       if (snap.error > 0) bits.push(`${snap.error} failed`);
       if (snap.cancelled > 0) bits.push(`${snap.cancelled} cancelled`);
       body = bits.join(" · ");
     } else {
-      title = "Downloads complete";
+      title = "All done";
       body = snap.done === 1
-        ? `1 chapter downloaded`
-        : `${snap.done} chapters downloaded`;
+        ? `1 job complete`
+        : `${snap.done} jobs complete`;
     }
   }
 
@@ -183,6 +206,19 @@ async function ensurePermission(): Promise<void> {
     }
   })();
   await permissionInflight;
+}
+
+/** Find the conversion job that's currently running, if any. Used by
+ *  the notification body so the phase text reads naturally rather
+ *  than a bare burst tally. */
+function findRunningConversion() {
+  const jobs = getState().jobs;
+  for (const j of jobs) {
+    if (j.kind !== "conversion") continue;
+    if (j.status !== "running") continue;
+    return j;
+  }
+  return null;
 }
 
 /** Test helper: snapshot the current queue state into a notification.
