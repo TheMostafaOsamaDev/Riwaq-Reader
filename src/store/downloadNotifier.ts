@@ -32,6 +32,8 @@
 // normal alert — this is the user-visible "your work is done" cue.
 
 import {
+  createChannel,
+  Importance,
   isPermissionGranted,
   requestPermission,
   sendNotification,
@@ -46,6 +48,38 @@ import {
 /** Stable id so subsequent sends replace the previous notification on
  *  Android instead of stacking. (iOS reuses by id too.) */
 const NOTIFICATION_ID = 1001;
+
+/** Channel id used by every download/conversion notification. We
+ *  register the channel with Importance.LOW on first use so updates
+ *  never show heads-up — Android otherwise re-renders the heads-up
+ *  overlay on every body change, which reads as a blink at chapter
+ *  boundaries. The channel only exists on Android; the createChannel
+ *  call is a no-op everywhere else. */
+const CHANNEL_ID = "leaflet-downloads";
+let channelRegistered = false;
+
+async function ensureChannel(): Promise<void> {
+  if (channelRegistered) return;
+  try {
+    await createChannel({
+      id: CHANNEL_ID,
+      name: "Downloads",
+      description: "Chapter downloads and offline-book conversions",
+      importance: Importance.Low,
+      lights: false,
+      vibration: false,
+    });
+    channelRegistered = true;
+  } catch (e) {
+    // Plugin throws on non-Android platforms (channels are
+    // Android-only) — that's fine, sendNotification still works
+    // without a channel. Mark registered so we don't keep
+    // retrying.
+    channelRegistered = true;
+    // eslint-disable-next-line no-console
+    console.warn("[downloadNotifier] createChannel skipped:", e);
+  }
+}
 
 interface Snapshot {
   active: number;
@@ -212,6 +246,7 @@ async function publish(snap: Snapshot) {
   try {
     sendNotification({
       id: NOTIFICATION_ID,
+      channelId: CHANNEL_ID,
       title,
       body,
       // In-progress: ongoing so Android marks the notification as
@@ -285,10 +320,12 @@ async function ensurePermission(): Promise<void> {
     try {
       if (await isPermissionGranted()) {
         permissionState = "granted";
+        await ensureChannel();
         return;
       }
       const next = await requestPermission();
       permissionState = next === "granted" ? "granted" : "denied";
+      if (permissionState === "granted") await ensureChannel();
     } catch (e) {
       // Plugin or capability missing → don't keep retrying.
       // eslint-disable-next-line no-console
