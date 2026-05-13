@@ -448,6 +448,46 @@ export function Library({
   const [queueOpen, setQueueOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // When a "Save as offline book" conversion finishes, one or more
+  // brand-new library entries have just landed via importEpubBytes —
+  // without refreshing here the user has to leave the library and
+  // come back to see them. Subscribing once at the parent + diffing
+  // terminal-conversion timestamps keeps the side-effect surface
+  // small.
+  useEffect(() => {
+    let lastConversionTerminalTs = 0;
+    // Seed from current state so a conversion that finished BEFORE
+    // mount doesn't trigger a spurious refresh.
+    for (const j of getQueueState().jobs) {
+      if (
+        j.kind === "conversion" &&
+        (j.status === "done" ||
+          j.status === "error" ||
+          j.status === "cancelled") &&
+        j.updatedAt > lastConversionTerminalTs
+      ) {
+        lastConversionTerminalTs = j.updatedAt;
+      }
+    }
+    const off = subscribeToQueue((s) => {
+      let newestTerminal = lastConversionTerminalTs;
+      let triggered = false;
+      for (const j of s.jobs) {
+        if (j.kind !== "conversion") continue;
+        if (j.status !== "done") continue;
+        if (j.updatedAt > lastConversionTerminalTs) {
+          triggered = true;
+          if (j.updatedAt > newestTerminal) newestTerminal = j.updatedAt;
+        }
+      }
+      if (triggered) {
+        lastConversionTerminalTs = newestTerminal;
+        void refresh();
+      }
+    });
+    return off;
+  }, [refresh]);
+
   const layoutCommonProps = {
     theme,
     books,
