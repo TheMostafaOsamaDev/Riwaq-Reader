@@ -1046,12 +1046,12 @@ function MobileLibrary({
         paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
-      {/* Top header — title + filter tabs. Hidden inside the source
-          detail view (NovelDetailView has its own header with a back
-          arrow). The Store tab is omitted from the pills since the
-          bottom nav owns Store toggling. Action buttons live in the
-          bottom nav, so the right side of the title row is empty. */}
-      {!sourceDetailView && (
+      {/* Top header — title + filter tabs. Only on the shelf. The
+          Store tab swaps in its own back-arrow header below. The
+          source detail view (NovelDetailView) brings its own header
+          with a back arrow. Action buttons live in the bottom nav,
+          so the right side of the title row is empty. */}
+      {!sourceDetailView && tab !== "store" && (
         <div
           style={{
             display: "flex",
@@ -1107,12 +1107,27 @@ function MobileLibrary({
           />
         </div>
       ) : tab === "store" ? (
-        <Store
-          theme={theme}
-          layout="mobile"
-          onStreamRead={onStreamRead}
-          onImportComplete={onSourceImportComplete}
-        />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <BackHeader
+            theme={theme}
+            title="Store"
+            onBack={() => setTab("all")}
+          />
+          <Store
+            theme={theme}
+            layout="mobile"
+            onStreamRead={onStreamRead}
+            onImportComplete={onSourceImportComplete}
+          />
+        </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
@@ -1298,6 +1313,64 @@ interface MobileBottomNavProps {
  *  indicator by way of the safe-area inset the outer wrapper
  *  already provides.
  */
+interface BackHeaderProps {
+  theme: Theme;
+  title: string;
+  onBack: () => void;
+}
+
+/** Thin back-arrow header used by mobile inner pages (Store, future
+ *  side-pages) when the shelf-mode Library header would be misleading.
+ *  Visual matches NovelDetailView's header: 34px outlined circle with
+ *  the arrowL glyph, label fills the rest of the row. The wrapping
+ *  border-bottom keeps the row visually separated from the body
+ *  underneath. */
+function BackHeader({ theme, title, onBack }: BackHeaderProps) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "16px 18px 12px",
+        borderBottom: `0.5px solid ${theme.rule}`,
+        flexShrink: 0,
+      }}
+    >
+      <button
+        onClick={onBack}
+        aria-label="Back to library"
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          border: `0.5px solid ${theme.rule}`,
+          background: theme.bg,
+          color: theme.ink,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          fontFamily: "inherit",
+        }}
+      >
+        <Icon name="arrowL" size={16} />
+      </button>
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          letterSpacing: "-0.005em",
+          color: theme.ink,
+        }}
+      >
+        {title}
+      </div>
+    </div>
+  );
+}
+
 interface MobileTabRowProps {
   theme: Theme;
   tab: LibraryTab;
