@@ -276,14 +276,23 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
     summaryShown = false;
     if (snap.activeConversions > 0) {
       const runningConversion = findRunningConversion();
-      const body = runningConversion?.phase
-        ? `${runningConversion.phase} · ${Math.round(runningConversion.progress * 100)}%`
-        : `${completedThisBurst} of ${burstTotal} jobs done`;
+      let body: string;
+      if (runningConversion) {
+        const pct = Math.round(runningConversion.progress * 100);
+        const bar = renderBar(runningConversion.progress);
+        body = runningConversion.phase
+          ? `${runningConversion.phase}\n${bar}  ${pct}%`
+          : `${bar}  ${pct}%`;
+      } else {
+        body = `${completedThisBurst} of ${burstTotal} jobs done`;
+      }
       return { title: "Saving as offline book", body };
     }
+    const fraction =
+      burstTotal > 0 ? completedThisBurst / burstTotal : 0;
     return {
       title: "Downloading chapters",
-      body: `${completedThisBurst} of ${burstTotal} done`,
+      body: `${renderBar(fraction)}  ${Math.round(fraction * 100)}% · ${completedThisBurst} of ${burstTotal}`,
     };
   }
   if (summaryShown) return null;
@@ -336,6 +345,22 @@ async function ensurePermission(): Promise<void> {
     }
   })();
   await permissionInflight;
+}
+
+/** Unicode block-character progress bar for the notification body.
+ *  10-cell width — narrow enough to fit beside the counter on
+ *  phone-width notification rows while still showing visible
+ *  granularity (10% increments). The full block U+2588 + light
+ *  shade U+2591 render correctly in every Android system font
+ *  shipped since 2016.
+ *
+ *  Returns "" for invalid progress so callers can `${renderBar(p)}`
+ *  unconditionally without weird empty bars when math goes wrong. */
+function renderBar(progress: number, width = 10): string {
+  if (!Number.isFinite(progress) || progress < 0) return "";
+  const clamped = Math.min(1, progress);
+  const filled = Math.round(clamped * width);
+  return "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
 }
 
 /** Find the conversion job that's currently running, if any. Used by
