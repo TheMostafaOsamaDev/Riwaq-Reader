@@ -6,6 +6,7 @@ import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { SourceStreamReader } from "./components/SourceStreamReader";
 import { startDownloadNotifier } from "./store/downloadNotifier";
+import { loadPersistedQueue } from "./store/downloadQueue";
 import type { EpubBook } from "./epub/types";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
@@ -88,7 +89,15 @@ function App() {
   // Idempotent — subsequent calls are no-ops, so React 18 dev
   // re-mount doesn't double-subscribe.
   useEffect(() => {
-    startDownloadNotifier();
+    // Restore any jobs that were in flight when the app last died.
+    // The function is idempotent. Order matters: load BEFORE the
+    // notifier subscribes so the initial emit (which marks
+    // interrupted jobs) doesn't trigger a notification flurry on
+    // launch.
+    (async () => {
+      await loadPersistedQueue();
+      startDownloadNotifier();
+    })();
   }, []);
 
   const openBook = useCallback(async (id: string) => {
