@@ -11,8 +11,9 @@
 //
 //   enqueue / cancel / subscribe / getState
 //       Module-scoped queue with workers. Jobs progress through
-//       "queued → running → done | error | cancelled". UIs subscribe
-//       for state updates and pump the queue indirectly by enqueuing.
+//       "queued → running → done | error | cancelled | interrupted".
+//       UIs subscribe for state updates and pump the queue indirectly
+//       by enqueuing.
 //
 // Workers run with bounded concurrency. Cancellation is cooperative:
 // a job already started keeps going until its current fetch resolves
@@ -20,11 +21,26 @@
 // discarded if the user cancelled before completion. Queued-but-not-
 // started jobs are removed immediately.
 //
-// The state list is intentionally bounded — finished jobs evict from
-// the tail once we cross a high-water mark so the queue page doesn't
-// grow forever. The bookkeeping isn't a long-term audit log; it's an
-// in-session view.
+// Persistence. The queue state is mirrored to
+// $APPDATA/leaflet/downloadQueue.json on every transition (debounced)
+// so jobs survive an app kill. On load, anything that was queued or
+// running is reclassified as "interrupted" so the user can decide
+// whether to resume (Retry button) — we don't auto-pump on load
+// because a source that's gone offline would otherwise hammer the
+// network as soon as the app launched.
+//
+// The state list is bounded — finished jobs evict from the tail once
+// we cross a high-water mark so the queue page doesn't grow forever.
+// The bookkeeping isn't a long-term audit log; it's an
+// in-session view (plus enough to recover from a crash).
 
+import {
+  BaseDirectory,
+  exists,
+  mkdir,
+  readTextFile,
+  writeTextFile,
+} from "@tauri-apps/plugin-fs";
 import {
   markChapterDownloaded,
   readSnapshot,
@@ -35,6 +51,10 @@ import { createHost } from "../sources/host";
 import { getSource } from "../sources/registry";
 import type { SourceChapter, SourceLine } from "../sources/types";
 
+const BASE = BaseDirectory.AppData;
+const ROOT = "leaflet";
+const QUEUE_FILE = `${ROOT}/downloadQueue.json`;
+
 // ── public job shape ───────────────────────────────────────────────────────
 
 export type DownloadJobStatus =
@@ -42,7 +62,12 @@ export type DownloadJobStatus =
   | "running"
   | "done"
   | "error"
-  | "cancelled";
+  | "cancelled"
+  /** Assigned at boot to jobs that were queued or running when the
+   *  app last died. Visible in the queue UI with a Retry button —
+   *  the user decides whether to resume. We don't auto-resume so a
+   *  source that's gone offline can't loop on launch. */
+  | "interrupted";
 
 /** Fields every queue entry carries regardless of what kind of work
  *  it represents. Kept on a base interface so the discriminated union
@@ -113,8 +138,97 @@ const cancelled = new Set<string>();
 let runningCount = 0;
 let nextId = 1;
 
+/** Debounce window for disk writes. Each emit() queues a save; if
+ *  another emit lands within this window, the previous save is
+ *  cancelled and the latest state wins. Avoids hammering the FS
+ *  during a multi-step run. */
+const PERSIST_DEBOUNCE_MS = 250;
+let pendingPersistTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped each time we kick off a save so a stale debounced
+ *  callback doesn't overwrite a newer state if writes serialize
+ *  out of order. */
+let persistSequence = 0;
+let persistLoaded = false;
+
 function emit() {
   for (const l of listeners) l(state);
+  schedulePersist();
+}
+
+function schedulePersist() {
+  if (!persistLoaded) return; // never overwrite the disk before load
+  if (pendingPersistTimer) clearTimeout(pendingPersistTimer);
+  pendingPersistTimer = setTimeout(() => {
+    pendingPersistTimer = null;
+    void persist();
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+async function persist(): Promise<void> {
+  const mySeq = ++persistSequence;
+  // Take a structural snapshot so a concurrent setStatus mutation
+  // doesn't corrupt mid-stringify. We drop `running` jobs back to
+  // `queued` for the persisted view because a process that died
+  // mid-write leaves disk in a state where "running" doesn't make
+  // sense — the worker is gone.
+  const persisted = {
+    version: 1 as const,
+    jobs: state.jobs.map((j) => ({
+      ...j,
+      status: j.status === "running" ? "queued" : j.status,
+    })),
+  };
+  const text = JSON.stringify(persisted);
+  try {
+    if (!(await exists(ROOT, { baseDir: BASE }))) {
+      await mkdir(ROOT, { baseDir: BASE, recursive: true });
+    }
+    if (mySeq !== persistSequence) return; // a newer save started
+    await writeTextFile(QUEUE_FILE, text, { baseDir: BASE });
+  } catch (e) {
+    // Persistence failure shouldn't crash the queue — the user
+    // just loses crash-recovery for the current job set.
+    // eslint-disable-next-line no-console
+    console.warn("[downloadQueue] persist failed:", e);
+  }
+}
+
+/** Read the persisted queue (if any) and merge it into the in-memory
+ *  state. Should be called once on app start before any subscribers
+ *  attach. Jobs that were `queued` or `running` at last shutdown are
+ *  reclassified as `interrupted` so the user explicitly opts back in
+ *  via Retry. Idempotent. */
+export async function loadPersistedQueue(): Promise<void> {
+  if (persistLoaded) return;
+  persistLoaded = true;
+  try {
+    if (!(await exists(QUEUE_FILE, { baseDir: BASE }))) return;
+    const raw = await readTextFile(QUEUE_FILE, { baseDir: BASE });
+    const parsed = JSON.parse(raw) as { version: number; jobs: DownloadJob[] };
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) return;
+    for (const j of parsed.jobs) {
+      // Reclassify in-flight statuses as interrupted. Terminal
+      // statuses (done / error / cancelled) carry forward as-is so
+      // the user keeps their burst history.
+      if (j.status === "queued" || j.status === "running") {
+        j.status = "interrupted";
+        // Wipe any stale error from a prior interrupted load.
+        delete (j as { error?: string }).error;
+      }
+      state.jobs.push(j);
+      // Bump the id counter past anything we loaded so new jobs
+      // don't collide with restored ones.
+      const m = j.id.match(/^dl-(\d+)/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (!Number.isNaN(n) && n >= nextId) nextId = n + 1;
+      }
+    }
+    emit();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[downloadQueue] load failed:", e);
+  }
 }
 
 function genId(): string {
@@ -260,6 +374,40 @@ export function clearTerminals() {
     (j) => j.status === "queued" || j.status === "running",
   );
   emit();
+}
+
+/** Re-queue an interrupted job. The worker decides what to skip via
+ *  the kind-specific resume hooks (e.g. ConversionJob's
+ *  producedEntryIds tells the conversion worker which volumes are
+ *  already on disk). Idempotent — calling on a non-interrupted job
+ *  is a no-op. */
+export function retry(jobId: string): void {
+  const job = findJob(jobId);
+  if (!job) return;
+  if (job.status !== "interrupted" && job.status !== "error") return;
+  // Reset error message; the worker will set a fresh one if it
+  // fails again.
+  delete (job as { error?: string }).error;
+  // Don't reset progress to 0 — conversion jobs use producedEntryIds
+  // to skip work, so the bar should resume near where it was.
+  // Chapter jobs are atomic, so progress will start fresh once
+  // setStatus → running fires inside pump.
+  setStatus(job, "queued");
+  pump();
+}
+
+/** Re-queue every job that's currently interrupted or errored.
+ *  Used by the queue page's "Retry all" affordance. */
+export function retryAll(): void {
+  for (const j of state.jobs) {
+    if (j.status === "interrupted" || j.status === "error") {
+      delete (j as { error?: string }).error;
+      j.status = "queued";
+      j.updatedAt = Date.now();
+    }
+  }
+  emit();
+  pump();
 }
 
 export function subscribe(listener: Listener): () => void {
