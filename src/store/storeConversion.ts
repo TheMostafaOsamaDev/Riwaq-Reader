@@ -105,19 +105,52 @@ export async function runConversion(
     );
   }
 
-  // Build a flat ordered chapter list. Skip any volumes whose
-  // listing isn't loaded yet — the user is expected to either let
-  // the dialog pre-load them or open the volumes manually. Skipping
-  // is safer than fetching here because lazy-volume fetches can
-  // multiply network load unpredictably mid-conversion.
-  const orderedVolumes = snap.volumes.filter(
-    (v) => v.chaptersLoaded !== false || v.chapters.length > 0,
-  );
-  if (orderedVolumes.length === 0) {
-    throw new Error(
-      "No chapter listings are loaded for this novel. Open the volumes in the detail view (or use Download Range) before converting.",
+  // Pre-load any unloaded volumes (Cenele-style lazy sources start
+  // with empty chapters[] on every volume except the one the user
+  // expanded in the detail view). The filter we used to apply here
+  // silently dropped those volumes, which let conversions ship
+  // incomplete novels. Now we fetch every missing volume up front
+  // and persist via setVolumeChapters so the snapshot reflects what
+  // we have, then proceed with the full ordered list.
+  let workingSnap = snap;
+  if (source.hasLazyVolumes && source.getVolumeChapters) {
+    const missing = workingSnap.volumes.filter(
+      (v) => v.chaptersLoaded === false && v.chapters.length === 0,
     );
+    if (missing.length > 0) {
+      const { setVolumeChapters, snapshotToSourceNovel, readSnapshot: rereadSnapshot } =
+        await import("./sourceLibrary");
+      const novelForFetch = snapshotToSourceNovel(workingSnap);
+      for (let i = 0; i < missing.length; i++) {
+        if (isCancelled()) return;
+        const persisted = missing[i];
+        const sourceVol = novelForFetch.volumes.find(
+          (v) => v.id === persisted.id,
+        );
+        if (!sourceVol) continue;
+        onProgress(
+          0.01 + 0.04 * (i / missing.length),
+          `Loading volume ${i + 1} / ${missing.length}: ${persisted.title}`,
+        );
+        const chapters = await source.getVolumeChapters(
+          workingSnap.novelUrl,
+          sourceVol,
+        );
+        await setVolumeChapters(job.libraryEntryId, persisted.id, chapters);
+      }
+      if (isCancelled()) return;
+      const refreshed = await rereadSnapshot(job.libraryEntryId);
+      if (refreshed) workingSnap = refreshed;
+    }
   }
+
+  // After preload, ANY volume with chapters is fair game. Volumes
+  // that still have empty chapters[] at this point come from sources
+  // that don't support lazy loading + were genuinely empty upstream
+  // (e.g. a "no volumes" pseudo-volume on a novel with zero chapters).
+  const orderedVolumes = workingSnap.volumes.filter(
+    (v) => v.chapters.length > 0,
+  );
   const flat = orderedVolumes.flatMap((v) =>
     v.chapters.map((c) => ({ volumeId: v.id, volumeTitle: v.title, chapter: c })),
   );
@@ -127,7 +160,7 @@ export async function runConversion(
 
   // ── enrichment pass: read content from disk or fetch from source ──────
   const enriched: EnrichedChapter[] = [];
-  const host = createHost(snap.sourceId);
+  const host = createHost(workingSnap.sourceId);
   for (let i = 0; i < flat.length; i++) {
     if (isCancelled()) return;
     const fc = flat[i];
@@ -146,7 +179,7 @@ export async function runConversion(
   if (job.mode === "single") {
     onProgress(0.78, "Building EPUB");
     const bytes = await assembleSingleEpub(
-      snap,
+      workingSnap,
       enriched,
       cover,
       host,
@@ -157,7 +190,7 @@ export async function runConversion(
     onProgress(0.96, "Saving to library");
     const entry = await importEpubBytes(bytes);
     job.producedEntryIds.push(entry.id);
-    onProgress(1, `Saved "${entry.title ?? snap.title}"`);
+    onProgress(1, `Saved "${entry.title ?? workingSnap.title}"`);
     return;
   }
 
@@ -191,7 +224,7 @@ export async function runConversion(
       `Building volume ${i + 1} / ${nVolumes}`,
     );
     const bytes = await assembleVolumeEpub(
-      snap,
+      workingSnap,
       g.items,
       g.volumeTitle,
       cover,
