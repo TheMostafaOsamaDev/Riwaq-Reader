@@ -169,7 +169,19 @@ export async function runConversion(
     if (items.length > 0) groups.push({ volumeTitle: v.title, items });
   }
   const nVolumes = groups.length;
-  for (let i = 0; i < nVolumes; i++) {
+  // Resume support: a retried job may already have produced some
+  // library entries before being interrupted. Skip those positions
+  // and pick up at the next volume. The producedEntryIds list is
+  // ordered by emission, so its length is the highest already-saved
+  // volume index.
+  const alreadyProduced = job.producedEntryIds.length;
+  if (alreadyProduced > 0) {
+    onProgress(
+      0.78 + 0.18 * (alreadyProduced / nVolumes),
+      `Resuming at volume ${alreadyProduced + 1} / ${nVolumes}`,
+    );
+  }
+  for (let i = alreadyProduced; i < nVolumes; i++) {
     if (isCancelled()) return;
     const g = groups[i];
     const fraction = i / nVolumes;

@@ -19,6 +19,8 @@ import {
   cancel as cancelJob,
   clearTerminals,
   getState as getQueueState,
+  retry as retryJob,
+  retryAll,
   subscribe as subscribeToQueue,
   type DownloadJob,
 } from "../store/downloadQueue";
@@ -58,6 +60,9 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
       j.kind === "chapter" &&
       (j.status === "queued" || j.status === "running"),
   );
+  const interrupted = jobs
+    .filter((j) => j.status === "interrupted")
+    .sort((a, b) => b.updatedAt - a.updatedAt);
   const activeCount = activeConversions.length + activeDownloads.length;
   const recent = jobs
     .filter(
@@ -118,6 +123,7 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
         <Header
           theme={theme}
           activeCount={activeCount}
+          interruptedCount={interrupted.length}
           onClose={onClose}
           onClearCompleted={recent.length > 0 ? clearTerminals : undefined}
         />
@@ -129,20 +135,45 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
             padding: "8px 0 16px",
           }}
         >
-          {activeCount === 0 && recent.length === 0 && (
-            <div
-              style={{
-                padding: "40px 24px",
-                textAlign: "center",
-                color: theme.muted,
-                fontSize: 13,
-                lineHeight: 1.6,
-              }}
+          {activeCount === 0 &&
+            interrupted.length === 0 &&
+            recent.length === 0 && (
+              <div
+                style={{
+                  padding: "40px 24px",
+                  textAlign: "center",
+                  color: theme.muted,
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                }}
+              >
+                No downloads yet. Tap the download icon on any chapter
+                to save it offline, or use "Save as offline book" from
+                a novel's detail page to bake it into your library.
+              </div>
+            )}
+          {interrupted.length > 0 && (
+            <Section
+              title="Interrupted"
+              tone="warn"
+              theme={theme}
+              action={
+                interrupted.length > 1 ? (
+                  <Button
+                    theme={theme}
+                    variant="ghost"
+                    size="sm"
+                    onClick={retryAll}
+                  >
+                    Retry all
+                  </Button>
+                ) : null
+              }
             >
-              No downloads yet. Tap the download icon on any chapter to
-              save it offline, or use "Save as offline book" from a
-              novel's detail page to bake it into your library.
-            </div>
+              {interrupted.map((j) => (
+                <JobRow key={j.id} theme={theme} job={j} />
+              ))}
+            </Section>
           )}
           {activeConversions.length > 0 && (
             <Section
@@ -180,13 +211,20 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
 interface HeaderProps {
   theme: Theme;
   activeCount: number;
+  interruptedCount: number;
   onClose: () => void;
   /** Present when there's something to clear. Undefined hides the
    *  button rather than rendering a disabled one. */
   onClearCompleted?: () => void;
 }
 
-function Header({ theme, activeCount, onClose, onClearCompleted }: HeaderProps) {
+function Header({
+  theme,
+  activeCount,
+  interruptedCount,
+  onClose,
+  onClearCompleted,
+}: HeaderProps) {
   return (
     <div
       style={{
@@ -243,11 +281,15 @@ function Header({ theme, activeCount, onClose, onClearCompleted }: HeaderProps) 
             fontWeight: 500,
           }}
         >
-          {activeCount === 0
-            ? "All caught up"
-            : activeCount === 1
-              ? "1 in progress"
-              : `${activeCount} in progress`}
+          {interruptedCount > 0
+            ? `${interruptedCount} interrupted${
+                activeCount > 0 ? ` · ${activeCount} in progress` : ""
+              }`
+            : activeCount === 0
+              ? "All caught up"
+              : activeCount === 1
+                ? "1 in progress"
+                : `${activeCount} in progress`}
         </div>
       </div>
       {onClearCompleted && (
@@ -266,18 +308,22 @@ function Section({
   children,
   tone,
   theme,
+  action,
 }: {
   title: string;
   children: React.ReactNode;
-  /** "accent" gives the section a tinted band so it visually
-   *  separates from regular chapter-download rows. Used for the
-   *  Conversions group — the user just kicked off a big
-   *  whole-novel operation and the queue page should reflect
-   *  that visually. */
-  tone?: "accent";
+  /** "accent" — tinted band for the Conversions group. "warn" —
+   *  red-tinted band for the Interrupted group (jobs the user
+   *  needs to act on). Default — neutral, used for Active downloads
+   *  + Recent. */
+  tone?: "accent" | "warn";
   theme: Theme;
+  /** Optional right-aligned action button in the section header
+   *  (e.g. "Retry all" for the Interrupted section). */
+  action?: React.ReactNode;
 }) {
   const accent = tone === "accent";
+  const warn = tone === "warn";
   return (
     <div
       style={{
@@ -289,31 +335,56 @@ function Section({
               borderBottom: `0.5px solid ${theme.rule}`,
             }
           : null),
+        ...(warn
+          ? {
+              background: "rgba(180,90,50,0.08)",
+              borderTop: "0.5px solid rgba(180,90,50,0.35)",
+              borderBottom: "0.5px solid rgba(180,90,50,0.35)",
+            }
+          : null),
       }}
     >
-      <h3
+      <div
         style={{
-          margin: "10px 18px 6px",
-          fontSize: 11,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          color: accent ? theme.ink : theme.muted,
-          opacity: accent ? 0.85 : 0.6,
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: 8,
+          margin: "10px 18px 6px",
         }}
       >
-        {accent && (
-          <Icon
-            name="bookmark"
-            size={12}
-            style={{ color: theme.ink, opacity: 0.85 }}
-          />
-        )}
-        {title}
-      </h3>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: warn ? "#b75050" : accent ? theme.ink : theme.muted,
+            opacity: accent || warn ? 0.9 : 0.6,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flex: 1,
+          }}
+        >
+          {accent && (
+            <Icon
+              name="bookmark"
+              size={12}
+              style={{ color: theme.ink, opacity: 0.85 }}
+            />
+          )}
+          {warn && (
+            <Icon
+              name="info"
+              size={12}
+              style={{ color: "#b75050" }}
+            />
+          )}
+          {title}
+        </h3>
+        {action}
+      </div>
       {children}
     </div>
   );
@@ -401,6 +472,33 @@ function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
           <Icon name="close" size={14} />
         </button>
       )}
+      {job.status === "interrupted" && (
+        <button
+          onClick={() => retryJob(job.id)}
+          title="Retry"
+          aria-label="Retry"
+          style={{
+            background: theme.ink,
+            border: "none",
+            borderRadius: 18,
+            height: 34,
+            padding: "0 14px",
+            color: theme.bg,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            flexShrink: 0,
+            fontFamily: "inherit",
+            fontSize: 12.5,
+            fontWeight: 500,
+          }}
+        >
+          <Icon name="download" size={12} />
+          Retry
+        </button>
+      )}
     </div>
   );
 }
@@ -454,6 +552,14 @@ function describe(job: DownloadJob): string {
       return `Failed: ${job.error ?? "unknown error"}`;
     case "cancelled":
       return "Cancelled";
+    case "interrupted":
+      // Distinguish conversion mid-flight (some volumes already
+      // produced) from a freshly-interrupted chapter download.
+      if (job.kind === "conversion" && job.producedEntryIds.length > 0) {
+        const n = job.producedEntryIds.length;
+        return `Interrupted — ${n} book${n === 1 ? "" : "s"} already saved`;
+      }
+      return "Interrupted — tap Retry to resume";
   }
 }
 

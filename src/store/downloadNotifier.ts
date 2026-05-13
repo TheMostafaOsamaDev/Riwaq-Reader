@@ -12,6 +12,24 @@
 // We don't push true Android progress bars; the Tauri notification
 // plugin doesn't expose them. Body text counts are close enough for
 // "how many of how many are done" feedback.
+//
+// Anti-blink contract. The queue can emit dozens of state changes per
+// second while a chapter downloads (image fetch ticks, snapshot
+// writes, etc.). Re-firing a fresh notification each time would make
+// Android pop the heads-up + vibrate on every tick, which is what the
+// user reported as "blinking". Two mitigations are in play:
+//
+//   1. `ongoing: true` on in-progress notifications. Android treats
+//      ongoing notifications as background-work indicators that
+//      shouldn't re-alert on update — the body text changes silently.
+//   2. Throttle the publish loop. While in the "running" state we
+//      coalesce updates to at most one every UPDATE_THROTTLE_MS, with
+//      a leading-edge emit so the FIRST tick of a burst lands
+//      immediately and the LAST progress before completion always
+//      gets through.
+//
+// The final summary fires without `ongoing` so the system does its
+// normal alert — this is the user-visible "your work is done" cue.
 
 import {
   isPermissionGranted,
@@ -58,6 +76,19 @@ let summaryShown = false;
  *  clearTerminals(). */
 let burstTotal = 0;
 let started = false;
+
+/** Smallest interval between consecutive in-progress notification
+ *  sends. Anything faster on Android (re)triggers the heads-up +
+ *  vibration and reads as "blinking". 600ms is a comfortable cap —
+ *  the user can still see progress moving but the system doesn't
+ *  alert per tick. The completion send bypasses this throttle. */
+const UPDATE_THROTTLE_MS = 600;
+/** Timestamp of the last in-progress send, used to throttle. */
+let lastSentAt = 0;
+/** Pending throttled timer so a fast-moving burst still gets a final
+ *  in-progress send before its summary lands. */
+let pendingFlush: ReturnType<typeof setTimeout> | null = null;
+let pendingSnap: Snapshot | null = null;
 
 /** Wire the notifier to the queue. Idempotent — calling more than
  *  once is a no-op. Returns an unsubscribe handle for tests; the app
@@ -117,6 +148,12 @@ async function publish(snap: Snapshot) {
     summaryShown = false;
     lastBody = "";
     lastTitle = "";
+    lastSentAt = 0;
+    if (pendingFlush) {
+      clearTimeout(pendingFlush);
+      pendingFlush = null;
+    }
+    pendingSnap = null;
     return;
   }
 
@@ -125,54 +162,66 @@ async function publish(snap: Snapshot) {
   const liveTotal = snap.active + completedThisBurst;
   if (liveTotal > burstTotal) burstTotal = liveTotal;
 
+  const isTerminalSummary = snap.active === 0;
   // Compose what to display. A conversion in flight gets first
   // billing — it's whole-novel work that produces a library entry,
   // versus chapter downloads which are per-row.
-  let title: string;
-  let body: string;
-  if (snap.active > 0) {
-    summaryShown = false;
-    if (snap.activeConversions > 0) {
-      title = "Saving as offline book";
-      // Use the latest running conversion's phase as the body so
-      // the user gets "Fetching chapter 47 / 213" or "Building
-      // EPUB" rather than a bare percentage. Falls back to a
-      // generic burst tally when phase is empty.
-      const runningConversion = findRunningConversion();
-      body = runningConversion?.phase
-        ? `${runningConversion.phase} · ${Math.round(runningConversion.progress * 100)}%`
-        : `${completedThisBurst} of ${burstTotal} jobs done`;
-    } else {
-      title = "Downloading chapters";
-      body = `${completedThisBurst} of ${burstTotal} done`;
-    }
-  } else {
-    if (summaryShown) return;
-    summaryShown = true;
-    if (snap.error > 0 || snap.cancelled > 0) {
-      title = "Background work finished";
-      const bits: string[] = [];
-      if (snap.done > 0) bits.push(`${snap.done} completed`);
-      if (snap.error > 0) bits.push(`${snap.error} failed`);
-      if (snap.cancelled > 0) bits.push(`${snap.cancelled} cancelled`);
-      body = bits.join(" · ");
-    } else {
-      title = "All done";
-      body = snap.done === 1
-        ? `1 job complete`
-        : `${snap.done} jobs complete`;
-    }
-  }
+  const composed = compose(snap, completedThisBurst);
+  if (!composed) return; // summary already shown this burst
+  const { title, body } = composed;
 
   if (title === lastTitle && body === lastBody) return;
+
+  // Throttle in-progress updates so Android doesn't pop the
+  // heads-up + vibrate on every tick. The terminal summary
+  // bypasses the throttle and fires immediately + non-ongoing so
+  // the user hears the "done" alert.
+  if (!isTerminalSummary) {
+    const now = Date.now();
+    const elapsed = now - lastSentAt;
+    if (lastSentAt !== 0 && elapsed < UPDATE_THROTTLE_MS) {
+      // Schedule a trailing flush so the last progress before
+      // completion still lands. We overwrite the previous pending
+      // snap — only the most recent state matters.
+      pendingSnap = snap;
+      if (!pendingFlush) {
+        pendingFlush = setTimeout(() => {
+          pendingFlush = null;
+          const ps = pendingSnap;
+          pendingSnap = null;
+          if (ps) void publish(ps);
+        }, UPDATE_THROTTLE_MS - elapsed);
+      }
+      return;
+    }
+  } else if (pendingFlush) {
+    // Terminal summary outranks any pending flush.
+    clearTimeout(pendingFlush);
+    pendingFlush = null;
+    pendingSnap = null;
+  }
+
   lastTitle = title;
   lastBody = body;
+  lastSentAt = Date.now();
+  if (isTerminalSummary) summaryShown = true;
 
   await ensurePermission();
   if (permissionState !== "granted") return;
 
   try {
-    sendNotification({ id: NOTIFICATION_ID, title, body });
+    sendNotification({
+      id: NOTIFICATION_ID,
+      title,
+      body,
+      // In-progress: ongoing so Android marks the notification as
+      // persistent background work, which suppresses the per-update
+      // alert. Silent on iOS for the same reason. The terminal
+      // summary fires without these flags so the system alerts as
+      // normal — the "your downloads are done" cue.
+      ongoing: !isTerminalSummary,
+      silent: !isTerminalSummary,
+    });
   } catch (e) {
     // Notification plugin throws on Linux when no service is
     // available; log + drop the message. Future emissions still
@@ -180,6 +229,50 @@ async function publish(snap: Snapshot) {
     // eslint-disable-next-line no-console
     console.warn("[downloadNotifier] sendNotification failed:", e);
   }
+}
+
+interface Composed {
+  title: string;
+  body: string;
+}
+
+function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
+  if (snap.active > 0) {
+    summaryShown = false;
+    if (snap.activeConversions > 0) {
+      const runningConversion = findRunningConversion();
+      const body = runningConversion?.phase
+        ? `${runningConversion.phase} · ${Math.round(runningConversion.progress * 100)}%`
+        : `${completedThisBurst} of ${burstTotal} jobs done`;
+      return { title: "Saving as offline book", body };
+    }
+    return {
+      title: "Downloading chapters",
+      body: `${completedThisBurst} of ${burstTotal} done`,
+    };
+  }
+  if (summaryShown) return null;
+  // If nothing actually finished in this session (e.g. on launch
+  // with only `interrupted` jobs hanging around), the summary
+  // notification would read as a misleading "all done" — skip it.
+  if (snap.done === 0 && snap.error === 0 && snap.cancelled === 0) {
+    return null;
+  }
+  if (snap.error > 0 || snap.cancelled > 0) {
+    const bits: string[] = [];
+    if (snap.done > 0) bits.push(`${snap.done} completed`);
+    if (snap.error > 0) bits.push(`${snap.error} failed`);
+    if (snap.cancelled > 0) bits.push(`${snap.cancelled} cancelled`);
+    return {
+      title: "Background work finished",
+      body: bits.join(" · "),
+    };
+  }
+  return {
+    title: "All done",
+    body:
+      snap.done === 1 ? "1 job complete" : `${snap.done} jobs complete`,
+  };
 }
 
 async function ensurePermission(): Promise<void> {

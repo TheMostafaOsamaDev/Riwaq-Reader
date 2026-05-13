@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLongPress } from "../hooks/useLongPress";
 import { Icon } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
@@ -1306,48 +1306,244 @@ interface MobileTabRowProps {
 
 /** Status filter pills under the mobile "Library" header.
  *
- *  The Store tab from the desktop TABS list is intentionally
- *  skipped — Store toggling lives in the bottom nav (`globe` icon),
- *  so the pill would be a redundant second affordance. The row
- *  scrolls horizontally on very narrow screens so the four labels
- *  always reach. */
+ *  Behaviors layered in top of the plain pill row:
+ *    - Hidden scrollbar in both webkit + Firefox + Edge.
+ *    - Fade-in chevron arrows on the left/right when overflow exists
+ *      in that direction. Tapping an arrow scrolls one viewport-width
+ *      toward that side. Arrows fade out (transition opacity) when
+ *      the scroller hits the corresponding edge.
+ *    - Animated active background: a single absolute-positioned
+ *      "indicator" sits beneath whichever pill is active. Tapping a
+ *      different pill animates `left + width` to the new pill's
+ *      bounding box rather than instantly flipping the fill, so the
+ *      change reads as a slide.
+ *
+ *  Store tab from the desktop TABS list is intentionally skipped —
+ *  Store toggling lives in the bottom nav (`globe` icon). */
 function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
-  const items = TABS.filter((t) => t.key !== "store");
+  const items = useMemo<typeof TABS>(
+    () => TABS.filter((t) => t.key !== "store"),
+    [],
+  );
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const pillRefs = useRef<Map<LibraryTab, HTMLButtonElement>>(new Map());
+  const indicatorRef = useRef<HTMLDivElement>(null);
+  const indicatorInitialized = useRef(false);
+
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Recompute the scroll-edge state. Called on scroll, mount, and on
+  // active-pill change (in case the pill widths drove a layout shift).
+  const updateEdges = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    updateEdges();
+    // ResizeObserver covers the case where the parent's width
+    // changed (e.g. portrait → landscape) without a scroll event.
+    const el = scrollerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateEdges);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateEdges]);
+
+  // Position the active-pill background indicator. On the very first
+  // layout we set it without transition so the indicator appears
+  // already-in-place; subsequent updates animate.
+  useEffect(() => {
+    const el = pillRefs.current.get(tab);
+    const indicator = indicatorRef.current;
+    const scroller = scrollerRef.current;
+    if (!el || !indicator || !scroller) return;
+    const left = el.offsetLeft;
+    const width = el.offsetWidth;
+    if (!indicatorInitialized.current) {
+      indicator.style.transition = "none";
+      indicator.style.left = `${left}px`;
+      indicator.style.width = `${width}px`;
+      indicator.style.opacity = "1";
+      // Re-enable transitions on the next frame so subsequent
+      // tab changes animate.
+      requestAnimationFrame(() => {
+        if (indicator) {
+          indicator.style.transition =
+            "left 240ms cubic-bezier(0.4, 0.0, 0.2, 1), width 240ms cubic-bezier(0.4, 0.0, 0.2, 1)";
+        }
+      });
+      indicatorInitialized.current = true;
+    } else {
+      indicator.style.left = `${left}px`;
+      indicator.style.width = `${width}px`;
+    }
+    // Scroll the active pill into view if it's offscreen — happens
+    // on portrait↔landscape flips where the layout shrinks.
+    const overflowsLeft = left < scroller.scrollLeft;
+    const overflowsRight =
+      left + width > scroller.scrollLeft + scroller.clientWidth;
+    if (overflowsLeft || overflowsRight) {
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+  }, [tab]);
+
+  const scrollBy = useCallback((direction: "left" | "right") => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const step = Math.max(el.clientWidth * 0.7, 120);
+    el.scrollBy({
+      left: direction === "left" ? -step : step,
+      behavior: "smooth",
+    });
+  }, []);
+
   return (
     <div
       style={{
-        display: "flex",
-        gap: 6,
-        overflowX: "auto",
-        // Hide scrollbar visually — chrome only renders the thin
-        // wide-screen one anyway, but Android can show a thick bar.
-        scrollbarWidth: "none",
+        position: "relative",
+        // Inline-style scrollbar hide doesn't fully cover webkit;
+        // the surrounding rule is set globally via global.css. The
+        // belt-and-suspenders here is just `scrollbarWidth: 'none'`
+        // for Firefox + `msOverflowStyle` for legacy Edge.
       }}
     >
-      {items.map(({ key, label }) => {
-        const active = key === tab;
-        return (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            style={{
-              flexShrink: 0,
-              border: active ? "none" : `0.5px solid ${theme.rule}`,
-              background: active ? theme.ink : "transparent",
-              color: active ? theme.bg : theme.muted,
-              padding: "7px 14px",
-              borderRadius: 18,
-              fontSize: 12.5,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {label}
-          </button>
-        );
-      })}
+      <div
+        ref={scrollerRef}
+        onScroll={updateEdges}
+        className="leaflet-pill-row"
+        style={{
+          display: "flex",
+          gap: 6,
+          overflowX: "auto",
+          overflowY: "hidden",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          position: "relative",
+          // The indicator is absolute-positioned in this same container,
+          // so the scroller must be the position context.
+          paddingBottom: 2,
+        }}
+      >
+        {/* Animated active-pill background. Sits underneath the
+            buttons (zIndex 0); button text stays on top (zIndex 1).
+            Color picks up the theme's ink + bg switch like the old
+            inline fill did. */}
+        <div
+          ref={indicatorRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            height: "100%",
+            left: 0,
+            width: 0,
+            opacity: 0,
+            background: theme.ink,
+            borderRadius: 18,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+        {items.map(({ key, label }) => {
+          const active = key === tab;
+          return (
+            <button
+              key={key}
+              ref={(el) => {
+                if (el) pillRefs.current.set(key, el);
+                else pillRefs.current.delete(key);
+              }}
+              onClick={() => setTab(key)}
+              style={{
+                flexShrink: 0,
+                position: "relative",
+                zIndex: 1,
+                border: `0.5px solid ${active ? "transparent" : theme.rule}`,
+                background: "transparent",
+                color: active ? theme.bg : theme.muted,
+                padding: "7px 14px",
+                borderRadius: 18,
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "color 200ms ease",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <PillScrollArrow
+        theme={theme}
+        side="left"
+        visible={canScrollLeft}
+        onClick={() => scrollBy("left")}
+      />
+      <PillScrollArrow
+        theme={theme}
+        side="right"
+        visible={canScrollRight}
+        onClick={() => scrollBy("right")}
+      />
     </div>
+  );
+}
+
+interface PillScrollArrowProps {
+  theme: Theme;
+  side: "left" | "right";
+  visible: boolean;
+  onClick: () => void;
+}
+
+/** Floating chevron-arrow button overlaying the pill scroller's edge.
+ *  Fades in only when there's overflow content in that direction; the
+ *  button stays mounted across visibility transitions so the opacity
+ *  animates smoothly (unmounting + remounting on every scroll would
+ *  pop). When invisible the button is `pointer-events: none` so it
+ *  doesn't eat taps meant for the pill below. */
+function PillScrollArrow({
+  theme,
+  side,
+  visible,
+  onClick,
+}: PillScrollArrowProps) {
+  return (
+    <button
+      onClick={onClick}
+      aria-hidden={!visible}
+      tabIndex={visible ? 0 : -1}
+      aria-label={side === "left" ? "Scroll tabs left" : "Scroll tabs right"}
+      style={{
+        position: "absolute",
+        top: "50%",
+        [side]: 0,
+        transform: "translateY(-50%)",
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        border: `0.5px solid ${theme.rule}`,
+        background: theme.bg,
+        color: theme.muted,
+        cursor: visible ? "pointer" : "default",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
+        transition: "opacity 180ms ease",
+        boxShadow: `0 1px 4px ${theme.bg}`,
+        flexShrink: 0,
+      }}
+    >
+      <Icon name={side === "left" ? "arrowL" : "arrowR"} size={14} />
+    </button>
   );
 }
 
@@ -2127,10 +2323,20 @@ function QueueIconButton({
   );
 }
 
+/** Badge count = work the user might want to address. That includes
+ *  jobs that were interrupted by the app dying mid-flight — the
+ *  Downloads page is where they Retry, so the badge should advertise
+ *  it. Done / cancelled / errored without retry intent don't count. */
 function activeJobCount(s: { jobs: { status: string }[] }): number {
   let n = 0;
   for (const j of s.jobs) {
-    if (j.status === "queued" || j.status === "running") n++;
+    if (
+      j.status === "queued" ||
+      j.status === "running" ||
+      j.status === "interrupted"
+    ) {
+      n++;
+    }
   }
   return n;
 }
