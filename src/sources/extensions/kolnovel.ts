@@ -153,12 +153,14 @@ export function createKolNovelSource(host: SourceHost): Source {
 
     async getChapterContent(chapter) {
       host.log("debug", `getChapterContent(#${chapter.id} ${chapter.title})`);
-      // Chapter content is in the initial HTML on KolNovel — the hidden
-      // decoy paragraphs (height: 0.1px, position: fixed, etc.) that the
-      // original Playwright scraper had to filter out are injected by JS
-      // at runtime, NOT present in the server response. So static fetch
-      // gives us a clean paragraph list AND avoids the headless-webview
-      // timeout problem entirely.
+      // Chapter content is in the initial HTML on KolNovel. The
+      // anti-scrape decoys (paragraphs containing duplicated sentences,
+      // the kolnovel.com ad string, and inline ad-network JS) are
+      // present in the server response, NOT injected at runtime — they're
+      // marked by `class` attributes that reference an inline <style>
+      // rule whose 9 hex class names rotate per page load.
+      // `extractChapterLines` discovers those names from the <style>
+      // block and filters the matching <p> tags.
       const resp = await host.fetch(chapter.url);
       const doc = parseHtmlDocument(resp.text);
       return extractChapterLines(doc);
