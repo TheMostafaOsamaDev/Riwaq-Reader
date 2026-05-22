@@ -119,6 +119,12 @@ select {
   display: none;
 }
 
+/* Mobile pill row uses inline-style scrollbar hide; webkit needs the
+ * pseudo-element rule, which only attaches via a class selector. */
+.leaflet-pill-row::-webkit-scrollbar {
+  display: none;
+}
+
 /* Range input styling — picks up theme.ink via `accent-color: currentColor` */
 input[type="range"] {
   -webkit-appearance: none;

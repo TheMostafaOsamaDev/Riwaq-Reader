@@ -60,6 +60,7 @@ import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "./Skeleton";
+import { SaveAsOfflineBookDialog } from "./SaveAsOfflineBookDialog";
 
 /** Debounce window for the in-novel chapter search. Same rationale as
  *  the homepage suggest debounce — fast enough to feel live, slow enough
@@ -129,6 +130,11 @@ export function NovelDetailView({
     Map<number, { downloadedAt?: number; readAt?: number }>
   >(new Map());
   const [working, setWorking] = useState(false);
+  // "Save as offline book" dialog is only relevant for in-library
+  // source-backed entries (it walks the persisted snapshot). Mounted
+  // here so its data load can coexist with NovelDetailView's
+  // background snapshot refresh without prop drilling.
+  const [saveOfflineOpen, setSaveOfflineOpen] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
 
   // Two data sources, selected by `libraryEntryIdProp`:
@@ -369,7 +375,22 @@ export function NovelDetailView({
             onAddToLibrary={onAddToLibrary}
             onRemoveFromLibrary={onRemoveFromLibrary}
             onOpenRangeDialog={onOpenRangeDialog}
+            onOpenSaveOffline={
+              libraryEntryId
+                ? () => setSaveOfflineOpen(true)
+                : undefined
+            }
           />
+          {saveOfflineOpen && libraryEntryId && state.novel && (
+            <SaveAsOfflineBookDialog
+              theme={theme}
+              layout={layout}
+              libraryEntryId={libraryEntryId}
+              novelTitle={state.novel.title}
+              onCancel={() => setSaveOfflineOpen(false)}
+              onEnqueued={() => setSaveOfflineOpen(false)}
+            />
+          )}
           {typeof source.searchChapters === "function" && (
             <ChapterSearch
               theme={theme}
@@ -660,6 +681,10 @@ interface ActionRowProps {
   onAddToLibrary: () => void;
   onRemoveFromLibrary: () => void;
   onOpenRangeDialog: () => void;
+  /** Only present for in-library, source-backed entries — opens the
+   *  Save-as-offline-book dialog. Hidden when the entry isn't in the
+   *  library yet (the dialog needs a snapshot on disk to walk). */
+  onOpenSaveOffline?: () => void;
 }
 
 function ActionRow({
@@ -673,6 +698,7 @@ function ActionRow({
   onAddToLibrary,
   onRemoveFromLibrary,
   onOpenRangeDialog,
+  onOpenSaveOffline,
 }: ActionRowProps) {
   return (
     <div
@@ -726,6 +752,18 @@ function ActionRow({
       >
         Download range
       </Button>
+      {onOpenSaveOffline && (
+        <Button
+          theme={theme}
+          variant="outline"
+          size="md"
+          onClick={onOpenSaveOffline}
+          disabled={working || chapterCount === 0}
+          leadingIcon={<Icon name="download" size={14} />}
+        >
+          Save as offline book
+        </Button>
+      )}
     </div>
   );
 }

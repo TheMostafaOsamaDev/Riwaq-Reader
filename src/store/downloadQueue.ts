@@ -11,8 +11,9 @@
 //
 //   enqueue / cancel / subscribe / getState
 //       Module-scoped queue with workers. Jobs progress through
-//       "queued → running → done | error | cancelled". UIs subscribe
-//       for state updates and pump the queue indirectly by enqueuing.
+//       "queued → running → done | error | cancelled | interrupted".
+//       UIs subscribe for state updates and pump the queue indirectly
+//       by enqueuing.
 //
 // Workers run with bounded concurrency. Cancellation is cooperative:
 // a job already started keeps going until its current fetch resolves
@@ -20,11 +21,26 @@
 // discarded if the user cancelled before completion. Queued-but-not-
 // started jobs are removed immediately.
 //
-// The state list is intentionally bounded — finished jobs evict from
-// the tail once we cross a high-water mark so the queue page doesn't
-// grow forever. The bookkeeping isn't a long-term audit log; it's an
-// in-session view.
+// Persistence. The queue state is mirrored to
+// $APPDATA/leaflet/downloadQueue.json on every transition (debounced)
+// so jobs survive an app kill. On load, anything that was queued or
+// running is reclassified as "interrupted" so the user can decide
+// whether to resume (Retry button) — we don't auto-pump on load
+// because a source that's gone offline would otherwise hammer the
+// network as soon as the app launched.
+//
+// The state list is bounded — finished jobs evict from the tail once
+// we cross a high-water mark so the queue page doesn't grow forever.
+// The bookkeeping isn't a long-term audit log; it's an
+// in-session view (plus enough to recover from a crash).
 
+import {
+  BaseDirectory,
+  exists,
+  mkdir,
+  readTextFile,
+  writeTextFile,
+} from "@tauri-apps/plugin-fs";
 import {
   markChapterDownloaded,
   readSnapshot,
@@ -35,6 +51,10 @@ import { createHost } from "../sources/host";
 import { getSource } from "../sources/registry";
 import type { SourceChapter, SourceLine } from "../sources/types";
 
+const BASE = BaseDirectory.AppData;
+const ROOT = "leaflet";
+const QUEUE_FILE = `${ROOT}/downloadQueue.json`;
+
 // ── public job shape ───────────────────────────────────────────────────────
 
 export type DownloadJobStatus =
@@ -42,30 +62,57 @@ export type DownloadJobStatus =
   | "running"
   | "done"
   | "error"
-  | "cancelled";
+  | "cancelled"
+  /** Assigned at boot to jobs that were queued or running when the
+   *  app last died. Visible in the queue UI with a Retry button —
+   *  the user decides whether to resume. We don't auto-resume so a
+   *  source that's gone offline can't loop on launch. */
+  | "interrupted";
 
-export interface DownloadJob {
+/** Fields every queue entry carries regardless of what kind of work
+ *  it represents. Kept on a base interface so the discriminated union
+ *  below stays tidy. */
+interface JobBase {
   /** Synthetic job id; only meaningful inside the queue. */
   id: string;
   libraryEntryId: string;
-  chapterId: number;
-  /** Display labels captured at enqueue time so the queue UI can show
-   *  meaningful rows without re-reading source.json on every render.
-   *  These are not authoritative — the source.json snapshot wins on a
-   *  conflict — but for a transient queue view they're enough. */
   novelTitle: string;
-  chapterTitle: string;
   status: DownloadJobStatus;
-  /** 0..1 within the chapter download. Bumps at coarse milestones
-   *  (content fetched, image N of M downloaded, write complete). */
+  /** 0..1. For chapter downloads, this is fraction-of-one-chapter
+   *  done; for conversions it's fraction-of-novel-converted. */
   progress: number;
-  /** Present on status === "error". */
   error?: string;
-  /** When the job was first added. */
   enqueuedAt: number;
-  /** When the worker last bumped the status. */
   updatedAt: number;
 }
+
+/** A single-chapter download: fetch content + inline images, persist
+ *  to `chapters/<id>/`, flip `downloadedAt`. The original queue shape. */
+export interface ChapterDownloadJob extends JobBase {
+  kind: "chapter";
+  chapterId: number;
+  chapterTitle: string;
+}
+
+/** A "convert to offline book" job: pulls every chapter (downloaded or
+ *  not), bakes one or more EPUBs, lands them in the library as regular
+ *  entries. One job per user-initiated conversion regardless of how
+ *  many EPUBs it produces. */
+export interface ConversionJob extends JobBase {
+  kind: "conversion";
+  /** Whether to assemble one EPUB containing every volume as a
+   *  section, or one EPUB per volume (each with chapters flat). */
+  mode: "single" | "per-volume";
+  /** Free-form label updated by the worker as it advances through
+   *  fetch → build → save phases. Surfaced in the queue UI body so
+   *  the user sees what's happening beyond a percentage. */
+  phase: string;
+  /** Library entry ids of the EPUBs produced so far. Single-mode
+   *  lands one; per-volume lands many. */
+  producedEntryIds: string[];
+}
+
+export type DownloadJob = ChapterDownloadJob | ConversionJob;
 
 interface QueueState {
   jobs: DownloadJob[];
@@ -91,8 +138,97 @@ const cancelled = new Set<string>();
 let runningCount = 0;
 let nextId = 1;
 
+/** Debounce window for disk writes. Each emit() queues a save; if
+ *  another emit lands within this window, the previous save is
+ *  cancelled and the latest state wins. Avoids hammering the FS
+ *  during a multi-step run. */
+const PERSIST_DEBOUNCE_MS = 250;
+let pendingPersistTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped each time we kick off a save so a stale debounced
+ *  callback doesn't overwrite a newer state if writes serialize
+ *  out of order. */
+let persistSequence = 0;
+let persistLoaded = false;
+
 function emit() {
   for (const l of listeners) l(state);
+  schedulePersist();
+}
+
+function schedulePersist() {
+  if (!persistLoaded) return; // never overwrite the disk before load
+  if (pendingPersistTimer) clearTimeout(pendingPersistTimer);
+  pendingPersistTimer = setTimeout(() => {
+    pendingPersistTimer = null;
+    void persist();
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+async function persist(): Promise<void> {
+  const mySeq = ++persistSequence;
+  // Take a structural snapshot so a concurrent setStatus mutation
+  // doesn't corrupt mid-stringify. We drop `running` jobs back to
+  // `queued` for the persisted view because a process that died
+  // mid-write leaves disk in a state where "running" doesn't make
+  // sense — the worker is gone.
+  const persisted = {
+    version: 1 as const,
+    jobs: state.jobs.map((j) => ({
+      ...j,
+      status: j.status === "running" ? "queued" : j.status,
+    })),
+  };
+  const text = JSON.stringify(persisted);
+  try {
+    if (!(await exists(ROOT, { baseDir: BASE }))) {
+      await mkdir(ROOT, { baseDir: BASE, recursive: true });
+    }
+    if (mySeq !== persistSequence) return; // a newer save started
+    await writeTextFile(QUEUE_FILE, text, { baseDir: BASE });
+  } catch (e) {
+    // Persistence failure shouldn't crash the queue — the user
+    // just loses crash-recovery for the current job set.
+    // eslint-disable-next-line no-console
+    console.warn("[downloadQueue] persist failed:", e);
+  }
+}
+
+/** Read the persisted queue (if any) and merge it into the in-memory
+ *  state. Should be called once on app start before any subscribers
+ *  attach. Jobs that were `queued` or `running` at last shutdown are
+ *  reclassified as `interrupted` so the user explicitly opts back in
+ *  via Retry. Idempotent. */
+export async function loadPersistedQueue(): Promise<void> {
+  if (persistLoaded) return;
+  persistLoaded = true;
+  try {
+    if (!(await exists(QUEUE_FILE, { baseDir: BASE }))) return;
+    const raw = await readTextFile(QUEUE_FILE, { baseDir: BASE });
+    const parsed = JSON.parse(raw) as { version: number; jobs: DownloadJob[] };
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) return;
+    for (const j of parsed.jobs) {
+      // Reclassify in-flight statuses as interrupted. Terminal
+      // statuses (done / error / cancelled) carry forward as-is so
+      // the user keeps their burst history.
+      if (j.status === "queued" || j.status === "running") {
+        j.status = "interrupted";
+        // Wipe any stale error from a prior interrupted load.
+        delete (j as { error?: string }).error;
+      }
+      state.jobs.push(j);
+      // Bump the id counter past anything we loaded so new jobs
+      // don't collide with restored ones.
+      const m = j.id.match(/^dl-(\d+)/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (!Number.isNaN(n) && n >= nextId) nextId = n + 1;
+      }
+    }
+    emit();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[downloadQueue] load failed:", e);
+  }
 }
 
 function genId(): string {
@@ -149,17 +285,60 @@ export interface EnqueueDescriptor {
 export function enqueue(desc: EnqueueDescriptor): string {
   const dup = state.jobs.find(
     (j) =>
+      j.kind === "chapter" &&
       j.libraryEntryId === desc.libraryEntryId &&
       j.chapterId === desc.chapterId &&
       (j.status === "queued" || j.status === "running"),
   );
   if (dup) return dup.id;
-  const job: DownloadJob = {
+  const job: ChapterDownloadJob = {
     id: genId(),
+    kind: "chapter",
     libraryEntryId: desc.libraryEntryId,
     chapterId: desc.chapterId,
     novelTitle: desc.novelTitle,
     chapterTitle: desc.chapterTitle,
+    status: "queued",
+    progress: 0,
+    enqueuedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  state.jobs.push(job);
+  emit();
+  pump();
+  return job.id;
+}
+
+export interface EnqueueConversionDescriptor {
+  libraryEntryId: string;
+  novelTitle: string;
+  mode: "single" | "per-volume";
+}
+
+/** Enqueue a "save as offline book" conversion. One job is emitted
+ *  regardless of how many EPUBs it ends up producing (per-volume mode
+ *  may land many library entries from a single job). Duplicate of
+ *  same (entryId, mode) is rejected while another is running so the
+ *  user can't accidentally fire two conversions at once. */
+export function enqueueConversion(
+  desc: EnqueueConversionDescriptor,
+): string {
+  const dup = state.jobs.find(
+    (j) =>
+      j.kind === "conversion" &&
+      j.libraryEntryId === desc.libraryEntryId &&
+      j.mode === desc.mode &&
+      (j.status === "queued" || j.status === "running"),
+  );
+  if (dup) return dup.id;
+  const job: ConversionJob = {
+    id: genId(),
+    kind: "conversion",
+    libraryEntryId: desc.libraryEntryId,
+    novelTitle: desc.novelTitle,
+    mode: desc.mode,
+    phase: "Queued",
+    producedEntryIds: [],
     status: "queued",
     progress: 0,
     enqueuedAt: Date.now(),
@@ -197,6 +376,40 @@ export function clearTerminals() {
   emit();
 }
 
+/** Re-queue an interrupted job. The worker decides what to skip via
+ *  the kind-specific resume hooks (e.g. ConversionJob's
+ *  producedEntryIds tells the conversion worker which volumes are
+ *  already on disk). Idempotent — calling on a non-interrupted job
+ *  is a no-op. */
+export function retry(jobId: string): void {
+  const job = findJob(jobId);
+  if (!job) return;
+  if (job.status !== "interrupted" && job.status !== "error") return;
+  // Reset error message; the worker will set a fresh one if it
+  // fails again.
+  delete (job as { error?: string }).error;
+  // Don't reset progress to 0 — conversion jobs use producedEntryIds
+  // to skip work, so the bar should resume near where it was.
+  // Chapter jobs are atomic, so progress will start fresh once
+  // setStatus → running fires inside pump.
+  setStatus(job, "queued");
+  pump();
+}
+
+/** Re-queue every job that's currently interrupted or errored.
+ *  Used by the queue page's "Retry all" affordance. */
+export function retryAll(): void {
+  for (const j of state.jobs) {
+    if (j.status === "interrupted" || j.status === "error") {
+      delete (j as { error?: string }).error;
+      j.status = "queued";
+      j.updatedAt = Date.now();
+    }
+  }
+  emit();
+  pump();
+}
+
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
@@ -211,12 +424,14 @@ export function getState(): QueueState {
 /** Snapshot of (entryId, chapterId) pairs whose job is currently
  *  active (queued or running). Used by the chapter-row icon to
  *  render a "queued"/"downloading" indicator alongside the
- *  persisted downloadedAt flag. */
+ *  persisted downloadedAt flag. Conversion jobs are excluded — they
+ *  aren't per-chapter even though they read every chapter. */
 export function activeChapterSet(
   libraryEntryId: string,
-): Map<number, DownloadJob> {
-  const out = new Map<number, DownloadJob>();
+): Map<number, ChapterDownloadJob> {
+  const out = new Map<number, ChapterDownloadJob>();
   for (const j of state.jobs) {
+    if (j.kind !== "chapter") continue;
     if (j.libraryEntryId !== libraryEntryId) continue;
     if (j.status === "queued" || j.status === "running") {
       out.set(j.chapterId, j);
@@ -251,25 +466,11 @@ async function runJob(job: DownloadJob): Promise<void> {
       setStatus(job, "cancelled");
       return;
     }
-    await downloadChapter(
-      job.libraryEntryId,
-      job.chapterId,
-      (p) => {
-        // Cooperatively poll for cancellation between phases. If the
-        // user cancelled, abandon — the persisted side effects
-        // already-written stay on disk (writes are mid-step), but
-        // the snapshot's downloadedAt only flips after success, so
-        // a cancelled chapter is consistently "not downloaded".
-        if (cancelled.has(job.id)) {
-          throw new CancelledError();
-        }
-        if (typeof p === "number") {
-          job.progress = p;
-          job.updatedAt = Date.now();
-          emit();
-        }
-      },
-    );
+    if (job.kind === "chapter") {
+      await runChapterJob(job);
+    } else {
+      await runConversionJob(job);
+    }
     if (cancelled.has(job.id)) {
       cancelled.delete(job.id);
       setStatus(job, "cancelled");
@@ -286,6 +487,53 @@ async function runJob(job: DownloadJob): Promise<void> {
       error: e instanceof Error ? e.message : String(e),
     });
   }
+}
+
+async function runChapterJob(job: ChapterDownloadJob): Promise<void> {
+  await downloadChapter(
+    job.libraryEntryId,
+    job.chapterId,
+    (p) => {
+      // Cooperatively poll for cancellation between phases. If the
+      // user cancelled, abandon — the persisted side effects
+      // already-written stay on disk (writes are mid-step), but
+      // the snapshot's downloadedAt only flips after success, so
+      // a cancelled chapter is consistently "not downloaded".
+      if (cancelled.has(job.id)) {
+        throw new CancelledError();
+      }
+      if (typeof p === "number") {
+        job.progress = p;
+        job.updatedAt = Date.now();
+        emit();
+      }
+    },
+  );
+}
+
+async function runConversionJob(job: ConversionJob): Promise<void> {
+  // Dynamic import keeps the conversion module (which pulls in the
+  // EPUB builder + a fair chunk of importer code) off the main
+  // bundle's hot path. Queue users that only download chapters never
+  // load it.
+  const { runConversion } = await import("./storeConversion");
+  await runConversion(
+    job,
+    () => cancelled.has(job.id),
+    (p, phase) => {
+      if (cancelled.has(job.id)) {
+        throw new CancelledError();
+      }
+      if (typeof p === "number") {
+        job.progress = p;
+      }
+      if (typeof phase === "string") {
+        job.phase = phase;
+      }
+      job.updatedAt = Date.now();
+      emit();
+    },
+  );
 }
 
 class CancelledError extends Error {

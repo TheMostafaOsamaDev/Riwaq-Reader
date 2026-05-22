@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLongPress } from "../hooks/useLongPress";
 import { Icon } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
@@ -447,6 +447,46 @@ export function Library({
 
   const [queueOpen, setQueueOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // When a "Save as offline book" conversion finishes, one or more
+  // brand-new library entries have just landed via importEpubBytes —
+  // without refreshing here the user has to leave the library and
+  // come back to see them. Subscribing once at the parent + diffing
+  // terminal-conversion timestamps keeps the side-effect surface
+  // small.
+  useEffect(() => {
+    let lastConversionTerminalTs = 0;
+    // Seed from current state so a conversion that finished BEFORE
+    // mount doesn't trigger a spurious refresh.
+    for (const j of getQueueState().jobs) {
+      if (
+        j.kind === "conversion" &&
+        (j.status === "done" ||
+          j.status === "error" ||
+          j.status === "cancelled") &&
+        j.updatedAt > lastConversionTerminalTs
+      ) {
+        lastConversionTerminalTs = j.updatedAt;
+      }
+    }
+    const off = subscribeToQueue((s) => {
+      let newestTerminal = lastConversionTerminalTs;
+      let triggered = false;
+      for (const j of s.jobs) {
+        if (j.kind !== "conversion") continue;
+        if (j.status !== "done") continue;
+        if (j.updatedAt > lastConversionTerminalTs) {
+          triggered = true;
+          if (j.updatedAt > newestTerminal) newestTerminal = j.updatedAt;
+        }
+      }
+      if (triggered) {
+        lastConversionTerminalTs = newestTerminal;
+        void refresh();
+      }
+    });
+    return off;
+  }, [refresh]);
 
   const layoutCommonProps = {
     theme,
@@ -1006,12 +1046,12 @@ function MobileLibrary({
         paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
-      {/* Top header — title + filter tabs. Hidden inside the source
-          detail view (NovelDetailView has its own header with a back
-          arrow). The Store tab is omitted from the pills since the
-          bottom nav owns Store toggling. Action buttons live in the
-          bottom nav, so the right side of the title row is empty. */}
-      {!sourceDetailView && (
+      {/* Top header — title + filter tabs. Only on the shelf. The
+          Store tab swaps in its own back-arrow header below. The
+          source detail view (NovelDetailView) brings its own header
+          with a back arrow. Action buttons live in the bottom nav,
+          so the right side of the title row is empty. */}
+      {!sourceDetailView && tab !== "store" && (
         <div
           style={{
             display: "flex",
@@ -1067,12 +1107,27 @@ function MobileLibrary({
           />
         </div>
       ) : tab === "store" ? (
-        <Store
-          theme={theme}
-          layout="mobile"
-          onStreamRead={onStreamRead}
-          onImportComplete={onSourceImportComplete}
-        />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <BackHeader
+            theme={theme}
+            title="Store"
+            onBack={() => setTab("all")}
+          />
+          <Store
+            theme={theme}
+            layout="mobile"
+            onStreamRead={onStreamRead}
+            onImportComplete={onSourceImportComplete}
+          />
+        </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
@@ -1258,6 +1313,64 @@ interface MobileBottomNavProps {
  *  indicator by way of the safe-area inset the outer wrapper
  *  already provides.
  */
+interface BackHeaderProps {
+  theme: Theme;
+  title: string;
+  onBack: () => void;
+}
+
+/** Thin back-arrow header used by mobile inner pages (Store, future
+ *  side-pages) when the shelf-mode Library header would be misleading.
+ *  Visual matches NovelDetailView's header: 34px outlined circle with
+ *  the arrowL glyph, label fills the rest of the row. The wrapping
+ *  border-bottom keeps the row visually separated from the body
+ *  underneath. */
+function BackHeader({ theme, title, onBack }: BackHeaderProps) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "16px 18px 12px",
+        borderBottom: `0.5px solid ${theme.rule}`,
+        flexShrink: 0,
+      }}
+    >
+      <button
+        onClick={onBack}
+        aria-label="Back to library"
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          border: `0.5px solid ${theme.rule}`,
+          background: theme.bg,
+          color: theme.ink,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          fontFamily: "inherit",
+        }}
+      >
+        <Icon name="arrowL" size={16} />
+      </button>
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          letterSpacing: "-0.005em",
+          color: theme.ink,
+        }}
+      >
+        {title}
+      </div>
+    </div>
+  );
+}
+
 interface MobileTabRowProps {
   theme: Theme;
   tab: LibraryTab;
@@ -1266,48 +1379,244 @@ interface MobileTabRowProps {
 
 /** Status filter pills under the mobile "Library" header.
  *
- *  The Store tab from the desktop TABS list is intentionally
- *  skipped — Store toggling lives in the bottom nav (`globe` icon),
- *  so the pill would be a redundant second affordance. The row
- *  scrolls horizontally on very narrow screens so the four labels
- *  always reach. */
+ *  Behaviors layered in top of the plain pill row:
+ *    - Hidden scrollbar in both webkit + Firefox + Edge.
+ *    - Fade-in chevron arrows on the left/right when overflow exists
+ *      in that direction. Tapping an arrow scrolls one viewport-width
+ *      toward that side. Arrows fade out (transition opacity) when
+ *      the scroller hits the corresponding edge.
+ *    - Animated active background: a single absolute-positioned
+ *      "indicator" sits beneath whichever pill is active. Tapping a
+ *      different pill animates `left + width` to the new pill's
+ *      bounding box rather than instantly flipping the fill, so the
+ *      change reads as a slide.
+ *
+ *  Store tab from the desktop TABS list is intentionally skipped —
+ *  Store toggling lives in the bottom nav (`globe` icon). */
 function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
-  const items = TABS.filter((t) => t.key !== "store");
+  const items = useMemo<typeof TABS>(
+    () => TABS.filter((t) => t.key !== "store"),
+    [],
+  );
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const pillRefs = useRef<Map<LibraryTab, HTMLButtonElement>>(new Map());
+  const indicatorRef = useRef<HTMLDivElement>(null);
+  const indicatorInitialized = useRef(false);
+
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Recompute the scroll-edge state. Called on scroll, mount, and on
+  // active-pill change (in case the pill widths drove a layout shift).
+  const updateEdges = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    updateEdges();
+    // ResizeObserver covers the case where the parent's width
+    // changed (e.g. portrait → landscape) without a scroll event.
+    const el = scrollerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateEdges);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateEdges]);
+
+  // Position the active-pill background indicator. On the very first
+  // layout we set it without transition so the indicator appears
+  // already-in-place; subsequent updates animate.
+  useEffect(() => {
+    const el = pillRefs.current.get(tab);
+    const indicator = indicatorRef.current;
+    const scroller = scrollerRef.current;
+    if (!el || !indicator || !scroller) return;
+    const left = el.offsetLeft;
+    const width = el.offsetWidth;
+    if (!indicatorInitialized.current) {
+      indicator.style.transition = "none";
+      indicator.style.left = `${left}px`;
+      indicator.style.width = `${width}px`;
+      indicator.style.opacity = "1";
+      // Re-enable transitions on the next frame so subsequent
+      // tab changes animate.
+      requestAnimationFrame(() => {
+        if (indicator) {
+          indicator.style.transition =
+            "left 240ms cubic-bezier(0.4, 0.0, 0.2, 1), width 240ms cubic-bezier(0.4, 0.0, 0.2, 1)";
+        }
+      });
+      indicatorInitialized.current = true;
+    } else {
+      indicator.style.left = `${left}px`;
+      indicator.style.width = `${width}px`;
+    }
+    // Scroll the active pill into view if it's offscreen — happens
+    // on portrait↔landscape flips where the layout shrinks.
+    const overflowsLeft = left < scroller.scrollLeft;
+    const overflowsRight =
+      left + width > scroller.scrollLeft + scroller.clientWidth;
+    if (overflowsLeft || overflowsRight) {
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+  }, [tab]);
+
+  const scrollBy = useCallback((direction: "left" | "right") => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const step = Math.max(el.clientWidth * 0.7, 120);
+    el.scrollBy({
+      left: direction === "left" ? -step : step,
+      behavior: "smooth",
+    });
+  }, []);
+
   return (
     <div
       style={{
-        display: "flex",
-        gap: 6,
-        overflowX: "auto",
-        // Hide scrollbar visually — chrome only renders the thin
-        // wide-screen one anyway, but Android can show a thick bar.
-        scrollbarWidth: "none",
+        position: "relative",
+        // Inline-style scrollbar hide doesn't fully cover webkit;
+        // the surrounding rule is set globally via global.css. The
+        // belt-and-suspenders here is just `scrollbarWidth: 'none'`
+        // for Firefox + `msOverflowStyle` for legacy Edge.
       }}
     >
-      {items.map(({ key, label }) => {
-        const active = key === tab;
-        return (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            style={{
-              flexShrink: 0,
-              border: active ? "none" : `0.5px solid ${theme.rule}`,
-              background: active ? theme.ink : "transparent",
-              color: active ? theme.bg : theme.muted,
-              padding: "7px 14px",
-              borderRadius: 18,
-              fontSize: 12.5,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {label}
-          </button>
-        );
-      })}
+      <div
+        ref={scrollerRef}
+        onScroll={updateEdges}
+        className="leaflet-pill-row"
+        style={{
+          display: "flex",
+          gap: 6,
+          overflowX: "auto",
+          overflowY: "hidden",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          position: "relative",
+          // The indicator is absolute-positioned in this same container,
+          // so the scroller must be the position context.
+          paddingBottom: 2,
+        }}
+      >
+        {/* Animated active-pill background. Sits underneath the
+            buttons (zIndex 0); button text stays on top (zIndex 1).
+            Color picks up the theme's ink + bg switch like the old
+            inline fill did. */}
+        <div
+          ref={indicatorRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            height: "100%",
+            left: 0,
+            width: 0,
+            opacity: 0,
+            background: theme.ink,
+            borderRadius: 18,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+        {items.map(({ key, label }) => {
+          const active = key === tab;
+          return (
+            <button
+              key={key}
+              ref={(el) => {
+                if (el) pillRefs.current.set(key, el);
+                else pillRefs.current.delete(key);
+              }}
+              onClick={() => setTab(key)}
+              style={{
+                flexShrink: 0,
+                position: "relative",
+                zIndex: 1,
+                border: `0.5px solid ${active ? "transparent" : theme.rule}`,
+                background: "transparent",
+                color: active ? theme.bg : theme.muted,
+                padding: "7px 14px",
+                borderRadius: 18,
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "color 200ms ease",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <PillScrollArrow
+        theme={theme}
+        side="left"
+        visible={canScrollLeft}
+        onClick={() => scrollBy("left")}
+      />
+      <PillScrollArrow
+        theme={theme}
+        side="right"
+        visible={canScrollRight}
+        onClick={() => scrollBy("right")}
+      />
     </div>
+  );
+}
+
+interface PillScrollArrowProps {
+  theme: Theme;
+  side: "left" | "right";
+  visible: boolean;
+  onClick: () => void;
+}
+
+/** Floating chevron-arrow button overlaying the pill scroller's edge.
+ *  Fades in only when there's overflow content in that direction; the
+ *  button stays mounted across visibility transitions so the opacity
+ *  animates smoothly (unmounting + remounting on every scroll would
+ *  pop). When invisible the button is `pointer-events: none` so it
+ *  doesn't eat taps meant for the pill below. */
+function PillScrollArrow({
+  theme,
+  side,
+  visible,
+  onClick,
+}: PillScrollArrowProps) {
+  return (
+    <button
+      onClick={onClick}
+      aria-hidden={!visible}
+      tabIndex={visible ? 0 : -1}
+      aria-label={side === "left" ? "Scroll tabs left" : "Scroll tabs right"}
+      style={{
+        position: "absolute",
+        top: "50%",
+        [side]: 0,
+        transform: "translateY(-50%)",
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        border: `0.5px solid ${theme.rule}`,
+        background: theme.bg,
+        color: theme.muted,
+        cursor: visible ? "pointer" : "default",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
+        transition: "opacity 180ms ease",
+        boxShadow: `0 1px 4px ${theme.bg}`,
+        flexShrink: 0,
+      }}
+    >
+      <Icon name={side === "left" ? "arrowL" : "arrowR"} size={14} />
+    </button>
   );
 }
 
@@ -1366,7 +1675,7 @@ function MobileBottomNav({
       />
       <NavIconButton
         theme={theme}
-        icon="type"
+        icon="settings"
         ariaLabel="Settings"
         onClick={onOpenSettings}
       />
@@ -1376,7 +1685,7 @@ function MobileBottomNav({
 
 interface NavIconButtonProps {
   theme: Theme;
-  icon: "globe" | "download" | "doc" | "type";
+  icon: "globe" | "download" | "doc" | "settings";
   ariaLabel: string;
   active?: boolean;
   disabled?: boolean;
@@ -2087,10 +2396,20 @@ function QueueIconButton({
   );
 }
 
+/** Badge count = work the user might want to address. That includes
+ *  jobs that were interrupted by the app dying mid-flight — the
+ *  Downloads page is where they Retry, so the badge should advertise
+ *  it. Done / cancelled / errored without retry intent don't count. */
 function activeJobCount(s: { jobs: { status: string }[] }): number {
   let n = 0;
   for (const j of s.jobs) {
-    if (j.status === "queued" || j.status === "running") n++;
+    if (
+      j.status === "queued" ||
+      j.status === "running" ||
+      j.status === "interrupted"
+    ) {
+      n++;
+    }
   }
   return n;
 }
