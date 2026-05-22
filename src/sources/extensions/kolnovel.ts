@@ -48,6 +48,50 @@ function toIgnoreRegex(pattern: string): RegExp {
   return new RegExp(`^${withWildcards}$`, "i");
 }
 
+/** Given the textContent of a single <style> block, return the set of
+ *  class names whose rule body matches the KolNovel decoy signature.
+ *  The site re-rolls these names on every page load, so we discover them
+ *  rather than hardcoding. The signature looks for three independent
+ *  tokens — `0.1px`, `opacity` followed by `0`, and `-99999px` — so the
+ *  match still works if the site reorders properties or tweaks
+ *  whitespace. Only `.[hex]{20,}` selectors are collected; that's the
+ *  shape KolNovel uses (random hex with an `a` prefix), and limiting to
+ *  long hex avoids snagging legitimate semantic class names. */
+function extractHiddenClassesFromCss(cssText: string): Set<string> {
+  const out = new Set<string>();
+  // Split on rule boundaries — each match is one `selectors { body }` group.
+  const ruleRegex = /([^{}]+)\{([^{}]+)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = ruleRegex.exec(cssText)) !== null) {
+    const selectors = m[1];
+    const body = m[2].toLowerCase();
+    if (
+      !body.includes("0.1px") ||
+      !body.includes("-99999px") ||
+      !/opacity\s*:\s*0\b/.test(body)
+    ) {
+      continue;
+    }
+    const classMatches = selectors.match(/\.([a-f0-9]{20,})/g) || [];
+    for (const c of classMatches) out.add(c.slice(1));
+  }
+  return out;
+}
+
+/** Discover every decoy class name across all inline <style> blocks in
+ *  the parsed chapter document. Returns an empty Set when no rule
+ *  matches the hide signature — callers must treat that as "no
+ *  class-based decoys to filter" rather than an error. */
+function collectHiddenClasses(doc: Document): Set<string> {
+  const out = new Set<string>();
+  for (const styleEl of Array.from(doc.querySelectorAll("style"))) {
+    const css = styleEl.textContent || "";
+    if (!css) continue;
+    for (const c of extractHiddenClassesFromCss(css)) out.add(c);
+  }
+  return out;
+}
+
 export function createKolNovelSource(host: SourceHost): Source {
   return {
     meta: {
