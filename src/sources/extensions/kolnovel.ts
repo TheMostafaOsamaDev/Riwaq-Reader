@@ -1,16 +1,12 @@
 // KolNovel source — full browse + scrape implementation for free.kolnovel.com.
 //
-// Of the four scrape entry points, three are pure HTTP because the site
-// renders the relevant data in the initial HTML:
+// All four scrape entry points are pure HTTP because the site renders the
+// relevant data in the initial HTML:
 //
-//   getHomeSections   →  GET /                  →  parse .bixbox sections
-//   search            →  GET /?s=<q>&paged=<n>  →  parse .listupd .maindet
-//   getNovel          →  GET /series/<slug>/    →  parse .sertobig + .ts-chl-collapsible
-//
-// The fourth — getChapterContent — still needs the headless webview, because
-// chapter bodies are populated by JS shortly after page load (the original
-// C# scraper waited via Playwright's WaitForFunctionAsync for the same
-// reason). That path goes through host.renderAndExtract.
+//   getHomeSections    →  GET /                  →  parse .bixbox sections
+//   search             →  GET /?s=<q>&paged=<n>  →  parse .listupd .maindet
+//   getNovel           →  GET /series/<slug>/    →  parse .sertobig + .ts-chl-collapsible
+//   getChapterContent  →  GET /<chapter-slug>/   →  parse #kol_content (see comment there)
 //
 // Selectors are based on a snapshot of the live site (KolNovel runs a
 // custom WordPress theme). Brittle bits to watch:
@@ -267,12 +263,11 @@ function absoluteImageSrc(img: HTMLImageElement): string | null {
 
 /** True when a paragraph is decorated with the inline-style pattern the
  *  site uses to visually hide decoy text — `height: 0.1px` plus
- *  `position: fixed` plus `opacity: 0` etc. Pure static check; the
- *  computed-style + offset path the JS scraper used can't run here, but
- *  in practice those decoys are JS-injected after the initial response,
- *  so the static HTML doesn't include them at all. This is a belt-and-
- *  suspenders catch for the rare case where the server-side template
- *  ships one inline. */
+ *  `position: fixed` plus `opacity: 0` etc. Belt-and-suspenders catch
+ *  for the rare server-rendered variant where the hide style is shipped
+ *  inline rather than via a class; the common case (a rotating set of
+ *  hex class names mapped to the same hide style by an inline <style>
+ *  rule) is handled by `hasHiddenClass`. */
 function isHiddenInline(p: Element): boolean {
   const style = (p.getAttribute("style") || "").toLowerCase();
   if (!style) return false;
