@@ -112,21 +112,26 @@ If the Set is empty or has unexpected entries, fix the regex in `extractHiddenCl
 
 Delete `/tmp/check-hidden-classes.mjs` when done.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Hold off committing — Task 2 will commit both helpers together**
 
-```bash
-git add src/sources/extensions/kolnovel.ts
-git commit -m "feat(kolnovel): add extractHiddenClassesFromCss helper"
-```
+Don't `git add` or `git commit` yet. The project's `tsconfig.json` has
+`noUnusedLocals: true`, so committing this helper alone would fail
+`npx tsc --noEmit` ("declared but never read"). Leave the change in the
+working tree and proceed to Task 2; the combined Task 1 + 2 work lands
+in one commit there.
 
 ---
 
-## Task 2: Add `collectHiddenClasses` helper
+## Task 2: Add `collectHiddenClasses` helper (and commit Task 1 + 2 together)
 
 **Files:**
 - Modify: `src/sources/extensions/kolnovel.ts`
 
-**Why:** Bridges the pure CSS-text function to the parsed Document. Tiny, but worth its own function so `extractChapterLines` reads cleanly.
+**Why:** Bridges the pure CSS-text function to the parsed Document.
+Tiny, but worth its own function so `extractChapterLines` reads cleanly.
+`collectHiddenClasses` is the natural first consumer of
+`extractHiddenClassesFromCss` from Task 1, so the two land in one commit
+to keep `noUnusedLocals` happy after every task.
 
 - [ ] **Step 1: Add the helper just below `extractHiddenClassesFromCss`**
 
@@ -146,12 +151,25 @@ function collectHiddenClasses(doc: Document): Set<string> {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Type-check the combined Task 1 + 2 change**
+
+Both helpers are still unreferenced at this point — `collectHiddenClasses`
+will be consumed in Task 4. So `noUnusedLocals` would still complain.
+Skip running `npx tsc --noEmit` here; the next type-check gate is at
+the end of Task 4 after `extractChapterLines` consumes the helper.
+(This is acceptable because the helpers are pure and only reachable
+through a future caller; they can't break runtime behaviour on their
+own.)
+
+- [ ] **Step 3: Commit the combined Task 1 + 2 change**
 
 ```bash
 git add src/sources/extensions/kolnovel.ts
-git commit -m "feat(kolnovel): add collectHiddenClasses(doc) helper"
+git commit -m "feat(kolnovel): add hidden-class CSS discovery helpers"
 ```
+
+The single commit body covers both `extractHiddenClassesFromCss` and
+`collectHiddenClasses`.
 
 ---
 
@@ -255,16 +273,17 @@ If any case differs, the regex change in Step 1 is wrong — fix it before conti
 
 Delete `/tmp/check-strip.mjs` when done.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Hold off committing — Task 4 will commit Task 3 + 4 together**
 
-```bash
-git add src/sources/extensions/kolnovel.ts
-git commit -m "refactor(kolnovel): strip ignore pattern as substring instead of full-line match"
-```
+Don't `git add` or `git commit` yet. `stripIgnored` is unreferenced
+until Task 4 wires it into `extractChapterLines`, and removing
+`isIgnored` while a stale call site still uses it would fail tsc too.
+Leave both edits in the working tree and proceed to Task 4; the
+combined Task 3 + 4 work lands in one commit there.
 
 ---
 
-## Task 4: Wire `collectHiddenClasses` + `stripIgnored` into `extractChapterLines`
+## Task 4: Wire `collectHiddenClasses` + `stripIgnored` into `extractChapterLines` (and commit Task 3 + 4 together)
 
 **Files:**
 - Modify: `src/sources/extensions/kolnovel.ts:114-162`
@@ -350,12 +369,16 @@ npx tsc --noEmit
 
 Expected: no errors. If TypeScript reports an unused-symbol error for `isIgnored`, that's because Task 3 removed the symbol — make sure no other call site references it. If it reports a missing-symbol error for the same, double-check Task 3's rename landed.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Commit the combined Task 3 + 4 change**
 
 ```bash
 git add src/sources/extensions/kolnovel.ts
 git commit -m "fix(kolnovel): filter decoy paragraphs by class + strip embedded ad text"
 ```
+
+The single commit body covers both the `isIgnored` → `stripIgnored`
+substring-strip refactor (Task 3) and the `extractChapterLines` rewrite
+that consumes both new helpers (Task 4).
 
 ---
 
