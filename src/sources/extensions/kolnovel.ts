@@ -42,10 +42,23 @@ const IGNORED_PATTERNS = [
 ];
 const IGNORED_REGEXES = IGNORED_PATTERNS.map(toIgnoreRegex);
 
+/** Compile an ignore pattern into a regex suitable for substring stripping.
+ *  - Leading/trailing `*` are trimmed first — they were only meaningful
+ *    for the old whole-line `^…$` match; for substring strip they make
+ *    the lazy wildcard scan back into legitimate text.
+ *  - Interior `*` wildcards become **lazy** `.*?` so a stray match
+ *    doesn't bridge two well-separated ad occurrences across real text.
+ *  - The compiled regex is padded with optional `\s*\*?\s*` on both
+ *    ends so a stray `*` marker that the obfuscator left adjacent to
+ *    the phrase boundary in the source line gets absorbed too. This is
+ *    how we handle inputs like `real text. *<ad pattern>* more text`
+ *    without leaving a dangling `*` behind.
+ *  - `gi` flags so `String.replace` strips every occurrence. */
 function toIgnoreRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-  const withWildcards = escaped.replace(/\*/g, ".*");
-  return new RegExp(`^${withWildcards}$`, "i");
+  const trimmed = pattern.replace(/^\*+|\*+$/g, "");
+  const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const withWildcards = escaped.replace(/\*/g, ".*?");
+  return new RegExp(`\\s*\\*?\\s*${withWildcards}\\s*\\*?\\s*`, "gi");
 }
 
 /** Given the textContent of a single <style> block, return the set of
@@ -156,6 +169,12 @@ export function createKolNovelSource(host: SourceHost): Source {
 // ── chapter-page extraction (static) ────────────────────────────────────────
 
 function extractChapterLines(doc: Document): SourceLine[] {
+  // Discover the per-page-load set of decoy class names from the
+  // chapter's inline <style> block (KolNovel rotates these on each
+  // request). Empty Set is a valid result — older/un-obfuscated
+  // chapters simply produce no class-based filter.
+  const hiddenClasses = collectHiddenClasses(doc);
+
   // Prefer the canonical chapter body (`#kol_content`); fall back to the
   // first `.entry-content` for theme variations. Walking inside this
   // single container scopes us away from sidebar/related-posts widgets
@@ -177,10 +196,6 @@ function extractChapterLines(doc: Document): SourceLine[] {
   const seenImage = new Set<string>();
   for (const el of Array.from(items)) {
     if (el.tagName === "IMG") {
-      // Skip the image if it's already been emitted (e.g., when the
-      // same `<img>` is also nested inside a `<p>` we'll walk later —
-      // querySelectorAll yields each element once, but we still guard
-      // against URL duplicates from inlined banner/cover repeats).
       const img = el as HTMLImageElement;
       if (isDecorativeImage(img)) continue;
       const src = absoluteImageSrc(img);
@@ -190,19 +205,30 @@ function extractChapterLines(doc: Document): SourceLine[] {
       lines.push({ type: "image", content: src });
       continue;
     }
-    // <p> path. If this paragraph contains an `<img>` (nested), the
-    // image was/will be emitted separately by the IMG branch — we still
-    // emit any surrounding text but only if it's non-trivial.
     const p = el;
+    if (hasHiddenClass(p, hiddenClasses)) continue;
     if (isHiddenInline(p)) continue;
-    const text = paragraphText(p);
+    const rawText = paragraphText(p);
+    if (rawText.length === 0) continue;
+    const text = stripIgnored(rawText);
     if (text.length === 0) continue;
-    if (isIgnored(text)) continue;
     if (seenText.has(text)) continue;
     seenText.add(text);
     lines.push({ type: "text", content: text });
   }
   return lines;
+}
+
+/** True when `p` carries any class name in the discovered hidden set.
+ *  Reads `className` directly (cheap) and splits on whitespace. */
+function hasHiddenClass(p: Element, hidden: Set<string>): boolean {
+  if (hidden.size === 0) return false;
+  const cls = (p.getAttribute("class") || "").trim();
+  if (!cls) return false;
+  for (const c of cls.split(/\s+/)) {
+    if (hidden.has(c)) return true;
+  }
+  return false;
 }
 
 /** Reject site-furniture imagery (post thumbnails, ad banners,
@@ -265,8 +291,15 @@ function paragraphText(p: Element): string {
   return (clone.textContent || "").replace(/\s+/g, " ").trim();
 }
 
-function isIgnored(line: string): boolean {
-  return IGNORED_REGEXES.some((r) => r.test(line));
+/** Strip every occurrence of every ignore pattern from `line`, then
+ *  collapse whitespace. Each match is replaced with a single space so
+ *  surrounding text doesn't get glued together; the final whitespace
+ *  collapse normalises the result. Callers should drop the paragraph
+ *  when the returned string is empty. */
+function stripIgnored(line: string): string {
+  let out = line;
+  for (const r of IGNORED_REGEXES) out = out.replace(r, " ");
+  return out.replace(/\s+/g, " ").trim();
 }
 
 // ── home-page parsing ───────────────────────────────────────────────────────
