@@ -160,7 +160,9 @@ export function createKolNovelSource(host: SourceHost): Source {
       // marked by `class` attributes that reference an inline <style>
       // rule whose 9 hex class names rotate per page load.
       // `extractChapterLines` discovers those names from the <style>
-      // block and filters the matching <p> tags.
+      // block and filters the matching <p> tags. Ad-string fragments
+      // that survive the class filter (e.g., embedded inline in a real
+      // paragraph) are scrubbed from each paragraph by `stripIgnored`.
       const resp = await host.fetch(chapter.url);
       const doc = parseHtmlDocument(resp.text);
       return extractChapterLines(doc);
