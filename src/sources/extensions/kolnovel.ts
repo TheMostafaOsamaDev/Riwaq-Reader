@@ -1,16 +1,12 @@
 // KolNovel source — full browse + scrape implementation for free.kolnovel.com.
 //
-// Of the four scrape entry points, three are pure HTTP because the site
-// renders the relevant data in the initial HTML:
+// All four scrape entry points are pure HTTP because the site renders the
+// relevant data in the initial HTML:
 //
-//   getHomeSections   →  GET /                  →  parse .bixbox sections
-//   search            →  GET /?s=<q>&paged=<n>  →  parse .listupd .maindet
-//   getNovel          →  GET /series/<slug>/    →  parse .sertobig + .ts-chl-collapsible
-//
-// The fourth — getChapterContent — still needs the headless webview, because
-// chapter bodies are populated by JS shortly after page load (the original
-// C# scraper waited via Playwright's WaitForFunctionAsync for the same
-// reason). That path goes through host.renderAndExtract.
+//   getHomeSections    →  GET /                  →  parse .bixbox sections
+//   search             →  GET /?s=<q>&paged=<n>  →  parse .listupd .maindet
+//   getNovel           →  GET /series/<slug>/    →  parse .sertobig + .ts-chl-collapsible
+//   getChapterContent  →  GET /<chapter-slug>/   →  parse #kol_content (see comment there)
 //
 // Selectors are based on a snapshot of the live site (KolNovel runs a
 // custom WordPress theme). Brittle bits to watch:
@@ -42,10 +38,67 @@ const IGNORED_PATTERNS = [
 ];
 const IGNORED_REGEXES = IGNORED_PATTERNS.map(toIgnoreRegex);
 
+/** Compile an ignore pattern into a regex suitable for substring stripping.
+ *  - Leading/trailing `*` are trimmed first — they were only meaningful
+ *    for the old whole-line `^…$` match; for substring strip they make
+ *    the lazy wildcard scan back into legitimate text.
+ *  - Interior `*` wildcards become **lazy** `.*?` so a stray match
+ *    doesn't bridge two well-separated ad occurrences across real text.
+ *  - The compiled regex is padded with optional `\s*\*?\s*` on both
+ *    ends so a stray `*` marker that the obfuscator left adjacent to
+ *    the phrase boundary in the source line gets absorbed too. This is
+ *    how we handle inputs like `real text. *<ad pattern>* more text`
+ *    without leaving a dangling `*` behind.
+ *  - `gi` flags so `String.replace` strips every occurrence. */
 function toIgnoreRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-  const withWildcards = escaped.replace(/\*/g, ".*");
-  return new RegExp(`^${withWildcards}$`, "i");
+  const trimmed = pattern.replace(/^\*+|\*+$/g, "");
+  const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const withWildcards = escaped.replace(/\*/g, ".*?");
+  return new RegExp(`\\s*\\*?\\s*${withWildcards}\\s*\\*?\\s*`, "gi");
+}
+
+/** Given the textContent of a single <style> block, return the set of
+ *  class names whose rule body matches the KolNovel decoy signature.
+ *  The site re-rolls these names on every page load, so we discover them
+ *  rather than hardcoding. The signature looks for three independent
+ *  tokens — `0.1px`, `opacity` followed by `0`, and `-99999px` — so the
+ *  match still works if the site reorders properties or tweaks
+ *  whitespace. Only `.[hex]{20,}` selectors are collected; that's the
+ *  shape KolNovel uses (random hex with an `a` prefix), and limiting to
+ *  long hex avoids snagging legitimate semantic class names. */
+function extractHiddenClassesFromCss(cssText: string): Set<string> {
+  const out = new Set<string>();
+  // Split on rule boundaries — each match is one `selectors { body }` group.
+  const ruleRegex = /([^{}]+)\{([^{}]+)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = ruleRegex.exec(cssText)) !== null) {
+    const selectors = m[1];
+    const body = m[2].toLowerCase();
+    if (
+      !body.includes("0.1px") ||
+      !body.includes("-99999px") ||
+      !/opacity\s*:\s*0\b/.test(body)
+    ) {
+      continue;
+    }
+    const classMatches = selectors.match(/\.([a-f0-9]{20,})/g) || [];
+    for (const c of classMatches) out.add(c.slice(1));
+  }
+  return out;
+}
+
+/** Discover every decoy class name across all inline <style> blocks in
+ *  the parsed chapter document. Returns an empty Set when no rule
+ *  matches the hide signature — callers must treat that as "no
+ *  class-based decoys to filter" rather than an error. */
+function collectHiddenClasses(doc: Document): Set<string> {
+  const out = new Set<string>();
+  for (const styleEl of Array.from(doc.querySelectorAll("style"))) {
+    const css = styleEl.textContent || "";
+    if (!css) continue;
+    for (const c of extractHiddenClassesFromCss(css)) out.add(c);
+  }
+  return out;
 }
 
 export function createKolNovelSource(host: SourceHost): Source {
@@ -96,12 +149,16 @@ export function createKolNovelSource(host: SourceHost): Source {
 
     async getChapterContent(chapter) {
       host.log("debug", `getChapterContent(#${chapter.id} ${chapter.title})`);
-      // Chapter content is in the initial HTML on KolNovel — the hidden
-      // decoy paragraphs (height: 0.1px, position: fixed, etc.) that the
-      // original Playwright scraper had to filter out are injected by JS
-      // at runtime, NOT present in the server response. So static fetch
-      // gives us a clean paragraph list AND avoids the headless-webview
-      // timeout problem entirely.
+      // Chapter content is in the initial HTML on KolNovel. The
+      // anti-scrape decoys (paragraphs containing duplicated sentences,
+      // the kolnovel.com ad string, and inline ad-network JS) are
+      // present in the server response, NOT injected at runtime — they're
+      // marked by `class` attributes that reference an inline <style>
+      // rule whose 9 hex class names rotate per page load.
+      // `extractChapterLines` discovers those names from the <style>
+      // block and filters the matching <p> tags. Ad-string fragments
+      // that survive the class filter (e.g., embedded inline in a real
+      // paragraph) are scrubbed from each paragraph by `stripIgnored`.
       const resp = await host.fetch(chapter.url);
       const doc = parseHtmlDocument(resp.text);
       return extractChapterLines(doc);
@@ -112,6 +169,12 @@ export function createKolNovelSource(host: SourceHost): Source {
 // ── chapter-page extraction (static) ────────────────────────────────────────
 
 function extractChapterLines(doc: Document): SourceLine[] {
+  // Discover the per-page-load set of decoy class names from the
+  // chapter's inline <style> block (KolNovel rotates these on each
+  // request). Empty Set is a valid result — older/un-obfuscated
+  // chapters simply produce no class-based filter.
+  const hiddenClasses = collectHiddenClasses(doc);
+
   // Prefer the canonical chapter body (`#kol_content`); fall back to the
   // first `.entry-content` for theme variations. Walking inside this
   // single container scopes us away from sidebar/related-posts widgets
@@ -133,10 +196,6 @@ function extractChapterLines(doc: Document): SourceLine[] {
   const seenImage = new Set<string>();
   for (const el of Array.from(items)) {
     if (el.tagName === "IMG") {
-      // Skip the image if it's already been emitted (e.g., when the
-      // same `<img>` is also nested inside a `<p>` we'll walk later —
-      // querySelectorAll yields each element once, but we still guard
-      // against URL duplicates from inlined banner/cover repeats).
       const img = el as HTMLImageElement;
       if (isDecorativeImage(img)) continue;
       const src = absoluteImageSrc(img);
@@ -146,19 +205,30 @@ function extractChapterLines(doc: Document): SourceLine[] {
       lines.push({ type: "image", content: src });
       continue;
     }
-    // <p> path. If this paragraph contains an `<img>` (nested), the
-    // image was/will be emitted separately by the IMG branch — we still
-    // emit any surrounding text but only if it's non-trivial.
     const p = el;
+    if (hasHiddenClass(p, hiddenClasses)) continue;
     if (isHiddenInline(p)) continue;
-    const text = paragraphText(p);
+    const rawText = paragraphText(p);
+    if (rawText.length === 0) continue;
+    const text = stripIgnored(rawText);
     if (text.length === 0) continue;
-    if (isIgnored(text)) continue;
     if (seenText.has(text)) continue;
     seenText.add(text);
     lines.push({ type: "text", content: text });
   }
   return lines;
+}
+
+/** True when `p` carries any class name in the discovered hidden set.
+ *  Reads `className` directly (cheap) and splits on whitespace. */
+function hasHiddenClass(p: Element, hidden: Set<string>): boolean {
+  if (hidden.size === 0) return false;
+  const cls = (p.getAttribute("class") || "").trim();
+  if (!cls) return false;
+  for (const c of cls.split(/\s+/)) {
+    if (hidden.has(c)) return true;
+  }
+  return false;
 }
 
 /** Reject site-furniture imagery (post thumbnails, ad banners,
@@ -193,12 +263,11 @@ function absoluteImageSrc(img: HTMLImageElement): string | null {
 
 /** True when a paragraph is decorated with the inline-style pattern the
  *  site uses to visually hide decoy text — `height: 0.1px` plus
- *  `position: fixed` plus `opacity: 0` etc. Pure static check; the
- *  computed-style + offset path the JS scraper used can't run here, but
- *  in practice those decoys are JS-injected after the initial response,
- *  so the static HTML doesn't include them at all. This is a belt-and-
- *  suspenders catch for the rare case where the server-side template
- *  ships one inline. */
+ *  `position: fixed` plus `opacity: 0` etc. Belt-and-suspenders catch
+ *  for the rare server-rendered variant where the hide style is shipped
+ *  inline rather than via a class; the common case (a rotating set of
+ *  hex class names mapped to the same hide style by an inline <style>
+ *  rule) is handled by `hasHiddenClass`. */
 function isHiddenInline(p: Element): boolean {
   const style = (p.getAttribute("style") || "").toLowerCase();
   if (!style) return false;
@@ -221,8 +290,15 @@ function paragraphText(p: Element): string {
   return (clone.textContent || "").replace(/\s+/g, " ").trim();
 }
 
-function isIgnored(line: string): boolean {
-  return IGNORED_REGEXES.some((r) => r.test(line));
+/** Strip every occurrence of every ignore pattern from `line`, then
+ *  collapse whitespace. Each match is replaced with a single space so
+ *  surrounding text doesn't get glued together; the final whitespace
+ *  collapse normalises the result. Callers should drop the paragraph
+ *  when the returned string is empty. */
+function stripIgnored(line: string): string {
+  let out = line;
+  for (const r of IGNORED_REGEXES) out = out.replace(r, " ");
+  return out.replace(/\s+/g, " ").trim();
 }
 
 // ── home-page parsing ───────────────────────────────────────────────────────
