@@ -1675,7 +1675,7 @@ function MobileBottomNav({
       />
       <NavIconButton
         theme={theme}
-        icon="type"
+        icon="settings"
         ariaLabel="Settings"
         onClick={onOpenSettings}
       />
@@ -1685,7 +1685,7 @@ function MobileBottomNav({
 
 interface NavIconButtonProps {
   theme: Theme;
-  icon: "globe" | "download" | "doc" | "type";
+  icon: "globe" | "download" | "doc" | "settings";
   ariaLabel: string;
   active?: boolean;
   disabled?: boolean;
