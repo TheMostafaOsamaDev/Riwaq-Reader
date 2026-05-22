@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { MobileSheet } from "./MobileSheet";
@@ -135,8 +135,54 @@ export function MobileReader({
 
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
+
+  // Drag-scrub the progress bar to jump chapters. While dragging, the
+  // thumb and fill follow the finger but the reader stays on
+  // `currentChapter` — only release commits the chapter change. This
+  // avoids chapter loads thrashing under the finger and lets the user
+  // preview the target via the floating chip without overshooting.
+  const trackRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const [draggingTarget, setDraggingTarget] = useState<number | null>(null);
+  const chapterFromClientX = (clientX: number): number | null => {
+    const el = trackRef.current;
+    if (!el || chapterCount === 0) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0) return null;
+    const ratio = Math.min(
+      1,
+      Math.max(0, (clientX - rect.left) / rect.width),
+    );
+    return Math.min(chapterCount - 1, Math.floor(ratio * chapterCount));
+  };
+  const onTrackPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (chapterCount <= 1) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    draggingRef.current = true;
+    setDraggingTarget(chapterFromClientX(e.clientX) ?? currentChapter);
+  };
+  const onTrackPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    const next = chapterFromClientX(e.clientX);
+    if (next !== null) setDraggingTarget(next);
+  };
+  const onTrackPointerEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    setDraggingTarget((target) => {
+      if (target !== null && target !== currentChapter) {
+        onChapterChange(target);
+      }
+      return null;
+    });
+  };
+
+  const displayChapter = draggingTarget ?? currentChapter;
   const pct = chapterCount > 0
-    ? Math.round(((currentChapter + 1) / chapterCount) * 100)
+    ? Math.round(((displayChapter + 1) / chapterCount) * 100)
     : 0;
   const ticks =
     chapterCount > 1
@@ -442,51 +488,127 @@ export function MobileReader({
               <Icon name="arrowL" size={14} />
             </button>
             <span style={{ fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
-            <div style={{ flex: 1, position: "relative", height: 3 }}>
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: theme.rule,
-                  borderRadius: 1.5,
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: `${pct}%`,
-                  background: theme.ink,
-                  borderRadius: 1.5,
-                }}
-              />
-              {ticks.map((p, i) => (
-                <span
-                  key={i}
+            <div
+              ref={trackRef}
+              onPointerDown={onTrackPointerDown}
+              onPointerMove={onTrackPointerMove}
+              onPointerUp={onTrackPointerEnd}
+              onPointerCancel={onTrackPointerEnd}
+              role="slider"
+              aria-label="Chapter progress"
+              aria-valuemin={1}
+              aria-valuemax={chapterCount}
+              aria-valuenow={displayChapter + 1}
+              aria-valuetext={book.chapters[displayChapter]?.title}
+              style={{
+                flex: 1,
+                position: "relative",
+                // Visible bar stays 3px; padding + negative margin grow the
+                // touch target to ~27px without shifting layout.
+                paddingBlock: 12,
+                margin: "-12px 0",
+                touchAction: "none",
+                cursor: chapterCount > 1 ? "pointer" : "default",
+              }}
+            >
+              <div style={{ position: "relative", height: 3 }}>
+                <div
                   style={{
                     position: "absolute",
-                    left: `${p * 100}%`,
-                    top: -2,
-                    width: 1,
-                    height: 7,
-                    background: theme.muted,
-                    opacity: 0.5,
+                    inset: 0,
+                    background: theme.rule,
+                    borderRadius: 1.5,
                   }}
                 />
-              ))}
-              <div
-                style={{
-                  position: "absolute",
-                  left: `${pct}%`,
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  background: theme.ink,
-                  boxShadow: `0 0 0 3px ${theme.chrome}`,
-                }}
-              />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: `${pct}%`,
+                    background: theme.ink,
+                    borderRadius: 1.5,
+                  }}
+                />
+                {ticks.map((p, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      position: "absolute",
+                      left: `${p * 100}%`,
+                      top: -2,
+                      width: 1,
+                      height: 7,
+                      background: theme.muted,
+                      opacity: 0.5,
+                    }}
+                  />
+                ))}
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${pct}%`,
+                    top: "50%",
+                    transform: `translate(-50%, -50%) scale(${draggingTarget !== null ? 1.4 : 1})`,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    background: theme.ink,
+                    boxShadow: `0 0 0 3px ${theme.chrome}`,
+                    transition: "transform 120ms ease-out",
+                  }}
+                />
+              </div>
+              {draggingTarget !== null && (
+                <div
+                  style={{
+                    position: "absolute",
+                    // Anchor on the thumb and shift the chip back by a
+                    // fraction of its own width that matches how far along
+                    // the bar we are. pct=0% → no shift (chip extends
+                    // right); pct=100% → full -100% shift (chip extends
+                    // left); pct=50% → -50% (centered). Net effect: the
+                    // chip slides under itself as the thumb approaches
+                    // either edge and never overflows the track.
+                    left: `${pct}%`,
+                    bottom: "calc(100% - 4px)",
+                    transform: `translateX(-${pct}%)`,
+                    background: theme.chrome,
+                    color: theme.ink,
+                    border: `0.5px solid ${theme.rule}`,
+                    borderRadius: 8,
+                    padding: "6px 10px",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                    maxWidth: 240,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    pointerEvents: "none",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.18)",
+                  }}
+                >
+                  Chapter {draggingTarget + 1} —{" "}
+                  {book.chapters[draggingTarget]?.title ?? ""}
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      // Mirror the chip's slide so the arrow always sits
+                      // under the thumb's real screen position. Clamped
+                      // inside the chip so it doesn't poke past the
+                      // rounded corners at the extremes.
+                      left: `clamp(12px, ${pct}%, calc(100% - 12px))`,
+                      bottom: -4,
+                      width: 8,
+                      height: 8,
+                      transform: "translateX(-50%) rotate(45deg)",
+                      background: theme.chrome,
+                      borderRight: `0.5px solid ${theme.rule}`,
+                      borderBottom: `0.5px solid ${theme.rule}`,
+                    }}
+                  />
+                </div>
+              )}
             </div>
             <button
               onClick={(e) => {
