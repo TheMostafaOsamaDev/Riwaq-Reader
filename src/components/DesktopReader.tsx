@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import { AnimatedPanel } from "./AnimatedPanel";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { PaginatedView, type PaginatedAPI } from "./PaginatedView";
@@ -691,7 +692,7 @@ export function DesktopReader({
       </div>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        {activePanel === "toc" && (
+        <AnimatedPanel open={activePanel === "toc"} side="left">
           <TOCPanel
             theme={theme}
             onClose={() => setActivePanel(null)}
@@ -703,8 +704,8 @@ export function DesktopReader({
               setActivePanel(null);
             }}
           />
-        )}
-        {activePanel === "highlights" && (
+        </AnimatedPanel>
+        <AnimatedPanel open={activePanel === "highlights"} side="left">
           <HighlightsPanel
             theme={theme}
             themeKey={themeKey}
@@ -717,7 +718,7 @@ export function DesktopReader({
             onDelete={onDeleteHighlight}
             onUpdateNote={onUpdateHighlightNote}
           />
-        )}
+        </AnimatedPanel>
 
         <div
           style={{
@@ -936,7 +937,7 @@ export function DesktopReader({
           </div>
         </div>
 
-        {activePanel === "settings" && (
+        <AnimatedPanel open={activePanel === "settings"} side="right">
           <SettingsPanel
             theme={theme}
             themeKey={themeKey}
@@ -944,8 +945,8 @@ export function DesktopReader({
             setTweak={setTweak}
             onClose={() => setActivePanel(null)}
           />
-        )}
-        {activePanel === "progress" && (
+        </AnimatedPanel>
+        <AnimatedPanel open={activePanel === "progress"} side="right">
           <div
             style={{
               width: 380,
@@ -966,7 +967,7 @@ export function DesktopReader({
               chapterTitle={chapter.title}
             />
           </div>
-        )}
+        </AnimatedPanel>
       </div>
       {selAnchor && (
         <SelectionPopover

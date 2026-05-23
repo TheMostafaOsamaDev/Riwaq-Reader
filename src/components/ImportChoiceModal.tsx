@@ -38,37 +38,23 @@ export function ImportChoiceModal({
   }, [onCancel]);
 
   return (
+    // The scrim, centering, and enter/exit animation live in AnimatedDialog
+    // at the call site. This component just renders the card.
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="import-choice-title"
-      onClick={onCancel}
       style={{
-        position: "fixed",
-        inset: 0,
-        // Below the import-progress modal (10000) so a long-running run
-        // overlays this if the user happens to re-click during one.
-        zIndex: 9700,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
+        width: "min(440px, calc(100vw - 32px))",
+        background: theme.bg,
+        color: theme.ink,
+        borderRadius: 14,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
+        border: `0.5px solid ${theme.rule}`,
+        overflow: "hidden",
         fontFamily: FONT_STACKS.sans,
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(440px, 100%)",
-          background: theme.bg,
-          color: theme.ink,
-          borderRadius: 14,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
-          border: `0.5px solid ${theme.rule}`,
-          overflow: "hidden",
-        }}
-      >
         <div style={{ padding: "22px 22px 8px" }}>
           <div
             id="import-choice-title"
@@ -132,7 +118,6 @@ export function ImportChoiceModal({
             Cancel
           </Button>
         </div>
-      </div>
     </div>
   );
 }
