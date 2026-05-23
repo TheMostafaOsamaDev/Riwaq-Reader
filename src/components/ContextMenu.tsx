@@ -9,6 +9,7 @@ import {
 import { Icon } from "./Icon";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { BookStatus } from "../store/library";
+import { EASE, MOTION } from "../styles/motion";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
 
 export interface ContextMenuProps {
@@ -39,15 +40,14 @@ const STATUS_OPTIONS: { value: BookStatus; label: string }[] = [
   { value: "wishlist", label: "Wishlist" },
 ];
 
-// Enter and exit run at different durations on purpose: a snappy enter feels
-// responsive, a slightly shorter exit gets out of the user's way faster.
-const ENTER_MS = 220;
-const EXIT_MS = 180;
-// iOS-ish spring out for entry, faster ease-in for exit.
-const ENTER_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
-const EXIT_EASE = "cubic-bezier(0.4, 0, 1, 1)";
-const SLIDE_MS = 240;
-const SLIDE_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+// Motion timings pulled from the app-wide motion tokens so every
+// menu/sheet/panel shares the same enter/exit feel.
+const ENTER_MS = MOTION.med;
+const EXIT_MS = MOTION.fast;
+const ENTER_EASE = EASE.enter;
+const EXIT_EASE = EASE.exit;
+const SLIDE_MS = MOTION.med;
+const SLIDE_EASE = EASE.enter;
 
 const KEYFRAMES = `
 @keyframes leaflet-ctxmenu-pop-in {

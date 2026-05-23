@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatedSwap } from "./components/AnimatedSwap";
 import { DesktopReader } from "./components/DesktopReader";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
@@ -317,67 +318,94 @@ function App() {
           {error}
         </div>
       )}
-      {streaming && (
-        <SourceStreamReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          layout={isMobile ? "mobile" : "desktop"}
-          sourceId={streaming.sourceId}
-          novelUrl={streaming.novelUrl}
-          startChapterId={streaming.startChapterId}
-          onClose={closeStream}
-        />
-      )}
-      {!inReader ? (
-        <Library
-          theme={theme}
-          themeKey={themeKey}
-          setTweak={setTweak}
-          layout={isMobile ? "mobile" : "desktop"}
-          onOpen={openBook}
-          onStreamRead={openStream}
-        />
-      ) : isMobile ? (
-        <MobileReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          book={loaded!.book}
-          state={loaded!.state}
-          currentChapter={loaded!.currentChapter}
-          resumeParagraph={loaded!.resumeParagraph}
-          onChapterChange={changeChapter}
-          onParagraphChange={onParagraphChange}
-          onCreateHighlight={createHighlight}
-          onDeleteHighlight={removeHighlight}
-          onUpdateHighlightNote={editHighlightNote}
-          onJumpToHighlight={jumpToHighlight}
-          onBack={closeBook}
-        />
-      ) : (
-        <DesktopReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          book={loaded!.book}
-          state={loaded!.state}
-          currentChapter={loaded!.currentChapter}
-          resumeParagraph={loaded!.resumeParagraph}
-          onChapterChange={changeChapter}
-          onParagraphChange={onParagraphChange}
-          onCreateHighlight={createHighlight}
-          onDeleteHighlight={removeHighlight}
-          onUpdateHighlightNote={editHighlightNote}
-          onJumpToHighlight={jumpToHighlight}
-          activePanel={activePanel}
-          setActivePanel={setActivePanel}
-          onBack={closeBook}
-        />
-      )}
+      {/* Stream reader overlay. AnimatedSwap's slots are position:absolute
+          with no z-index, so without this wrapper the next AnimatedSwap
+          (Library/Reader) sits on top in document order and hides the
+          streaming layer for the duration of its fade-in. The wrapper's
+          z-index keeps the streaming layer above the Library throughout
+          the animation; pointer-events flips off when no stream is active
+          so the empty slot doesn't swallow clicks meant for the Library. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 30,
+          pointerEvents: streaming ? "auto" : "none",
+        }}
+      >
+        <AnimatedSwap viewKey={streaming ? "stream" : "none"}>
+          {streaming ? (
+            <SourceStreamReader
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              layout={isMobile ? "mobile" : "desktop"}
+              sourceId={streaming.sourceId}
+              novelUrl={streaming.novelUrl}
+              startChapterId={streaming.startChapterId}
+              onClose={closeStream}
+            />
+          ) : null}
+        </AnimatedSwap>
+      </div>
+      {/* Library ↔ Reader transition. viewKey is derived from the open
+          book + layout so a layout change (e.g., rotating into landscape
+          on mobile-landscape) ALSO crossfades cleanly. */}
+      <AnimatedSwap
+        viewKey={
+          inReader ? (isMobile ? "reader-mobile" : "reader-desktop") : "library"
+        }
+      >
+        {!inReader ? (
+          <Library
+            theme={theme}
+            themeKey={themeKey}
+            setTweak={setTweak}
+            layout={isMobile ? "mobile" : "desktop"}
+            onOpen={openBook}
+            onStreamRead={openStream}
+          />
+        ) : isMobile ? (
+          <MobileReader
+            theme={theme}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
+            book={loaded!.book}
+            state={loaded!.state}
+            currentChapter={loaded!.currentChapter}
+            resumeParagraph={loaded!.resumeParagraph}
+            onChapterChange={changeChapter}
+            onParagraphChange={onParagraphChange}
+            onCreateHighlight={createHighlight}
+            onDeleteHighlight={removeHighlight}
+            onUpdateHighlightNote={editHighlightNote}
+            onJumpToHighlight={jumpToHighlight}
+            onBack={closeBook}
+          />
+        ) : (
+          <DesktopReader
+            theme={theme}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
+            book={loaded!.book}
+            state={loaded!.state}
+            currentChapter={loaded!.currentChapter}
+            resumeParagraph={loaded!.resumeParagraph}
+            onChapterChange={changeChapter}
+            onParagraphChange={onParagraphChange}
+            onCreateHighlight={createHighlight}
+            onDeleteHighlight={removeHighlight}
+            onUpdateHighlightNote={editHighlightNote}
+            onJumpToHighlight={jumpToHighlight}
+            activePanel={activePanel}
+            setActivePanel={setActivePanel}
+            onBack={closeBook}
+          />
+        )}
+      </AnimatedSwap>
       {/* Mounted at the app root so a docx import keeps showing across the
           Library → Reader transition (e.g. user clicks "Continue in
           background" then opens an existing book while the import finishes). */}
