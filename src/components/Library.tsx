@@ -13,6 +13,9 @@ import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
 import { SettingsSheet } from "./SettingsSheet";
+import { AnimatedDialog } from "./AnimatedDialog";
+import { AnimatedFullScreen } from "./AnimatedFullScreen";
+import { AnimatedSwap } from "./AnimatedSwap";
 import type { Tweaks } from "../types/reader";
 import {
   getState as getQueueState,
@@ -564,61 +567,99 @@ export function Library({
           onClose={closeContextMenu}
         />
       )}
-      {pendingDelete && (
-        <ConfirmDialog
-          theme={theme}
-          title="Remove from library?"
-          message={
-            <>
-              <strong style={{ color: theme.ink }}>
-                “{pendingDelete.title}”
-              </strong>{" "}
-              will be removed from your library, including its reading
-              progress. This can't be undone.
-            </>
-          }
-          confirmLabel="Remove"
-          cancelLabel="Cancel"
-          confirmVariant="destructive"
-          onConfirm={performDelete}
-          onCancel={cancelDelete}
-        />
-      )}
-      {docxChoiceOpen && (
-        <ImportChoiceModal
-          theme={theme}
-          onDirect={onImportDocxDirect}
-          onManage={onImportDocxStage}
-          onCancel={() => setDocxChoiceOpen(false)}
-        />
-      )}
-      {sourceDetailRangeDialog && (
-        <DownloadRangeDialog
-          theme={theme}
-          sourceId={sourceDetailRangeDialog.sourceId}
-          novelUrl={sourceDetailRangeDialog.novelUrl}
-          libraryEntryId={sourceDetailRangeDialog.libraryEntryId}
-          onCancel={() => setSourceDetailRangeDialog(null)}
-          onStarted={() => setSourceDetailRangeDialog(null)}
-          onCompleted={() => void refresh()}
-        />
-      )}
-      {queueOpen && (
-        <DownloadQueueView
-          theme={theme}
-          layout={layout}
-          onClose={() => setQueueOpen(false)}
-        />
-      )}
-      {settingsOpen && (
-        <SettingsSheet
-          theme={theme}
-          themeKey={themeKey}
-          setTweak={setTweak}
-          layout={layout}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
+      {/* Dialog + full-screen wrappers manage their own enter/exit and stay
+          mounted while the close animation plays. Keep the children
+          conditional so the inner component only mounts when the data
+          backing it (pendingDelete, sourceDetailRangeDialog) actually
+          exists. zIndex stack roughly: dialog 9500-9700 (above
+          EditBookModal at 9000), full-screen 200, on top of the shelf. */}
+      <AnimatedDialog
+        open={pendingDelete !== null}
+        onScrimClick={cancelDelete}
+        zIndex={9500}
+      >
+        {pendingDelete && (
+          <ConfirmDialog
+            theme={theme}
+            title="Remove from library?"
+            message={
+              <>
+                <strong style={{ color: theme.ink }}>
+                  “{pendingDelete.title}”
+                </strong>{" "}
+                will be removed from your library, including its reading
+                progress. This can't be undone.
+              </>
+            }
+            confirmLabel="Remove"
+            cancelLabel="Cancel"
+            confirmVariant="destructive"
+            onConfirm={performDelete}
+            onCancel={cancelDelete}
+          />
+        )}
+      </AnimatedDialog>
+      <AnimatedDialog
+        open={docxChoiceOpen}
+        onScrimClick={() => setDocxChoiceOpen(false)}
+        zIndex={9700}
+      >
+        {docxChoiceOpen && (
+          <ImportChoiceModal
+            theme={theme}
+            onDirect={onImportDocxDirect}
+            onManage={onImportDocxStage}
+            onCancel={() => setDocxChoiceOpen(false)}
+          />
+        )}
+      </AnimatedDialog>
+      <AnimatedDialog
+        open={sourceDetailRangeDialog !== null}
+        onScrimClick={() => setSourceDetailRangeDialog(null)}
+        zIndex={9700}
+      >
+        {sourceDetailRangeDialog && (
+          <DownloadRangeDialog
+            theme={theme}
+            sourceId={sourceDetailRangeDialog.sourceId}
+            novelUrl={sourceDetailRangeDialog.novelUrl}
+            libraryEntryId={sourceDetailRangeDialog.libraryEntryId}
+            onCancel={() => setSourceDetailRangeDialog(null)}
+            onStarted={() => setSourceDetailRangeDialog(null)}
+            onCompleted={() => void refresh()}
+          />
+        )}
+      </AnimatedDialog>
+      <AnimatedFullScreen
+        open={queueOpen}
+        layout={layout}
+        onScrimClick={() => setQueueOpen(false)}
+        zIndex={200}
+      >
+        {queueOpen && (
+          <DownloadQueueView
+            theme={theme}
+            layout={layout}
+            onClose={() => setQueueOpen(false)}
+          />
+        )}
+      </AnimatedFullScreen>
+      <AnimatedFullScreen
+        open={settingsOpen}
+        layout={layout}
+        onScrimClick={() => setSettingsOpen(false)}
+        zIndex={200}
+      >
+        {settingsOpen && (
+          <SettingsSheet
+            theme={theme}
+            themeKey={themeKey}
+            setTweak={setTweak}
+            layout={layout}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+      </AnimatedFullScreen>
       {stagedDocx && (
         <DocxManageView
           theme={theme}
@@ -856,6 +897,24 @@ function DesktopLibrary({
         )}
       </div>
 
+      {/* Body cross-fades when the user switches tab or opens/closes a
+          Store source detail. The wrapper provides the positioning
+          context AnimatedSwap's absolute slots need. */}
+      <div
+        style={{
+          position: "relative",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        <AnimatedSwap
+          viewKey={
+            sourceDetailView
+              ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+              : `tab:${tab}`
+          }
+        >
       {sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
         // NovelDetailView the Store uses for browsing. Tabs above stay
@@ -973,6 +1032,8 @@ function DesktopLibrary({
         )}
       </div>
       )}
+        </AnimatedSwap>
+      </div>
     </div>
   );
 }
@@ -1078,6 +1139,23 @@ function MobileLibrary({
         </div>
       )}
 
+      {/* Body cross-fades on tab switch / Store ↔ NovelDetail toggle. The
+          wrapper provides AnimatedSwap's positioning context. */}
+      <div
+        style={{
+          position: "relative",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        <AnimatedSwap
+          viewKey={
+            sourceDetailView
+              ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+              : `tab:${tab}`
+          }
+        >
       {sourceDetailView ? (
         <div
           style={{
@@ -1268,6 +1346,8 @@ function MobileLibrary({
         )}
       </div>
       )}
+        </AnimatedSwap>
+      </div>
       {/* Bottom navigation. Hidden while the source detail view owns
           the body (NovelDetailView has its own back-arrow header).
           Visible on the shelf and on the Store so the user always
