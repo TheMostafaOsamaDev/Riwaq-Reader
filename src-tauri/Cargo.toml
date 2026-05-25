@@ -23,6 +23,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-os = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sources subsystem — Rust-side HTTP (CORS-free) and URL parsing for the
@@ -38,6 +39,15 @@ reqwest = { version = "0.12", default-features = false, features = [
 url = "2"
 urlencoding = "2"
 tokio = { version = "1", features = ["time", "macros", "rt-multi-thread", "sync"] }
+
+# Android-only: JNI bridge into the Kotlin DownloadNotifier class (see
+# src/notify.rs). Pinned to a version that matches the JNI ABI used by
+# Tauri 2's Android runtime. `ndk-context` is also a transitive Tauri
+# dep but we list it explicitly so future Tauri bumps can't drop it
+# silently.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
 
 # Size-optimized release profile. The Android APK ships the Rust core as a
 # .so per ABI, so opt-level "z" + LTO + strip is what brings the install

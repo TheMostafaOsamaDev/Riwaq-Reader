@@ -1,3 +1,4 @@
+mod notify;
 mod sources;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -7,10 +8,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_os::init())
         .invoke_handler(tauri::generate_handler![
             sources::source_fetch,
             sources::source_fetch_bytes,
             sources::source_render_and_extract,
+            notify::update_download_notification,
+            notify::consume_launch_intent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
