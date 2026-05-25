@@ -16,6 +16,7 @@ import { SettingsSheet } from "./SettingsSheet";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
+import { onOpenDownloadQueue } from "../store/uiIntents";
 import type { Tweaks } from "../types/reader";
 import {
   getState as getQueueState,
@@ -426,6 +427,10 @@ export function Library({
   }, [refresh]);
 
   const [queueOpen, setQueueOpen] = useState(false);
+  // Wired by useLaunchIntent in App.tsx — when a notification tap
+  // arrives with `leaflet.open=queue`, the pub/sub fires and we open
+  // the queue overlay.
+  useEffect(() => onOpenDownloadQueue(() => setQueueOpen(true)), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // When a "Save as offline book" conversion finishes, one or more
