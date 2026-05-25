@@ -44,48 +44,37 @@ export function SettingsSheet({
   const isMobile = layout === "mobile";
 
   return (
+    // The scrim, centering, and enter/exit animation live in
+    // AnimatedFullScreen at the call site. On mobile it slides up
+    // full-bleed; on desktop it fade-pops a centered card.
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-sheet-heading"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.42)",
+        width: isMobile ? "100%" : 480,
+        maxHeight: isMobile ? "100%" : "84vh",
+        height: isMobile ? "100%" : "auto",
+        background: theme.bg,
+        color: theme.ink,
+        border: `0.5px solid ${theme.rule}`,
+        borderRadius: isMobile ? 0 : 14,
+        boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
         display: "flex",
-        alignItems: isMobile ? "stretch" : "center",
-        justifyContent: isMobile ? "stretch" : "center",
-        zIndex: 200,
+        flexDirection: "column",
+        overflow: "hidden",
         fontFamily: FONT_STACKS.sans,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        ...(isMobile
+          ? {
+              paddingTop: "env(safe-area-inset-top, 0px)",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+              paddingLeft: "env(safe-area-inset-left, 0px)",
+              paddingRight: "env(safe-area-inset-right, 0px)",
+              boxSizing: "border-box",
+            }
+          : null),
       }}
     >
-      <div
-        style={{
-          width: isMobile ? "100%" : 480,
-          maxHeight: isMobile ? "100%" : "84vh",
-          height: isMobile ? "100%" : "auto",
-          background: theme.bg,
-          color: theme.ink,
-          border: `0.5px solid ${theme.rule}`,
-          borderRadius: isMobile ? 0 : 14,
-          boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          ...(isMobile
-            ? {
-                paddingTop: "env(safe-area-inset-top, 0px)",
-                paddingBottom: "env(safe-area-inset-bottom, 0px)",
-                paddingLeft: "env(safe-area-inset-left, 0px)",
-                paddingRight: "env(safe-area-inset-right, 0px)",
-                boxSizing: "border-box",
-              }
-            : null),
-        }}
-      >
         <Header theme={theme} onClose={onClose} />
         <div
           style={{
@@ -163,7 +152,6 @@ export function SettingsSheet({
             the reader's Settings panel.
           </p>
         </div>
-      </div>
     </div>
   );
 }

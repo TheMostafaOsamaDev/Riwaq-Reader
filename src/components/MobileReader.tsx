@@ -7,6 +7,7 @@ import { SelectionPopover } from "./SelectionPopover";
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
+import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import {
   FONT_STACKS,
   isRtlLanguage,
@@ -84,6 +85,15 @@ export function MobileReader({
 }: Props) {
   const [showChrome, setShowChrome] = useState(true);
   const [showProgress, setShowProgress] = useState(true);
+  const reduced = useReducedMotion();
+  // Top/bottom chrome bars stay mounted and animate via transform +
+  // opacity when `showChrome` toggles, so a tap-to-read fade is
+  // smooth instead of a hard cut. Pointer-events are dropped while
+  // hidden so taps fall through to the reader.
+  const chromeHidden = !showChrome;
+  const chromeTransition = reduced
+    ? "none"
+    : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const resumeRef = useRef(resumeParagraph);
@@ -326,21 +336,28 @@ export function MobileReader({
         fontFamily: FONT_STACKS.sans,
       }}
     >
-      {showChrome && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 10,
-            padding: "env(safe-area-inset-top, 12px) 14px 10px",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: `linear-gradient(180deg, ${theme.chrome} 70%, transparent)`,
-          }}
-        >
+      {/* Top chrome — always mounted so it can transform/fade rather
+          than hard-cut. Hidden state slides up off-screen and disables
+          pointer events so taps fall through to the reader. */}
+      <div
+        aria-hidden={chromeHidden}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          padding: "env(safe-area-inset-top, 12px) 14px 10px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          background: `linear-gradient(180deg, ${theme.chrome} 70%, transparent)`,
+          transform: chromeHidden ? "translateY(-100%)" : "translateY(0)",
+          opacity: chromeHidden ? 0 : 1,
+          transition: chromeTransition,
+          pointerEvents: chromeHidden ? "none" : "auto",
+        }}
+      >
           <button
             onClick={onBack}
             style={{ ...mobileTab(theme), width: 36, height: 36 }}
@@ -379,7 +396,6 @@ export function MobileReader({
             </div>
           </div>
         </div>
-      )}
 
       <div
         ref={scrollRef}
@@ -447,19 +463,25 @@ export function MobileReader({
         />
       </div>
 
-      {showChrome && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 10,
-            padding: "14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)",
-            color: theme.chromeInk,
-            background: `linear-gradient(0deg, ${theme.chrome} 70%, transparent)`,
-          }}
-        >
+      {/* Bottom chrome — same always-mounted pattern as the top bar.
+          Slides down off-screen when hidden and gives up pointer events. */}
+      <div
+        aria-hidden={chromeHidden}
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          padding: "14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)",
+          color: theme.chromeInk,
+          background: `linear-gradient(0deg, ${theme.chrome} 70%, transparent)`,
+          transform: chromeHidden ? "translateY(100%)" : "translateY(0)",
+          opacity: chromeHidden ? 0 : 1,
+          transition: chromeTransition,
+          pointerEvents: chromeHidden ? "none" : "auto",
+        }}
+      >
           {showProgress && (
           <div
             style={{
@@ -667,11 +689,16 @@ export function MobileReader({
             </button>
           </div>
         </div>
-      )}
 
-      {sheet && (
-        <MobileSheet theme={theme} onClose={() => setSheet(null)} height="82%">
-          <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+      {/* Sheet stays mounted while it animates out — pass `open` so it
+          knows whether to show the enter or exit keyframes. */}
+      <MobileSheet
+        theme={theme}
+        open={sheet !== null}
+        onClose={() => setSheet(null)}
+        height="82%"
+      >
+        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             {sheet === "toc" && (
               <TOCPanel
                 theme={theme}
@@ -737,9 +764,8 @@ export function MobileReader({
                 />
               </div>
             )}
-          </div>
-        </MobileSheet>
-      )}
+        </div>
+      </MobileSheet>
       {selAnchor && (
         <SelectionPopover
           theme={theme}

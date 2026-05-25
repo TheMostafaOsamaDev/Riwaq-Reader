@@ -251,37 +251,25 @@ export function DownloadRangeDialog({
   }, [startId, endId, snapshot, libraryEntryId, onStarted, onCompleted]);
 
   return (
+    // The scrim, centering, and enter/exit animation live in AnimatedDialog
+    // at the call site. This component just renders the card.
     <div
       role="dialog"
       aria-modal="true"
-      onClick={onCancel}
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9700,
-        background: "rgba(0,0,0,0.45)",
+        width: "min(520px, calc(100vw - 32px))",
+        maxHeight: "90vh",
+        background: theme.bg,
+        color: theme.ink,
+        borderRadius: 14,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
+        border: `0.5px solid ${theme.rule}`,
+        overflow: "hidden",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
+        flexDirection: "column",
         fontFamily: FONT_STACKS.sans,
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(520px, 100%)",
-          maxHeight: "90vh",
-          background: theme.bg,
-          color: theme.ink,
-          borderRadius: 14,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
-          border: `0.5px solid ${theme.rule}`,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
         <div style={{ padding: "22px 22px 8px" }}>
           <div
             style={{
@@ -409,7 +397,6 @@ export function DownloadRangeDialog({
                 : `Queue ${pendingInRange}`}
           </Button>
         </div>
-      </div>
     </div>
   );
 }

@@ -37,37 +37,23 @@ export function ConfirmDialog({
   }, [onCancel]);
 
   return (
+    // The scrim, centering, and enter/exit animation live in AnimatedDialog
+    // at the call site. This component just renders the card.
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
-      onClick={onCancel}
       style={{
-        position: "fixed",
-        inset: 0,
-        // Above EditBookModal (9000) so a confirm raised from the modal
-        // sits on top of it rather than behind the backdrop.
-        zIndex: 9500,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
+        width: "min(420px, calc(100vw - 32px))",
+        background: theme.bg,
+        color: theme.ink,
+        borderRadius: 14,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
+        border: `0.5px solid ${theme.rule}`,
+        overflow: "hidden",
         fontFamily: FONT_STACKS.sans,
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(420px, 100%)",
-          background: theme.bg,
-          color: theme.ink,
-          borderRadius: 14,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
-          border: `0.5px solid ${theme.rule}`,
-          overflow: "hidden",
-        }}
-      >
         <div style={{ padding: "20px 22px 16px" }}>
           <div
             id="confirm-dialog-title"
@@ -112,6 +98,5 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
   );
 }

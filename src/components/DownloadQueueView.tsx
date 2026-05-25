@@ -74,52 +74,40 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
   const isMobile = layout === "mobile";
 
   return (
+    // The scrim, centering, and enter/exit animation live in
+    // AnimatedFullScreen at the call site. On mobile it slides up
+    // full-bleed; on desktop it fade-pops a centered card.
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="download-queue-heading"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.42)",
+        width: isMobile ? "100%" : 560,
+        maxHeight: isMobile ? "100%" : "84vh",
+        height: isMobile ? "100%" : "auto",
+        background: theme.bg,
+        color: theme.ink,
+        border: `0.5px solid ${theme.rule}`,
+        borderRadius: isMobile ? 0 : 14,
+        boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
         display: "flex",
-        alignItems: isMobile ? "stretch" : "center",
-        justifyContent: isMobile ? "stretch" : "center",
-        zIndex: 200,
+        flexDirection: "column",
+        overflow: "hidden",
         fontFamily: FONT_STACKS.sans,
-      }}
-      onClick={(e) => {
-        // Clicking the backdrop (not the panel) closes.
-        if (e.target === e.currentTarget) onClose();
+        // Sheet sits at the top of the viewport on mobile (height 100%) —
+        // without explicit safe-area padding the header collides with
+        // the status bar on devices with a notch.
+        ...(isMobile
+          ? {
+              paddingTop: "env(safe-area-inset-top, 0px)",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+              paddingLeft: "env(safe-area-inset-left, 0px)",
+              paddingRight: "env(safe-area-inset-right, 0px)",
+              boxSizing: "border-box",
+            }
+          : null),
       }}
     >
-      <div
-        style={{
-          width: isMobile ? "100%" : 560,
-          maxHeight: isMobile ? "100%" : "84vh",
-          height: isMobile ? "100%" : "auto",
-          background: theme.bg,
-          color: theme.ink,
-          border: `0.5px solid ${theme.rule}`,
-          borderRadius: isMobile ? 0 : 14,
-          boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          // Sheet sits at the top of the viewport on mobile (height
-          // 100%) — without explicit safe-area padding the header
-          // collides with the status bar on devices with a notch.
-          ...(isMobile
-            ? {
-                paddingTop: "env(safe-area-inset-top, 0px)",
-                paddingBottom: "env(safe-area-inset-bottom, 0px)",
-                paddingLeft: "env(safe-area-inset-left, 0px)",
-                paddingRight: "env(safe-area-inset-right, 0px)",
-                boxSizing: "border-box",
-              }
-            : null),
-        }}
-      >
         <Header
           theme={theme}
           activeCount={activeCount}
@@ -201,7 +189,6 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
             </Section>
           )}
         </div>
-      </div>
     </div>
   );
 }
