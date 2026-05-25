@@ -9,9 +9,10 @@
 // quiet — the queue still works, the user just doesn't see system
 // notifications. We re-ask only after a session restart.
 //
-// We don't push true Android progress bars; the Tauri notification
-// plugin doesn't expose them. Body text counts are close enough for
-// "how many of how many are done" feedback.
+// Android renders a real NotificationCompat.Builder.setProgress
+// widget via the custom Tauri command in src-tauri/src/notify.rs.
+// Other platforms fall back to plain title + body via the existing
+// Tauri notification plugin; see ./downloadNotifier/transport.ts.
 //
 // Anti-blink contract. The queue can emit dozens of state changes per
 // second while a chapter downloads (image fetch ticks, snapshot
@@ -36,7 +37,6 @@ import {
   Importance,
   isPermissionGranted,
   requestPermission,
-  sendNotification,
 } from "@tauri-apps/plugin-notification";
 import {
   getState,
@@ -44,10 +44,15 @@ import {
   type DownloadJob,
   type DownloadJobStatus,
 } from "./downloadQueue";
+import {
+  DOWNLOAD_NOTIFICATION_ID,
+  pushDownloadNotification,
+} from "./downloadNotifier/transport";
 
 /** Stable id so subsequent sends replace the previous notification on
- *  Android instead of stacking. (iOS reuses by id too.) */
-const NOTIFICATION_ID = 1001;
+ *  Android instead of stacking. Reuses the canonical constant from
+ *  the transport so the value can't drift. */
+const NOTIFICATION_ID = DOWNLOAD_NOTIFICATION_ID;
 
 /** Channel id used by every download/conversion notification. We
  *  register the channel with Importance.LOW on first use so updates
@@ -243,58 +248,87 @@ async function publish(snap: Snapshot) {
   await ensurePermission();
   if (permissionState !== "granted") return;
 
-  try {
-    sendNotification({
-      id: NOTIFICATION_ID,
-      channelId: CHANNEL_ID,
-      title,
-      body,
-      // In-progress: ongoing so Android marks the notification as
-      // persistent background work, which suppresses the per-update
-      // alert. Silent on iOS for the same reason. The terminal
-      // summary fires without these flags so the system alerts as
-      // normal — the "your downloads are done" cue.
-      ongoing: !isTerminalSummary,
-      silent: !isTerminalSummary,
-    });
-  } catch (e) {
-    // Notification plugin throws on Linux when no service is
-    // available; log + drop the message. Future emissions still
-    // try.
-    // eslint-disable-next-line no-console
-    console.warn("[downloadNotifier] sendNotification failed:", e);
-  }
+  await pushDownloadNotification({
+    id: NOTIFICATION_ID,
+    title: composed.title,
+    body: composed.body,
+    progress: composed.progress,
+    max: composed.max,
+    indeterminate: composed.indeterminate,
+    ongoing: composed.ongoing,
+    tapsToQueue: composed.tapsToQueue,
+  });
 }
 
 interface Composed {
   title: string;
   body: string;
+  progress: number;
+  max: number;
+  indeterminate: boolean;
+  ongoing: boolean;
+  tapsToQueue: boolean;
 }
 
 function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   if (snap.active > 0) {
     summaryShown = false;
+    // Conversion in flight: T1-style title with "Converting <Novel>".
     if (snap.activeConversions > 0) {
       const runningConversion = findRunningConversion();
-      let body: string;
       if (runningConversion) {
         const pct = Math.round(runningConversion.progress * 100);
-        const bar = renderBar(runningConversion.progress);
-        body = runningConversion.phase
-          ? `${runningConversion.phase}\n${bar}  ${pct}%`
-          : `${bar}  ${pct}%`;
-      } else {
-        body = `${completedThisBurst} of ${burstTotal} jobs done`;
+        const novel = runningConversion.novelTitle;
+        return {
+          title: `Converting ${novel}`,
+          body: runningConversion.phase || `${pct}% done`,
+          progress: pct,
+          max: 100,
+          indeterminate: false,
+          ongoing: true,
+          tapsToQueue: true,
+        };
       }
-      return { title: "Saving as offline book", body };
+      // Conversion is queued but not yet started — fall through to
+      // a generic ongoing notification while we wait for it to begin.
+      return {
+        title: "Preparing offline book",
+        body: `${completedThisBurst} of ${burstTotal} jobs done`,
+        progress: completedThisBurst,
+        max: Math.max(burstTotal, 1),
+        indeterminate: false,
+        ongoing: true,
+        tapsToQueue: true,
+      };
     }
-    const fraction =
-      burstTotal > 0 ? completedThisBurst / burstTotal : 0;
+
+    // Chapter downloads: T1 title with the currently-running chapter.
+    const running = findRunningChapter();
+    const novelCount = countDistinctNovels();
+    let title: string;
+    let body: string;
+    if (running) {
+      title = `Downloading ${running.novelTitle} — Ch. ${running.chapterId}`;
+      const suffix = novelCount > 1 ? ` (${novelCount} novels)` : "";
+      body = `Chapter ${completedThisBurst} of ${burstTotal}${suffix}`;
+    } else {
+      // Active count > 0 but no `running` job (all queued, none
+      // started yet). Use a generic title; the next emission once
+      // a worker picks one up will fill in the novel + chapter.
+      title = "Downloading chapters";
+      body = `${completedThisBurst} of ${burstTotal} chapters`;
+    }
     return {
-      title: "Downloading chapters",
-      body: `${renderBar(fraction)}  ${Math.round(fraction * 100)}% · ${completedThisBurst} of ${burstTotal}`,
+      title,
+      body,
+      progress: completedThisBurst,
+      max: Math.max(burstTotal, 1),
+      indeterminate: false,
+      ongoing: true,
+      tapsToQueue: true,
     };
   }
+
   if (summaryShown) return null;
   // If nothing actually finished in this session (e.g. on launch
   // with only `interrupted` jobs hanging around), the summary
@@ -310,12 +344,21 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
     return {
       title: "Background work finished",
       body: bits.join(" · "),
+      progress: 100,
+      max: 100,
+      indeterminate: false,
+      ongoing: false,
+      tapsToQueue: true,
     };
   }
   return {
     title: "All done",
-    body:
-      snap.done === 1 ? "1 job complete" : `${snap.done} jobs complete`,
+    body: snap.done === 1 ? "1 job complete" : `${snap.done} jobs complete`,
+    progress: 100,
+    max: 100,
+    indeterminate: false,
+    ongoing: false,
+    tapsToQueue: false,
   };
 }
 
@@ -347,21 +390,6 @@ async function ensurePermission(): Promise<void> {
   await permissionInflight;
 }
 
-/** Unicode block-character progress bar for the notification body.
- *  10-cell width — narrow enough to fit beside the counter on
- *  phone-width notification rows while still showing visible
- *  granularity (10% increments). The full block U+2588 + light
- *  shade U+2591 render correctly in every Android system font
- *  shipped since 2016.
- *
- *  Returns "" for invalid progress so callers can `${renderBar(p)}`
- *  unconditionally without weird empty bars when math goes wrong. */
-function renderBar(progress: number, width = 10): string {
-  if (!Number.isFinite(progress) || progress < 0) return "";
-  const clamped = Math.min(1, progress);
-  const filled = Math.round(clamped * width);
-  return "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
-}
 
 /** Find the conversion job that's currently running, if any. Used by
  *  the notification body so the phase text reads naturally rather
@@ -374,6 +402,30 @@ function findRunningConversion() {
     return j;
   }
   return null;
+}
+
+/** Find the chapter-download job that's currently running. Used to
+ *  fill the notification title with the active novel + chapter. */
+function findRunningChapter() {
+  const jobs = getState().jobs;
+  for (const j of jobs) {
+    if (j.kind !== "chapter") continue;
+    if (j.status !== "running") continue;
+    return j;
+  }
+  return null;
+}
+
+/** Count distinct novels currently represented in the queue
+ *  (running, queued, or recently terminal). Used to append
+ *  "(N novels)" to the body when more than one novel is in flight. */
+function countDistinctNovels(): number {
+  const jobs = getState().jobs;
+  const ids = new Set<string>();
+  for (const j of jobs) {
+    ids.add(j.libraryEntryId);
+  }
+  return ids.size;
 }
 
 /** Test helper: snapshot the current queue state into a notification.
