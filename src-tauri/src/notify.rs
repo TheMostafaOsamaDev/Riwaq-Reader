@@ -134,12 +134,12 @@ fn android_consume_intent(_app: &AppHandle) -> Result<String, Box<dyn std::error
     let jstr: jni::objects::JString = obj.into();
     let rust_str: String = env.get_string(&jstr)?.into();
 
-    // Clear so subsequent calls return None.
-    env.set_static_field(
-        &class,
-        ("pendingLaunchIntent", "Ljava/lang/String;"),
-        JValue::Object(&JObject::null()),
-    )?;
+    // Clear so subsequent calls return None. `set_static_field` in jni
+    // 0.21 expects a `JStaticFieldID`, not a (name, sig) tuple — look
+    // up the field id explicitly here.
+    let field_id =
+        env.get_static_field_id(&class, "pendingLaunchIntent", "Ljava/lang/String;")?;
+    env.set_static_field(&class, field_id, JValue::Object(&JObject::null()))?;
 
     Ok(rust_str)
 }
