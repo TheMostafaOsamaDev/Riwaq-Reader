@@ -1,6 +1,6 @@
 // Full-screen surface wrapper with layout-aware entry. On mobile, the panel
 // slides up from the bottom (same translateY keyframe as MobileSheet). On
-// desktop it fades + scales in as a centered modal with a scrim. Same phase
+// desktop it cross-fades in as a centered modal with a scrim. Same phase
 // machine as MobileSheet/AnimatedDialog.
 //
 // Used for surfaces that occupy a whole "page" rather than a card —

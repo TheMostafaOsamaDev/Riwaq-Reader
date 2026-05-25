@@ -1,4 +1,4 @@
-// Modal dialog wrapper. Scrim fades + card scale-pops on enter; reverses on
+// Modal dialog wrapper. Scrim and card both cross-fade on enter; reverse on
 // exit. The card content stays mounted long enough to play the exit before it
 // unmounts. Same phase machine as MobileSheet/AnimatedPanel so behavior is
 // uniform across the app's animated surfaces.
