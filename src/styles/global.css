@@ -238,19 +238,16 @@ input:focus-visible,
   animation: leaflet-skeleton-shimmer 1.6s ease-in-out infinite;
 }
 
-/* App-level view-swap (Library ↔ Reader ↔ Stream). The entering view
-   rises from below and grows into place; the outgoing view lifts up
-   and slightly enlarges as it fades away — a Material-style "shared
-   axis Z" feel that reads as depth on a phone. Both layers are
-   mounted simultaneously by AnimatedSwap and overlap for the
-   duration of the longer animation. */
+/* App-level view-swap (Library ↔ Reader ↔ Stream). Both layers are
+   mounted simultaneously by AnimatedSwap and cross-fade through each
+   other for the duration of the longer animation. */
 @keyframes leaflet-view-enter {
   from { opacity: 0; }
-  to   { opacity: 1; }
+  to { opacity: 1; }
 }
 @keyframes leaflet-view-exit {
   from { opacity: 1; }
-  to   { opacity: 0; }
+  to { opacity: 0; }
 }
 .leaflet-view-enter {
   animation: leaflet-view-enter 240ms ease-out both;
@@ -301,11 +298,11 @@ input:focus-visible,
 }
 @keyframes leaflet-dialog-enter {
   from { opacity: 0; }
-  to   { opacity: 1; }
+  to { opacity: 1; }
 }
 @keyframes leaflet-dialog-exit {
   from { opacity: 1; }
-  to   { opacity: 0; }
+  to { opacity: 0; }
 }
 .leaflet-dialog-enter {
   animation: leaflet-dialog-enter 240ms ease-out both;
@@ -316,11 +313,11 @@ input:focus-visible,
 
 @keyframes leaflet-fullscreen-enter {
   from { opacity: 0; }
-  to   { opacity: 1; }
+  to { opacity: 1; }
 }
 @keyframes leaflet-fullscreen-exit {
   from { opacity: 1; }
-  to   { opacity: 0; }
+  to { opacity: 0; }
 }
 .leaflet-fullscreen-enter {
   animation: leaflet-fullscreen-enter 240ms ease-out both;
