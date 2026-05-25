@@ -61,8 +61,8 @@ export function AnimatedSwap({ viewKey, children }: Props) {
   }, [viewKey, children]);
 
   // Once enough time has passed for both keyframes to finish, drop the
-  // exiting slots and promote the entering one to idle. Use MOTION.slow
-  // because the view-enter keyframe in global.css runs 280ms — wait at
+  // exiting slots and promote the entering one to idle. Use MOTION.med
+  // because the view-enter keyframe in global.css runs 240ms — wait at
   // least that long before stripping the class, or the animation will
   // be cut short.
   useEffect(() => {
@@ -78,7 +78,7 @@ export function AnimatedSwap({ viewKey, children }: Props) {
             ),
         );
       },
-      reduced ? 0 : MOTION.slow,
+      reduced ? 0 : MOTION.med,
     );
     return () => clearTimeout(t);
   }, [slots, reduced]);

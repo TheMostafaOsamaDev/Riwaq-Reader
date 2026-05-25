@@ -245,30 +245,18 @@ input:focus-visible,
    mounted simultaneously by AnimatedSwap and overlap for the
    duration of the longer animation. */
 @keyframes leaflet-view-enter {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes leaflet-view-exit {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-8px) scale(1.04);
-  }
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 .leaflet-view-enter {
-  animation: leaflet-view-enter 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: leaflet-view-enter 240ms ease-out both;
 }
 .leaflet-view-exit {
-  animation: leaflet-view-exit 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: leaflet-view-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
   pointer-events: none;
 }
 
@@ -312,30 +300,30 @@ input:focus-visible,
   to { transform: translateX(100%); }
 }
 @keyframes leaflet-dialog-enter {
-  from { opacity: 0; transform: scale(0.94); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes leaflet-dialog-exit {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.96); }
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 .leaflet-dialog-enter {
-  animation: leaflet-dialog-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: leaflet-dialog-enter 240ms ease-out both;
 }
 .leaflet-dialog-exit {
   animation: leaflet-dialog-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 @keyframes leaflet-fullscreen-enter {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes leaflet-fullscreen-exit {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.98); }
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 .leaflet-fullscreen-enter {
-  animation: leaflet-fullscreen-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: leaflet-fullscreen-enter 240ms ease-out both;
 }
 .leaflet-fullscreen-exit {
   animation: leaflet-fullscreen-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
