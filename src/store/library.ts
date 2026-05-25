@@ -826,25 +826,6 @@ export async function chapterImageSrcFor(
 }
 
 /**
- * Dev-only nuke: remove every book from the index and wipe the books/
- * directory. Useful while iterating on the parser or UI. Called from a
- * dev-mode button in the Library header.
- */
-export async function clearLibrary(): Promise<void> {
-  const idx = await readIndex();
-  for (const b of idx.books) {
-    try {
-      // Recursive — books may contain an `images/` subdir of in-flow art
-      // that the per-file remove path wouldn't reach.
-      await remove(bookDir(b.id), { baseDir: BASE, recursive: true });
-    } catch {
-      // best-effort — a missing dir shouldn't stop the sweep
-    }
-  }
-  await writeIndex({ version: 1, books: [] });
-}
-
-/**
  * Set or clear the user-managed reading status. Pass undefined to clear.
  *
  * Marking a book as "finished" also pins its progress to 100% — otherwise a
