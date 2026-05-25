@@ -180,7 +180,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Android APK (ARM + ARM64)
-        run: pnpm tauri android build --apk --target aarch64-linux-android,armv7-linux-androideabi
+        # Tauri's android `--target` takes the short ABI names
+        # (aarch64, armv7, i686, x86_64), NOT the full Rust target
+        # triples — those are only what `rustup target add` consumes
+        # above. Multi-target syntax is space-separated values after a
+        # single `--target` flag; comma-separated is rejected.
+        run: pnpm tauri android build --apk --target aarch64 armv7
 
       - name: Upload APK(s) to draft release (on tag push only)
         if: startsWith(github.ref, 'refs/tags/')
