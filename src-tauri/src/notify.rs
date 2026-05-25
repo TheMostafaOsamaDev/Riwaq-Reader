@@ -75,6 +75,35 @@ pub async fn consume_launch_intent(app: AppHandle) -> Result<Option<String>, Str
     }
 }
 
+/// Look up an app class via the activity's classloader. JNI-attached
+/// Rust threads default to the **system** classloader, which only
+/// resolves Android framework classes — `env.find_class("com/.../MainActivity")`
+/// hits `ClassNotFoundException`. Going through the activity's loader
+/// (which is the app's `PathClassLoader`) is the standard workaround.
+///
+/// `dot_name` must be dot-separated (e.g. `"com.leaflet.reader.MainActivity"`)
+/// because `ClassLoader.loadClass` takes a binary name, not a JNI signature.
+#[cfg(target_os = "android")]
+fn find_app_class<'local>(
+    env: &mut jni::JNIEnv<'local>,
+    activity: &JObject<'local>,
+    dot_name: &str,
+) -> Result<jni::objects::JClass<'local>, Box<dyn std::error::Error>> {
+    let loader = env
+        .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
+        .l()?;
+    let name_j = env.new_string(dot_name)?;
+    let class_obj = env
+        .call_method(
+            &loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&name_j)],
+        )?
+        .l()?;
+    Ok(jni::objects::JClass::from(class_obj))
+}
+
 #[cfg(target_os = "android")]
 fn android_call_update(
     _app: &AppHandle,
@@ -96,7 +125,7 @@ fn android_call_update(
     let title_j = env.new_string(title)?;
     let body_j = env.new_string(body)?;
 
-    let class = env.find_class("com/leaflet/reader/DownloadNotifier")?;
+    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.DownloadNotifier")?;
 
     env.call_static_method(
         &class,
@@ -122,8 +151,10 @@ fn android_consume_intent(_app: &AppHandle) -> Result<String, Box<dyn std::error
     let ctx = ndk_context::android_context();
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
     let mut env = vm.attach_current_thread()?;
+    let activity =
+        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
-    let class = env.find_class("com/leaflet/reader/MainActivity")?;
+    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.MainActivity")?;
     let value = env.get_static_field(&class, "pendingLaunchIntent", "Ljava/lang/String;")?;
     let obj: JObject = value.l()?;
 
