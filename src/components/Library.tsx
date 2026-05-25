@@ -23,7 +23,6 @@ import {
 } from "../store/downloadQueue";
 import { Store } from "./Store";
 import {
-  clearLibrary,
   commitStagedDocx,
   coverSrcFor,
   listBooks,
@@ -179,28 +178,6 @@ export function Library({
     try {
       const entry = await pickAndImportEpub();
       if (entry) await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const onClearAll = async () => {
-    if (importing) return;
-    const n = books.length;
-    if (n === 0) {
-      showToast("info", "Library is already empty.");
-      return;
-    }
-    if (!confirm(`[dev] Delete all ${n} book${n === 1 ? "" : "s"}? This cannot be undone.`))
-      return;
-    setImporting(true);
-    setError(null);
-    try {
-      await clearLibrary();
-      await refresh();
-      showToast("info", `Cleared ${n} book${n === 1 ? "" : "s"}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -513,7 +490,6 @@ export function Library({
     },
     onOpenQueue: () => setQueueOpen(true),
     onOpenSettings: () => setSettingsOpen(true),
-    onClearAll,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);
@@ -709,7 +685,6 @@ interface LayoutProps {
   onOpenQueue: () => void;
   /** Open the settings sheet (mobile theme picker for now). */
   onOpenSettings: () => void;
-  onClearAll: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onCardContextMenu: (id: string, x: number, y: number) => void;
@@ -767,7 +742,6 @@ function DesktopLibrary({
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
   onOpenQueue,
-  onClearAll,
   onDelete,
   onEdit,
   onCardContextMenu,
@@ -845,20 +819,6 @@ function DesktopLibrary({
             duplicate paths in the header. */}
         {tab !== "store" && (
           <>
-            {import.meta.env.DEV && (
-              <Button
-                theme={theme}
-                variant="destructive"
-                size="sm"
-                onClick={onClearAll}
-                disabled={importing}
-                title="Dev only — wipes every book from the library"
-                leadingIcon={<Icon name="close" size={13} />}
-                style={{ marginRight: 8 }}
-              >
-                Clear all
-              </Button>
-            )}
             <QueueIconButton theme={theme} onClick={onOpenQueue} />
             <Button
               theme={theme}
@@ -1061,10 +1021,6 @@ function MobileLibrary({
   onOpenSourceDetailRangeDialog,
   onOpenQueue,
   onOpenSettings,
-  // `onClearAll` is only used by the desktop layout; the mobile shell
-  // dropped its dev "clear all" button when the top header moved to a
-  // bottom nav.
-  onClearAll: _onClearAll,
   onCardContextMenu,
 }: LayoutProps) {
   // Filter to the selected status tab. "store" is handled separately
