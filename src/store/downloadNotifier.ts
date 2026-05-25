@@ -44,11 +44,15 @@ import {
   type DownloadJob,
   type DownloadJobStatus,
 } from "./downloadQueue";
-import { pushDownloadNotification } from "./downloadNotifier/transport";
+import {
+  DOWNLOAD_NOTIFICATION_ID,
+  pushDownloadNotification,
+} from "./downloadNotifier/transport";
 
 /** Stable id so subsequent sends replace the previous notification on
- *  Android instead of stacking. (iOS reuses by id too.) */
-const NOTIFICATION_ID = 1001;
+ *  Android instead of stacking. Reuses the canonical constant from
+ *  the transport so the value can't drift. */
+const NOTIFICATION_ID = DOWNLOAD_NOTIFICATION_ID;
 
 /** Channel id used by every download/conversion notification. We
  *  register the channel with Importance.LOW on first use so updates

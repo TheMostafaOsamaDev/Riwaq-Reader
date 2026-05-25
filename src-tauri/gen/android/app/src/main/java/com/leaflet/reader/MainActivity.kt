@@ -29,9 +29,11 @@ class MainActivity : TauriActivity() {
 
     companion object {
         /** Stashed launch-intent extra. Drained by Rust's
-         *  consume_launch_intent. Volatile so cross-thread reads see
-         *  the latest write. */
-        @JvmStatic
+         *  consume_launch_intent. `@JvmField` emits a true static
+         *  field (which JNI `GetStaticFieldID` expects); `@JvmStatic`
+         *  would only generate accessor methods, not the field.
+         *  `@Volatile` makes cross-thread reads see the latest write. */
+        @JvmField
         @Volatile
         var pendingLaunchIntent: String? = null
     }
