@@ -9,6 +9,10 @@ export interface Theme {
   ink: string;
   muted: string;
   rule: string;
+  /** A bolder variant of `rule` for edges that need to register against
+   *  shadows or larger surfaces (e.g. the mobile bottom-nav top border).
+   *  Same hue family as `rule`, ~1.6× the alpha. */
+  ruleStrong: string;
   chrome: string;
   chromeInk: string;
   hover: string;
@@ -21,6 +25,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     ink: "#3a2f1f",
     muted: "#8b7355",
     rule: "rgba(58,47,31,0.14)",
+    ruleStrong: "rgba(58,47,31,0.22)",
     chrome: "#ebe0c5",
     chromeInk: "#5a4a2e",
     hover: "rgba(58,47,31,0.06)",
@@ -31,6 +36,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     ink: "#1f1a14",
     muted: "#8b7e6a",
     rule: "rgba(31,26,20,0.10)",
+    ruleStrong: "rgba(31,26,20,0.18)",
     chrome: "#f0ece2",
     chromeInk: "#3a332a",
     hover: "rgba(31,26,20,0.05)",
@@ -41,6 +47,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     ink: "#d8cbb0",
     muted: "#887a60",
     rule: "rgba(216,203,176,0.14)",
+    ruleStrong: "rgba(216,203,176,0.22)",
     chrome: "#24201c",
     chromeInk: "#c4b89c",
     hover: "rgba(216,203,176,0.06)",
@@ -51,6 +58,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     ink: "#b8ad94",
     muted: "#6a6148",
     rule: "rgba(184,173,148,0.10)",
+    ruleStrong: "rgba(184,173,148,0.18)",
     chrome: "#0c0a08",
     chromeInk: "#a89d84",
     hover: "rgba(184,173,148,0.05)",
