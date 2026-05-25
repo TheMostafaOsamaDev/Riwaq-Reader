@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatedSwap } from "./components/AnimatedSwap";
+import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { DesktopReader } from "./components/DesktopReader";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
@@ -48,6 +49,10 @@ interface StreamingSession {
 }
 
 function App() {
+  // Listen for Android launch-intent extras (e.g., notification taps
+  // routing to the download queue). Has to live above the Library so
+  // any emitted intents reach the Library's subscriber.
+  useLaunchIntent();
   const [t, setTweak] = useTweaks();
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
