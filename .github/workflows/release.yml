@@ -179,6 +179,15 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Strip local org.gradle.java.home from gradle.properties
+        # The committed gradle.properties pins org.gradle.java.home to a
+        # path that only exists on the maintainer's dev machine
+        # (/usr/lib/jvm/java-21-openjdk). On CI, Gradle should pick up
+        # the JDK installed by actions/setup-java@v4 via JAVA_HOME
+        # automatically — drop the line so Gradle doesn't try to use a
+        # nonexistent path.
+        run: sed -i '/^org\.gradle\.java\.home=/d' src-tauri/gen/android/gradle.properties
+
       - name: Build Android APK (ARM + ARM64)
         # Tauri's android `--target` takes the short ABI names
         # (aarch64, armv7, i686, x86_64), NOT the full Rust target
