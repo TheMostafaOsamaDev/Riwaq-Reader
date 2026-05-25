@@ -1335,13 +1335,14 @@ interface MobileBottomNavProps {
   onOpenSettings: () => void;
 }
 
-/** Bottom nav for the mobile Library shell. Four slots arranged
+/** Bottom nav for the mobile Library shell. Five slots arranged
  *  symmetrically around the central focal "import EPUB" button:
  *
- *    [Store]  [Queue]   ( + )   [Docx]
+ *    [Store]  [Queue]   ( + )   [Docx]  [Settings]
  *
- *  The "+" button is taller, filled, and slightly elevated so the
- *  primary action is visually obvious. The other three are circular
+ *  The "+" button is filled and slightly larger (50px vs 38px) so the
+ *  primary action is visually obvious; it sits flush with the bar
+ *  rather than protruding above it. The other four are circular
  *  outlines matching the existing icon-button style.
  *
  *  Visibility: rendered from MobileLibrary when no source-detail
@@ -1671,12 +1672,15 @@ function MobileBottomNav({
       style={{
         flexShrink: 0,
         position: "relative",
-        // Vertical room for the FAB to bulge above the bar without
-        // covering shelf content (the body div above is flex:1, so
-        // it shrinks to make room here).
-        padding: "8px 14px 14px",
+        padding: "10px 14px 14px",
         background: theme.bg,
-        borderTop: `0.5px solid ${theme.rule}`,
+        // Bolder top edge (theme.ruleStrong) so the bar's boundary
+        // registers cleanly against the upward shadow rather than
+        // bleeding into the shadow gradient.
+        borderTop: `1px solid ${theme.ruleStrong}`,
+        // Soft upward shadow so the bar reads as a floating surface
+        // hovering over the shelf, not a flush edge of the page.
+        boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
@@ -1804,10 +1808,9 @@ interface NavFabButtonProps {
 }
 
 function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
-  // The focal action — taller + lifted so it reads as the primary
-  // affordance in the bar. The lift is achieved by negative margin
-  // bracketed by extra space in the bar wrapper (`padding-top: 8`)
-  // so the button protrudes above the bar's top edge.
+  // The focal action — filled + slightly larger than the outlined siblings
+  // (50px vs 38px) + a soft drop shadow so it reads as the primary
+  // affordance. Sits flush with the bar rather than protruding above it.
   return (
     <button
       onClick={onClick}
@@ -1815,10 +1818,9 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
       aria-label="Import EPUB"
       title={importing ? "Importing…" : "Import EPUB"}
       style={{
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        marginTop: -22,
+        width: 50,
+        height: 50,
+        borderRadius: 25,
         border: "none",
         background: theme.ink,
         color: theme.bg,
@@ -1826,12 +1828,12 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 6px 16px rgba(0,0,0,0.22)",
+        boxShadow: "0 3px 10px rgba(0,0,0,0.18)",
         opacity: importing ? 0.6 : 1,
         flexShrink: 0,
       }}
     >
-      <Icon name="plus" size={24} />
+      <Icon name="plus" size={20} />
     </button>
   );
 }
