@@ -186,6 +186,7 @@ interface Props {
     text: string;
     color: HighlightColor;
     note?: string;
+    groupId?: string;
   }) => void;
   onDeleteHighlight: (id: string) => void;
   onUpdateHighlightNote: (id: string, note: string) => void;
@@ -666,9 +667,13 @@ export function MobileReader({
   };
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!selAnchor) return;
-    // Multi-paragraph selections become N highlights. Attach the note
-    // (if any) only to the first segment so it isn't duplicated.
+    // Multi-paragraph selections become N highlights that share one
+    // groupId so they delete together. Single-paragraph selections
+    // need no groupId. The note (if any) attaches only to the first
+    // segment so it isn't duplicated.
     const trimmedNote = note?.trim() || undefined;
+    const groupId =
+      selAnchor.segments.length > 1 ? crypto.randomUUID() : undefined;
     selAnchor.segments.forEach((seg, i) => {
       onCreateHighlight({
         chapter: currentChapter,
@@ -678,6 +683,7 @@ export function MobileReader({
         text: seg.text,
         color,
         note: i === 0 ? trimmedNote : undefined,
+        groupId,
       });
     });
     dismissSelection();

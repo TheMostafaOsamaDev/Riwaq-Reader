@@ -14,7 +14,7 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
 import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
-  deleteHighlight,
+  deleteHighlights,
   loadBook,
   markBookOpened,
   saveHighlight,
@@ -194,6 +194,7 @@ function App() {
       text: string;
       color: HighlightColor;
       note?: string;
+      groupId?: string;
     }) => {
       if (!loaded) return;
       const saved = await saveHighlight(loaded.book.id, input);
@@ -215,7 +216,18 @@ function App() {
   const removeHighlight = useCallback(
     async (highlightId: string) => {
       if (!loaded) return;
-      await deleteHighlight(loaded.book.id, highlightId);
+      // If the highlight is part of a multi-paragraph group, delete
+      // every member of the group so the user-visible "one selection
+      // = one highlight" mental model holds.
+      const target = loaded.state.highlights.find((h) => h.id === highlightId);
+      if (!target) return;
+      const ids = target.groupId
+        ? loaded.state.highlights
+            .filter((h) => h.groupId === target.groupId)
+            .map((h) => h.id)
+        : [highlightId];
+      await deleteHighlights(loaded.book.id, ids);
+      const idSet = new Set(ids);
       setLoaded((prev) =>
         prev
           ? {
@@ -223,7 +235,7 @@ function App() {
               state: {
                 ...prev.state,
                 highlights: prev.state.highlights.filter(
-                  (h) => h.id !== highlightId,
+                  (h) => !idSet.has(h.id),
                 ),
               },
             }
