@@ -92,34 +92,14 @@ function wordRangeAt(node: Text, offset: number): [number, number] {
   return [start, end];
 }
 
-/** Clamp a candidate endpoint so it stays inside the same paragraph
- *  as the anchor endpoint. Returns the closest in-paragraph endpoint. */
-function clampToParagraph(
-  paragraph: HTMLElement,
+/** Accept any endpoint that lies inside any paragraph of the book
+ *  body — returns null if the candidate has no `<p data-p-index>`
+ *  ancestor (e.g. chrome). Multi-paragraph selection is allowed,
+ *  so we no longer clamp to the original long-press paragraph. */
+function clampToBookBody(
   candidate: RangeEndpoint,
-): RangeEndpoint {
-  if (paragraphOf(candidate.node) === paragraph) return candidate;
-  // The candidate is outside the paragraph — return the last text
-  // node within the paragraph (if candidate is past) or the first
-  // (if candidate is before). Use document position comparison.
-  const cmp = paragraph.compareDocumentPosition(candidate.node);
-  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
-  let firstText: Text | null = null;
-  let lastText: Text | null = null;
-  let t: Node | null;
-  while ((t = walker.nextNode())) {
-    if (!firstText) firstText = t as Text;
-    lastText = t as Text;
-  }
-  if (cmp & Node.DOCUMENT_POSITION_PRECEDING && firstText) {
-    return { node: firstText, offset: 0 };
-  }
-  if (cmp & Node.DOCUMENT_POSITION_FOLLOWING && lastText) {
-    return { node: lastText, offset: lastText.data.length };
-  }
-  // Fallback: clamp to start of paragraph
-  if (firstText) return { node: firstText, offset: 0 };
-  return candidate;
+): RangeEndpoint | null {
+  return paragraphOf(candidate.node) ? candidate : null;
 }
 
 /** True if endpoint `a` lies strictly before endpoint `b` in document
@@ -498,11 +478,11 @@ export function MobileReader({
       // minimum: while the finger sits inside it (or just jitters),
       // we leave the selection alone. Movement past either side of
       // the word extends in that direction.
-      const para = paragraphRef.current;
-      if (!para || !wordStart || !wordEnd) return;
+      if (!wordStart || !wordEnd) return;
       const currentEp = caretFromPoint(e.clientX, e.clientY);
       if (!currentEp) return;
-      const clamped = clampToParagraph(para, currentEp);
+      const clamped = clampToBookBody(currentEp);
+      if (!clamped) return;
       let newStart: RangeEndpoint;
       let newEnd: RangeEndpoint;
       if (comesBefore(clamped, wordStart)) {
@@ -562,8 +542,7 @@ export function MobileReader({
   // Handle-drag effect: tracks pointer movement after the user grabs
   // one of the start/end handles and extends the selection range.
   useEffect(() => {
-    const para = paragraphRef.current;
-    if (!handleRects || !para) return;
+    if (!handleRects) return;
 
     const onMove = (e: PointerEvent) => {
       if (
@@ -574,12 +553,12 @@ export function MobileReader({
       }
       const start = startEndpointRef.current;
       const end = endEndpointRef.current;
-      const paragraph = paragraphRef.current;
-      if (!start || !end || !paragraph) return;
+      if (!start || !end) return;
 
       const currentEp = caretFromPoint(e.clientX, e.clientY);
       if (!currentEp) return;
-      const clamped = clampToParagraph(paragraph, currentEp);
+      const clamped = clampToBookBody(currentEp);
+      if (!clamped) return;
 
       const nextStart =
         draggingHandleRef.current === "start" ? clamped : start;
@@ -687,14 +666,19 @@ export function MobileReader({
   };
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!selAnchor) return;
-    onCreateHighlight({
-      chapter: currentChapter,
-      paragraphIndex: selAnchor.paragraphIndex,
-      charStart: selAnchor.charStart,
-      charEnd: selAnchor.charEnd,
-      text: selAnchor.text,
-      color,
-      note: note?.trim() || undefined,
+    // Multi-paragraph selections become N highlights. Attach the note
+    // (if any) only to the first segment so it isn't duplicated.
+    const trimmedNote = note?.trim() || undefined;
+    selAnchor.segments.forEach((seg, i) => {
+      onCreateHighlight({
+        chapter: currentChapter,
+        paragraphIndex: seg.paragraphIndex,
+        charStart: seg.charStart,
+        charEnd: seg.charEnd,
+        text: seg.text,
+        color,
+        note: i === 0 ? trimmedNote : undefined,
+      });
     });
     dismissSelection();
   };
