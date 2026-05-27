@@ -376,6 +376,11 @@ export function MobileReader({
   } | null>(null);
   const draggingHandleRef = useRef<"start" | "end" | null>(null);
   const draggingPointerIdRef = useRef<number | null>(null);
+  // True for one click after a custom-selection gesture ends. The
+  // browser synthesizes a click on touchup/pointerup; without this
+  // guard, the document-level click listener would treat that click
+  // as an outside-tap and dismiss the just-set selection.
+  const ignoreNextClickRef = useRef(false);
 
   // Custom long-press + drag selection on mobile. Replaces native
   // selection so the OS toolbar (which we can't suppress on Samsung
@@ -492,6 +497,10 @@ export function MobileReader({
         } catch {
           // already released
         }
+        // The browser will synthesize a click event right after this
+        // pointerup. Tell the document click listener to swallow it
+        // so it doesn't dismiss the selection we just settled.
+        ignoreNextClickRef.current = true;
       }
       pointerId = null;
       isSelecting = false;
@@ -560,6 +569,9 @@ export function MobileReader({
 
     const onUp = (e: PointerEvent) => {
       if (e.pointerId !== draggingPointerIdRef.current) return;
+      if (draggingHandleRef.current !== null) {
+        ignoreNextClickRef.current = true;
+      }
       draggingHandleRef.current = null;
       draggingPointerIdRef.current = null;
     };
@@ -583,6 +595,12 @@ export function MobileReader({
     state.highlights.find((h) => h.id === id);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
+      if (ignoreNextClickRef.current) {
+        // Synthetic click right after a custom-selection gesture
+        // finished. Skip dismissal exactly once.
+        ignoreNextClickRef.current = false;
+        return;
+      }
       // composedPath snapshots the ancestor chain at dispatch time —
       // robust against post-dispatch DOM mutations (e.g. clicking the
       // pencil button swaps it for a textarea before this handler
