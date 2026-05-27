@@ -275,6 +275,13 @@ function renderParagraph(
             borderRadius: 2,
             padding: "0 0.05em",
             cursor: "pointer",
+            // Treat the highlight as a complete box on every wrapped
+            // line. Without this, the default `slice` mode renders the
+            // padding/border-radius only on the very first/last line,
+            // and middle lines stretch flush to the line edges — which
+            // visually breaks across line wraps.
+            boxDecorationBreak: "clone",
+            WebkitBoxDecorationBreak: "clone",
           }}
         >
           {text.slice(start, end)}
