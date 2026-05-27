@@ -4,7 +4,6 @@ import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { MobileSheet } from "./MobileSheet";
 import { SelectionPopover } from "./SelectionPopover";
-import { SelectionOverlay } from "./SelectionOverlay";
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
@@ -246,13 +245,6 @@ export function MobileReader({
       if (next) {
         setSelAnchor(next);
         setActiveHl(null);
-        // Drop the native selection so Samsung One UI's floating
-        // toolbar has nothing to anchor to. The SelectionAnchor
-        // already holds paragraph-anchored offsets + per-line rects,
-        // so the highlight create path doesn't need a live Range.
-        // Clearing here fires another selectionchange, but the next
-        // settle() finds no selection and is a no-op.
-        window.getSelection()?.removeAllRanges();
       }
     };
     const onSelectionChange = () => {
@@ -786,16 +778,14 @@ export function MobileReader({
         </div>
       </MobileSheet>
       {selAnchor && (
-        <>
-          <SelectionOverlay rects={selAnchor.rects} />
-          <SelectionPopover
-            theme={theme}
-            anchor={selAnchor.rect}
-            onPick={(color) => createFromSelection(color)}
-            onAddNote={(color, note) => createFromSelection(color, note)}
-            onDismiss={dismissSelection}
-          />
-        </>
+        <SelectionPopover
+          theme={theme}
+          anchor={selAnchor.rect}
+          placement="below"
+          onPick={(color) => createFromSelection(color)}
+          onAddNote={(color, note) => createFromSelection(color, note)}
+          onDismiss={dismissSelection}
+        />
       )}
       {activeHl && (
         <HighlightActionPopover

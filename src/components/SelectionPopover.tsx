@@ -10,8 +10,13 @@ import {
 interface Props {
   theme: Theme;
   /** Viewport-coordinate rect of the current selection; popover positions
-      itself just above this. */
+      itself relative to this. */
   anchor: DOMRect;
+  /** "auto" (default): place above if there's room, else below.
+   *  "below": always below the selection — used on mobile so the
+   *  popover never overlaps Android's native floating toolbar that
+   *  sits above the selected text. */
+  placement?: "auto" | "below";
   onPick: (color: HighlightColor) => void;
   onAddNote: (color: HighlightColor, note: string) => void;
   onDismiss: () => void;
@@ -23,6 +28,7 @@ const DEFAULT_COLOR: HighlightColor = "yellow";
 export function SelectionPopover({
   theme,
   anchor,
+  placement = "auto",
   onPick,
   onAddNote,
   onDismiss,
@@ -41,12 +47,15 @@ export function SelectionPopover({
     return () => window.removeEventListener("keydown", onKey);
   }, [onDismiss]);
 
-  // Position above the selection; flip below if there isn't room. The
-  // anchor rect is in viewport coords, so `position: fixed` keeps the
-  // popover stable even if the underlying scroll container moves.
+  // Position above the selection; flip below if there isn't room or
+  // when the caller explicitly requested below (mobile path — see
+  // the `placement` prop). The anchor rect is in viewport coords, so
+  // `position: fixed` keeps the popover stable even if the underlying
+  // scroll container moves.
   const margin = 8;
   const estimatedHeight = noteMode ? 132 : 44;
-  const fitsAbove = anchor.top - estimatedHeight - margin > 8;
+  const fitsAbove =
+    placement === "auto" && anchor.top - estimatedHeight - margin > 8;
   const top = fitsAbove
     ? anchor.top - estimatedHeight - margin
     : anchor.bottom + margin;
