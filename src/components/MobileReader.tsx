@@ -5,6 +5,7 @@ import { BookBody } from "./BookBody";
 import { MobileSheet } from "./MobileSheet";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
+import { SelectionHandle } from "./SelectionHandle";
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
@@ -139,6 +140,40 @@ function buildRange(a: RangeEndpoint, b: RangeEndpoint): Range {
   }
   return range;
 }
+function computeHandleRects(range: Range): { start: DOMRect; end: DOMRect } {
+  const start = document.createRange();
+  start.setStart(range.startContainer, range.startOffset);
+  start.setEnd(range.startContainer, range.startOffset);
+  const end = document.createRange();
+  end.setStart(range.endContainer, range.endOffset);
+  end.setEnd(range.endContainer, range.endOffset);
+  // Collapsed ranges yield 0-width rects with valid top/left/height.
+  const sr = start.getBoundingClientRect();
+  const er = end.getBoundingClientRect();
+  // Copy so subsequent range mutations don't invalidate the saved values.
+  return {
+    start: new DOMRect(sr.x, sr.y, sr.width, sr.height),
+    end: new DOMRect(er.x, er.y, er.width, er.height),
+  };
+}
+
+function orderedEndpoints(range: Range): {
+  start: RangeEndpoint;
+  end: RangeEndpoint;
+} {
+  // Range exposes startContainer/startOffset/endContainer/endOffset
+  // already in document order — no swapping needed.
+  return {
+    start: {
+      node: range.startContainer as Text,
+      offset: range.startOffset,
+    },
+    end: {
+      node: range.endContainer as Text,
+      offset: range.endOffset,
+    },
+  };
+}
 // ---- end custom selection helpers ----------------------------------
 
 interface Props {
@@ -212,6 +247,9 @@ export function MobileReader({
     : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const startEndpointRef = useRef<RangeEndpoint | null>(null);
+  const endEndpointRef = useRef<RangeEndpoint | null>(null);
+  const paragraphRef = useRef<HTMLElement | null>(null);
   const resumeRef = useRef(resumeParagraph);
   resumeRef.current = resumeParagraph;
   const onParagraphChangeRef = useRef(onParagraphChange);
@@ -328,32 +366,34 @@ export function MobileReader({
   // Showing one always clears the other.
   const [selAnchor, setSelAnchor] = useState<SelectionAnchor | null>(null);
   const [selRects, setSelRects] = useState<DOMRect[]>([]);
+  const [handleRects, setHandleRects] = useState<{
+    start: DOMRect;
+    end: DOMRect;
+  } | null>(null);
   const [activeHl, setActiveHl] = useState<{
     highlight: Highlight;
     rect: DOMRect;
   } | null>(null);
+  const draggingHandleRef = useRef<"start" | "end" | null>(null);
+  const draggingPointerIdRef = useRef<number | null>(null);
 
   // Custom long-press + drag selection on mobile. Replaces native
   // selection so the OS toolbar (which we can't suppress on Samsung
   // One UI) never has a live window selection to anchor to.
   //
-  // BookBody is touch-action: none on mobile so this effect owns
-  // every touch on the reader body: small pointer-down + drag becomes
-  // a manual scroll; pointer-down + hold ≥400ms becomes a selection.
+  // BookBody uses touch-action: pan-y so the browser handles vertical
+  // scroll natively with momentum. We only call preventDefault on
+  // pointermove during active selection drag — that suppresses scroll
+  // for the in-flight selection without affecting normal swipes.
   useEffect(() => {
     const bodyEl = document.querySelector<HTMLElement>("[data-book-body]");
-    const scrollEl = scrollRef.current;
-    if (!bodyEl || !scrollEl) return;
+    if (!bodyEl) return;
 
-    type Mode = "idle" | "pending" | "scrolling" | "selecting";
-    let mode: Mode = "idle";
     let pointerId: number | null = null;
     let startX = 0;
     let startY = 0;
-    let lastY = 0;
-    let startEndpoint: RangeEndpoint | null = null;
-    let startParagraph: HTMLElement | null = null;
     let longPressTimer: number | null = null;
+    let isSelecting = false;
 
     const updateFromRange = (range: Range) => {
       const anchor = anchorFromRange(range);
@@ -365,6 +405,7 @@ export function MobileReader({
             (r) => new DOMRect(r.x, r.y, r.width, r.height),
           ),
         );
+        setHandleRects(computeHandleRects(range));
       }
     };
 
@@ -377,8 +418,9 @@ export function MobileReader({
       const range = document.createRange();
       range.setStart(ep.node, ws);
       range.setEnd(ep.node, we);
-      startEndpoint = { node: ep.node, offset: ws };
-      startParagraph = p;
+      startEndpointRef.current = { node: ep.node, offset: ws };
+      endEndpointRef.current = { node: ep.node, offset: we };
+      paragraphRef.current = p;
       updateFromRange(range);
       return true;
     };
@@ -393,78 +435,58 @@ export function MobileReader({
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (pointerId !== null) return;
-      // Don't intercept pointerdown on existing highlight marks —
-      // those go through the document-level click listener to open
-      // the action popover.
       if ((e.target as HTMLElement | null)?.closest("[data-h-id]")) return;
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
-      lastY = e.clientY;
-      mode = "pending";
+      isSelecting = false;
       cancelLongPressTimer();
       longPressTimer = window.setTimeout(() => {
         longPressTimer = null;
-        if (mode !== "pending" || pointerId === null) return;
+        if (pointerId === null) return;
         try {
           bodyEl.setPointerCapture(pointerId);
         } catch {
-          // pointer already gone
-          mode = "idle";
-          pointerId = null;
           return;
         }
         if (startSelection(startX, startY)) {
-          mode = "selecting";
-        } else {
-          mode = "idle";
-          pointerId = null;
+          isSelecting = true;
         }
       }, LONG_PRESS_MS);
     };
 
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return;
-      if (mode === "pending") {
+      if (!isSelecting) {
+        // Before long-press fires, we let the browser scroll natively.
+        // If movement exceeds the tap tolerance, cancel the long-press
+        // timer — the user's gesture is a scroll, not a hold.
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
-          // Past the tap threshold before the long-press fired —
-          // this is a scroll, not a selection.
           cancelLongPressTimer();
-          mode = "scrolling";
-          try {
-            bodyEl.setPointerCapture(e.pointerId);
-          } catch {
-            // best effort — the gesture continues regardless
-          }
-          // Apply the move-to-date deltaY as the first scroll step.
-          scrollEl.scrollTop -= e.clientY - lastY;
-          lastY = e.clientY;
+          pointerId = null;
         }
         return;
       }
-      if (mode === "scrolling") {
-        scrollEl.scrollTop -= e.clientY - lastY;
-        lastY = e.clientY;
-        e.preventDefault();
-        return;
-      }
-      if (mode === "selecting") {
-        if (!startEndpoint || !startParagraph) return;
-        const currentEp = caretFromPoint(e.clientX, e.clientY);
-        if (!currentEp) return;
-        const clamped = clampToParagraph(startParagraph, currentEp);
-        const range = buildRange(startEndpoint, clamped);
-        if (!range.collapsed) updateFromRange(range);
-        e.preventDefault();
-      }
+      // Selecting — extend the range and preventDefault to keep the
+      // browser from also scrolling.
+      const start = startEndpointRef.current;
+      const para = paragraphRef.current;
+      if (!start || !para) return;
+      const currentEp = caretFromPoint(e.clientX, e.clientY);
+      if (!currentEp) return;
+      const clamped = clampToParagraph(para, currentEp);
+      endEndpointRef.current = clamped;
+      const range = buildRange(start, clamped);
+      if (!range.collapsed) updateFromRange(range);
+      e.preventDefault();
     };
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return;
       cancelLongPressTimer();
-      if (mode === "scrolling" || mode === "selecting") {
+      if (isSelecting) {
         try {
           bodyEl.releasePointerCapture(e.pointerId);
         } catch {
@@ -472,9 +494,7 @@ export function MobileReader({
         }
       }
       pointerId = null;
-      startEndpoint = null;
-      startParagraph = null;
-      mode = "idle";
+      isSelecting = false;
     };
 
     bodyEl.addEventListener("pointerdown", onPointerDown);
@@ -489,6 +509,70 @@ export function MobileReader({
       bodyEl.removeEventListener("pointercancel", onPointerUp);
     };
   }, []);
+
+  // Handle-drag effect: tracks pointer movement after the user grabs
+  // one of the start/end handles and extends the selection range.
+  useEffect(() => {
+    const para = paragraphRef.current;
+    if (!handleRects || !para) return;
+
+    const onMove = (e: PointerEvent) => {
+      if (
+        draggingHandleRef.current === null ||
+        e.pointerId !== draggingPointerIdRef.current
+      ) {
+        return;
+      }
+      const start = startEndpointRef.current;
+      const end = endEndpointRef.current;
+      const paragraph = paragraphRef.current;
+      if (!start || !end || !paragraph) return;
+
+      const currentEp = caretFromPoint(e.clientX, e.clientY);
+      if (!currentEp) return;
+      const clamped = clampToParagraph(paragraph, currentEp);
+
+      const nextStart =
+        draggingHandleRef.current === "start" ? clamped : start;
+      const nextEnd = draggingHandleRef.current === "end" ? clamped : end;
+
+      // If the user crossed the other handle, swap so start stays before end.
+      const range = buildRange(nextStart, nextEnd);
+      if (!range.collapsed) {
+        // Re-derive ordered endpoints from the built range so future
+        // drags continue from the visually-correct side.
+        const ordered = orderedEndpoints(range);
+        startEndpointRef.current = ordered.start;
+        endEndpointRef.current = ordered.end;
+        const anchor = anchorFromRange(range);
+        if (anchor) {
+          setSelAnchor(anchor);
+          setSelRects(
+            Array.from(range.getClientRects()).map(
+              (r) => new DOMRect(r.x, r.y, r.width, r.height),
+            ),
+          );
+          setHandleRects(computeHandleRects(range));
+        }
+      }
+      e.preventDefault();
+    };
+
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== draggingPointerIdRef.current) return;
+      draggingHandleRef.current = null;
+      draggingPointerIdRef.current = null;
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, [handleRects]);
 
   // All popover dismissal flows through clicks: tap an existing
   // highlight to open its action popover, tap outside everything to
@@ -538,6 +622,10 @@ export function MobileReader({
   const dismissSelection = () => {
     setSelAnchor(null);
     setSelRects([]);
+    setHandleRects(null);
+    startEndpointRef.current = null;
+    endEndpointRef.current = null;
+    paragraphRef.current = null;
   };
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!selAnchor) return;
@@ -1022,6 +1110,32 @@ export function MobileReader({
       {selAnchor && (
         <>
           <SelectionOverlay rects={selRects} />
+          {handleRects && (
+            <>
+              <SelectionHandle
+                rect={handleRects.start}
+                position="start"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  draggingHandleRef.current = "start";
+                  draggingPointerIdRef.current = e.pointerId;
+                }}
+              />
+              <SelectionHandle
+                rect={handleRects.end}
+                position="end"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  draggingHandleRef.current = "end";
+                  draggingPointerIdRef.current = e.pointerId;
+                }}
+              />
+            </>
+          )}
           <SelectionPopover
             theme={theme}
             anchor={selAnchor.rect}
