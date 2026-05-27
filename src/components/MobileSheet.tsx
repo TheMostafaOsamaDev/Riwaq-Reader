@@ -380,6 +380,7 @@ export function MobileSheet({
             paddingTop: 8,
             paddingBottom: 8,
             flexShrink: 0,
+            touchAction: "none",
             cursor: dragging ? "grabbing" : "grab",
           }}
         >
