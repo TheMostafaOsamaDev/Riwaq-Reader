@@ -241,11 +241,25 @@ export function MobileReader({
       ) {
         return;
       }
+      const sel = window.getSelection();
+      // No live selection: caret-only (note typing) or already cleared.
+      // Leave our state alone — the click listener owns popover dismissal.
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+
       const next = resolveSelectionAnchor();
       if (next) {
         setSelAnchor(next);
         setActiveHl(null);
+        return;
       }
+      // Selection is live but doesn't fit our highlight model (spans
+      // multiple paragraphs, or escapes BookBody — Samsung One UI's
+      // Smart Selection sometimes auto-extends past one paragraph
+      // when the finger is released). Drop the popover and clear the
+      // native selection so the user can start over instead of seeing
+      // a stale popover anchored to an earlier valid range.
+      setSelAnchor(null);
+      sel.removeAllRanges();
     };
     const onSelectionChange = () => {
       if (timer) window.clearTimeout(timer);
