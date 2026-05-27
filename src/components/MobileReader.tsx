@@ -122,6 +122,17 @@ function clampToParagraph(
   return candidate;
 }
 
+/** True if endpoint `a` lies strictly before endpoint `b` in document
+ *  order. Same node → compare offsets; across nodes → use the DOM's
+ *  compareDocumentPosition. */
+function comesBefore(a: RangeEndpoint, b: RangeEndpoint): boolean {
+  if (a.node === b.node) return a.offset < b.offset;
+  return !!(
+    a.node.compareDocumentPosition(b.node) &
+    Node.DOCUMENT_POSITION_FOLLOWING
+  );
+}
+
 /** Build a Range from two endpoints, ordered correctly (start before end). */
 function buildRange(a: RangeEndpoint, b: RangeEndpoint): Range {
   const range = document.createRange();
@@ -399,6 +410,12 @@ export function MobileReader({
     let startY = 0;
     let longPressTimer: number | null = null;
     let isSelecting = false;
+    // Saved word boundaries from the long-press. Form a "minimum
+    // range" — pointer movement inside this range leaves the
+    // selection alone; movement past either side extends in that
+    // direction.
+    let wordStart: RangeEndpoint | null = null;
+    let wordEnd: RangeEndpoint | null = null;
 
     const updateFromRange = (range: Range) => {
       const anchor = anchorFromRange(range);
@@ -425,6 +442,8 @@ export function MobileReader({
       range.setEnd(ep.node, we);
       startEndpointRef.current = { node: ep.node, offset: ws };
       endEndpointRef.current = { node: ep.node, offset: we };
+      wordStart = { node: ep.node, offset: ws };
+      wordEnd = { node: ep.node, offset: we };
       paragraphRef.current = p;
       updateFromRange(range);
       return true;
@@ -475,15 +494,34 @@ export function MobileReader({
         return;
       }
       // Selecting — extend the range and preventDefault to keep the
-      // browser from also scrolling.
-      const start = startEndpointRef.current;
+      // browser from also scrolling. The long-pressed word forms a
+      // minimum: while the finger sits inside it (or just jitters),
+      // we leave the selection alone. Movement past either side of
+      // the word extends in that direction.
       const para = paragraphRef.current;
-      if (!start || !para) return;
+      if (!para || !wordStart || !wordEnd) return;
       const currentEp = caretFromPoint(e.clientX, e.clientY);
       if (!currentEp) return;
       const clamped = clampToParagraph(para, currentEp);
-      endEndpointRef.current = clamped;
-      const range = buildRange(start, clamped);
+      let newStart: RangeEndpoint;
+      let newEnd: RangeEndpoint;
+      if (comesBefore(clamped, wordStart)) {
+        // Finger crossed before the word's start — extend backward,
+        // keep the word's end as the far boundary.
+        newStart = clamped;
+        newEnd = wordEnd;
+      } else if (comesBefore(wordEnd, clamped)) {
+        // Finger crossed past the word's end — extend forward.
+        newStart = wordStart;
+        newEnd = clamped;
+      } else {
+        // Inside the word — no change.
+        newStart = wordStart;
+        newEnd = wordEnd;
+      }
+      startEndpointRef.current = newStart;
+      endEndpointRef.current = newEnd;
+      const range = buildRange(newStart, newEnd);
       if (!range.collapsed) updateFromRange(range);
       e.preventDefault();
     };
@@ -504,6 +542,8 @@ export function MobileReader({
       }
       pointerId = null;
       isSelecting = false;
+      wordStart = null;
+      wordEnd = null;
     };
 
     bodyEl.addEventListener("pointerdown", onPointerDown);
