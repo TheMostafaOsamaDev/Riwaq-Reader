@@ -25,6 +25,7 @@ import {
   baselineTranslateY,
   clampTranslateY,
   TAP_THRESHOLD,
+  VELOCITY_WINDOW_MS,
   type MoveSample,
   type Snap,
   type SnapDims,
@@ -202,10 +203,12 @@ export function MobileSheet({
 
     const now = performance.now();
     samplesRef.current.push({ y: e.clientY, t: now });
-    // Bound the buffer — only the last ~200ms matter.
+    // Bound the buffer — keep enough headroom past VELOCITY_WINDOW_MS
+    // so a refactor that raises the window doesn't silently lose data.
+    const evictAfter = VELOCITY_WINDOW_MS + 80;
     while (
       samplesRef.current.length > 2 &&
-      now - samplesRef.current[0].t > 200
+      now - samplesRef.current[0].t > evictAfter
     ) {
       samplesRef.current.shift();
     }
@@ -224,7 +227,12 @@ export function MobileSheet({
     } catch {
       // pointer already released
     }
-    const wasDragging = dragging;
+    // Read drag commit synchronously from samplesRef — `dragging` state
+    // is closure-captured and may be stale if pointerup arrives in the
+    // same frame as the threshold crossing. The move handler only pushes
+    // samples *after* the TAP_THRESHOLD check, so `length > 1` is true
+    // iff a real drag occurred.
+    const wasDragging = samplesRef.current.length > 1;
     startRef.current = null;
     samplesRef.current = [];
     setDragging(false);
