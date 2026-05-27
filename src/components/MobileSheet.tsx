@@ -108,7 +108,6 @@ export function MobileSheet({
         ? 0
         : parseHeightPx(height, window.innerHeight),
   });
-  const sheetElRef = useRef<HTMLDivElement | null>(null);
   const lastChildrenRef = useRef<ReactNode>(children);
   if (open) lastChildrenRef.current = children;
 
@@ -153,8 +152,13 @@ export function MobileSheet({
         setDragging(false);
       } else if (phase === "exit") {
         // Re-opening while exit animation is still running — bounce
-        // back to "open" without going through enter again.
+        // back to "open" without going through enter again. Reset the
+        // gesture state so the bounce lands at the default snap, not
+        // whatever snap was active when the close gesture started.
         setPhase("open");
+        setSnap("default");
+        setDragOffset(0);
+        setDragging(false);
       }
     } else if (phase !== null && phase !== "exit") {
       setPhase("exit");
@@ -324,7 +328,6 @@ export function MobileSheet({
         }}
       />
       <div
-        ref={sheetElRef}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -360,7 +363,7 @@ export function MobileSheet({
             paddingBottom: 8,
             flexShrink: 0,
             touchAction: "none",
-            cursor: "grab",
+            cursor: dragging ? "grabbing" : "grab",
           }}
         >
           <div
