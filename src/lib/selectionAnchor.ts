@@ -4,15 +4,23 @@
  *
  * The book body renders each paragraph as `<p data-p-index="N">…</p>`,
  * with optional `<mark>` spans inside for already-persisted highlights.
- * We translate the Selection's start/end (which may land inside a `<mark>`
- * descendant) into character offsets within the paragraph's plain text.
+ * A selection may span multiple paragraphs — the anchor stores one
+ * `SelectionSegment` per paragraph the range touches.
  */
 
-export interface SelectionAnchor {
+export interface SelectionSegment {
   paragraphIndex: number;
   charStart: number;
   charEnd: number;
   text: string;
+}
+
+export interface SelectionAnchor {
+  /** One segment per paragraph touched by the range, in document
+   *  order. At least one entry. */
+  segments: SelectionSegment[];
+  /** Overall bounding rect across all segments — used to anchor the
+   *  SelectionPopover. */
   rect: DOMRect;
 }
 
@@ -36,38 +44,29 @@ function charOffsetWithin(
   node: Node,
   offset: number,
 ): number {
-  // If the cursor is on an element node, treat `offset` as a child index
-  // — sum the text length of every child before that index.
   if (node.nodeType !== Node.TEXT_NODE) {
     let pos = 0;
     const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
     let t: Node | null;
     while ((t = walker.nextNode())) {
-      // The cursor's position is "before child index `offset` of `node`".
-      // A text node `t` is "before" that point if its position relative
-      // to (node, offset) is < 0.
       const cmp = node.compareDocumentPosition(t);
       if (
         cmp & Node.DOCUMENT_POSITION_CONTAINED_BY ||
         cmp & Node.DOCUMENT_POSITION_PRECEDING
       ) {
-        // Contained-by means t is a descendant of node — we need to
-        // check whether it's inside a child whose index < offset.
-        // Compare against the child at `offset` instead.
         const boundary = node.childNodes[offset] ?? null;
-        if (boundary && boundary.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_PRECEDING) {
+        if (
+          boundary &&
+          boundary.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_PRECEDING
+        ) {
           pos += t.textContent?.length ?? 0;
         } else if (!boundary) {
-          // offset is past the last child — every text node counts
           pos += t.textContent?.length ?? 0;
         }
       }
     }
     return pos;
   }
-
-  // Text node case: walk all text nodes up to (and including a prefix of)
-  // the target node, summing lengths.
   let pos = 0;
   const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
   let t: Node | null;
@@ -78,38 +77,82 @@ function charOffsetWithin(
   return pos;
 }
 
+/** Total text length of a paragraph — sums all descendant text nodes. */
+function paragraphTextLength(paragraph: HTMLElement): number {
+  let len = 0;
+  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+  let t: Node | null;
+  while ((t = walker.nextNode())) {
+    len += t.textContent?.length ?? 0;
+  }
+  return len;
+}
+
+/** Walk forward from `paragraph` to the next sibling `<p data-p-index>`,
+ *  skipping non-paragraph elements (e.g. figures). Returns null if
+ *  there is none in this BookBody. */
+function nextParagraph(paragraph: HTMLElement): HTMLElement | null {
+  let el: Element | null = paragraph.nextElementSibling;
+  while (el) {
+    if (
+      el instanceof HTMLElement &&
+      el.dataset.pIndex !== undefined &&
+      el.tagName === "P"
+    ) {
+      return el;
+    }
+    el = el.nextElementSibling;
+  }
+  return null;
+}
+
 /**
- * Resolve an arbitrary Range to a paragraph-anchored SelectionAnchor.
- * Returns null when the range is collapsed, crosses paragraphs, or
- * doesn't lie inside a rendered paragraph at all. Used by the custom
- * mobile selection path that holds Ranges in React state instead of
- * on window.getSelection().
+ * Resolve an arbitrary Range to a paragraph-anchored anchor. The range
+ * may span multiple `<p>` elements within the same BookBody — each
+ * paragraph becomes one segment. Returns null if either endpoint is
+ * outside any rendered paragraph.
  */
 export function anchorFromRange(range: Range): SelectionAnchor | null {
   if (range.collapsed) return null;
   const startP = findParagraph(range.startContainer);
   const endP = findParagraph(range.endContainer);
-  if (!startP || !endP || startP !== endP) return null;
+  if (!startP || !endP) return null;
 
-  const paragraphIndex = Number(startP.dataset.pIndex);
-  if (!Number.isFinite(paragraphIndex)) return null;
+  const segments: SelectionSegment[] = [];
+  let current: HTMLElement | null = startP;
+  while (current) {
+    const pIndex = Number(current.dataset.pIndex);
+    if (Number.isFinite(pIndex)) {
+      const isStart = current === startP;
+      const isEnd = current === endP;
+      const charStart = isStart
+        ? charOffsetWithin(current, range.startContainer, range.startOffset)
+        : 0;
+      const charEnd = isEnd
+        ? charOffsetWithin(current, range.endContainer, range.endOffset)
+        : paragraphTextLength(current);
+      if (charEnd > charStart) {
+        const text = (current.textContent ?? "").slice(charStart, charEnd);
+        segments.push({
+          paragraphIndex: pIndex,
+          charStart,
+          charEnd,
+          text,
+        });
+      }
+    }
+    if (current === endP) break;
+    current = nextParagraph(current);
+  }
 
-  const a = charOffsetWithin(startP, range.startContainer, range.startOffset);
-  const b = charOffsetWithin(startP, range.endContainer, range.endOffset);
-  const charStart = Math.min(a, b);
-  const charEnd = Math.max(a, b);
-  if (charEnd <= charStart) return null;
-
-  const text = range.toString();
+  if (segments.length === 0) return null;
   const rect = range.getBoundingClientRect();
-  return { paragraphIndex, charStart, charEnd, text, rect };
+  return { segments, rect };
 }
 
 /**
- * Resolve the current window selection to a paragraph-anchored range.
- * Kept for the desktop reader, which still uses native selection.
- * Returns null if the selection is empty/collapsed, spans multiple
- * paragraphs, or doesn't lie inside a rendered paragraph at all.
+ * Resolve the current window selection to a paragraph-anchored anchor.
+ * Used by the desktop reader (which keeps native selection alive).
  */
 export function resolveSelectionAnchor(): SelectionAnchor | null {
   const sel = window.getSelection();

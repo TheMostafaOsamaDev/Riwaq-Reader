@@ -525,14 +525,19 @@ export function DesktopReader({
   };
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!selAnchor) return;
-    onCreateHighlight({
-      chapter: currentChapter,
-      paragraphIndex: selAnchor.paragraphIndex,
-      charStart: selAnchor.charStart,
-      charEnd: selAnchor.charEnd,
-      text: selAnchor.text,
-      color,
-      note: note?.trim() || undefined,
+    // Multi-paragraph selections become N highlights. Attach the note
+    // (if any) only to the first segment so it isn't duplicated.
+    const trimmedNote = note?.trim() || undefined;
+    selAnchor.segments.forEach((seg, i) => {
+      onCreateHighlight({
+        chapter: currentChapter,
+        paragraphIndex: seg.paragraphIndex,
+        charStart: seg.charStart,
+        charEnd: seg.charEnd,
+        text: seg.text,
+        color,
+        note: i === 0 ? trimmedNote : undefined,
+      });
     });
     dismissSelection();
   };
