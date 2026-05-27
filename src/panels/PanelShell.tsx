@@ -59,6 +59,13 @@ export function PanelShell({
           justifyContent: "space-between",
           gap: 12,
           borderBottom: `0.5px solid ${theme.rule}`,
+          // touch-action: none lets MobileSheet's pointer-down handler
+          // (attached to the outer sheet div) start a drag from the
+          // header strip without the browser first guessing the touch
+          // is a scroll attempt. The X close button still receives its
+          // click because MobileSheet's onDragPointerDown early-returns
+          // on `closest("button")`.
+          touchAction: "none",
         }}
       >
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
