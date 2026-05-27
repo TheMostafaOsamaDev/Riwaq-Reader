@@ -24,7 +24,9 @@ import type { Theme } from "../styles/tokens";
 import {
   baselineTranslateY,
   clampTranslateY,
+  decideSnap,
   TAP_THRESHOLD,
+  velocityFromSamples,
   VELOCITY_WINDOW_MS,
   type MoveSample,
   type Snap,
@@ -231,16 +233,34 @@ export function MobileSheet({
     // is closure-captured and may be stale if pointerup arrives in the
     // same frame as the threshold crossing. The move handler only pushes
     // samples *after* the TAP_THRESHOLD check, so `length > 1` is true
-    // iff a real drag occurred.
+    // iff a real drag occurred. Velocity must be computed BEFORE the
+    // samples ring is cleared.
     const wasDragging = samplesRef.current.length > 1;
+    const velocity = velocityFromSamples(samplesRef.current);
     startRef.current = null;
     samplesRef.current = [];
     setDragging(false);
     if (!wasDragging) return; // tap — leave snap/offset alone
 
-    // Task 3 only: snap back to current snap. Task 4 will replace
-    // this with the real decideSnap() call.
+    const target = decideSnap({
+      // s.snap is always "full" | "default" when the sheet is open and
+      // draggable; "dismissed" is only a synthetic end-state, never stored
+      // in startRef. The assertion is safe by construction.
+      fromSnap: s.snap as Exclude<Snap, "dismissed">,
+      offsetPx: dragOffset,
+      velocityPxPerSec: velocity,
+      dims: dimsRef.current,
+    });
+    if (target === "dismissed") {
+      // Let the parent flip `open=false`, which triggers the exit
+      // phase. Don't pre-set snap — phase="exit" already drives
+      // translateY to the dismissed baseline.
+      setDragOffset(0);
+      onClose();
+      return;
+    }
     setDragOffset(0);
+    setSnap(target);
   };
 
   if (phase === null) return null;
