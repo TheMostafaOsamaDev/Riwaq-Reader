@@ -16,12 +16,16 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import type { Theme } from "../styles/tokens";
 import {
   baselineTranslateY,
+  clampTranslateY,
+  TAP_THRESHOLD,
+  type MoveSample,
   type Snap,
   type SnapDims,
 } from "./sheetSnap";
@@ -96,11 +100,26 @@ export function MobileSheet({
   const dimsRef = useRef<SnapDims>({
     fullInsetTop: FULL_INSET_TOP_FALLBACK,
     viewportH: typeof window === "undefined" ? 0 : window.innerHeight,
-    defaultH: 0,
+    defaultH:
+      typeof window === "undefined"
+        ? 0
+        : parseHeightPx(height, window.innerHeight),
   });
   const sheetElRef = useRef<HTMLDivElement | null>(null);
   const lastChildrenRef = useRef<ReactNode>(children);
   if (open) lastChildrenRef.current = children;
+
+  // Gesture state. `startRef` is non-null once a pointer is captured;
+  // `dragging` only flips true after movement exceeds TAP_THRESHOLD so
+  // a quick tap on the header (e.g., an X close button later) still
+  // fires its click handler.
+  const startRef = useRef<{
+    y: number;
+    t: number;
+    snap: Snap;
+    pointerId: number;
+  } | null>(null);
+  const samplesRef = useRef<MoveSample[]>([]);
 
   // Measure dims once on mount and on every resize/orientation change.
   // The default-snap height is derived from the `height` prop string.
@@ -158,6 +177,63 @@ export function MobileSheet({
     );
     return () => clearTimeout(t);
   }, [phase, reduced]);
+
+  const onDragPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (phase !== "open") return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (startRef.current !== null) return; // second pointer — ignore
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startRef.current = {
+      y: e.clientY,
+      t: performance.now(),
+      snap,
+      pointerId: e.pointerId,
+    };
+    samplesRef.current = [{ y: e.clientY, t: performance.now() }];
+    // Don't flip `dragging` yet — wait for TAP_THRESHOLD movement.
+  };
+
+  const onDragPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const s = startRef.current;
+    if (!s || e.pointerId !== s.pointerId) return;
+    const dy = e.clientY - s.y;
+    if (!dragging && Math.abs(dy) < TAP_THRESHOLD) return;
+    if (!dragging) setDragging(true);
+
+    const now = performance.now();
+    samplesRef.current.push({ y: e.clientY, t: now });
+    // Bound the buffer — only the last ~200ms matter.
+    while (
+      samplesRef.current.length > 2 &&
+      now - samplesRef.current[0].t > 200
+    ) {
+      samplesRef.current.shift();
+    }
+
+    const targetY = baselineTranslateY(s.snap, dimsRef.current) + dy;
+    const clamped = clampTranslateY(targetY, dimsRef.current);
+    const offset = clamped - baselineTranslateY(s.snap, dimsRef.current);
+    setDragOffset(offset);
+  };
+
+  const onDragPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const s = startRef.current;
+    if (!s || e.pointerId !== s.pointerId) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer already released
+    }
+    const wasDragging = dragging;
+    startRef.current = null;
+    samplesRef.current = [];
+    setDragging(false);
+    if (!wasDragging) return; // tap — leave snap/offset alone
+
+    // Task 3 only: snap back to current snap. Task 4 will replace
+    // this with the real decideSnap() call.
+    setDragOffset(0);
+  };
 
   if (phase === null) return null;
 
@@ -230,13 +306,18 @@ export function MobileSheet({
         }}
       >
         <div
+          onPointerDown={onDragPointerDown}
+          onPointerMove={onDragPointerMove}
+          onPointerUp={onDragPointerUp}
+          onPointerCancel={onDragPointerUp}
           style={{
             display: "flex",
             justifyContent: "center",
             paddingTop: 8,
-            paddingBottom: 2,
+            paddingBottom: 8,
             flexShrink: 0,
             touchAction: "none",
+            cursor: "grab",
           }}
         >
           <div
