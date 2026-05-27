@@ -189,6 +189,24 @@ export function MobileSheet({
     if (phase !== "open") return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     if (startRef.current !== null) return; // second pointer — ignore
+
+    // Allow taps on interactive controls (X close, theme cards, etc.)
+    // to behave normally — don't intercept their pointer events.
+    const target = e.target as HTMLElement | null;
+    if (
+      target?.closest(
+        'button, input, select, textarea, a[href], [role="button"], [data-no-drag]',
+      )
+    ) {
+      return;
+    }
+
+    // The scrollable inner body (tagged on PanelShell) should keep its
+    // browser-native scroll behavior. Don't drag the sheet from there.
+    if (target?.closest("[data-sheet-scrollable]")) {
+      return;
+    }
+
     e.currentTarget.setPointerCapture(e.pointerId);
     startRef.current = {
       y: e.clientY,
@@ -331,6 +349,10 @@ export function MobileSheet({
         role="dialog"
         aria-modal="true"
         aria-label={label}
+        onPointerDown={onDragPointerDown}
+        onPointerMove={onDragPointerMove}
+        onPointerUp={onDragPointerUp}
+        onPointerCancel={onDragPointerUp}
         style={{
           position: "absolute",
           bottom: 0,
@@ -352,17 +374,12 @@ export function MobileSheet({
         }}
       >
         <div
-          onPointerDown={onDragPointerDown}
-          onPointerMove={onDragPointerMove}
-          onPointerUp={onDragPointerUp}
-          onPointerCancel={onDragPointerUp}
           style={{
             display: "flex",
             justifyContent: "center",
             paddingTop: 8,
             paddingBottom: 8,
             flexShrink: 0,
-            touchAction: "none",
             cursor: dragging ? "grabbing" : "grab",
           }}
         >

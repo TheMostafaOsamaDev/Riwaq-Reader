@@ -105,7 +105,12 @@ export function PanelShell({
           )}
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>{children}</div>
+      <div
+        data-sheet-scrollable="true"
+        style={{ flex: 1, overflowY: "auto", minHeight: 0 }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
