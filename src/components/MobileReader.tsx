@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { MobileSheet } from "./MobileSheet";
 import { SelectionPopover } from "./SelectionPopover";
+import { SelectionOverlay } from "./SelectionOverlay";
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
@@ -16,7 +17,7 @@ import {
   type ThemeKey,
 } from "../styles/tokens";
 import {
-  resolveSelectionAnchor,
+  anchorFromRange,
   type SelectionAnchor,
 } from "../lib/selectionAnchor";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
@@ -24,6 +25,121 @@ import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
 import type { ActivePanel, Tweaks } from "../types/reader";
+
+// ---- Custom selection helpers --------------------------------------
+// We replace native text selection on mobile with a hand-rolled
+// pointer gesture. The user long-presses a word, drags to extend
+// within the same paragraph, and releases. The selection lives only
+// in React state — never on window.getSelection() — so the OS
+// selection toolbar has no anchor and never appears.
+
+const LONG_PRESS_MS = 400;
+const LONG_PRESS_MOVE_TOLERANCE = 8; // px before pointer cancels long-press
+const WORD_BOUNDARY_REGEX = /[\s\p{P}\p{S}]/u; // whitespace, punctuation, symbols
+
+interface RangeEndpoint {
+  node: Text;
+  offset: number;
+}
+
+/** Find the text-node + offset at a viewport (clientX, clientY) point. */
+function caretFromPoint(x: number, y: number): RangeEndpoint | null {
+  // Prefer the standard caretPositionFromPoint when available, falling
+  // back to caretRangeFromPoint (Chromium, Android WebView).
+  const fromPos =
+    (document as unknown as {
+      caretPositionFromPoint?: (
+        x: number,
+        y: number,
+      ) => { offsetNode: Node; offset: number } | null;
+    }).caretPositionFromPoint?.(x, y) ?? null;
+  if (fromPos && fromPos.offsetNode.nodeType === Node.TEXT_NODE) {
+    return { node: fromPos.offsetNode as Text, offset: fromPos.offset };
+  }
+  const fromRange = document.caretRangeFromPoint?.(x, y) ?? null;
+  if (
+    fromRange &&
+    fromRange.startContainer.nodeType === Node.TEXT_NODE
+  ) {
+    return {
+      node: fromRange.startContainer as Text,
+      offset: fromRange.startOffset,
+    };
+  }
+  return null;
+}
+
+/** Find the paragraph element (<p data-p-index>) ancestor of a node. */
+function paragraphOf(node: Node): HTMLElement | null {
+  let n: Node | null = node;
+  while (n) {
+    if (n instanceof HTMLElement && n.dataset.pIndex !== undefined) return n;
+    n = n.parentNode;
+  }
+  return null;
+}
+
+/** Walk left/right within a text node to expand to the surrounding
+ *  word's start and end character offsets. */
+function wordRangeAt(node: Text, offset: number): [number, number] {
+  const text = node.data;
+  let start = offset;
+  let end = offset;
+  while (start > 0 && !WORD_BOUNDARY_REGEX.test(text[start - 1]!)) start--;
+  while (end < text.length && !WORD_BOUNDARY_REGEX.test(text[end]!)) end++;
+  if (start === end) return [offset, Math.min(offset + 1, text.length)];
+  return [start, end];
+}
+
+/** Clamp a candidate endpoint so it stays inside the same paragraph
+ *  as the anchor endpoint. Returns the closest in-paragraph endpoint. */
+function clampToParagraph(
+  paragraph: HTMLElement,
+  candidate: RangeEndpoint,
+): RangeEndpoint {
+  if (paragraphOf(candidate.node) === paragraph) return candidate;
+  // The candidate is outside the paragraph — return the last text
+  // node within the paragraph (if candidate is past) or the first
+  // (if candidate is before). Use document position comparison.
+  const cmp = paragraph.compareDocumentPosition(candidate.node);
+  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+  let firstText: Text | null = null;
+  let lastText: Text | null = null;
+  let t: Node | null;
+  while ((t = walker.nextNode())) {
+    if (!firstText) firstText = t as Text;
+    lastText = t as Text;
+  }
+  if (cmp & Node.DOCUMENT_POSITION_PRECEDING && firstText) {
+    return { node: firstText, offset: 0 };
+  }
+  if (cmp & Node.DOCUMENT_POSITION_FOLLOWING && lastText) {
+    return { node: lastText, offset: lastText.data.length };
+  }
+  // Fallback: clamp to start of paragraph
+  if (firstText) return { node: firstText, offset: 0 };
+  return candidate;
+}
+
+/** Build a Range from two endpoints, ordered correctly (start before end). */
+function buildRange(a: RangeEndpoint, b: RangeEndpoint): Range {
+  const range = document.createRange();
+  const cmp =
+    a.node === b.node
+      ? a.offset - b.offset
+      : a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING
+        ? -1
+        : 1;
+  if (cmp < 0) {
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
+  } else {
+    range.setStart(b.node, b.offset);
+    range.setEnd(a.node, a.offset);
+  }
+  return range;
+}
+// ---- end custom selection helpers ----------------------------------
 
 interface Props {
   theme: Theme;
@@ -211,64 +327,117 @@ export function MobileReader({
   //   - activeHl: shown when the user tapped an existing highlight
   // Showing one always clears the other.
   const [selAnchor, setSelAnchor] = useState<SelectionAnchor | null>(null);
+  const [selRects, setSelRects] = useState<DOMRect[]>([]);
   const [activeHl, setActiveHl] = useState<{
     highlight: Highlight;
     rect: DOMRect;
   } | null>(null);
 
-  // Resolve the selection on `selectionchange` rather than pointerup.
-  // The Android WebView's long-press selection emerges asynchronously
-  // after the touch begins, and dragging the handles doesn't re-fire
-  // pointerup — so the old listener missed every selection past the
-  // initial single word. We debounce ~220ms to wait for the user to
-  // settle on a final range before measuring it.
-  //
-  // We never *clear* selAnchor here — outside-tap dismissal is handled
-  // by the click listener below. That keeps the popover alive while
-  // the note textarea has focus (selection collapses to the caret,
-  // which would otherwise hide the toolbar mid-typing).
+  // Custom long-press + drag selection on mobile. Replaces native
+  // selection so the OS toolbar (which we can't suppress on Samsung
+  // One UI) never has a live window selection to anchor to.
   useEffect(() => {
-    let timer: number | null = null;
-    const settle = () => {
-      timer = null;
-      // Skip while the user is interacting with the popover itself
-      // (e.g. typing in the note textarea — selectionchange fires for
-      // every keystroke).
-      const active = document.activeElement;
-      if (
-        active instanceof HTMLElement &&
-        active.closest('[data-popover="highlight"]')
-      ) {
-        return;
-      }
-      const sel = window.getSelection();
-      // No live selection: caret-only (note typing) or already cleared.
-      // Leave our state alone — the click listener owns popover dismissal.
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    const bodyEl = document.querySelector<HTMLElement>("[data-book-body]");
+    if (!bodyEl) return;
 
-      const next = resolveSelectionAnchor();
-      if (next) {
-        setSelAnchor(next);
+    let pointerId: number | null = null;
+    let startEndpoint: RangeEndpoint | null = null;
+    let startParagraph: HTMLElement | null = null;
+    let longPressTimer: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let isSelecting = false;
+
+    const updateFromRange = (range: Range) => {
+      const anchor = anchorFromRange(range);
+      if (anchor) {
+        setSelAnchor(anchor);
         setActiveHl(null);
+        setSelRects(Array.from(range.getClientRects()).map(
+          (r) => new DOMRect(r.x, r.y, r.width, r.height),
+        ));
+      }
+    };
+
+    const startSelection = (cx: number, cy: number) => {
+      const ep = caretFromPoint(cx, cy);
+      if (!ep) return;
+      const p = paragraphOf(ep.node);
+      if (!p) return;
+      const [ws, we] = wordRangeAt(ep.node, ep.offset);
+      const range = document.createRange();
+      range.setStart(ep.node, ws);
+      range.setEnd(ep.node, we);
+      startEndpoint = { node: ep.node, offset: ws };
+      startParagraph = p;
+      isSelecting = true;
+      updateFromRange(range);
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (pointerId !== null) return;
+      // Ignore pointerdown on existing highlight marks — those are handled
+      // by the click listener for tap-on-highlight.
+      if ((e.target as HTMLElement | null)?.closest("[data-h-id]")) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      isSelecting = false;
+      if (longPressTimer) window.clearTimeout(longPressTimer);
+      longPressTimer = window.setTimeout(() => {
+        longPressTimer = null;
+        bodyEl.setPointerCapture(pointerId!);
+        startSelection(startX, startY);
+      }, LONG_PRESS_MS);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      if (!isSelecting) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
+          if (longPressTimer) window.clearTimeout(longPressTimer);
+          longPressTimer = null;
+          pointerId = null;
+        }
         return;
       }
-      // Selection is live but doesn't fit our highlight model (spans
-      // multiple paragraphs, or escapes BookBody — Samsung One UI's
-      // Smart Selection sometimes auto-extends past one paragraph
-      // when the finger is released). Drop the popover and clear the
-      // native selection so the user can start over instead of seeing
-      // a stale popover anchored to an earlier valid range.
-      setSelAnchor(null);
-      sel.removeAllRanges();
+      if (!startEndpoint || !startParagraph) return;
+      const currentEp = caretFromPoint(e.clientX, e.clientY);
+      if (!currentEp) return;
+      const clamped = clampToParagraph(startParagraph, currentEp);
+      const range = buildRange(startEndpoint, clamped);
+      if (!range.collapsed) updateFromRange(range);
+      e.preventDefault();
     };
-    const onSelectionChange = () => {
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(settle, 220);
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      if (longPressTimer) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      if (isSelecting) {
+        try { bodyEl.releasePointerCapture(e.pointerId); } catch {}
+      }
+      pointerId = null;
+      startEndpoint = null;
+      startParagraph = null;
+      isSelecting = false;
     };
-    document.addEventListener("selectionchange", onSelectionChange);
+
+    bodyEl.addEventListener("pointerdown", onPointerDown);
+    bodyEl.addEventListener("pointermove", onPointerMove);
+    bodyEl.addEventListener("pointerup", onPointerUp);
+    bodyEl.addEventListener("pointercancel", onPointerUp);
     return () => {
-      document.removeEventListener("selectionchange", onSelectionChange);
-      if (timer) window.clearTimeout(timer);
+      if (longPressTimer) window.clearTimeout(longPressTimer);
+      bodyEl.removeEventListener("pointerdown", onPointerDown);
+      bodyEl.removeEventListener("pointermove", onPointerMove);
+      bodyEl.removeEventListener("pointerup", onPointerUp);
+      bodyEl.removeEventListener("pointercancel", onPointerUp);
     };
   }, []);
 
@@ -293,8 +462,9 @@ export function MobileReader({
       );
       if (inPopover) return;
 
-      const sel = window.getSelection();
-      if (sel && !sel.isCollapsed) return;
+      // Used to bail out if the native selection was still live — our
+      // custom selection model no longer uses the native selection at all,
+      // so this guard is now meaningless and gets dropped.
 
       const markNode = path.find(
         (node): node is HTMLElement =>
@@ -318,7 +488,7 @@ export function MobileReader({
 
   const dismissSelection = () => {
     setSelAnchor(null);
-    window.getSelection()?.removeAllRanges();
+    setSelRects([]);
   };
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!selAnchor) return;
@@ -480,6 +650,7 @@ export function MobileReader({
           // or >360px page width would just overflow.
           rtl={isRtlLanguage(book.language)}
           widthPercent={t.contentWidth}
+          selectable={false}
         />
       </div>
 
@@ -800,14 +971,17 @@ export function MobileReader({
         </div>
       </MobileSheet>
       {selAnchor && (
-        <SelectionPopover
-          theme={theme}
-          anchor={selAnchor.rect}
-          placement="below"
-          onPick={(color) => createFromSelection(color)}
-          onAddNote={(color, note) => createFromSelection(color, note)}
-          onDismiss={dismissSelection}
-        />
+        <>
+          <SelectionOverlay rects={selRects} />
+          <SelectionPopover
+            theme={theme}
+            anchor={selAnchor.rect}
+            placement="below"
+            onPick={(color) => createFromSelection(color)}
+            onAddNote={(color, note) => createFromSelection(color, note)}
+            onDismiss={dismissSelection}
+          />
+        </>
       )}
       {activeHl && (
         <HighlightActionPopover

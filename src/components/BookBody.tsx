@@ -37,6 +37,10 @@ interface Props {
   /** Highlights that anchor into this chapter. BookBody renders any
       whose paragraphIndex matches the displayed paragraph index. */
   highlights?: Highlight[];
+  /** When false, disables native text selection in the body — used by
+      MobileReader, which drives its own selection via custom pointer
+      handlers. Defaults to true so the desktop reader is unaffected. */
+  selectable?: boolean;
 }
 
 /** Resolve every image item's storage-relative src to a webview-loadable
@@ -88,6 +92,7 @@ export function BookBody({
   rtl,
   widthPercent = 100,
   highlights = [],
+  selectable = true,
 }: Props) {
   const clampedPercent = Math.max(50, Math.min(100, widthPercent));
   const resolvedAlign =
@@ -142,10 +147,19 @@ export function BookBody({
   return (
     <div
       dir={rtl ? "rtl" : "ltr"}
+      data-book-body
       style={{
         ...common,
         fontFamily: bodyFont,
         textAlign: resolvedAlign,
+        // Native selection is suppressed when selectable=false (mobile
+        // reader). MobileReader drives its own selection via custom
+        // pointer handlers — without this, Android/Samsung shows the
+        // OS text-selection toolbar which can't be hidden at the app
+        // layer. Desktop passes selectable=true (the default) so its
+        // native selection is unaffected.
+        userSelect: selectable ? undefined : "none",
+        WebkitUserSelect: selectable ? undefined : "none",
       }}
     >
       <div style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}>
