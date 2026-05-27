@@ -1,7 +1,4 @@
 /src/main/**/generated
-# Re-track a single generated file we hand-patched. See the comment
-# block inside the file for what was changed.
-!/src/main/java/com/leaflet/reader/generated/RustWebView.kt
 /src/main/jniLibs/**/*.so
 /src/main/assets/tauri.conf.json
 /tauri.build.gradle.kts
