@@ -13,7 +13,15 @@ export interface SelectionAnchor {
   charStart: number;
   charEnd: number;
   text: string;
+  /** Bounding rect of the entire selection — used to anchor the
+   *  SelectionPopover above the selection. */
   rect: DOMRect;
+  /** Per-line client rects from `range.getClientRects()`. Used by
+   *  MobileReader to render its own translucent overlay after
+   *  clearing the native selection (Samsung One UI's selection
+   *  toolbar can't be suppressed at the OS level, so we drop the
+   *  native selection right after capture). */
+  rects: DOMRect[];
 }
 
 /** Walk up to the nearest `<p data-p-index>` ancestor, or null if the
@@ -104,5 +112,11 @@ export function resolveSelectionAnchor(): SelectionAnchor | null {
 
   const text = sel.toString();
   const rect = range.getBoundingClientRect();
-  return { paragraphIndex, charStart, charEnd, text, rect };
+  // getClientRects returns a per-line list — selection can wrap
+  // across multiple lines. Copy to a plain array because the live
+  // DOMRectList is invalidated once the selection is cleared.
+  const rects = Array.from(range.getClientRects()).map(
+    (r) => new DOMRect(r.x, r.y, r.width, r.height),
+  );
+  return { paragraphIndex, charStart, charEnd, text, rect, rects };
 }
