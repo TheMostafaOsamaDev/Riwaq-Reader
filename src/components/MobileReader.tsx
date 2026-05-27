@@ -336,96 +336,145 @@ export function MobileReader({
   // Custom long-press + drag selection on mobile. Replaces native
   // selection so the OS toolbar (which we can't suppress on Samsung
   // One UI) never has a live window selection to anchor to.
+  //
+  // BookBody is touch-action: none on mobile so this effect owns
+  // every touch on the reader body: small pointer-down + drag becomes
+  // a manual scroll; pointer-down + hold ≥400ms becomes a selection.
   useEffect(() => {
     const bodyEl = document.querySelector<HTMLElement>("[data-book-body]");
-    if (!bodyEl) return;
+    const scrollEl = scrollRef.current;
+    if (!bodyEl || !scrollEl) return;
 
+    type Mode = "idle" | "pending" | "scrolling" | "selecting";
+    let mode: Mode = "idle";
     let pointerId: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let lastY = 0;
     let startEndpoint: RangeEndpoint | null = null;
     let startParagraph: HTMLElement | null = null;
     let longPressTimer: number | null = null;
-    let startX = 0;
-    let startY = 0;
-    let isSelecting = false;
 
     const updateFromRange = (range: Range) => {
       const anchor = anchorFromRange(range);
       if (anchor) {
         setSelAnchor(anchor);
         setActiveHl(null);
-        setSelRects(Array.from(range.getClientRects()).map(
-          (r) => new DOMRect(r.x, r.y, r.width, r.height),
-        ));
+        setSelRects(
+          Array.from(range.getClientRects()).map(
+            (r) => new DOMRect(r.x, r.y, r.width, r.height),
+          ),
+        );
       }
     };
 
     const startSelection = (cx: number, cy: number) => {
       const ep = caretFromPoint(cx, cy);
-      if (!ep) return;
+      if (!ep) return false;
       const p = paragraphOf(ep.node);
-      if (!p) return;
+      if (!p) return false;
       const [ws, we] = wordRangeAt(ep.node, ep.offset);
       const range = document.createRange();
       range.setStart(ep.node, ws);
       range.setEnd(ep.node, we);
       startEndpoint = { node: ep.node, offset: ws };
       startParagraph = p;
-      isSelecting = true;
       updateFromRange(range);
+      return true;
+    };
+
+    const cancelLongPressTimer = () => {
+      if (longPressTimer !== null) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
     };
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (pointerId !== null) return;
-      // Ignore pointerdown on existing highlight marks — those are handled
-      // by the click listener for tap-on-highlight.
+      // Don't intercept pointerdown on existing highlight marks —
+      // those go through the document-level click listener to open
+      // the action popover.
       if ((e.target as HTMLElement | null)?.closest("[data-h-id]")) return;
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
-      isSelecting = false;
-      if (longPressTimer) window.clearTimeout(longPressTimer);
+      lastY = e.clientY;
+      mode = "pending";
+      cancelLongPressTimer();
       longPressTimer = window.setTimeout(() => {
         longPressTimer = null;
-        bodyEl.setPointerCapture(pointerId!);
-        startSelection(startX, startY);
+        if (mode !== "pending" || pointerId === null) return;
+        try {
+          bodyEl.setPointerCapture(pointerId);
+        } catch {
+          // pointer already gone
+          mode = "idle";
+          pointerId = null;
+          return;
+        }
+        if (startSelection(startX, startY)) {
+          mode = "selecting";
+        } else {
+          mode = "idle";
+          pointerId = null;
+        }
       }, LONG_PRESS_MS);
     };
 
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return;
-      if (!isSelecting) {
+      if (mode === "pending") {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
-          if (longPressTimer) window.clearTimeout(longPressTimer);
-          longPressTimer = null;
-          pointerId = null;
+          // Past the tap threshold before the long-press fired —
+          // this is a scroll, not a selection.
+          cancelLongPressTimer();
+          mode = "scrolling";
+          try {
+            bodyEl.setPointerCapture(e.pointerId);
+          } catch {
+            // best effort — the gesture continues regardless
+          }
+          // Apply the move-to-date deltaY as the first scroll step.
+          scrollEl.scrollTop -= e.clientY - lastY;
+          lastY = e.clientY;
         }
         return;
       }
-      if (!startEndpoint || !startParagraph) return;
-      const currentEp = caretFromPoint(e.clientX, e.clientY);
-      if (!currentEp) return;
-      const clamped = clampToParagraph(startParagraph, currentEp);
-      const range = buildRange(startEndpoint, clamped);
-      if (!range.collapsed) updateFromRange(range);
-      e.preventDefault();
+      if (mode === "scrolling") {
+        scrollEl.scrollTop -= e.clientY - lastY;
+        lastY = e.clientY;
+        e.preventDefault();
+        return;
+      }
+      if (mode === "selecting") {
+        if (!startEndpoint || !startParagraph) return;
+        const currentEp = caretFromPoint(e.clientX, e.clientY);
+        if (!currentEp) return;
+        const clamped = clampToParagraph(startParagraph, currentEp);
+        const range = buildRange(startEndpoint, clamped);
+        if (!range.collapsed) updateFromRange(range);
+        e.preventDefault();
+      }
     };
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return;
-      if (longPressTimer) {
-        window.clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-      if (isSelecting) {
-        try { bodyEl.releasePointerCapture(e.pointerId); } catch {}
+      cancelLongPressTimer();
+      if (mode === "scrolling" || mode === "selecting") {
+        try {
+          bodyEl.releasePointerCapture(e.pointerId);
+        } catch {
+          // already released
+        }
       }
       pointerId = null;
       startEndpoint = null;
       startParagraph = null;
-      isSelecting = false;
+      mode = "idle";
     };
 
     bodyEl.addEventListener("pointerdown", onPointerDown);
@@ -433,7 +482,7 @@ export function MobileReader({
     bodyEl.addEventListener("pointerup", onPointerUp);
     bodyEl.addEventListener("pointercancel", onPointerUp);
     return () => {
-      if (longPressTimer) window.clearTimeout(longPressTimer);
+      cancelLongPressTimer();
       bodyEl.removeEventListener("pointerdown", onPointerDown);
       bodyEl.removeEventListener("pointermove", onPointerMove);
       bodyEl.removeEventListener("pointerup", onPointerUp);

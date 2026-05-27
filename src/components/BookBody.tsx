@@ -160,6 +160,13 @@ export function BookBody({
         // native selection is unaffected.
         userSelect: selectable ? undefined : "none",
         WebkitUserSelect: selectable ? undefined : "none",
+        // touch-action: none on mobile so MobileReader's pointer-event
+        // gesture can fully control scrolling vs selection. The
+        // mobile reader implements its own scroll by translating
+        // pointer deltas onto the scroll container — without this,
+        // Android WebView commits to scrolling on the first touch
+        // movement and steals the pointer from our drag-to-extend.
+        touchAction: selectable ? undefined : "none",
       }}
     >
       <div style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}>
