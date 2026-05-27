@@ -1,104 +1,220 @@
 // Bottom sheet for the mobile reader's menus (TOC, settings, etc.).
-// Slides up from the bottom on enter and back down on exit; the
-// scrim fades in lock-step. The component owns the mount/leave
-// state so callers can pass `open` like a normal boolean — when
-// `open` flips false the sheet plays its exit animation and only
-// unmounts once that finishes. Children rendered during the exit
-// phase are the LAST children seen while open, so the user sees the
-// sheet they were just looking at slide off — not an empty container.
+//
+// The sheet element is rendered at the full-snap height (viewport
+// minus the safe-area top inset) and shifted down with `translateY`
+// to land on the active snap point. Expanding to full is therefore
+// a transform-only animation with no relayout. The enter and exit
+// transitions are driven by the same React-state machinery used by
+// snap settles, so closing from the full snap slides straight off
+// the bottom instead of jumping back to default first.
+//
+// Drag, snap, and velocity math live in `./sheetSnap` — this file
+// owns React/DOM concerns only.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { MOTION, useReducedMotion } from "../styles/motion";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import type { Theme } from "../styles/tokens";
+import {
+  baselineTranslateY,
+  type Snap,
+  type SnapDims,
+} from "./sheetSnap";
 
 interface Props {
   theme: Theme;
   /** Controls visibility. Flip to false to dismiss with animation. */
   open: boolean;
-  /** Called when the user taps the backdrop. Parents typically flip
-   *  `open` to false in response. */
+  /** Called when the user taps the backdrop, taps an in-sheet close
+   *  button, or drags the sheet past the dismiss threshold. */
   onClose: () => void;
   children: ReactNode;
+  /** CSS height for the *default* snap. Default "82%". */
   height?: string;
+  /** Optional aria-label for the dialog role. */
+  label?: string;
 }
 
 type Phase = "enter" | "open" | "exit";
+
+const FULL_INSET_TOP_FALLBACK = 24;
+
+/** Read `env(safe-area-inset-top, FALLBACK)` once, with a sane fallback
+ *  for environments that don't define it. We measure off a temporary
+ *  element rather than parsing the variable directly so the resolved
+ *  value matches what the browser actually applies. */
+function readSafeAreaInsetTop(): number {
+  if (typeof document === "undefined") return FULL_INSET_TOP_FALLBACK;
+  const probe = document.createElement("div");
+  probe.style.position = "fixed";
+  probe.style.top = "0";
+  probe.style.left = "0";
+  probe.style.height = `env(safe-area-inset-top, ${FULL_INSET_TOP_FALLBACK}px)`;
+  probe.style.visibility = "hidden";
+  document.body.appendChild(probe);
+  const px = probe.getBoundingClientRect().height;
+  document.body.removeChild(probe);
+  return px > 0 ? px : FULL_INSET_TOP_FALLBACK;
+}
+
+function parseHeightPx(heightProp: string, viewportH: number): number {
+  const trimmed = heightProp.trim();
+  if (trimmed.endsWith("%")) {
+    const pct = parseFloat(trimmed.slice(0, -1));
+    if (Number.isFinite(pct)) return (pct / 100) * viewportH;
+  }
+  if (trimmed.endsWith("px")) {
+    const px = parseFloat(trimmed.slice(0, -2));
+    if (Number.isFinite(px)) return px;
+  }
+  // Unknown unit — fall back to 82 % so the sheet still works.
+  return 0.82 * viewportH;
+}
 
 export function MobileSheet({
   theme,
   open,
   onClose,
   children,
-  height = "78%",
+  height = "82%",
+  label,
 }: Props) {
   const reduced = useReducedMotion();
+
+  // Lifecycle: null = unmounted; enter = first paint at offscreen
+  // position; open = settled; exit = animating out before unmount.
   const [phase, setPhase] = useState<Phase | null>(open ? "enter" : null);
+  const [snap, setSnap] = useState<Snap>("default");
+  const [dragOffset, setDragOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+
+  const dimsRef = useRef<SnapDims>({
+    fullInsetTop: FULL_INSET_TOP_FALLBACK,
+    viewportH: typeof window === "undefined" ? 0 : window.innerHeight,
+    defaultH: 0,
+  });
+  const sheetElRef = useRef<HTMLDivElement | null>(null);
   const lastChildrenRef = useRef<ReactNode>(children);
   if (open) lastChildrenRef.current = children;
 
+  // Measure dims once on mount and on every resize/orientation change.
+  // The default-snap height is derived from the `height` prop string.
+  useLayoutEffect(() => {
+    function measure() {
+      const viewportH =
+        window.visualViewport?.height ?? window.innerHeight ?? 0;
+      const fullInsetTop = readSafeAreaInsetTop();
+      const defaultH = parseHeightPx(height, viewportH);
+      dimsRef.current = { viewportH, fullInsetTop, defaultH };
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
+  }, [height]);
+
+  // Phase transitions driven by the `open` prop.
   useEffect(() => {
     if (open) {
-      // Mount/re-mount into the enter phase. The CSS keyframe self-
-      // triggers; we just need to promote to "open" so the exit class
-      // isn't accidentally still applied.
-      setPhase("enter");
-      const t = setTimeout(
-        () => setPhase("open"),
-        reduced ? 0 : MOTION.med,
-      );
-      return () => clearTimeout(t);
-    }
-    if (phase !== null) {
+      if (phase === null) {
+        setPhase("enter");
+        setSnap("default");
+        setDragOffset(0);
+        setDragging(false);
+      } else if (phase === "exit") {
+        // Re-opening while exit animation is still running — bounce
+        // back to "open" without going through enter again.
+        setPhase("open");
+      }
+    } else if (phase !== null && phase !== "exit") {
       setPhase("exit");
-      const t = setTimeout(
-        () => setPhase(null),
-        reduced ? 0 : MOTION.fast,
-      );
-      return () => clearTimeout(t);
+      setDragging(false);
+      setDragOffset(0);
     }
-  }, [open, reduced]);
+  }, [open, phase]);
+
+  // After paint with phase="enter", promote to "open" on the next frame
+  // so the inline transition has a non-zero from-value to animate from.
+  useEffect(() => {
+    if (phase !== "enter") return;
+    const raf = requestAnimationFrame(() => setPhase("open"));
+    return () => cancelAnimationFrame(raf);
+  }, [phase]);
+
+  // Unmount once the exit transition has finished.
+  useEffect(() => {
+    if (phase !== "exit") return;
+    const t = setTimeout(
+      () => setPhase(null),
+      reduced ? 0 : MOTION.fast,
+    );
+    return () => clearTimeout(t);
+  }, [phase, reduced]);
 
   if (phase === null) return null;
 
-  const animating = phase === "enter" || phase === "exit";
-  const backdropClass = reduced
-    ? undefined
-    : phase === "exit"
-      ? "leaflet-backdrop-exit"
-      : phase === "enter"
-        ? "leaflet-backdrop-enter"
-        : undefined;
-  const sheetClass = reduced
-    ? undefined
-    : phase === "exit"
-      ? "leaflet-sheet-exit"
-      : phase === "enter"
-        ? "leaflet-sheet-enter"
-        : undefined;
+  // Compute the active translateY. While dragging or at any phase
+  // other than "open", we render at the relevant baseline.
+  let translateY: number;
+  const dims = dimsRef.current;
+  if (phase === "enter") {
+    translateY = baselineTranslateY("dismissed", dims);
+  } else if (phase === "exit") {
+    translateY = baselineTranslateY("dismissed", dims);
+  } else {
+    translateY = baselineTranslateY(snap, dims) + dragOffset;
+  }
+
+  // Settle / enter / exit all use the same `transform 240ms enter`
+  // transition. Drag itself is direct manipulation, no transition.
+  const transition = dragging
+    ? "none"
+    : reduced
+      ? "none"
+      : phase === "exit"
+        ? `transform ${MOTION.fast}ms ${EASE.exit}`
+        : `transform ${MOTION.med}ms ${EASE.enter}`;
+
+  // Backdrop opacity is implemented in a later task. For now keep
+  // the original behavior of full opacity once mounted.
+  const backdropOpacity = phase === "enter" || phase === "exit" ? 0 : 1;
+  const backdropTransition = reduced
+    ? "none"
+    : `opacity ${phase === "exit" ? MOTION.fast : MOTION.med}ms ${
+        phase === "exit" ? EASE.exit : EASE.enter
+      }`;
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 20 }}>
       <div
         onClick={onClose}
-        className={backdropClass}
         style={{
           position: "absolute",
           inset: 0,
           background: "rgba(0,0,0,0.3)",
-          // When the keyframe is running, `both` fill-mode owns the
-          // opacity. While settled, no animation is applied — pin to
-          // fully visible so the scrim doesn't blink.
-          opacity: animating ? undefined : 1,
+          opacity: backdropOpacity,
+          transition: backdropTransition,
         }}
       />
       <div
-        className={sheetClass}
+        ref={sheetElRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
         style={{
           position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          height,
+          height: `calc(100dvh - ${dims.fullInsetTop}px)`,
           background: theme.bg,
           color: theme.ink,
           borderTopLeftRadius: 18,
@@ -107,6 +223,10 @@ export function MobileSheet({
           flexDirection: "column",
           boxShadow: "0 -10px 40px rgba(0,0,0,0.25)",
           overflow: "hidden",
+          transform: `translateY(${translateY}px)`,
+          transition,
+          willChange: "transform",
+          overscrollBehavior: "contain",
         }}
       >
         <div
@@ -116,6 +236,7 @@ export function MobileSheet({
             paddingTop: 8,
             paddingBottom: 2,
             flexShrink: 0,
+            touchAction: "none",
           }}
         >
           <div
