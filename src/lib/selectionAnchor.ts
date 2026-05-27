@@ -79,16 +79,14 @@ function charOffsetWithin(
 }
 
 /**
- * Resolve the current selection to a paragraph-anchored range. Returns
- * null if the selection is empty/collapsed, spans multiple paragraphs,
- * or doesn't lie inside a rendered paragraph at all (e.g. the user
- * dragged across chrome).
+ * Resolve an arbitrary Range to a paragraph-anchored SelectionAnchor.
+ * Returns null when the range is collapsed, crosses paragraphs, or
+ * doesn't lie inside a rendered paragraph at all. Used by the custom
+ * mobile selection path that holds Ranges in React state instead of
+ * on window.getSelection().
  */
-export function resolveSelectionAnchor(): SelectionAnchor | null {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-
-  const range = sel.getRangeAt(0);
+export function anchorFromRange(range: Range): SelectionAnchor | null {
+  if (range.collapsed) return null;
   const startP = findParagraph(range.startContainer);
   const endP = findParagraph(range.endContainer);
   if (!startP || !endP || startP !== endP) return null;
@@ -102,7 +100,19 @@ export function resolveSelectionAnchor(): SelectionAnchor | null {
   const charEnd = Math.max(a, b);
   if (charEnd <= charStart) return null;
 
-  const text = sel.toString();
+  const text = range.toString();
   const rect = range.getBoundingClientRect();
   return { paragraphIndex, charStart, charEnd, text, rect };
+}
+
+/**
+ * Resolve the current window selection to a paragraph-anchored range.
+ * Kept for the desktop reader, which still uses native selection.
+ * Returns null if the selection is empty/collapsed, spans multiple
+ * paragraphs, or doesn't lie inside a rendered paragraph at all.
+ */
+export function resolveSelectionAnchor(): SelectionAnchor | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+  return anchorFromRange(sel.getRangeAt(0));
 }
