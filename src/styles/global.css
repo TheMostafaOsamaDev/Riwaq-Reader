@@ -274,20 +274,6 @@ input:focus-visible,
 .leaflet-backdrop-exit {
   animation: leaflet-backdrop-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
-@keyframes leaflet-sheet-enter {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-@keyframes leaflet-sheet-exit {
-  from { transform: translateY(0); }
-  to { transform: translateY(100%); }
-}
-.leaflet-sheet-enter {
-  animation: leaflet-sheet-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-.leaflet-sheet-exit {
-  animation: leaflet-sheet-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
-}
 @keyframes leaflet-panel-enter-right {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
