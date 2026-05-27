@@ -287,14 +287,29 @@ export function MobileSheet({
         ? `transform ${MOTION.fast}ms ${EASE.exit}`
         : `transform ${MOTION.med}ms ${EASE.enter}`;
 
-  // Backdrop opacity is implemented in a later task. For now keep
-  // the original behavior of full opacity once mounted.
-  const backdropOpacity = phase === "enter" || phase === "exit" ? 0 : 1;
-  const backdropTransition = reduced
+  // Backdrop opacity tracks the sheet's visible height. Above the
+  // default snap (or while dragging upward from it) we pin to 1 so
+  // expansion doesn't darken further. Below default — i.e., the user
+  // is dragging toward dismiss — opacity fades linearly to 0 in
+  // lockstep with the sheet leaving the screen.
+  const visibleH = Math.max(
+    0,
+    dims.viewportH - (translateY + dims.fullInsetTop),
+  );
+  const pinAt = dims.defaultH;
+  let backdropOpacity =
+    pinAt > 0 ? Math.min(1, visibleH / pinAt) : visibleH > 0 ? 1 : 0;
+  if (phase === "enter") backdropOpacity = 0;
+
+  // Drag = follow the finger 1:1 (no opacity transition). When phase
+  // is exit/enter the same transform timing also drives the scrim.
+  const backdropTransition = dragging
     ? "none"
-    : `opacity ${phase === "exit" ? MOTION.fast : MOTION.med}ms ${
-        phase === "exit" ? EASE.exit : EASE.enter
-      }`;
+    : reduced
+      ? "none"
+      : phase === "exit"
+        ? `opacity ${MOTION.fast}ms ${EASE.exit}`
+        : `opacity ${MOTION.med}ms ${EASE.enter}`;
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 20 }}>
