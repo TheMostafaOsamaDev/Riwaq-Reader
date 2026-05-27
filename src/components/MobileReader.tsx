@@ -697,6 +697,17 @@ export function MobileReader({
         open={sheet !== null}
         onClose={() => setSheet(null)}
         height="82%"
+        label={
+          sheet === "toc"
+            ? "Table of contents"
+            : sheet === "settings"
+              ? "Reading settings"
+              : sheet === "highlights"
+                ? "Highlights"
+                : sheet === "progress"
+                  ? "Reading progress"
+                  : undefined
+        }
       >
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             {sheet === "toc" && (
