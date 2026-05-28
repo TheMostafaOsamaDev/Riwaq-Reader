@@ -38,6 +38,10 @@ interface Props {
   /** Paragraph to scroll to when the chapter mounts. Read once per chapter
       change; live scroll position is owned by the reader itself. */
   resumeParagraph: number;
+  /** Bumped by App when a targeted scroll (e.g., highlight jump) should
+   *  re-fire the chapter-mount scroll effect even if `currentChapter`
+   *  didn't change. */
+  jumpNonce: number;
   onChapterChange: (order: number) => void;
   onParagraphChange: (idx: number) => void;
   onCreateHighlight: (input: {
@@ -82,6 +86,7 @@ export function DesktopReader({
   state,
   currentChapter,
   resumeParagraph,
+  jumpNonce,
   onChapterChange,
   onParagraphChange,
   onCreateHighlight,
@@ -105,8 +110,16 @@ export function DesktopReader({
   // chapter switch / highlight jump).
   const livePara = useRef(resumeParagraph);
   const lastChapterRef = useRef(currentChapter);
+  const lastJumpNonceRef = useRef(jumpNonce);
   if (lastChapterRef.current !== currentChapter) {
     lastChapterRef.current = currentChapter;
+    livePara.current = resumeParagraph;
+  }
+  if (lastJumpNonceRef.current !== jumpNonce) {
+    // A targeted jump (e.g., from the highlights panel) within the same
+    // chapter — adopt resumeParagraph so the chapter-mount effect lands
+    // on the new target instead of where the user was last reading.
+    lastJumpNonceRef.current = jumpNonce;
     livePara.current = resumeParagraph;
   }
 
@@ -227,7 +240,7 @@ export function DesktopReader({
       el.scrollTop = 0;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, book.id, mode]);
+  }, [currentChapter, book.id, mode, jumpNonce]);
 
   // Throttled scroll listener — find the topmost-visible paragraph and
   // bubble its index up to the App state for persistence. Only runs in

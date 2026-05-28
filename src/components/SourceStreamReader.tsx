@@ -113,6 +113,7 @@ export function SourceStreamReader({
   const [paragraphIndex, setParagraphIndex] = useState(0);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [resumeParagraph, setResumeParagraph] = useState(0);
+  const [jumpNonce, setJumpNonce] = useState(0);
   const [chapterLoading, setChapterLoading] = useState(false);
   const [chapterError, setChapterError] = useState<string | null>(null);
 
@@ -377,6 +378,9 @@ export function SourceStreamReader({
       setCurrentChapter(h.chapter);
       setResumeParagraph(h.paragraphIndex);
       setParagraphIndex(h.paragraphIndex);
+      // Bump even on same-chapter, same-paragraph jumps so the reader's
+      // scroll effect re-fires and lands on the highlight.
+      setJumpNonce((n) => n + 1);
     },
     [book],
   );
@@ -432,6 +436,7 @@ export function SourceStreamReader({
           state={state}
           currentChapter={currentChapter}
           resumeParagraph={resumeParagraph}
+          jumpNonce={jumpNonce}
           onChapterChange={onChapterChange}
           onParagraphChange={onParagraphChange}
           onCreateHighlight={onCreateHighlight}
@@ -450,6 +455,7 @@ export function SourceStreamReader({
           state={state}
           currentChapter={currentChapter}
           resumeParagraph={resumeParagraph}
+          jumpNonce={jumpNonce}
           onChapterChange={onChapterChange}
           onParagraphChange={onParagraphChange}
           onCreateHighlight={onCreateHighlight}
