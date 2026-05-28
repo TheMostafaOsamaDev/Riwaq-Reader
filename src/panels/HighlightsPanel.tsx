@@ -159,7 +159,10 @@ function HighlightRow({
     >
       <div
         style={{
-          fontFamily: '"Literata", Georgia, serif',
+          // App UI font — matches the panel chrome and the reader's top
+          // bar, and avoids the editorial serif's faux-italic look on
+          // Arabic glyphs that the reader header used to show.
+          fontFamily: FONT_STACKS.sans,
           fontSize: 13.5,
           lineHeight: 1.55,
           color: theme.ink,

@@ -745,7 +745,7 @@ export function MobileReader({
           display: "flex",
           alignItems: "center",
           gap: 8,
-          background: `linear-gradient(180deg, ${theme.chrome} 70%, transparent)`,
+          background: theme.chrome,
           transform: chromeHidden ? "translateY(-100%)" : "translateY(0)",
           opacity: chromeHidden ? 0 : 1,
           transition: chromeTransition,
@@ -776,10 +776,12 @@ export function MobileReader({
             }}
           >
             <div
+              // Inherits FONT_STACKS.sans (Readex Pro) from the chrome
+              // wrapper — same UI font used by panel headers / bottom
+              // tabs, and renders Arabic glyphs natively instead of
+              // through Fraunces' Latin-shaped italic.
               style={{
-                fontFamily: '"Fraunces", serif',
                 fontSize: 13,
-                fontStyle: "italic",
                 fontWeight: 500,
                 color: theme.ink,
                 letterSpacing: "-0.01em",
@@ -876,7 +878,7 @@ export function MobileReader({
           zIndex: 10,
           padding: "14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)",
           color: theme.chromeInk,
-          background: `linear-gradient(0deg, ${theme.chrome} 70%, transparent)`,
+          background: theme.chrome,
           transform: chromeHidden ? "translateY(100%)" : "translateY(0)",
           opacity: chromeHidden ? 0 : 1,
           transition: chromeTransition,
