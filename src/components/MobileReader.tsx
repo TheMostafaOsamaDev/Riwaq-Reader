@@ -176,6 +176,10 @@ interface Props {
   state: BookState;
   currentChapter: number;
   resumeParagraph: number;
+  /** Bumped by App when a targeted scroll (e.g., highlight jump) should
+   *  re-fire the chapter-mount scroll effect even if `currentChapter`
+   *  didn't change. */
+  jumpNonce: number;
   onChapterChange: (order: number) => void;
   onParagraphChange: (idx: number) => void;
   onCreateHighlight: (input: {
@@ -218,6 +222,7 @@ export function MobileReader({
   state,
   currentChapter,
   resumeParagraph,
+  jumpNonce,
   onChapterChange,
   onParagraphChange,
   onCreateHighlight,
@@ -239,11 +244,17 @@ export function MobileReader({
     : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
   const startEndpointRef = useRef<RangeEndpoint | null>(null);
   const endEndpointRef = useRef<RangeEndpoint | null>(null);
   const paragraphRef = useRef<HTMLElement | null>(null);
   const resumeRef = useRef(resumeParagraph);
   resumeRef.current = resumeParagraph;
+  // Read by the scroll-to-resume effect so it knows whether the chrome is
+  // currently occluding the top of the scroll area. Tracked via a ref so a
+  // chrome toggle alone doesn't re-trigger the scroll.
+  const showChromeRef = useRef(showChrome);
+  showChromeRef.current = showChrome;
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
 
@@ -260,9 +271,22 @@ export function MobileReader({
     const target = el.querySelector<HTMLElement>(
       `[data-p-index="${resumeRef.current}"]`,
     );
-    el.scrollTop = target ? target.offsetTop : 0;
+    if (!target) {
+      el.scrollTop = 0;
+      return;
+    }
+    // The top chrome is position:absolute, so it overlays the scroll area
+    // rather than displacing it. When visible, it covers a chunk of the
+    // very top — landing scrollTop exactly at target.offsetTop would hide
+    // the target's first line behind it. Offset by the chrome's intrinsic
+    // height (plus a small visual gap) when it's actually shown.
+    const chromeOffset =
+      showChromeRef.current && chromeRef.current
+        ? chromeRef.current.offsetHeight + 8
+        : 0;
+    el.scrollTop = Math.max(0, target.offsetTop - chromeOffset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, book.id]);
+  }, [currentChapter, book.id, jumpNonce]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -709,6 +733,7 @@ export function MobileReader({
           than hard-cut. Hidden state slides up off-screen and disables
           pointer events so taps fall through to the reader. */}
       <div
+        ref={chromeRef}
         aria-hidden={chromeHidden}
         style={{
           position: "absolute",
