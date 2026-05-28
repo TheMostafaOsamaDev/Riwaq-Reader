@@ -273,13 +273,20 @@ function renderParagraph(
             background: hlBg(h.color, themeKey),
             color: "inherit",
             borderRadius: 2,
-            padding: "0 0.05em",
+            // No `padding` here. Earlier we used `padding: 0 0.05em` for
+            // a little colored breathing room around the text, but with
+            // `box-decoration-break: clone` the padding is applied to
+            // every wrapped fragment — reflowing the paragraph the
+            // moment a highlight is created and shifting where the user
+            // was reading. Box-shadow paints the same visual extension
+            // without occupying inline-direction layout space.
+            boxShadow: `0.05em 0 0 ${hlBg(h.color, themeKey)}, -0.05em 0 0 ${hlBg(h.color, themeKey)}`,
             cursor: "pointer",
             // Treat the highlight as a complete box on every wrapped
             // line. Without this, the default `slice` mode renders the
-            // padding/border-radius only on the very first/last line,
-            // and middle lines stretch flush to the line edges — which
-            // visually breaks across line wraps.
+            // background and box-shadow only on the very first/last
+            // line, and middle lines stretch flush to the line edges —
+            // which visually breaks across line wraps.
             boxDecorationBreak: "clone",
             WebkitBoxDecorationBreak: "clone",
           }}
