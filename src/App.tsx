@@ -40,6 +40,14 @@ interface Loaded {
    * in the reader's own ref.
    */
   resumeParagraph: number;
+  /**
+   * Bumped by every highlight-jump (or other targeted scroll) so the
+   * reader's chapter-mount effect re-fires even when the jump target is
+   * inside the chapter already on screen. Without this, tapping a
+   * highlight in the current chapter is a no-op for the scroll effect
+   * (deps unchanged).
+   */
+  jumpNonce: number;
 }
 
 interface StreamingSession {
@@ -122,6 +130,7 @@ function App() {
         state,
         currentChapter: state.currentChapter,
         resumeParagraph: state.paragraphIndex,
+        jumpNonce: 0,
       });
       setActivePanel(null);
     } catch (e) {
@@ -290,6 +299,10 @@ function App() {
               ...prev,
               currentChapter: h.chapter,
               resumeParagraph: h.paragraphIndex,
+              // Bump even if chapter + paragraph are identical to what
+              // they were last jump — guarantees the reader's scroll
+              // effect re-runs and lands on the highlight.
+              jumpNonce: prev.jumpNonce + 1,
             }
           : prev,
       );
@@ -393,6 +406,7 @@ function App() {
             state={loaded!.state}
             currentChapter={loaded!.currentChapter}
             resumeParagraph={loaded!.resumeParagraph}
+            jumpNonce={loaded!.jumpNonce}
             onChapterChange={changeChapter}
             onParagraphChange={onParagraphChange}
             onCreateHighlight={createHighlight}
@@ -411,6 +425,7 @@ function App() {
             state={loaded!.state}
             currentChapter={loaded!.currentChapter}
             resumeParagraph={loaded!.resumeParagraph}
+            jumpNonce={loaded!.jumpNonce}
             onChapterChange={changeChapter}
             onParagraphChange={onParagraphChange}
             onCreateHighlight={createHighlight}
