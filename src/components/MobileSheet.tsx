@@ -115,13 +115,36 @@ export function MobileSheet({
   // `dragging` only flips true after movement exceeds TAP_THRESHOLD so
   // a quick tap on the header (e.g., an X close button later) still
   // fires its click handler.
+  //
+  // `scrollable` is set when the gesture started inside an inner
+  // `[data-sheet-scrollable]` region that can actually scroll. In that
+  // case `claimed` starts false: native scroll handles the gesture until
+  // the user pulls past a boundary, at which point we hand off to sheet
+  // drag (claimed flips to true). For non-scrollable starts (drag handle,
+  // header) `claimed` is true from pointerdown.
   const startRef = useRef<{
     y: number;
     t: number;
     snap: Snap;
     pointerId: number;
+    scrollable: HTMLElement | null;
+    baseScrollTop: number;
+    claimed: boolean;
   } | null>(null);
   const samplesRef = useRef<MoveSample[]>([]);
+
+  // While a sheet drag has *claimed* an in-flight gesture from a native
+  // scroll region we need to actually stop the browser from continuing
+  // to scroll. preventDefault on touchmove does that, but only if the
+  // listener is attached with passive:false — which React's synthetic
+  // onTouchMove doesn't expose. Hence the explicit document listener.
+  useEffect(() => {
+    const handler = (e: TouchEvent) => {
+      if (startRef.current?.claimed) e.preventDefault();
+    };
+    document.addEventListener("touchmove", handler, { passive: false });
+    return () => document.removeEventListener("touchmove", handler);
+  }, []);
 
   // Measure dims once on mount and on every resize/orientation change.
   // The default-snap height is derived from the `height` prop string.
@@ -201,31 +224,103 @@ export function MobileSheet({
       return;
     }
 
-    // The scrollable inner body (tagged on PanelShell) should keep its
-    // browser-native scroll behavior. Don't drag the sheet from there.
-    if (target?.closest("[data-sheet-scrollable]")) {
-      return;
-    }
+    // The scrollable inner body (tagged on PanelShell) starts in native
+    // scroll mode — the sheet only takes over the gesture if the user
+    // pulls past a boundary (see onDragPointerMove). If the inner content
+    // fits inside the visible box (nothing to scroll) the pointer-down
+    // is treated as a normal sheet-drag start.
+    const scrollable = target?.closest(
+      "[data-sheet-scrollable]",
+    ) as HTMLElement | null;
+    const isScrollable =
+      !!scrollable && scrollable.scrollHeight - scrollable.clientHeight > 1;
 
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (!isScrollable) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     startRef.current = {
       y: e.clientY,
       t: performance.now(),
       snap,
       pointerId: e.pointerId,
+      scrollable: isScrollable ? scrollable : null,
+      baseScrollTop: isScrollable ? scrollable!.scrollTop : 0,
+      claimed: !isScrollable,
     };
-    samplesRef.current = [{ y: e.clientY, t: performance.now() }];
-    // Don't flip `dragging` yet — wait for TAP_THRESHOLD movement.
+    // For non-scrollable starts seed samples now so we can distinguish a
+    // tap (samples.length === 1 at release) from a drag (length > 1). For
+    // scrollable starts we seed at claim time instead so the release
+    // velocity reflects only the post-claim portion of the gesture.
+    samplesRef.current = isScrollable
+      ? []
+      : [{ y: e.clientY, t: performance.now() }];
+    // Don't flip `dragging` yet — wait for TAP_THRESHOLD movement (or for
+    // a scrollable claim, whichever comes first).
   };
 
   const onDragPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const s = startRef.current;
     if (!s || e.pointerId !== s.pointerId) return;
-    const dy = e.clientY - s.y;
-    if (!dragging && Math.abs(dy) < TAP_THRESHOLD) return;
-    if (!dragging) setDragging(true);
 
+    const dy = e.clientY - s.y;
+    // For scrollable-area starts: while the user is still inside the
+    // inner scroll's range, dy is exactly cancelled by the matching
+    // scrollTop change, so sheetOffset stays ~0 and we never claim. Once
+    // the inner scroll hits a boundary, further finger motion isn't
+    // absorbed by scrollDelta and sheetOffset starts to grow — that's
+    // the overscroll signal we hand off to sheet drag.
+    const scrollDelta = s.scrollable
+      ? s.scrollable.scrollTop - s.baseScrollTop
+      : 0;
+    const sheetOffset = dy + scrollDelta;
     const now = performance.now();
+
+    if (!s.claimed) {
+      const el = s.scrollable!;
+      const atTop = el.scrollTop <= 0;
+      const atBottom =
+        el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      let shouldClaim = false;
+      if (sheetOffset < -TAP_THRESHOLD) {
+        // Pulling up past the inner content's bottom expands the sheet.
+        // Only meaningful at "default" — at "full" there's nowhere left
+        // to go, so we let the native scroll bounce/no-op on iOS.
+        if (atBottom && s.snap === "default") shouldClaim = true;
+      } else if (sheetOffset > TAP_THRESHOLD) {
+        // Pulling down past the inner content's top contracts the sheet
+        // — works from "default" (toward dismiss) and from "full"
+        // (toward default).
+        if (atTop) shouldClaim = true;
+      }
+      if (!shouldClaim) return;
+
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // pointer released or capture refused — sheet drag still works
+        // via event bubbling for the rest of the gesture.
+      }
+      s.claimed = true;
+      // Rebase the drag origin to the claim moment so further moves
+      // drive the sheet from zero — no perceptible jump at handoff.
+      s.y = e.clientY;
+      s.baseScrollTop = el.scrollTop;
+      setDragging(true);
+      // Seed velocity samples from the claim moment so a release flick
+      // measures sheet drag motion, not the prior native scroll.
+      samplesRef.current = [{ y: e.clientY, t: now }];
+      setDragOffset(0);
+      return;
+    }
+
+    if (!dragging) {
+      // For non-scrollable starts the TAP_THRESHOLD filter still
+      // distinguishes a tap from a drag. Scrollable claims already
+      // crossed the threshold by definition, so skip the check there.
+      if (!s.scrollable && Math.abs(dy) < TAP_THRESHOLD) return;
+      setDragging(true);
+    }
+
     samplesRef.current.push({ y: e.clientY, t: now });
     // Bound the buffer — keep enough headroom past VELOCITY_WINDOW_MS
     // so a refactor that raises the window doesn't silently lose data.
@@ -237,7 +332,7 @@ export function MobileSheet({
       samplesRef.current.shift();
     }
 
-    const targetY = baselineTranslateY(s.snap, dimsRef.current) + dy;
+    const targetY = baselineTranslateY(s.snap, dimsRef.current) + sheetOffset;
     const clamped = clampTranslateY(targetY, dimsRef.current);
     const offset = clamped - baselineTranslateY(s.snap, dimsRef.current);
     setDragOffset(offset);
@@ -262,7 +357,13 @@ export function MobileSheet({
     startRef.current = null;
     samplesRef.current = [];
     setDragging(false);
-    if (!wasDragging) return; // tap — leave snap/offset alone
+    if (!wasDragging) {
+      // tap — restore baseline. dragOffset was 0 in the old code's tap
+      // path, but a scrollable claim followed by an immediate release can
+      // leave a small non-zero offset; reset so the sheet settles cleanly.
+      setDragOffset(0);
+      return;
+    }
 
     const target = decideSnap({
       // s.snap is always "full" | "default" when the sheet is open and
