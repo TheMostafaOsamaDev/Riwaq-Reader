@@ -1,11 +1,13 @@
 package com.leaflet.reader
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.ActionMode
 import android.view.Window
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : TauriActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,6 +66,32 @@ class MainActivity : TauriActivity() {
         @JvmField
         @Volatile
         var pendingLaunchIntent: String? = null
+
+        /** Set the status- and navigation-bar icon appearance to match
+         *  the in-app reading theme, which is independent of the OS
+         *  DayNight setting. `lightIcons` = true paints light (white)
+         *  icons for a dark background; false paints dark icons for a
+         *  light background. Called via JNI from Rust's
+         *  set_status_bar_style command on every theme change.
+         *
+         *  Must touch the window on the UI thread — JNI calls arrive on
+         *  an attached Rust thread, so we hop via runOnUiThread.
+         *
+         *  `@JvmStatic` so JNI sees a static method with a stable
+         *  signature: (Landroid/app/Activity;Z)V. */
+        @JvmStatic
+        fun setBarAppearance(activity: Activity, lightIcons: Boolean) {
+            activity.runOnUiThread {
+                val window = activity.window
+                val controller =
+                    WindowInsetsControllerCompat(window, window.decorView)
+                // isAppearance*Light* = true means "light background →
+                // dark icons", which is the inverse of our lightIcons
+                // (= light icons for a dark background) flag.
+                controller.isAppearanceLightStatusBars = !lightIcons
+                controller.isAppearanceLightNavigationBars = !lightIcons
+            }
+        }
     }
 }
 
