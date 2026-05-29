@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { DesktopReader } from "./components/DesktopReader";
@@ -98,7 +99,14 @@ function App() {
       'meta[name="theme-color"]',
     );
     if (meta) meta.content = theme.bg;
-  }, [theme.bg, theme.ink]);
+    // Match the Android status/navigation-bar icon contrast to the
+    // in-app theme. Light themes (light, sepia) need dark icons; dark
+    // themes (dark, oled) need light icons. The OS DayNight setting
+    // would otherwise leave white icons on a light bar. No-op / silent
+    // throw off Android — invoke just rejects and we ignore it.
+    const darkIcons = themeKey === "light" || themeKey === "sepia";
+    void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
+  }, [theme.bg, theme.ink, themeKey]);
 
   // Bridge the download queue to the system notification tray.
   // Idempotent — subsequent calls are no-ops, so React 18 dev
