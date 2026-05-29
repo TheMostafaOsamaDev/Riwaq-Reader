@@ -59,6 +59,25 @@ pub async fn update_download_notification(
     }
 }
 
+/// Set the system status- and navigation-bar icon appearance to match
+/// the in-app reading theme. `dark_icons = true` paints dark icons for a
+/// light theme (sepia / light); `false` paints light icons for a dark
+/// theme (dark / oled). No-op on non-Android.
+#[tauri::command]
+pub async fn set_status_bar_style(app: AppHandle, dark_icons: bool) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        android_set_bar_appearance(&app, dark_icons)
+            .map_err(|e| format!("android status bar failed: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, dark_icons);
+        Ok(())
+    }
+}
+
 /// Drain the pending launch-intent extra. Returns `Some(extra)` once,
 /// then `None` until the next intent arrives. Used by the frontend
 /// `useLaunchIntent` hook on mount.
@@ -141,6 +160,35 @@ fn android_call_update(
             JValue::Bool(if indeterminate { JNI_TRUE } else { JNI_FALSE } as jboolean),
             JValue::Bool(if ongoing { JNI_TRUE } else { JNI_FALSE } as jboolean),
             JValue::Bool(if taps_to_queue { JNI_TRUE } else { JNI_FALSE } as jboolean),
+        ],
+    )?;
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+fn android_set_bar_appearance(
+    _app: &AppHandle,
+    dark_icons: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let mut env = vm.attach_current_thread()?;
+    let activity =
+        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
+
+    // Kotlin's `lightIcons` flag means "light (white) icons for a dark
+    // background" — the inverse of our `dark_icons`. The Activity passed
+    // in IS the MainActivity instance (ndk_context's context()), so we
+    // hand it straight to the static method.
+    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.MainActivity")?;
+    let light_icons = !dark_icons;
+    env.call_static_method(
+        &class,
+        "setBarAppearance",
+        "(Landroid/app/Activity;Z)V",
+        &[
+            JValue::Object(&activity),
+            JValue::Bool(if light_icons { JNI_TRUE } else { JNI_FALSE } as jboolean),
         ],
     )?;
     Ok(())

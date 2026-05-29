@@ -14,6 +14,7 @@ pub fn run() {
             sources::source_fetch_bytes,
             sources::source_render_and_extract,
             notify::update_download_notification,
+            notify::set_status_bar_style,
             notify::consume_launch_intent,
         ])
         .run(tauri::generate_context!())

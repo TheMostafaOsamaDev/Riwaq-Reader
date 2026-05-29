@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { DesktopReader } from "./components/DesktopReader";
@@ -14,7 +15,7 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
 import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
-  deleteHighlight,
+  deleteHighlights,
   loadBook,
   markBookOpened,
   saveHighlight,
@@ -24,6 +25,7 @@ import {
   type BookState,
   type Highlight,
 } from "./store/library";
+import { MOTION, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
@@ -40,6 +42,14 @@ interface Loaded {
    * in the reader's own ref.
    */
   resumeParagraph: number;
+  /**
+   * Bumped by every highlight-jump (or other targeted scroll) so the
+   * reader's chapter-mount effect re-fires even when the jump target is
+   * inside the chapter already on screen. Without this, tapping a
+   * highlight in the current chapter is a no-op for the scroll effect
+   * (deps unchanged).
+   */
+  jumpNonce: number;
 }
 
 interface StreamingSession {
@@ -89,7 +99,14 @@ function App() {
       'meta[name="theme-color"]',
     );
     if (meta) meta.content = theme.bg;
-  }, [theme.bg, theme.ink]);
+    // Match the Android status/navigation-bar icon contrast to the
+    // in-app theme. Light themes (light, sepia) need dark icons; dark
+    // themes (dark, oled) need light icons. The OS DayNight setting
+    // would otherwise leave white icons on a light bar. No-op / silent
+    // throw off Android — invoke just rejects and we ignore it.
+    const darkIcons = themeKey === "light" || themeKey === "sepia";
+    void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
+  }, [theme.bg, theme.ink, themeKey]);
 
   // Bridge the download queue to the system notification tray.
   // Idempotent — subsequent calls are no-ops, so React 18 dev
@@ -106,30 +123,62 @@ function App() {
     })();
   }, []);
 
-  const openBook = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { book, state } = await loadBook(id);
-      // Stamp `lastReadAt` on open so the Library's "Continue reading"
-      // hero picks the book the user just opened, even when they exit
-      // before a chapter change has triggered `updateReadingPosition`.
-      // Awaited so the write commits before the Library remounts on
-      // back-out and re-fetches the index.
-      await markBookOpened(id);
-      setLoaded({
-        book,
-        state,
-        currentChapter: state.currentChapter,
-        resumeParagraph: state.paragraphIndex,
-      });
-      setActivePanel(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+  const reduced = useReducedMotion();
+  // Holds the deferred setLoading(false) so a rapid re-open of a different
+  // book can clear it before it fires for the previous load.
+  const loadingTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current !== null) {
+        window.clearTimeout(loadingTimeoutRef.current);
+      }
+    };
   }, []);
+
+  const openBook = useCallback(
+    async (id: string) => {
+      if (loadingTimeoutRef.current !== null) {
+        window.clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const { book, state } = await loadBook(id);
+        // Stamp `lastReadAt` on open so the Library's "Continue reading"
+        // hero picks the book the user just opened, even when they exit
+        // before a chapter change has triggered `updateReadingPosition`.
+        // Awaited so the write commits before the Library remounts on
+        // back-out and re-fetches the index.
+        await markBookOpened(id);
+        setLoaded({
+          book,
+          state,
+          currentChapter: state.currentChapter,
+          resumeParagraph: state.paragraphIndex,
+          jumpNonce: 0,
+        });
+        setActivePanel(null);
+        // Keep the spinner up over the AnimatedSwap crossfade so the
+        // user doesn't catch the Library through the reader's fade-in.
+        // The delay matches the .leaflet-view-enter keyframe (MOTION.med
+        // = 240ms); reduced-motion users get the swap instantly, so
+        // there's nothing to wait for.
+        if (reduced) {
+          setLoading(false);
+        } else {
+          loadingTimeoutRef.current = window.setTimeout(() => {
+            loadingTimeoutRef.current = null;
+            setLoading(false);
+          }, MOTION.med);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setLoading(false);
+      }
+    },
+    [reduced],
+  );
 
   const closeBook = useCallback(() => {
     setLoaded(null);
@@ -194,6 +243,7 @@ function App() {
       text: string;
       color: HighlightColor;
       note?: string;
+      groupId?: string;
     }) => {
       if (!loaded) return;
       const saved = await saveHighlight(loaded.book.id, input);
@@ -215,7 +265,18 @@ function App() {
   const removeHighlight = useCallback(
     async (highlightId: string) => {
       if (!loaded) return;
-      await deleteHighlight(loaded.book.id, highlightId);
+      // If the highlight is part of a multi-paragraph group, delete
+      // every member of the group so the user-visible "one selection
+      // = one highlight" mental model holds.
+      const target = loaded.state.highlights.find((h) => h.id === highlightId);
+      if (!target) return;
+      const ids = target.groupId
+        ? loaded.state.highlights
+            .filter((h) => h.groupId === target.groupId)
+            .map((h) => h.id)
+        : [highlightId];
+      await deleteHighlights(loaded.book.id, ids);
+      const idSet = new Set(ids);
       setLoaded((prev) =>
         prev
           ? {
@@ -223,7 +284,7 @@ function App() {
               state: {
                 ...prev.state,
                 highlights: prev.state.highlights.filter(
-                  (h) => h.id !== highlightId,
+                  (h) => !idSet.has(h.id),
                 ),
               },
             }
@@ -278,6 +339,10 @@ function App() {
               ...prev,
               currentChapter: h.chapter,
               resumeParagraph: h.paragraphIndex,
+              // Bump even if chapter + paragraph are identical to what
+              // they were last jump — guarantees the reader's scroll
+              // effect re-runs and lands on the highlight.
+              jumpNonce: prev.jumpNonce + 1,
             }
           : prev,
       );
@@ -381,6 +446,7 @@ function App() {
             state={loaded!.state}
             currentChapter={loaded!.currentChapter}
             resumeParagraph={loaded!.resumeParagraph}
+            jumpNonce={loaded!.jumpNonce}
             onChapterChange={changeChapter}
             onParagraphChange={onParagraphChange}
             onCreateHighlight={createHighlight}
@@ -399,6 +465,7 @@ function App() {
             state={loaded!.state}
             currentChapter={loaded!.currentChapter}
             resumeParagraph={loaded!.resumeParagraph}
+            jumpNonce={loaded!.jumpNonce}
             onChapterChange={changeChapter}
             onParagraphChange={onParagraphChange}
             onCreateHighlight={createHighlight}

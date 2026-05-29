@@ -23,6 +23,42 @@ interface Props {
   side?: "left" | "right";
 }
 
+interface HighlightGroup {
+  /** Stable key for React reconciliation. `groupId` for multi-paragraph
+   *  selections; the highlight's own id for ungrouped (single-paragraph or
+   *  legacy) entries. */
+  key: string;
+  /** First member by paragraphIndex — what every per-group operation
+   *  targets. Creation logic in MobileReader.createFromSelection puts
+   *  the note on the first segment only, so its color/chapter/note
+   *  already represent the group as a whole. */
+  representative: Highlight;
+  /** All members, sorted by paragraphIndex ascending. Includes the
+   *  representative. */
+  members: Highlight[];
+}
+
+function groupHighlights(highlights: Highlight[]): HighlightGroup[] {
+  const buckets = new Map<string, Highlight[]>();
+  for (const h of highlights) {
+    // Solo key uses the highlight id to guarantee uniqueness — a future
+    // migration that adds groupId to legacy entries can't collide with it.
+    const key = h.groupId ?? `__solo_${h.id}`;
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(h);
+    else buckets.set(key, [h]);
+  }
+  const groups: HighlightGroup[] = [];
+  for (const [key, members] of buckets) {
+    members.sort((a, b) => a.paragraphIndex - b.paragraphIndex);
+    groups.push({ key, representative: members[0], members });
+  }
+  // Most recent first — matches the order people expect when scanning
+  // for "what did I just save?"
+  groups.sort((a, b) => b.representative.ts - a.representative.ts);
+  return groups;
+}
+
 export function HighlightsPanel({
   theme,
   themeKey,
@@ -34,33 +70,29 @@ export function HighlightsPanel({
   width,
   side = "left",
 }: Props) {
-  // Most recent first — matches the order people expect when scanning
-  // for "what did I just save?"
-  const sorted = [...highlights].sort((a, b) => b.ts - a.ts);
+  const groups = groupHighlights(highlights);
   return (
     <PanelShell
       theme={theme}
       title="Highlights & Notes"
       subtitle={
-        highlights.length === 0
-          ? "None yet"
-          : `${highlights.length} in this book`
+        groups.length === 0 ? "None yet" : `${groups.length} in this book`
       }
       onClose={onClose}
       icon={<Icon name="highlight" size={14} />}
       width={width}
       side={side}
     >
-      {sorted.length === 0 ? (
+      {groups.length === 0 ? (
         <Empty theme={theme} />
       ) : (
         <div style={{ padding: "10px" }}>
-          {sorted.map((h) => (
+          {groups.map((g) => (
             <HighlightRow
-              key={h.id}
+              key={g.key}
               theme={theme}
               themeKey={themeKey}
-              highlight={h}
+              group={g}
               onJump={onJump}
               onDelete={onDelete}
               onUpdateNote={onUpdateNote}
@@ -75,18 +107,23 @@ export function HighlightsPanel({
 function HighlightRow({
   theme,
   themeKey,
-  highlight: h,
+  group,
   onJump,
   onDelete,
   onUpdateNote,
 }: {
   theme: Theme;
   themeKey: ThemeKey;
-  highlight: Highlight;
+  group: HighlightGroup;
   onJump?: (h: Highlight) => void;
   onDelete?: (id: string) => void;
   onUpdateNote?: (id: string, note: string) => void;
 }) {
+  // Per-group operations target the representative — note edits stay
+  // on the first segment (matching creation), delete is group-aware in
+  // App.removeHighlight, and jump lands on the first paragraph of the
+  // selection.
+  const h = group.representative;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(h.note ?? "");
 
@@ -122,14 +159,32 @@ function HighlightRow({
     >
       <div
         style={{
-          fontFamily: '"Literata", Georgia, serif',
+          // App UI font — matches the panel chrome and the reader's top
+          // bar, and avoids the editorial serif's faux-italic look on
+          // Arabic glyphs that the reader header used to show.
+          fontFamily: FONT_STACKS.sans,
           fontSize: 13.5,
           lineHeight: 1.55,
           color: theme.ink,
-          paddingRight: 56,
+          paddingInlineEnd: 56,
         }}
       >
-        {h.text}
+        {group.members.map((m, i) => (
+          <p
+            key={m.id}
+            // dir="auto" picks the paragraph direction from the first
+            // strong directional character — so Arabic segments render
+            // RTL even though the surrounding panel chrome is LTR.
+            dir="auto"
+            style={{
+              margin: 0,
+              marginBlockEnd:
+                i < group.members.length - 1 ? 8 : 0,
+            }}
+          >
+            {m.text}
+          </p>
+        ))}
       </div>
 
       {editing ? (
@@ -140,6 +195,9 @@ function HighlightRow({
           <textarea
             value={draft}
             autoFocus
+            // Auto-detect direction so an Arabic note flips to RTL while
+            // the caret is in it; English notes stay LTR.
+            dir="auto"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
@@ -184,13 +242,17 @@ function HighlightRow({
         </div>
       ) : h.note ? (
         <div
+          // dir="auto" + logical inline-start padding/border put the
+          // quote bar on the side closest to the note's reading start
+          // (left for English, right for Arabic).
+          dir="auto"
           style={{
             fontFamily: FONT_STACKS.sans,
             fontSize: 11.5,
             color: theme.ink,
             marginTop: 8,
-            paddingLeft: 10,
-            borderLeft: `1.5px solid ${theme.rule}`,
+            paddingInlineStart: 10,
+            borderInlineStart: `1.5px solid ${theme.rule}`,
             fontStyle: "italic",
             lineHeight: 1.4,
           }}

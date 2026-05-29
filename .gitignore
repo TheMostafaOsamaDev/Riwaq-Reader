@@ -30,6 +30,7 @@ src-tauri/gen/android/.idea
 
 # Claude Code
 .claude
+.playwright-mcp/
 
 # Raw font archives — usable copies live under public/fonts/
 /fonts
@@ -44,3 +45,4 @@ src-tauri/gen/android/.idea
 *.njsproj
 *.sln
 *.sw?
+.superpowers/
