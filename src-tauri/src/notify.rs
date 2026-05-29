@@ -222,3 +222,49 @@ fn android_consume_intent(_app: &AppHandle) -> Result<String, Box<dyn std::error
 
     Ok(rust_str)
 }
+
+/// Bridge the Android Activity into `ndk_context`'s global so the JNI helpers
+/// above can locate the JavaVM + Context.
+///
+/// tao 0.34 (the version Tauri used before the 2.11 bump) called
+/// `ndk_context::initialize_android_context(...)` from its activity `create`.
+/// tao 0.35 — pulled in by Tauri 2.11 — dropped that, so the global is left
+/// uninitialized and the very first JNI call (`set_status_bar_style` /
+/// `consume_launch_intent` on frontend mount) hits
+/// `android_context().expect("android context was not initialized")`. With
+/// `panic = "abort"` that aborts the whole process on launch.
+///
+/// We restore the old behaviour ourselves: `MainActivity.onCreate` calls this
+/// once, before the WebView/frontend mounts. The `Once` guard makes a (rare,
+/// given the broad `configChanges`) activity re-create a no-op, because
+/// `initialize_android_context` asserts it is only ever set once.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_leaflet_reader_MainActivity_initRustNdkContext<'local>(
+    env: jni::JNIEnv<'local>,
+    activity: JObject<'local>,
+) {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let vm = match env.get_java_vm() {
+            Ok(vm) => vm,
+            Err(_) => return,
+        };
+        let global = match env.new_global_ref(&activity) {
+            Ok(global) => global,
+            Err(_) => return,
+        };
+        // SAFETY: `vm` and `activity` are valid for the duration of this JNI
+        // call; leaking the global ref keeps the Activity alive for the whole
+        // process, and the broad `configChanges` in AndroidManifest means the
+        // Activity is not recreated, so this context stays valid.
+        unsafe {
+            ndk_context::initialize_android_context(
+                vm.get_java_vm_pointer() as *mut _,
+                global.as_obj().as_raw() as *mut _,
+            );
+        }
+        std::mem::forget(global);
+    });
+}
