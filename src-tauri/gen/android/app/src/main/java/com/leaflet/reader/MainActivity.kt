@@ -13,6 +13,15 @@ class MainActivity : TauriActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // Tauri 2.11's tao 0.35 no longer initializes the `ndk_context` global
+        // that our Rust JNI bridge (notify.rs) relies on. Bootstrap it here —
+        // before the WebView/frontend mounts and fires the first Android
+        // command — otherwise the app aborts with
+        // "android context was not initialized". Safe to call once; guarded on
+        // the Rust side.
+        initRustNdkContext()
+
         // Suppress Android's floating text-selection toolbar
         // ("Copy / Select all / Share / Manage apps") so the app's
         // in-page SelectionPopover is the only UI shown when the
@@ -56,6 +65,11 @@ class MainActivity : TauriActivity() {
         val extra = intent.getStringExtra("leaflet.open") ?: return
         pendingLaunchIntent = extra
     }
+
+    /** Implemented in Rust (`notify.rs`). Initializes `ndk_context`'s global
+     *  Activity + JavaVM handle so the JNI helpers in notify.rs can resolve the
+     *  Android context. Must run before any Android command is invoked. */
+    private external fun initRustNdkContext()
 
     companion object {
         /** Stashed launch-intent extra. Drained by Rust's
