@@ -115,6 +115,13 @@ export interface Highlight {
   note?: string;
   color: "yellow" | "blue" | "pink" | "green";
   ts: number;
+  /** When a selection spans multiple paragraphs, every highlight created
+   *  from that one user gesture shares the same groupId. Tap-to-delete
+   *  on any member deletes the whole group so the user sees a single
+   *  logical highlight (even though storage is per-paragraph). Absent
+   *  on single-paragraph highlights and on legacy saves that pre-date
+   *  this field. */
+  groupId?: string;
 }
 
 interface LibraryFile {
@@ -954,6 +961,19 @@ export async function deleteHighlight(
 ): Promise<void> {
   const state = await readState(id);
   state.highlights = state.highlights.filter((h) => h.id !== highlightId);
+  await writeState(state);
+}
+
+/** Delete several highlights atomically. Used when a multi-paragraph
+ *  highlight group is removed via any one of its members. */
+export async function deleteHighlights(
+  id: string,
+  highlightIds: string[],
+): Promise<void> {
+  if (highlightIds.length === 0) return;
+  const ids = new Set(highlightIds);
+  const state = await readState(id);
+  state.highlights = state.highlights.filter((h) => !ids.has(h.id));
   await writeState(state);
 }
 

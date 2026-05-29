@@ -16,7 +16,9 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // Bind to 0.0.0.0 so a single Vite instance serves both desktop
+    // (via localhost) and Android (via TAURI_DEV_HOST LAN IP).
+    host: true,
     hmr: host
       ? {
           protocol: "ws",
