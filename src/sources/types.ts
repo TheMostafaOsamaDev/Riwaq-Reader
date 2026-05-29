@@ -26,8 +26,10 @@ export type SourceLineType = "text" | "image";
 
 export interface SourceLine {
   type: SourceLineType;
-  /** For text: the paragraph's plain text. For image: an absolute URL the
-   *  host can fetch (no inline data: URIs — the host downloads + packages). */
+  /** For text: the paragraph's plain text. For image: normally an absolute
+   *  URL the host downloads + packages (no inline data: URIs). A source may
+   *  instead emit an opaque ref here and implement `resolveImage` to supply
+   *  the bytes out-of-band (e.g. an image extracted from a downloaded PDF). */
   content: string;
 }
 
