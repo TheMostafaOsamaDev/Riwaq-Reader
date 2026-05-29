@@ -2,9 +2,7 @@
 
 E-book reader for Arabic readers and Asian web-novel translations. Local-first, cross-platform, no accounts, no telemetry.
 
-<!-- Drop a real screenshot of the Library or the Reader here when you have one.
-     Suggested path: docs/screenshots/hero.png -->
-<!-- ![Leaflet](docs/screenshots/hero.png) -->
+![Leaflet — the Library on desktop](docs/screenshots/desktop/01-library.png)
 
 ## What it is
 
@@ -22,6 +20,41 @@ Everything is local. Books and reading state live in your own filesystem.
 - **Store** — browse novel sources, download chapters as offline EPUB, or stream live in a built-in reader
 - **Download queue** — system-level notifications track per-volume progress, survives app restarts
 - **Mobile + desktop** — same codebase, layout-aware shells; phone shows a bottom nav, desktop shows a header strip
+
+## Screenshots
+
+### Desktop
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/02-reader.png" alt="Reader" width="100%"/><br/><b>Reader</b> — paginated or scrolling, RTL-aware typography</td>
+    <td width="50%"><img src="docs/screenshots/desktop/03-customize-reading.png" alt="Reading appearance & typography" width="100%"/><br/><b>Customize</b> — themes, fonts, size, line-height, width</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/04-taking-note.png" alt="Taking a note" width="100%"/><br/><b>Notes</b> — attach a note to any passage</td>
+    <td width="50%"><img src="docs/screenshots/desktop/05-highlights-sidebar.png" alt="Highlights & notes sidebar" width="100%"/><br/><b>Highlights</b> — revisit highlights &amp; notes from the sidebar</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/06-store.png" alt="Store sources" width="100%"/><br/><b>Store</b> — browse supported novel sources</td>
+    <td width="50%"><img src="docs/screenshots/desktop/07-word-import.png" alt="Word document import" width="100%"/><br/><b>Import</b> — bring in <code>.docx</code> documents</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/08-edit-book.png" alt="Edit book metadata" width="100%"/><br/><b>Edit</b> — title, author, description, cover</td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
+### Mobile
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/mobile/01-library.jpg" alt="Library" width="150"/><br/><b>Library</b></td>
+    <td align="center"><img src="docs/screenshots/mobile/02-reader.jpg" alt="Reader" width="150"/><br/><b>Reader</b></td>
+    <td align="center"><img src="docs/screenshots/mobile/03-customize-reading.jpg" alt="Typography" width="150"/><br/><b>Typography</b></td>
+    <td align="center"><img src="docs/screenshots/mobile/04-store.jpg" alt="Store" width="150"/><br/><b>Store</b></td>
+    <td align="center"><img src="docs/screenshots/mobile/05-browse-source.jpg" alt="Browse a source" width="150"/><br/><b>Browse</b></td>
+  </tr>
+</table>
 
 ## Install
 
