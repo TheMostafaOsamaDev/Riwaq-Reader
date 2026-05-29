@@ -281,6 +281,15 @@ export interface Source {
 
   /** Populate `lines` for one chapter. */
   getChapterContent(chapter: SourceChapter): Promise<SourceLine[]>;
+
+  /** Optional. When a source emits image SourceLines whose `content` is NOT
+   *  a host-fetchable URL (e.g. images extracted from a downloaded PDF), the
+   *  importer calls resolveImage(content) to obtain the bytes out-of-band
+   *  instead of host.fetchBytes. Return null to fall back to URL fetch.
+   *  The returned shape matches the importer's internal DownloadedImage. */
+  resolveImage?(
+    ref: string,
+  ): Promise<{ bytes: Uint8Array; mimeType: string; extension: string } | null>;
 }
 
 // ── error sentinels ─────────────────────────────────────────────────────────
