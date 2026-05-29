@@ -24,6 +24,7 @@ import {
   type BookState,
   type Highlight,
 } from "./store/library";
+import { MOTION, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
@@ -114,31 +115,62 @@ function App() {
     })();
   }, []);
 
-  const openBook = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { book, state } = await loadBook(id);
-      // Stamp `lastReadAt` on open so the Library's "Continue reading"
-      // hero picks the book the user just opened, even when they exit
-      // before a chapter change has triggered `updateReadingPosition`.
-      // Awaited so the write commits before the Library remounts on
-      // back-out and re-fetches the index.
-      await markBookOpened(id);
-      setLoaded({
-        book,
-        state,
-        currentChapter: state.currentChapter,
-        resumeParagraph: state.paragraphIndex,
-        jumpNonce: 0,
-      });
-      setActivePanel(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+  const reduced = useReducedMotion();
+  // Holds the deferred setLoading(false) so a rapid re-open of a different
+  // book can clear it before it fires for the previous load.
+  const loadingTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current !== null) {
+        window.clearTimeout(loadingTimeoutRef.current);
+      }
+    };
   }, []);
+
+  const openBook = useCallback(
+    async (id: string) => {
+      if (loadingTimeoutRef.current !== null) {
+        window.clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const { book, state } = await loadBook(id);
+        // Stamp `lastReadAt` on open so the Library's "Continue reading"
+        // hero picks the book the user just opened, even when they exit
+        // before a chapter change has triggered `updateReadingPosition`.
+        // Awaited so the write commits before the Library remounts on
+        // back-out and re-fetches the index.
+        await markBookOpened(id);
+        setLoaded({
+          book,
+          state,
+          currentChapter: state.currentChapter,
+          resumeParagraph: state.paragraphIndex,
+          jumpNonce: 0,
+        });
+        setActivePanel(null);
+        // Keep the spinner up over the AnimatedSwap crossfade so the
+        // user doesn't catch the Library through the reader's fade-in.
+        // The delay matches the .leaflet-view-enter keyframe (MOTION.med
+        // = 240ms); reduced-motion users get the swap instantly, so
+        // there's nothing to wait for.
+        if (reduced) {
+          setLoading(false);
+        } else {
+          loadingTimeoutRef.current = window.setTimeout(() => {
+            loadingTimeoutRef.current = null;
+            setLoading(false);
+          }, MOTION.med);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setLoading(false);
+      }
+    },
+    [reduced],
+  );
 
   const closeBook = useCallback(() => {
     setLoaded(null);
