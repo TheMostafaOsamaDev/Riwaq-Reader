@@ -541,7 +541,9 @@ function bytesToDataUrl(bytes: Uint8Array, mimeType: string): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(new Blob([bytes.buffer as ArrayBuffer], { type: mimeType }));
+    // Cast to BlobPart (not bytes.buffer) so a non-zero byteOffset/byteLength
+    // view would still copy only its own bytes, not the whole backing buffer.
+    reader.readAsDataURL(new Blob([bytes as BlobPart], { type: mimeType }));
   });
 }
 
