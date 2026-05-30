@@ -4,7 +4,7 @@
 // fetched via the site's ts_ln_dl_url token flow and parsed with pdf.js.
 //
 //   token:  POST /wp-admin/admin-ajax.php  action=ts_ln_dl_url&post_id=<id>
-//             → { error:0, url: ".../pdf/?tspdftoken=<token>" }
+//             → { error:0, url: "https://kolnovel.com/<chapter>/pdf/?tspdftoken=<token>" } (absolute)
 //   bytes:  GET <token url>  → application/pdf
 //
 // Anonymous access only; members-only chapters surface as a stub line via the
@@ -140,6 +140,11 @@ function assertPdf(bytes: Uint8Array): void {
     bytes[2] === 0x44 && // D
     bytes[3] === 0x46; // F
   if (!ok) {
-    throw new Error("Downloaded chapter was not a PDF (likely members-only).");
+    // requestPdfUrl already handled the members-only case; reaching here with
+    // non-PDF bytes means the token expired or the endpoint returned an
+    // error/login/CDN page instead of the file.
+    throw new Error(
+      "Downloaded chapter was not a PDF (token may have expired or the endpoint returned an error/login page).",
+    );
   }
 }
