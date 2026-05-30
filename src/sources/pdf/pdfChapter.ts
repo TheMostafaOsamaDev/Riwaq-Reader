@@ -118,15 +118,18 @@ async function renderPageToResolveObjs(page: any): Promise<void> {
   await page.render({ canvasContext: ctx, viewport }).promise;
 }
 
-/** Promisified page.objs.get — resolves null on miss/timeout instead of hanging. */
+/** Promisified objs.get — resolves null on miss/timeout instead of hanging.
+ *  Images referenced on >= 2 pages are globally cached and arrive via
+ *  page.commonObjs with a "g_"-prefixed id; per-page images via page.objs. */
 function getImageObj(page: any, name: string): Promise<any | null> {
+  const pool = name.startsWith("g_") ? page.commonObjs : page.objs;
   return new Promise((resolve) => {
     let done = false;
     const t = setTimeout(() => {
       if (!done) { done = true; resolve(null); }
     }, 5000);
     try {
-      page.objs.get(name, (obj: any) => {
+      pool.get(name, (obj: any) => {
         if (!done) { done = true; clearTimeout(t); resolve(obj); }
       });
     } catch {
@@ -149,7 +152,10 @@ async function imageObjToBytes(img: any): Promise<ExtractedImage | null> {
   if (img.bitmap) {
     ctx.drawImage(img.bitmap, 0, 0);
   } else if (img.data) {
-    // kind: 1 = GRAYSCALE_1BPP-decoded-to-bytes, 2 = RGB_24BPP, 3 = RGBA_32BPP
+    // kind: 2 = RGB_24BPP, 3 = RGBA_32BPP, 1 = GRAYSCALE_1BPP (bit-packed,
+    // 8 pixels per byte). In a browser with OffscreenCanvas, pdf.js returns an
+    // ImageBitmap for 1bpp images (handled by the img.bitmap path above), so
+    // the bit-unpack fallback below is defensive (and ignores row padding).
     const rgba = new Uint8ClampedArray(w * h * 4);
     const d: Uint8ClampedArray | Uint8Array = img.data;
     if (img.kind === 3) {
@@ -159,9 +165,13 @@ async function imageObjToBytes(img: any): Promise<ExtractedImage | null> {
         rgba[k] = d[i]; rgba[k + 1] = d[i + 1]; rgba[k + 2] = d[i + 2]; rgba[k + 3] = 255;
       }
     } else {
-      // Treat anything else as grayscale: one byte per pixel.
-      for (let i = 0, k = 0; i < d.length && k < rgba.length; i += 1, k += 4) {
-        rgba[k] = rgba[k + 1] = rgba[k + 2] = d[i]; rgba[k + 3] = 255;
+      // GRAYSCALE_1BPP: each byte holds 8 pixels, MSB first.
+      for (let i = 0, k = 0; i < d.length && k < rgba.length; i++) {
+        for (let b = 7; b >= 0 && k < rgba.length; b--, k += 4) {
+          const v = ((d[i] >> b) & 1) ? 255 : 0;
+          rgba[k] = rgba[k + 1] = rgba[k + 2] = v;
+          rgba[k + 3] = 255;
+        }
       }
     }
     ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
@@ -194,11 +204,18 @@ export async function extractPdfLines(
       // pages that actually contain illustrations.
       const opList = await page.getOperatorList();
       const imageNames: string[] = [];
+      const seenNames = new Set<string>();
       for (let i = 0; i < opList.fnArray.length; i++) {
         const fn = opList.fnArray[i];
         if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject) {
+          // paintInlineImageXObject carries imgData (not a name string) in
+          // args[0]; the typeof guard filters those out — inline images are
+          // not extracted (rare in these chapter PDFs).
           const name = opList.argsArray[i]?.[0];
-          if (typeof name === "string") imageNames.push(name);
+          if (typeof name === "string" && !seenNames.has(name)) {
+            seenNames.add(name);
+            imageNames.push(name);
+          }
         }
       }
 
