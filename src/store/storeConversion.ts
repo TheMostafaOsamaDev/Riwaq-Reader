@@ -292,6 +292,16 @@ async function enrichChapter(
   };
   void host; // hosts are constructed inside getChapterContent calls already
   const lines = await source.getChapterContent(stub);
+  // Source-resolved images (e.g. PDF-extracted) aren't fetchable URLs.
+  // The source just produced them, so pull their bytes now and stash them
+  // under the line's ref — collectImages' on-disk (non-http) pass then
+  // bakes them into the EPUB exactly like a downloaded image.
+  for (const ln of lines) {
+    if (ln.type !== "image") continue;
+    if (imagesByBasename.has(ln.content)) continue;
+    const resolved = await source.resolveImage?.(ln.content);
+    if (resolved) imagesByBasename.set(ln.content, resolved.bytes);
+  }
   return {
     volumeId: fc.volumeId,
     volumeTitle: fc.volumeTitle,

@@ -611,8 +611,12 @@ export async function downloadChapter(
     const url = imageUrls[i];
     const idx = String(i + 1).padStart(3, "0");
     try {
-      const bytes = await host.fetchBytes(url);
-      const basename = `img-${idx}.${extensionFromImageUrl(url)}`;
+      // Source-resolved images (e.g. extracted from a PDF) come back as
+      // bytes; everything else is a real URL the host fetches.
+      const resolved = await source.resolveImage?.(url);
+      const bytes = resolved ? resolved.bytes : await host.fetchBytes(url);
+      const ext = resolved ? resolved.extension : extensionFromImageUrl(url);
+      const basename = `img-${idx}.${ext}`;
       urlToBasename.set(url, basename);
       imageFiles.push({ basename, bytes });
     } catch (e) {
