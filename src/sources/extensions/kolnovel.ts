@@ -1,20 +1,16 @@
-// KolNovel source — full browse + scrape implementation for free.kolnovel.com.
+// KolNovel source — browse + scrape implementation for free.kolnovel.com.
 //
-// All four scrape entry points are pure HTTP because the site renders the
-// relevant data in the initial HTML:
+// Discovery (home, search, novel page) is delegated to kolnovel-theme.ts, the
+// shared WordPress-theme DOM parsers parameterized by base URL — KolNovel and
+// KolNovel Pro render those pages with the same theme. All of them are pure
+// HTTP because the site ships the data in the initial HTML.
 //
-//   getHomeSections    →  GET /                  →  parse .bixbox sections
-//   search             →  GET /?s=<q>&paged=<n>  →  parse .listupd .maindet
-//   getNovel           →  GET /series/<slug>/    →  parse .sertobig + .ts-chl-collapsible
-//   getChapterContent  →  GET /<chapter-slug>/   →  parse #kol_content (see comment there)
+// The only scrape step owned here is chapter content:
+//   getChapterContent  →  GET /<chapter-slug>/  →  parse #kol_content
 //
-// Selectors are based on a snapshot of the live site (KolNovel runs a
-// custom WordPress theme). Brittle bits to watch:
-//   - .bs cards in the homepage can carry either a /series/ URL or a
-//     /shaag24…/ chapter URL depending on which row they're in; we filter
-//     to series-URL cards in getHomeSections so clicking a card always
-//     lands on a novel page.
-//   - The .utao "latest updates" rows surface series URLs in .imgu > a.
+// Chapter pages carry rotating per-load hex class names that mark decoy
+// paragraphs (duplicated text + the kolnovel.com ad string); see
+// extractChapterLines / collectHiddenClasses below for how they're filtered.
 
 import { parseHtmlDocument } from "../host";
 import {
