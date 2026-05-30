@@ -254,7 +254,7 @@ export function SourceStreamReader({
             url: stub.url,
             lines: [],
           });
-          items = sourceLinesToChapterItems(lines);
+          items = await sourceLinesToChapterItems(lines, source);
         }
         cacheRef.current.set(idx, items);
         setBook((prev) => spliceChapter(prev, idx, items!));
@@ -513,10 +513,36 @@ function buildVirtualBook(
   };
 }
 
-function sourceLinesToChapterItems(lines: SourceLine[]): ChapterItem[] {
-  return lines.map((l) =>
-    l.type === "image" ? { src: l.content, alt: "" } : { text: l.content },
-  );
+async function sourceLinesToChapterItems(
+  lines: SourceLine[],
+  source: Source,
+): Promise<ChapterItem[]> {
+  const out: ChapterItem[] = [];
+  for (const l of lines) {
+    if (l.type !== "image") {
+      out.push({ text: l.content });
+      continue;
+    }
+    // Source-resolved images (e.g. PDF-extracted) come back as bytes —
+    // inline them as a data: URL the webview renders directly. Real URLs
+    // are used as-is (the browser fetches them).
+    const resolved = await source.resolveImage?.(l.content);
+    if (resolved) {
+      out.push({ src: await bytesToDataUrl(resolved.bytes, resolved.mimeType), alt: "" });
+    } else {
+      out.push({ src: l.content, alt: "" });
+    }
+  }
+  return out;
+}
+
+function bytesToDataUrl(bytes: Uint8Array, mimeType: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(new Blob([bytes.buffer as ArrayBuffer], { type: mimeType }));
+  });
 }
 
 /** Same as `sourceLinesToChapterItems` but for the persisted shape,
