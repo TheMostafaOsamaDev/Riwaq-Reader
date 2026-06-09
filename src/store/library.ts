@@ -927,6 +927,32 @@ export async function updateReadingPosition(
 }
 
 /**
+ * Stamp `lastReadAt` + `progress` on a *source* library entry as the user
+ * reads it in the streaming reader. The source-novel reader (SourceStreamReader)
+ * is the analogue of openBook + changeChapter for the local reader, but it
+ * persists its scroll position in localStorage, not in `state.json` — so unlike
+ * `updateReadingPosition` this only touches the library index and never writes a
+ * `state.json`. Without this, a source entry's `lastReadAt` stays undefined and
+ * its `progress` stays 0, so the Library's "Continue reading" hero (which keys
+ * off `lastReadAt`) and the auto-"Reading" tab (which keys off `progress`) both
+ * skip it even right after the user finished reading it. No-op when the entry
+ * is missing.
+ */
+export async function updateSourceReadingPosition(
+  id: string,
+  currentChapter: number,
+  chapterCount: number,
+): Promise<void> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return;
+  entry.progress =
+    chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
+  entry.lastReadAt = Date.now();
+  await writeIndex(idx);
+}
+
+/**
  * Persist the topmost-visible paragraph index within the current chapter.
  * Called as the user scrolls (debounced). Doesn't touch the library index —
  * that's only for chapter-level progress / lastReadAt.
