@@ -346,9 +346,14 @@ export function parseVolumes(doc: Document, pageUrl: string): SourceVolume[] {
     while (sibling && !sibling.classList.contains("ts-chl-collapsible-content")) {
       sibling = sibling.nextElementSibling;
     }
+    // One anchor per chapter: the chapter permalink is the direct child of
+    // the <li>. The pro source also renders a per-chapter PDF download link
+    // (<div class="epl-pdf"><a class="dlpdf" href=".../pdf/">), which is NOT a
+    // direct child — `li > a` excludes it so it isn't parsed as a phantom
+    // "No Title" chapter. The free source has only the one direct-child anchor.
     const anchors = sibling
       ? (Array.from(
-          sibling.querySelectorAll("ul li a"),
+          sibling.querySelectorAll("ul li > a"),
         ) as HTMLAnchorElement[])
       : [];
     volumeBuckets.push({ title, anchors });
