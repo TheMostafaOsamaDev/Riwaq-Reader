@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
+import { ChapterProgressBar } from "./ChapterProgressBar";
+import {
+  chapterScrollFraction,
+  paragraphScrollOffset,
+  restoreScrollTop,
+  fractionToWidth,
+} from "./readerProgress";
 import { MobileSheet } from "./MobileSheet";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
@@ -176,12 +183,15 @@ interface Props {
   state: BookState;
   currentChapter: number;
   resumeParagraph: number;
+  /** 0..1 sub-paragraph scroll offset to resume at. Optional; defaults to 0
+      (paragraph top) for callers that don't track it yet. */
+  resumeOffset?: number;
   /** Bumped by App when a targeted scroll (e.g., highlight jump) should
    *  re-fire the chapter-mount scroll effect even if `currentChapter`
    *  didn't change. */
   jumpNonce: number;
   onChapterChange: (order: number) => void;
-  onParagraphChange: (idx: number) => void;
+  onParagraphChange: (idx: number, offset?: number) => void;
   onCreateHighlight: (input: {
     chapter: number;
     paragraphIndex: number;
@@ -222,6 +232,7 @@ export function MobileReader({
   state,
   currentChapter,
   resumeParagraph,
+  resumeOffset = 0,
   jumpNonce,
   onChapterChange,
   onParagraphChange,
@@ -250,6 +261,10 @@ export function MobileReader({
   const paragraphRef = useRef<HTMLElement | null>(null);
   const resumeRef = useRef(resumeParagraph);
   resumeRef.current = resumeParagraph;
+  const resumeOffsetRef = useRef(resumeOffset);
+  resumeOffsetRef.current = resumeOffset;
+  const progressFillRef = useRef<HTMLDivElement>(null);
+  const rtl = isRtlLanguage(book.language);
   // Read by the scroll-to-resume effect so it knows whether the chrome is
   // currently occluding the top of the scroll area. Tracked via a ref so a
   // chrome toggle alone doesn't re-trigger the scroll.
@@ -264,7 +279,7 @@ export function MobileReader({
     // Resuming at paragraph 0 means "start of chapter" — snap to the very
     // top so the chapter heading BookBody renders above paragraph 0 stays
     // visible. Using offsetTop of p0 would scroll the heading off-screen.
-    if (resumeRef.current === 0) {
+    if (resumeRef.current === 0 && resumeOffsetRef.current <= 0.001) {
       el.scrollTop = 0;
       return;
     }
@@ -284,7 +299,14 @@ export function MobileReader({
       showChromeRef.current && chromeRef.current
         ? chromeRef.current.offsetHeight + 8
         : 0;
-    el.scrollTop = Math.max(0, target.offsetTop - chromeOffset);
+    el.scrollTop = Math.max(
+      0,
+      restoreScrollTop(
+        target.offsetTop,
+        target.offsetHeight,
+        resumeOffsetRef.current,
+      ) - chromeOffset,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChapter, book.id, jumpNonce]);
 
@@ -301,17 +323,49 @@ export function MobileReader({
         if (ps.length === 0) return;
         const containerTop = el.getBoundingClientRect().top;
         let best = 0;
+        let bestEl: HTMLElement | null = null;
         for (const p of ps) {
           const offset = p.getBoundingClientRect().top - containerTop;
           if (offset > 8) break;
           best = Number(p.dataset.pIndex);
+          bestEl = p;
         }
-        onParagraphChangeRef.current(best);
+        const intoPara = bestEl
+          ? paragraphScrollOffset(el.scrollTop, bestEl.offsetTop, bestEl.offsetHeight)
+          : 0;
+        onParagraphChangeRef.current(best, intoPara);
       }, 250);
     };
     el.addEventListener("scroll", handler, { passive: true });
     return () => el.removeEventListener("scroll", handler);
   }, []);
+
+  // Live within-chapter progress for the header bar. Separate from the 250ms
+  // paragraph listener (too coarse for a smooth bar) and written imperatively
+  // so scrolling never re-renders React.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const paint = () => {
+      raf = 0;
+      if (!progressFillRef.current) return;
+      progressFillRef.current.style.width = fractionToWidth(
+        chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
+      );
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(paint);
+    };
+    paint();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChapter, book.id]);
 
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
@@ -758,6 +812,7 @@ export function MobileReader({
           WebkitUserSelect: "none",
         }}
       >
+          <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
           <button
             onClick={onBack}
             style={{ ...mobileTab(theme), width: 36, height: 36 }}

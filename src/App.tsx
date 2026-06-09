@@ -43,6 +43,12 @@ interface Loaded {
    */
   resumeParagraph: number;
   /**
+   * 0..1 sub-paragraph scroll offset to resume at, paired with
+   * resumeParagraph. Set from the persisted BookState on open, reset to 0 on
+   * chapter change / highlight jump (those land at a paragraph's top).
+   */
+  resumeOffset: number;
+  /**
    * Bumped by every highlight-jump (or other targeted scroll) so the
    * reader's chapter-mount effect re-fires even when the jump target is
    * inside the chapter already on screen. Without this, tapping a
@@ -156,6 +162,7 @@ function App() {
           state,
           currentChapter: state.currentChapter,
           resumeParagraph: state.paragraphIndex,
+          resumeOffset: state.paragraphOffset ?? 0,
           jumpNonce: 0,
         });
         setActivePanel(null);
@@ -205,7 +212,12 @@ function App() {
           clearTimeout(paragraphSaveTimer.current);
           paragraphSaveTimer.current = null;
         }
-        return { ...prev, currentChapter: clamped, resumeParagraph: 0 };
+        return {
+          ...prev,
+          currentChapter: clamped,
+          resumeParagraph: 0,
+          resumeOffset: 0,
+        };
       });
     },
     [],
@@ -213,16 +225,24 @@ function App() {
 
   // Debounce paragraph saves so we don't hammer disk on every scroll event.
   const paragraphSaveTimer = useRef<number | null>(null);
-  const onParagraphChange = useCallback((idx: number) => {
+  const onParagraphChange = useCallback((idx: number, offset?: number) => {
     if (paragraphSaveTimer.current)
       clearTimeout(paragraphSaveTimer.current);
     paragraphSaveTimer.current = window.setTimeout(() => {
       paragraphSaveTimer.current = null;
       setLoaded((prev) => {
         if (!prev) return prev;
-        if (prev.state.paragraphIndex === idx) return prev;
-        void updateParagraphPosition(prev.book.id, idx);
-        return { ...prev, state: { ...prev.state, paragraphIndex: idx } };
+        const off = offset ?? 0;
+        if (
+          prev.state.paragraphIndex === idx &&
+          (prev.state.paragraphOffset ?? 0) === off
+        )
+          return prev;
+        void updateParagraphPosition(prev.book.id, idx, off);
+        return {
+          ...prev,
+          state: { ...prev.state, paragraphIndex: idx, paragraphOffset: off },
+        };
       });
     }, 600);
   }, []);
@@ -339,6 +359,9 @@ function App() {
               ...prev,
               currentChapter: h.chapter,
               resumeParagraph: h.paragraphIndex,
+              // A highlight jump lands at the paragraph's top, not a stale
+              // mid-paragraph offset from wherever the reader last was.
+              resumeOffset: 0,
               // Bump even if chapter + paragraph are identical to what
               // they were last jump — guarantees the reader's scroll
               // effect re-runs and lands on the highlight.
@@ -447,6 +470,7 @@ function App() {
             state={loaded!.state}
             currentChapter={loaded!.currentChapter}
             resumeParagraph={loaded!.resumeParagraph}
+            resumeOffset={loaded!.resumeOffset}
             jumpNonce={loaded!.jumpNonce}
             onChapterChange={changeChapter}
             onParagraphChange={onParagraphChange}
@@ -466,6 +490,7 @@ function App() {
             state={loaded!.state}
             currentChapter={loaded!.currentChapter}
             resumeParagraph={loaded!.resumeParagraph}
+            resumeOffset={loaded!.resumeOffset}
             jumpNonce={loaded!.jumpNonce}
             onChapterChange={changeChapter}
             onParagraphChange={onParagraphChange}
