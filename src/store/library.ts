@@ -93,6 +93,10 @@ export interface BookState {
   /** Index of the topmost-visible paragraph within currentChapter. Lets the
       reader resume from the same scroll position, not just the chapter. */
   paragraphIndex: number;
+  /** 0..1 — how far the viewport top sits INTO the topmost-visible paragraph,
+      so resume lands at the exact scroll position, not just the paragraph top.
+      Absent on older saves and on paginated captures → treated as 0. */
+  paragraphOffset?: number;
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -189,6 +193,9 @@ async function readState(id: string): Promise<BookState> {
         : 0,
       paragraphIndex: typeof parsed.paragraphIndex === "number"
         ? parsed.paragraphIndex
+        : 0,
+      paragraphOffset: typeof parsed.paragraphOffset === "number"
+        ? parsed.paragraphOffset
         : 0,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
@@ -912,6 +919,7 @@ export async function updateReadingPosition(
   // A chapter switch resets paragraph progress for that chapter — the new
   // chapter starts at the top.
   state.paragraphIndex = 0;
+  state.paragraphOffset = 0;
   await writeState(state);
 
   const idx = await readIndex();
@@ -960,9 +968,11 @@ export async function updateSourceReadingPosition(
 export async function updateParagraphPosition(
   id: string,
   paragraphIndex: number,
+  paragraphOffset?: number,
 ): Promise<void> {
   const state = await readState(id);
   state.paragraphIndex = paragraphIndex;
+  state.paragraphOffset = paragraphOffset ?? 0;
   await writeState(state);
 }
 
