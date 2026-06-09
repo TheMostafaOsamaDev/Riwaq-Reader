@@ -14,6 +14,7 @@
 import { createHost } from "./host";
 import { createCeneleSource } from "./extensions/cenele";
 import { createKolNovelSource } from "./extensions/kolnovel";
+import { createKolNovelProSource } from "./extensions/kolnovel-pro";
 import type { Source, SourceHost, SourceMetadata } from "./types";
 
 type SourceFactory = (host: SourceHost) => Source;
@@ -48,6 +49,18 @@ const BUILTINS: RegistryEntry[] = [
       version: "0.1.0",
     },
     factory: (host) => createKolNovelSource(host),
+  },
+  {
+    meta: {
+      id: "kolnovel-pro",
+      name: "KolNovel Pro",
+      baseUrl: "https://kolnovel.com",
+      language: "ar",
+      description:
+        "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
+      version: "0.1.0",
+    },
+    factory: (host) => createKolNovelProSource(host),
   },
 ];
 

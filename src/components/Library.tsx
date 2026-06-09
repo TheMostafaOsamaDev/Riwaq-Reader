@@ -64,6 +64,10 @@ interface Props {
    *  Library hands this off to App.tsx, which renders the reader at top
    *  level (covering Library + Store). */
   onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
+  /** True while the streaming reader overlay is open above us. The Library
+   *  stays mounted underneath, so we watch this to re-read the shelf when a
+   *  reading session ends (a source novel's lastReadAt/progress changed). */
+  streamActive: boolean;
 }
 
 function useBooks() {
@@ -110,6 +114,7 @@ export function Library({
   layout,
   onOpen,
   onStreamRead,
+  streamActive,
 }: Props) {
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const [importing, setImporting] = useState(false);
@@ -425,6 +430,19 @@ export function Library({
   const onSourceImportComplete = useCallback(() => {
     void refresh();
   }, [refresh]);
+
+  // The streaming reader mounts as an overlay above the (still-mounted)
+  // Library, so closing it never remounts us — and useBooks() only reads the
+  // index on mount. Re-read the shelf when a streaming session ends so a
+  // source novel the user just read surfaces in "Continue reading": its
+  // lastReadAt/progress were written to library.json during the session
+  // (see updateSourceReadingPosition). The ref-guarded transition refreshes
+  // only on close (true→false), not on open or initial mount.
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (wasStreamingRef.current && !streamActive) void refresh();
+    wasStreamingRef.current = streamActive;
+  }, [streamActive, refresh]);
 
   const [queueOpen, setQueueOpen] = useState(false);
   // Wired by useLaunchIntent in App.tsx — when a notification tap

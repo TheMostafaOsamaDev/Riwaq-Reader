@@ -26,8 +26,10 @@ export type SourceLineType = "text" | "image";
 
 export interface SourceLine {
   type: SourceLineType;
-  /** For text: the paragraph's plain text. For image: an absolute URL the
-   *  host can fetch (no inline data: URIs — the host downloads + packages). */
+  /** For text: the paragraph's plain text. For image: normally an absolute
+   *  URL the host downloads + packages (no inline data: URIs). A source may
+   *  instead emit an opaque ref here and implement `resolveImage` to supply
+   *  the bytes out-of-band (e.g. an image extracted from a downloaded PDF). */
   content: string;
 }
 
@@ -281,6 +283,15 @@ export interface Source {
 
   /** Populate `lines` for one chapter. */
   getChapterContent(chapter: SourceChapter): Promise<SourceLine[]>;
+
+  /** Optional. When a source emits image SourceLines whose `content` is NOT
+   *  a host-fetchable URL (e.g. images extracted from a downloaded PDF), the
+   *  importer calls resolveImage(content) to obtain the bytes out-of-band
+   *  instead of host.fetchBytes. Return null to fall back to URL fetch.
+   *  The returned shape matches the importer's internal DownloadedImage. */
+  resolveImage?(
+    ref: string,
+  ): Promise<{ bytes: Uint8Array; mimeType: string; extension: string } | null>;
 }
 
 // ── error sentinels ─────────────────────────────────────────────────────────

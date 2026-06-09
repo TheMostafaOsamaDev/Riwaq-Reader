@@ -435,6 +435,7 @@ function App() {
             layout={isMobile ? "mobile" : "desktop"}
             onOpen={openBook}
             onStreamRead={openStream}
+            streamActive={streaming !== null}
           />
         ) : isMobile ? (
           <MobileReader
