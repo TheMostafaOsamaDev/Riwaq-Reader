@@ -37,7 +37,7 @@ import { Icon } from "./Icon";
 import type { ChapterItem, EpubBook, EpubChapter } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
-import { findSourceEntry } from "../store/library";
+import { findSourceEntry, updateSourceReadingPosition } from "../store/library";
 import {
   chapterImageSrc,
   markChapterRead,
@@ -200,6 +200,18 @@ export function SourceStreamReader({
         setCurrentChapter(initialIdx);
         setParagraphIndex(persisted?.paragraphIndex ?? 0);
         setResumeParagraph(persisted?.paragraphIndex ?? 0);
+        // Stamp lastReadAt + progress on the library entry so the Library's
+        // "Continue reading" hero (and the auto-"Reading" tab) surface this
+        // novel the moment it's opened — mirroring openBook → markBookOpened
+        // for local EPUBs. Library-backed novels only; pure streaming
+        // sessions are ephemeral and have no entry to update.
+        if (libraryEntryId) {
+          void updateSourceReadingPosition(
+            libraryEntryId,
+            initialIdx,
+            flatList.length,
+          );
+        }
       } catch (e) {
         if (cancelled) return;
         setLoadError(e instanceof Error ? e.message : String(e));
@@ -304,6 +316,16 @@ export function SourceStreamReader({
         if (stub) {
           void markChapterRead(libraryEntryId, stub.sourceId);
         }
+      }
+      // Advance the library entry's lastReadAt + progress to the chapter the
+      // user just moved to, so "Continue reading" tracks the streaming reader
+      // the same way updateReadingPosition tracks the local reader.
+      if (libraryEntryId) {
+        void updateSourceReadingPosition(
+          libraryEntryId,
+          clamped,
+          book.chapters.length,
+        );
       }
       setCurrentChapter(clamped);
       // New chapter starts at the top — match the library reader's
