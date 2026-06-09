@@ -180,6 +180,7 @@ async function readState(id: string): Promise<BookState> {
       bookId: id,
       currentChapter: 0,
       paragraphIndex: 0,
+      paragraphOffset: 0,
       highlights: [],
     };
   }
@@ -204,6 +205,7 @@ async function readState(id: string): Promise<BookState> {
       bookId: id,
       currentChapter: 0,
       paragraphIndex: 0,
+      paragraphOffset: 0,
       highlights: [],
     };
   }
