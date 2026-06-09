@@ -156,6 +156,7 @@ export async function importFromSource(
     beginStep("images");
     const host = createHost(source.meta.id);
     const { imageMap, images: epubImages } = await downloadInlineImages(
+      source,
       chapters,
       host,
       (done, total) => {
@@ -310,6 +311,7 @@ interface InlineImageResult {
 }
 
 async function downloadInlineImages(
+  source: Source,
   chapters: FlatChapter[],
   host: SourceHost,
   onProgress: (done: number, total: number) => void,
@@ -333,7 +335,11 @@ async function downloadInlineImages(
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
     try {
-      const dl = await downloadImage(url, host);
+      // PDF-style sources hold extracted image bytes in-memory and expose
+      // them via resolveImage; only fall back to a network fetch when the
+      // source can't resolve the ref itself.
+      const dl =
+        (await source.resolveImage?.(url)) ?? (await downloadImage(url, host));
       const idStr = String(i + 1).padStart(3, "0");
       const href = `images/img-${idStr}.${dl.extension}`;
       imageMap.set(url, href);
