@@ -104,9 +104,12 @@ export function createKolNovelProSource(host: SourceHost): Source {
 }
 
 /** The WordPress post id is the trailing number in the chapter permalink,
- *  e.g. ".../...z435ggye-275085/" → "275085". */
+ *  e.g. ".../...z435ggye-275085/" → "275085". Tolerate a trailing "/pdf/"
+ *  download segment and any query/hash so the permalink and its PDF-download
+ *  variant (".../-275085/pdf/?tspdftoken=…") both resolve to the same id. */
 function extractPostId(url: string): string | null {
-  const m = url.match(/-(\d+)\/?(?:[?#]|$)/);
+  const path = url.replace(/[?#].*$/, "").replace(/\/pdf\/?$/i, "");
+  const m = path.match(/-(\d+)\/?$/);
   return m ? m[1] : null;
 }
 
