@@ -111,8 +111,10 @@ export function SourceStreamReader({
   // ephemeral, persistence is what "Add to library" is for.
   const [currentChapter, setCurrentChapter] = useState(0);
   const [paragraphIndex, setParagraphIndex] = useState(0);
+  const [paragraphOffset, setParagraphOffset] = useState(0);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [resumeParagraph, setResumeParagraph] = useState(0);
+  const [resumeOffset, setResumeOffset] = useState(0);
   const [jumpNonce, setJumpNonce] = useState(0);
   const [chapterLoading, setChapterLoading] = useState(false);
   const [chapterError, setChapterError] = useState<string | null>(null);
@@ -199,7 +201,9 @@ export function SourceStreamReader({
         if (persisted?.highlights) setHighlights(persisted.highlights);
         setCurrentChapter(initialIdx);
         setParagraphIndex(persisted?.paragraphIndex ?? 0);
+        setParagraphOffset(persisted?.paragraphOffset ?? 0);
         setResumeParagraph(persisted?.paragraphIndex ?? 0);
+        setResumeOffset(persisted?.paragraphOffset ?? 0);
         // Stamp lastReadAt + progress on the library entry so the Library's
         // "Continue reading" hero (and the auto-"Reading" tab) surface this
         // novel the moment it's opened — mirroring openBook → markBookOpened
@@ -296,9 +300,10 @@ export function SourceStreamReader({
     writePersisted(persistKey, {
       currentChapter,
       paragraphIndex,
+      paragraphOffset,
       highlights,
     });
-  }, [book, persistKey, currentChapter, paragraphIndex, highlights]);
+  }, [book, persistKey, currentChapter, paragraphIndex, paragraphOffset, highlights]);
 
   // ── reader callbacks ───────────────────────────────────────────────────
   const onChapterChange = useCallback(
@@ -333,13 +338,16 @@ export function SourceStreamReader({
       // after pressing next-chapter.
       setResumeParagraph(0);
       setParagraphIndex(0);
+      setResumeOffset(0);
+      setParagraphOffset(0);
     },
     [book, currentChapter, libraryEntryId, flat],
   );
 
   const onParagraphChange = useCallback(
-    (idx: number) => {
+    (idx: number, offset?: number) => {
       setParagraphIndex(idx);
+      setParagraphOffset(offset ?? 0);
       // Hitting the last paragraph of a chapter is the second "read"
       // signal — the user scrolled all the way through. We persist
       // here too so a chapter the user finishes without advancing to
@@ -400,6 +408,9 @@ export function SourceStreamReader({
       setCurrentChapter(h.chapter);
       setResumeParagraph(h.paragraphIndex);
       setParagraphIndex(h.paragraphIndex);
+      // A highlight jump lands at the paragraph's top, not a stale offset.
+      setResumeOffset(0);
+      setParagraphOffset(0);
       // Bump even on same-chapter, same-paragraph jumps so the reader's
       // scroll effect re-fires and lands on the highlight.
       setJumpNonce((n) => n + 1);
@@ -458,6 +469,7 @@ export function SourceStreamReader({
           state={state}
           currentChapter={currentChapter}
           resumeParagraph={resumeParagraph}
+          resumeOffset={resumeOffset}
           jumpNonce={jumpNonce}
           onChapterChange={onChapterChange}
           onParagraphChange={onParagraphChange}
@@ -477,6 +489,7 @@ export function SourceStreamReader({
           state={state}
           currentChapter={currentChapter}
           resumeParagraph={resumeParagraph}
+          resumeOffset={resumeOffset}
           jumpNonce={jumpNonce}
           onChapterChange={onChapterChange}
           onParagraphChange={onParagraphChange}
@@ -633,6 +646,7 @@ function spliceChapter(
 interface PersistedState {
   currentChapter: number;
   paragraphIndex: number;
+  paragraphOffset?: number;
   highlights: Highlight[];
 }
 
@@ -646,6 +660,8 @@ function readPersisted(key: string): PersistedState | null {
       currentChapter: parsed.currentChapter,
       paragraphIndex:
         typeof parsed.paragraphIndex === "number" ? parsed.paragraphIndex : 0,
+      paragraphOffset:
+        typeof parsed.paragraphOffset === "number" ? parsed.paragraphOffset : 0,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
   } catch {

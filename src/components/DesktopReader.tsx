@@ -4,6 +4,13 @@ import { AnimatedPanel } from "./AnimatedPanel";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { PaginatedView, type PaginatedAPI } from "./PaginatedView";
+import { ChapterProgressBar } from "./ChapterProgressBar";
+import {
+  chapterScrollFraction,
+  paragraphScrollOffset,
+  restoreScrollTop,
+  fractionToWidth,
+} from "./readerProgress";
 import { SelectionPopover } from "./SelectionPopover";
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
@@ -38,12 +45,15 @@ interface Props {
   /** Paragraph to scroll to when the chapter mounts. Read once per chapter
       change; live scroll position is owned by the reader itself. */
   resumeParagraph: number;
+  /** 0..1 sub-paragraph scroll offset to resume at (scroll mode). Optional;
+      defaults to 0 (paragraph top) for callers that don't track it yet. */
+  resumeOffset?: number;
   /** Bumped by App when a targeted scroll (e.g., highlight jump) should
    *  re-fire the chapter-mount scroll effect even if `currentChapter`
    *  didn't change. */
   jumpNonce: number;
   onChapterChange: (order: number) => void;
-  onParagraphChange: (idx: number) => void;
+  onParagraphChange: (idx: number, offset?: number) => void;
   onCreateHighlight: (input: {
     chapter: number;
     paragraphIndex: number;
@@ -86,6 +96,7 @@ export function DesktopReader({
   state,
   currentChapter,
   resumeParagraph,
+  resumeOffset = 0,
   jumpNonce,
   onChapterChange,
   onParagraphChange,
@@ -109,11 +120,17 @@ export function DesktopReader({
   // reading, not on the chapter's resume hint (which only updates on
   // chapter switch / highlight jump).
   const livePara = useRef(resumeParagraph);
+  // Sub-paragraph scroll offset (0..1) to resume at, kept in sync with
+  // livePara — re-seeded from resumeOffset on the same chapter/jump changes.
+  const liveOffset = useRef(resumeOffset);
+  // Imperatively-updated fill for the header's within-chapter progress bar.
+  const progressFillRef = useRef<HTMLDivElement>(null);
   const lastChapterRef = useRef(currentChapter);
   const lastJumpNonceRef = useRef(jumpNonce);
   if (lastChapterRef.current !== currentChapter) {
     lastChapterRef.current = currentChapter;
     livePara.current = resumeParagraph;
+    liveOffset.current = resumeOffset;
   }
   if (lastJumpNonceRef.current !== jumpNonce) {
     // A targeted jump (e.g., from the highlights panel) within the same
@@ -121,6 +138,7 @@ export function DesktopReader({
     // on the new target instead of where the user was last reading.
     lastJumpNonceRef.current = jumpNonce;
     livePara.current = resumeParagraph;
+    liveOffset.current = resumeOffset;
   }
 
   // Set when we step backward into the previous chapter via scroll-up
@@ -131,12 +149,19 @@ export function DesktopReader({
   const landAtEndRef = useRef(false);
 
   const handleParagraphChange = useCallback(
-    (idx: number) => {
+    (idx: number, offset?: number) => {
       livePara.current = idx;
-      onParagraphChange(idx);
+      if (offset !== undefined) liveOffset.current = offset;
+      onParagraphChange(idx, offset);
     },
     [onParagraphChange],
   );
+  // Stable so PaginatedView's progress effect only re-fires on page changes,
+  // not on every DesktopReader re-render. Writes the bar fill imperatively.
+  const onPaginatedProgress = useCallback((f: number) => {
+    if (progressFillRef.current)
+      progressFillRef.current.style.width = fractionToWidth(f);
+  }, []);
   // Same ref trick for the scroll listener — keeps the listener stable
   // while still calling the freshest handler.
   const onParagraphChangeRef = useRef(handleParagraphChange);
@@ -227,7 +252,7 @@ export function DesktopReader({
     // the chapter heading (Chapter N of M + title) BookBody renders above
     // paragraph 0 stays visible. Using paragraph 0's offsetTop scrolls the
     // heading off-screen and looks like the title is clipped on load.
-    if (livePara.current === 0) {
+    if (livePara.current === 0 && liveOffset.current <= 0.001) {
       el.scrollTop = 0;
       return;
     }
@@ -235,7 +260,11 @@ export function DesktopReader({
       `[data-p-index="${livePara.current}"]`,
     );
     if (target) {
-      el.scrollTop = target.offsetTop;
+      el.scrollTop = restoreScrollTop(
+        target.offsetTop,
+        target.offsetHeight,
+        liveOffset.current,
+      );
     } else {
       el.scrollTop = 0;
     }
@@ -259,17 +288,49 @@ export function DesktopReader({
         if (ps.length === 0) return;
         const containerTop = el.getBoundingClientRect().top;
         let best = 0;
+        let bestEl: HTMLElement | null = null;
         for (const p of ps) {
           const offset = p.getBoundingClientRect().top - containerTop;
           if (offset > 8) break;
           best = Number(p.dataset.pIndex);
+          bestEl = p;
         }
-        onParagraphChangeRef.current(best);
+        const intoPara = bestEl
+          ? paragraphScrollOffset(el.scrollTop, bestEl.offsetTop, bestEl.offsetHeight)
+          : 0;
+        onParagraphChangeRef.current(best, intoPara);
       }, 250);
     };
     el.addEventListener("scroll", handler, { passive: true });
     return () => el.removeEventListener("scroll", handler);
   }, [mode]);
+
+  // Live within-chapter progress for the header bar. Separate from the 250ms
+  // paragraph listener (too coarse for a smooth bar) and written imperatively
+  // so scrolling never re-renders React.
+  useEffect(() => {
+    if (mode !== "scroll") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const paint = () => {
+      raf = 0;
+      if (!progressFillRef.current) return;
+      progressFillRef.current.style.width = fractionToWidth(
+        chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
+      );
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(paint);
+    };
+    paint(); // initial fill for this chapter
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, [mode, currentChapter, book.id]);
 
   // Imperative handle on the paginated view so the keyboard handler and
   // the bottom-bar arrow buttons can flip pages without rebuilding the
@@ -625,8 +686,10 @@ export function DesktopReader({
           borderBottom: `0.5px solid ${theme.rule}`,
           color: theme.chromeInk,
           flexShrink: 0,
+          position: "relative",
         }}
       >
+        <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
         <button onClick={onBack} style={chromeBtn(theme)} aria-label="Back to library">
           <Icon name="home" size={16} />
         </button>
@@ -770,6 +833,7 @@ export function DesktopReader({
                 initialParagraph={livePara.current}
                 onParagraphChange={handleParagraphChange}
                 onApi={onPaginatedApi}
+                onChapterProgress={onPaginatedProgress}
               >
                 <div key={chapter.id} className="leaflet-chapter-enter">
                   <BookBody
