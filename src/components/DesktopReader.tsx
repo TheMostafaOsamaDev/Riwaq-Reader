@@ -156,6 +156,12 @@ export function DesktopReader({
     },
     [onParagraphChange],
   );
+  // Stable so PaginatedView's progress effect only re-fires on page changes,
+  // not on every DesktopReader re-render. Writes the bar fill imperatively.
+  const onPaginatedProgress = useCallback((f: number) => {
+    if (progressFillRef.current)
+      progressFillRef.current.style.width = fractionToWidth(f);
+  }, []);
   // Same ref trick for the scroll listener — keeps the listener stable
   // while still calling the freshest handler.
   const onParagraphChangeRef = useRef(handleParagraphChange);
@@ -827,10 +833,7 @@ export function DesktopReader({
                 initialParagraph={livePara.current}
                 onParagraphChange={handleParagraphChange}
                 onApi={onPaginatedApi}
-                onChapterProgress={(f) => {
-                  if (progressFillRef.current)
-                    progressFillRef.current.style.width = fractionToWidth(f);
-                }}
+                onChapterProgress={onPaginatedProgress}
               >
                 <div key={chapter.id} className="leaflet-chapter-enter">
                   <BookBody
