@@ -50,10 +50,68 @@ interface TextItemLike {
   height?: number;
 }
 
-/** Fold Arabic presentation forms (ﻟﺤﻴﺎة) back to base letters via NFKC and
- *  collapse whitespace. Empty string when nothing remains. */
-function normalizeArabic(s: string): string {
-  return s.normalize("NFKC").replace(/\s+/g, " ").trim();
+// These chapter PDFs are produced by mPDF with the "XB Riyaz" Arabic font.
+// mPDF's Arabic shaper emits some glyphs (a few base letters and most of the
+// diacritic marks) at Private-Use-Area codepoints with no ToUnicode mapping to
+// real Unicode, so they extract as PUA and render as □. The codepoints are
+// intrinsic to the font, so the same value maps to the same glyph across every
+// chapter on the site (verified over hundreds of pages from many novels).
+//
+//   • Base letters → the real letter (these MUST be mapped — dropping them
+//     would corrupt words, e.g. "لله" → "له").
+//   • Diacritic/mark forms → dropped. These chapters are machine-translated and
+//     read as unvocalized Arabic; dropping the marks gives clean text and
+//     avoids combining-mark misplacement artifacts (mPDF emits some marks
+//     before their base letter).
+//   • Any *unseen* PUA is left as-is and logged — it might be an unmapped
+//     letter, so we surface it rather than silently dropping it.
+const PUA_LETTER: Record<number, string> = {
+  0xe915: "ي", 0xe940: "ك", 0xe913: "ى", 0xe916: "ئ",
+  0xe806: "ل", 0xe807: "ل", 0xe830: "ل", 0xe8d4: "ل",
+  0xe80a: "ا", 0xe80e: "ا",
+};
+const PUA_DROP = new Set<number>([
+  0xe823, 0xe86b, 0xe835, 0xe847, 0xe7e0, 0xe864, 0xe8e6, // tanwin
+  0xe826, 0xe824, 0xe7e3, // damma
+  0xe827, 0xe8ea, 0xe7e4, 0xe8f4, // shadda
+  0xe825, 0xe8e8, 0xe863, 0xe7ee, 0xe815, // fatha / other marks
+  0xe828, // kasra
+  0xe8df, // sukun
+  0xe8de, // kasratan
+  0xe816, 0xe813, // hamza decoration over an alef that is its own char
+  0xe888, // stray standalone mark
+]);
+
+/** Map the font's PUA glyph forms back to real Arabic (base letters) or drop
+ *  them (diacritic marks); leave unrecognized PUA in place and report it via
+ *  `onUnknown` so the table can be extended. No-op when the string has no PUA. */
+function foldArabicPua(s: string, onUnknown?: (cp: number) => void): string {
+  let hasPua = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xe000 && c <= 0xf8ff) { hasPua = true; break; }
+  }
+  if (!hasPua) return s;
+  let out = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp >= 0xe000 && cp <= 0xf8ff) {
+      const letter = PUA_LETTER[cp];
+      if (letter !== undefined) out += letter;
+      else if (PUA_DROP.has(cp)) continue;
+      else { out += ch; onUnknown?.(cp); }
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/** Fold the font's PUA glyph forms (see foldArabicPua) and Arabic presentation
+ *  forms (ﻟﺤﻴﺎة, via NFKC) back to base letters and collapse whitespace. Empty
+ *  string when nothing remains. */
+function normalizeArabic(s: string, onUnknownPua?: (cp: number) => void): string {
+  return foldArabicPua(s, onUnknownPua).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
 /** True for the page-1 header lines we don't want in the body: the printed
@@ -195,6 +253,8 @@ export async function extractPdfLines(
   const OPS = pdfjs.OPS;
   const doc = await pdfjs.getDocument({ data: bytes }).promise;
   const lines: SourceLine[] = [];
+  // PUA codepoints we couldn't fold (see foldArabicPua) — reported once below.
+  const unknownPua = new Set<number>();
 
   try {
     for (let p = 1; p <= doc.numPages; p++) {
@@ -222,7 +282,7 @@ export async function extractPdfLines(
       // Text.
       const tc = await page.getTextContent();
       for (const para of reconstructParagraphs(tc.items as unknown as TextItemLike[])) {
-        const norm = normalizeArabic(para);
+        const norm = normalizeArabic(para, (cp) => unknownPua.add(cp));
         if (!norm) continue;
         if (isBoilerplate(norm, opts.chapterUrl, opts.novelTitle)) continue;
         lines.push({ type: "text", content: norm });
@@ -252,6 +312,16 @@ export async function extractPdfLines(
   } finally {
     await doc.cleanup();
     await doc.destroy();
+  }
+
+  if (unknownPua.size > 0) {
+    opts.log?.(
+      `unmapped PUA glyphs left as-is (extend PUA tables in pdfChapter.ts): ${[
+        ...unknownPua,
+      ]
+        .map((c) => "U+" + c.toString(16).toUpperCase())
+        .join(" ")}`,
+    );
   }
 
   return lines;
