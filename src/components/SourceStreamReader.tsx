@@ -37,7 +37,7 @@ import { Icon } from "./Icon";
 import type { ChapterItem, EpubBook, EpubChapter } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
-import { findSourceEntry } from "../store/library";
+import { findSourceEntry, updateSourceReadingPosition } from "../store/library";
 import {
   chapterImageSrc,
   markChapterRead,
@@ -200,6 +200,18 @@ export function SourceStreamReader({
         setCurrentChapter(initialIdx);
         setParagraphIndex(persisted?.paragraphIndex ?? 0);
         setResumeParagraph(persisted?.paragraphIndex ?? 0);
+        // Stamp lastReadAt + progress on the library entry so the Library's
+        // "Continue reading" hero (and the auto-"Reading" tab) surface this
+        // novel the moment it's opened — mirroring openBook → markBookOpened
+        // for local EPUBs. Library-backed novels only; pure streaming
+        // sessions are ephemeral and have no entry to update.
+        if (libraryEntryId) {
+          void updateSourceReadingPosition(
+            libraryEntryId,
+            initialIdx,
+            flatList.length,
+          );
+        }
       } catch (e) {
         if (cancelled) return;
         setLoadError(e instanceof Error ? e.message : String(e));
@@ -254,7 +266,7 @@ export function SourceStreamReader({
             url: stub.url,
             lines: [],
           });
-          items = sourceLinesToChapterItems(lines);
+          items = await sourceLinesToChapterItems(lines, source);
         }
         cacheRef.current.set(idx, items);
         setBook((prev) => spliceChapter(prev, idx, items!));
@@ -304,6 +316,16 @@ export function SourceStreamReader({
         if (stub) {
           void markChapterRead(libraryEntryId, stub.sourceId);
         }
+      }
+      // Advance the library entry's lastReadAt + progress to the chapter the
+      // user just moved to, so "Continue reading" tracks the streaming reader
+      // the same way updateReadingPosition tracks the local reader.
+      if (libraryEntryId) {
+        void updateSourceReadingPosition(
+          libraryEntryId,
+          clamped,
+          book.chapters.length,
+        );
       }
       setCurrentChapter(clamped);
       // New chapter starts at the top — match the library reader's
@@ -513,10 +535,38 @@ function buildVirtualBook(
   };
 }
 
-function sourceLinesToChapterItems(lines: SourceLine[]): ChapterItem[] {
-  return lines.map((l) =>
-    l.type === "image" ? { src: l.content, alt: "" } : { text: l.content },
-  );
+async function sourceLinesToChapterItems(
+  lines: SourceLine[],
+  source: Source,
+): Promise<ChapterItem[]> {
+  const out: ChapterItem[] = [];
+  for (const l of lines) {
+    if (l.type !== "image") {
+      out.push({ text: l.content });
+      continue;
+    }
+    // Source-resolved images (e.g. PDF-extracted) come back as bytes —
+    // inline them as a data: URL the webview renders directly. Real URLs
+    // are used as-is (the browser fetches them).
+    const resolved = await source.resolveImage?.(l.content);
+    if (resolved) {
+      out.push({ src: await bytesToDataUrl(resolved.bytes, resolved.mimeType), alt: "" });
+    } else {
+      out.push({ src: l.content, alt: "" });
+    }
+  }
+  return out;
+}
+
+function bytesToDataUrl(bytes: Uint8Array, mimeType: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    // Cast to BlobPart (not bytes.buffer) so a non-zero byteOffset/byteLength
+    // view would still copy only its own bytes, not the whole backing buffer.
+    reader.readAsDataURL(new Blob([bytes as BlobPart], { type: mimeType }));
+  });
 }
 
 /** Same as `sourceLinesToChapterItems` but for the persisted shape,
