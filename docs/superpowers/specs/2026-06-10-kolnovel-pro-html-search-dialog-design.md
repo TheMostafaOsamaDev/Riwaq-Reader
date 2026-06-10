@@ -148,3 +148,9 @@ dropdown and the submit grid; (3) the chapter-load **error dialog** gains a
 - Removing the PDF code or `pdfjs-dist` (kept deliberately as the fallback).
 - Paginating pro search (the autocomplete API returns a single ~10-result set).
 - The novel-level `FullPaneError` (already has a working close/back).
+- A teaser/locked-snippet heuristic for chapter HTML. HTML-first treats **any**
+  extracted content as the chapter (empty → PDF fallback). No pro chapter has
+  been observed to serve a partial teaser (the reportedly "members-only" post
+  238214 returned its full 501-paragraph body), and a minimum-length gate would
+  wrongly divert legitimately short / image-heavy chapters to the PDF endpoint
+  (which fails for HTML-only chapters). Revisit only if real teasers appear.
