@@ -1,13 +1,15 @@
 // Shared KolNovel WordPress-theme parsers. Both the free source
 // (free.kolnovel.com) and the pro source (kolnovel.com) render their browse,
-// search, and novel pages with the same theme, so the DOM→data parsing lives
-// here once and is parameterized by base URL. Chapter-body extraction is NOT
-// here — it differs per source (free = HTML, pro = PDF).
+// search, novel, AND chapter pages with the same theme, so the DOM→data
+// parsing lives here once and is parameterized by base URL. `parseChapterContent`
+// handles chapter bodies for both (free = always HTML; pro = HTML-first with a
+// PDF fallback owned by kolnovel-pro.ts).
 
 import { absolutizeUrl } from "../host";
 import type {
   NovelCard,
   SourceChapter,
+  SourceLine,
   SourceNovel,
   SourceNovelMeta,
   SourceSearchResult,
@@ -424,4 +426,153 @@ function extractDescriptionText(el: Element): string {
   // description card doesn't grow unbounded — full text is still
   // available in the imported EPUB's content.
   return text.length > 1200 ? text.slice(0, 1200).trim() + "…" : text;
+}
+
+// ── chapter-body extraction (static HTML) ───────────────────────────────────
+//
+// Shared by the free and pro sources. KolNovel chapter pages carry rotating
+// per-load hex class names that mark decoy paragraphs (duplicated text + the
+// kolnovel.com ad string); the discovery + filtering below handle them. On the
+// pro site the body is clean, so the decoy filter is simply a no-op there.
+
+const IGNORED_PATTERNS = [
+  "*إقرأ* رواياتنا* فقط* على* مو*قع م*لوك الرو*ايات ko*lno*vel ko*lno*vel. com",
+];
+const IGNORED_REGEXES = IGNORED_PATTERNS.map(toIgnoreRegex);
+
+function toIgnoreRegex(pattern: string): RegExp {
+  const trimmed = pattern.replace(/^\*+|\*+$/g, "");
+  const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const withWildcards = escaped.replace(/\*/g, ".*?");
+  return new RegExp(`\\s*\\*?\\s*${withWildcards}\\s*\\*?\\s*`, "gi");
+}
+
+function extractHiddenClassesFromCss(cssText: string): Set<string> {
+  const out = new Set<string>();
+  const ruleRegex = /([^{}]+)\{([^{}]+)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = ruleRegex.exec(cssText)) !== null) {
+    const selectors = m[1];
+    const body = m[2].toLowerCase();
+    if (
+      !body.includes("0.1px") ||
+      !body.includes("-99999px") ||
+      !/opacity\s*:\s*0\b/.test(body)
+    ) {
+      continue;
+    }
+    const classMatches = selectors.match(/\.([a-f0-9]{20,})/g) || [];
+    for (const c of classMatches) out.add(c.slice(1));
+  }
+  return out;
+}
+
+function collectHiddenClasses(doc: Document): Set<string> {
+  const out = new Set<string>();
+  for (const styleEl of Array.from(doc.querySelectorAll("style"))) {
+    const css = styleEl.textContent || "";
+    if (!css) continue;
+    for (const c of extractHiddenClassesFromCss(css)) out.add(c);
+  }
+  return out;
+}
+
+function hasHiddenClass(p: Element, hidden: Set<string>): boolean {
+  if (hidden.size === 0) return false;
+  const cls = (p.getAttribute("class") || "").trim();
+  if (!cls) return false;
+  for (const c of cls.split(/\s+/)) {
+    if (hidden.has(c)) return true;
+  }
+  return false;
+}
+
+function isDecorativeImage(img: HTMLImageElement): boolean {
+  const cls = (img.getAttribute("class") || "").toLowerCase();
+  if (cls.includes("wp-post-image")) return true;
+  if (cls.includes("attachment-post-thumbnail")) return true;
+  if (cls.includes("avatar")) return true;
+  if (cls.includes("emoji")) return true;
+  const src = (img.getAttribute("src") || "").toLowerCase();
+  if (src.includes("/ads/") || src.includes("doubleclick")) return true;
+  return false;
+}
+
+function absoluteImageSrc(img: HTMLImageElement, baseUrl: string): string | null {
+  const raw =
+    img.getAttribute("src") ||
+    img.getAttribute("data-src") ||
+    img.getAttribute("data-lazy-src");
+  if (!raw) return null;
+  try {
+    return new URL(raw, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function isHiddenInline(p: Element): boolean {
+  const style = (p.getAttribute("style") || "").toLowerCase();
+  if (!style) return false;
+  return (
+    style.includes("0.1px") &&
+    style.includes("position") &&
+    style.includes("fixed") &&
+    style.includes("opacity") &&
+    style.includes("text-indent")
+  );
+}
+
+function paragraphText(p: Element): string {
+  const clone = p.cloneNode(true) as Element;
+  clone.querySelectorAll("script, noscript, style").forEach((n) => n.remove());
+  return (clone.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function stripIgnored(line: string): string {
+  let out = line;
+  for (const r of IGNORED_REGEXES) out = out.replace(r, " ");
+  return out.replace(/\s+/g, " ").trim();
+}
+
+/** Parse a KolNovel chapter page's body into SourceLines (text + image).
+ *  Root preference: `#kol_content` (free theme), `.epcontent` (pro theme),
+ *  then `.entry-content`, then body. `baseUrl` absolutizes relative image
+ *  srcs. Drops decoy paragraphs (rotating hidden hex classes / inline hide
+ *  style), strips the ad string, and dedups repeated text/images. */
+export function parseChapterContent(doc: Document, baseUrl: string): SourceLine[] {
+  const hiddenClasses = collectHiddenClasses(doc);
+  const root =
+    doc.querySelector("#kol_content") ||
+    doc.querySelector(".epcontent") ||
+    doc.querySelector(".entry-content") ||
+    doc.body;
+
+  const items = root.querySelectorAll("p, img");
+  const lines: SourceLine[] = [];
+  const seenText = new Set<string>();
+  const seenImage = new Set<string>();
+  for (const el of Array.from(items)) {
+    if (el.tagName === "IMG") {
+      const img = el as HTMLImageElement;
+      if (isDecorativeImage(img)) continue;
+      const src = absoluteImageSrc(img, baseUrl);
+      if (!src) continue;
+      if (seenImage.has(src)) continue;
+      seenImage.add(src);
+      lines.push({ type: "image", content: src });
+      continue;
+    }
+    const p = el;
+    if (hasHiddenClass(p, hiddenClasses)) continue;
+    if (isHiddenInline(p)) continue;
+    const rawText = paragraphText(p);
+    if (rawText.length === 0) continue;
+    const text = stripIgnored(rawText);
+    if (text.length === 0) continue;
+    if (seenText.has(text)) continue;
+    seenText.add(text);
+    lines.push({ type: "text", content: text });
+  }
+  return lines;
 }
