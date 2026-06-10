@@ -1,23 +1,24 @@
-// KolNovel Pro source — kolnovel.com. Browse/search/novel pages reuse the
-// shared KolNovel theme parsers; the difference is chapter content: each
-// chapter is a downloadable PDF (translated text + official illustrations),
-// fetched via the site's ts_ln_dl_url token flow and parsed with pdf.js.
+// KolNovel Pro source — kolnovel.com. Browse/novel pages reuse the shared
+// KolNovel theme parsers. Chapter content is read HTML-first from the page's
+// `.epcontent` body (translated text + official illustrations, served inline);
+// chapters that ship only a downloadable PDF fall back to the site's
+// ts_ln_dl_url token flow parsed with pdf.js:
 //
 //   token:  POST /wp-admin/admin-ajax.php  action=ts_ln_dl_url&post_id=<id>
-//             → { error:0, url: "https://kolnovel.com/<chapter>/pdf/?tspdftoken=<token>" } (absolute)
+//             → { error:0, url: "https://kolnovel.com/<chapter>/pdf/?tspdftoken=<token>" }
 //   bytes:  GET <token url>  → application/pdf
 //
-// Anonymous access only; members-only chapters surface as a stub line via the
-// importer's per-chapter error handling.
+// Search uses the theme's live autocomplete API (ts_ac_do_search). Anonymous
+// access only.
 
 import { parseHtmlDocument } from "../host";
 import {
+  parseChapterContent,
   parseHomeSections,
   parseNovelPage,
-  parseSearchResults,
 } from "./kolnovel-theme";
 import { extractPdfLines, type ExtractedImage } from "../pdf/pdfChapter";
-import type { Source, SourceHost, SourceLine } from "../types";
+import type { NovelCard, Source, SourceHost, SourceLine } from "../types";
 
 const BASE_URL = "https://kolnovel.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;
@@ -36,7 +37,7 @@ export function createKolNovelProSource(host: SourceHost): Source {
       baseUrl: BASE_URL,
       language: "ar",
       description:
-        "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
+        "Arabic novels from kolnovel.com — read as HTML chapters with the official illustrations (PDF fallback for chapters without HTML).",
       version: "0.1.0",
     },
 
@@ -55,14 +56,15 @@ export function createKolNovelProSource(host: SourceHost): Source {
       return parseHomeSections(parseHtmlDocument(resp.text), BASE_URL);
     },
 
-    async search(query, page) {
-      const pageNum = Math.max(1, page ?? 1);
-      const params = new URLSearchParams({ s: query });
-      if (pageNum > 1) params.set("paged", String(pageNum));
-      const url = `${BASE_URL}/?${params.toString()}`;
-      host.log("info", `search(${query}, page=${pageNum}) → ${url}`);
-      const resp = await host.fetch(url);
-      return parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, pageNum);
+    async search(query) {
+      host.log("info", `search(${query}) via ts_ac_do_search`);
+      const cards = await liveSearch(host, query);
+      return { cards, hasMore: false, query, page: 1 };
+    },
+
+    async searchSuggest(query) {
+      host.log("info", `searchSuggest(${query})`);
+      return liveSearch(host, query);
     },
 
     async getNovel(url) {
@@ -75,11 +77,27 @@ export function createKolNovelProSource(host: SourceHost): Source {
     },
 
     async getChapterContent(chapter): Promise<SourceLine[]> {
+      host.log("debug", `getChapterContent(#${chapter.id}) ${chapter.url}`);
+      // HTML-first: the pro site serves the chapter text + official
+      // illustrations inline in `.epcontent`. Read that directly — no PDF
+      // round-trip, no token flow.
+      const resp = await host.fetch(chapter.url);
+      const htmlLines = parseChapterContent(parseHtmlDocument(resp.text), BASE_URL);
+      // Any extracted content means the chapter is readable as HTML. We
+      // deliberately don't gate on a minimum length: real pro chapters serve
+      // their full body inline (hundreds of paragraphs), and a length heuristic
+      // would wrongly send legitimately short / image-heavy chapters to the PDF
+      // endpoint (which fails for HTML-only chapters). Empty → PDF fallback.
+      if (htmlLines.length > 0) return htmlLines;
+
+      // Fallback: a chapter with no readable HTML body (older PDF-only posts,
+      // or the site reverting to PDF delivery). Use the ts_ln_dl_url token
+      // flow + pdf.js, exactly as before.
+      host.log("debug", `no HTML body — falling back to PDF for ${chapter.url}`);
       const postId = extractPostId(chapter.url);
       if (!postId) {
         throw new Error(`Could not find a post id in chapter URL: ${chapter.url}`);
       }
-      host.log("debug", `getChapterContent(#${chapter.id}) post_id=${postId}`);
       const pdfUrl = await requestPdfUrl(host, postId);
       const bytes = await host.fetchBytes(pdfUrl);
       assertPdf(bytes);
@@ -101,6 +119,77 @@ export function createKolNovelProSource(host: SourceHost): Source {
       return imageStore.get(ref) ?? null;
     },
   };
+}
+
+// ── live search (ts_ac_do_search) ───────────────────────────────────────────
+
+interface TsAcItem {
+  post_title?: string;
+  post_link?: string;
+  post_image?: string;
+  post_genres?: string;
+  post_status?: string;
+}
+interface TsAcResponse {
+  series?: Array<{ all?: TsAcItem[] }>;
+}
+
+/** Query the site's live autocomplete — the only working search on the pro
+ *  site (the `?s=` results page returns a WordPress error). Must be POST: the
+ *  GET variant is served from the page cache and returns stale, query-agnostic
+ *  results (verified live), whereas POST runs the real query. Returns [] on an
+ *  empty query or an unparseable response.
+ *
+ *    POST /wp-admin/admin-ajax.php  action=ts_ac_do_search&ts_ac_query=<q>  → JSON */
+async function liveSearch(host: SourceHost, query: string): Promise<NovelCard[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const resp = await host.fetch(AJAX_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    body: `action=ts_ac_do_search&ts_ac_query=${encodeURIComponent(q)}`,
+  });
+  let json: TsAcResponse;
+  try {
+    json = JSON.parse(resp.text) as TsAcResponse;
+  } catch {
+    return [];
+  }
+  return liveSearchCards(json);
+}
+
+/** Flatten the ts_ac JSON (`series[].all[]`) into NovelCards. Links + images
+ *  come back as absolute kolnovel.com URLs. */
+function liveSearchCards(json: TsAcResponse): NovelCard[] {
+  const out: NovelCard[] = [];
+  for (const group of json.series ?? []) {
+    for (const item of group.all ?? []) {
+      const url = (item.post_link ?? "").trim();
+      const title = (item.post_title ?? "").replace(/\s+/g, " ").trim();
+      // Only surface series pages — the store UI assumes a card click opens a
+      // novel detail view. Defensive: ts_ac only returns series, but guard
+      // against author/category/archive links if the API ever broadens.
+      if (!url || !title || !/\/series\//.test(url)) continue;
+      const genres = (item.post_genres ?? "")
+        .split(",")
+        .map((g) => g.trim())
+        .filter((g) => g.length > 0)
+        .slice(0, 3);
+      const status = (item.post_status ?? "").trim();
+      const badges = [...genres];
+      if (status) badges.push(status);
+      out.push({
+        url,
+        title,
+        coverUrl: item.post_image ? item.post_image.trim() : undefined,
+        badges: badges.length > 0 ? badges : undefined,
+      });
+    }
+  }
+  return out;
 }
 
 /** The WordPress post id is the trailing number in the chapter permalink,
