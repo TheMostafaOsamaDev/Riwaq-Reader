@@ -43,9 +43,12 @@ dropdown and the submit grid; (3) the chapter-load **error dialog** gains a
   decoys, dedup) produces correct output on pro when `.epcontent` is added to the
   root preference — simulated live: 642 lines, clean first/mid/last text.
 - **Live search API.** The `lightnovel` theme's `search.js` posts
-  `action: 'ts_ac_do_search', ts_ac_query: <input>` to `admin-ajax.php`. Both
-  `GET` and `POST` (with `X-Requested-With: XMLHttpRequest`) return **200** with a
-  JSON body (content-type is `text/html`):
+  `action: 'ts_ac_do_search', ts_ac_query: <input>` to `admin-ajax.php`. It must
+  be **`POST`** (with `X-Requested-With: XMLHttpRequest`): the live menu fires a
+  GET *and* a POST, but the **GET is served from the page cache and returns
+  stale, query-agnostic results** (verified — GET for "ري زيرو" returned recent
+  unrelated novels), while the **POST runs the real query** (returned the three
+  Re:Zero series). Both return **200** with a JSON body (content-type `text/html`):
   ```json
   { "series": [ { "all": [
       { "ID": 161525, "post_title": "Re:Zero - If Story",
@@ -96,8 +99,9 @@ dropdown and the submit grid; (3) the chapter-load **error dialog** gains a
 ### 2. Search — live autocomplete API
 
 - Add **`searchSuggest(query)`** to `kolnovel-pro.ts`:
-  `GET ${AJAX_URL}?action=ts_ac_do_search&ts_ac_query=<enc>` with header
-  `X-Requested-With: XMLHttpRequest` → `JSON.parse(resp.text)` → flatten
+  `POST ${AJAX_URL}` body `action=ts_ac_do_search&ts_ac_query=<enc>` with headers
+  `Content-Type: application/x-www-form-urlencoded` + `X-Requested-With:
+  XMLHttpRequest` → `JSON.parse(resp.text)` → flatten
   `series[].all[]` → `NovelCard[]` via a `liveSearchCards(json, baseUrl)` helper:
   `title=post_title`, `url=post_link` (absolutized), `coverUrl=post_image`,
   `badges` = `post_genres` split on `,` (trimmed, first ~3) plus `post_status`.
