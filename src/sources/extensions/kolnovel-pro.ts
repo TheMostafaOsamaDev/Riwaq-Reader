@@ -83,6 +83,11 @@ export function createKolNovelProSource(host: SourceHost): Source {
       // round-trip, no token flow.
       const resp = await host.fetch(chapter.url);
       const htmlLines = parseChapterContent(parseHtmlDocument(resp.text), BASE_URL);
+      // Any extracted content means the chapter is readable as HTML. We
+      // deliberately don't gate on a minimum length: real pro chapters serve
+      // their full body inline (hundreds of paragraphs), and a length heuristic
+      // would wrongly send legitimately short / image-heavy chapters to the PDF
+      // endpoint (which fails for HTML-only chapters). Empty → PDF fallback.
       if (htmlLines.length > 0) return htmlLines;
 
       // Fallback: a chapter with no readable HTML body (older PDF-only posts,
@@ -164,7 +169,10 @@ function liveSearchCards(json: TsAcResponse): NovelCard[] {
     for (const item of group.all ?? []) {
       const url = (item.post_link ?? "").trim();
       const title = (item.post_title ?? "").replace(/\s+/g, " ").trim();
-      if (!url || !title) continue;
+      // Only surface series pages — the store UI assumes a card click opens a
+      // novel detail view. Defensive: ts_ac only returns series, but guard
+      // against author/category/archive links if the API ever broadens.
+      if (!url || !title || !/\/series\//.test(url)) continue;
       const genres = (item.post_genres ?? "")
         .split(",")
         .map((g) => g.trim())
