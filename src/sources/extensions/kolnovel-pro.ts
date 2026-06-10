@@ -1,17 +1,19 @@
-// KolNovel Pro source — kolnovel.com. Browse/search/novel pages reuse the
-// shared KolNovel theme parsers; the difference is chapter content: each
-// chapter is a downloadable PDF (translated text + official illustrations),
-// fetched via the site's ts_ln_dl_url token flow and parsed with pdf.js.
+// KolNovel Pro source — kolnovel.com. Browse/novel pages reuse the shared
+// KolNovel theme parsers. Chapter content is read HTML-first from the page's
+// `.epcontent` body (translated text + official illustrations, served inline);
+// chapters that ship only a downloadable PDF fall back to the site's
+// ts_ln_dl_url token flow parsed with pdf.js:
 //
 //   token:  POST /wp-admin/admin-ajax.php  action=ts_ln_dl_url&post_id=<id>
-//             → { error:0, url: "https://kolnovel.com/<chapter>/pdf/?tspdftoken=<token>" } (absolute)
+//             → { error:0, url: "https://kolnovel.com/<chapter>/pdf/?tspdftoken=<token>" }
 //   bytes:  GET <token url>  → application/pdf
 //
-// Anonymous access only; members-only chapters surface as a stub line via the
-// importer's per-chapter error handling.
+// Search uses the theme's live autocomplete API (ts_ac_do_search). Anonymous
+// access only.
 
 import { parseHtmlDocument } from "../host";
 import {
+  parseChapterContent,
   parseHomeSections,
   parseNovelPage,
   parseSearchResults,
@@ -36,7 +38,7 @@ export function createKolNovelProSource(host: SourceHost): Source {
       baseUrl: BASE_URL,
       language: "ar",
       description:
-        "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
+        "Arabic novels from kolnovel.com — read as HTML chapters with the official illustrations (PDF fallback for chapters without HTML).",
       version: "0.1.0",
     },
 
@@ -75,11 +77,22 @@ export function createKolNovelProSource(host: SourceHost): Source {
     },
 
     async getChapterContent(chapter): Promise<SourceLine[]> {
+      host.log("debug", `getChapterContent(#${chapter.id}) ${chapter.url}`);
+      // HTML-first: the pro site serves the chapter text + official
+      // illustrations inline in `.epcontent`. Read that directly — no PDF
+      // round-trip, no token flow.
+      const resp = await host.fetch(chapter.url);
+      const htmlLines = parseChapterContent(parseHtmlDocument(resp.text), BASE_URL);
+      if (htmlLines.length > 0) return htmlLines;
+
+      // Fallback: a chapter with no readable HTML body (older PDF-only posts,
+      // or the site reverting to PDF delivery). Use the ts_ln_dl_url token
+      // flow + pdf.js, exactly as before.
+      host.log("debug", `no HTML body — falling back to PDF for ${chapter.url}`);
       const postId = extractPostId(chapter.url);
       if (!postId) {
         throw new Error(`Could not find a post id in chapter URL: ${chapter.url}`);
       }
-      host.log("debug", `getChapterContent(#${chapter.id}) post_id=${postId}`);
       const pdfUrl = await requestPdfUrl(host, postId);
       const bytes = await host.fetchBytes(pdfUrl);
       assertPdf(bytes);
