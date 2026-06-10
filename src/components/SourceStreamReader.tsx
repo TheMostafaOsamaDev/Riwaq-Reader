@@ -514,6 +514,7 @@ export function SourceStreamReader({
             cacheRef.current.delete(currentChapter);
             void fetchChapter(currentChapter);
           }}
+          onBack={onClose}
         />
       )}
     </div>
@@ -789,10 +790,12 @@ function ChapterErrorOverlay({
   theme,
   message,
   onRetry,
+  onBack,
 }: {
   theme: Theme;
   message: string;
   onRetry: () => void;
+  onBack: () => void;
 }) {
   return (
     <div
@@ -826,7 +829,7 @@ function ChapterErrorOverlay({
         <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.5 }}>
           {message}
         </div>
-        <div>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={onRetry}
             style={{
@@ -841,6 +844,21 @@ function ChapterErrorOverlay({
             }}
           >
             Retry
+          </button>
+          <button
+            onClick={onBack}
+            style={{
+              padding: "8px 14px",
+              fontSize: 13,
+              fontFamily: "inherit",
+              background: "transparent",
+              color: theme.ink,
+              border: `0.5px solid ${theme.rule}`,
+              borderRadius: 8,
+              cursor: "pointer",
+            }}
+          >
+            Back to novel
           </button>
         </div>
       </div>
