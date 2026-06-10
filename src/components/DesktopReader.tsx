@@ -229,6 +229,11 @@ export function DesktopReader({
     if (mode !== "scroll") return;
     const el = scrollRef.current;
     if (!el) return;
+    // Streamed (source) chapters load their body async; the paragraphs aren't
+    // in the DOM on this effect's first run. Bail until they exist — the
+    // chapter content-id dep re-runs this once they mount. Returning here also
+    // preserves landAtEndRef (we don't consume it on an empty pass).
+    if (el.querySelectorAll("[data-p-index]").length === 0) return;
     if (landAtEndRef.current) {
       // Came in via scroll-up overscroll — drop the reader at the bottom
       // of the new (previous) chapter so reading continues naturally
@@ -268,8 +273,11 @@ export function DesktopReader({
     } else {
       el.scrollTop = 0;
     }
+    // book.chapters[currentChapter]?.id changes when a streamed chapter's
+    // content is spliced in (its `#0` → `#<n>` id bump), re-running this so
+    // resume fires once the paragraphs are actually in the DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, book.id, mode, jumpNonce]);
+  }, [currentChapter, book.id, mode, jumpNonce, book.chapters[currentChapter]?.id]);
 
   // Throttled scroll listener — find the topmost-visible paragraph and
   // bubble its index up to the App state for persistence. Only runs in
