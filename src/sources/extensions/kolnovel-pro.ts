@@ -16,10 +16,9 @@ import {
   parseChapterContent,
   parseHomeSections,
   parseNovelPage,
-  parseSearchResults,
 } from "./kolnovel-theme";
 import { extractPdfLines, type ExtractedImage } from "../pdf/pdfChapter";
-import type { Source, SourceHost, SourceLine } from "../types";
+import type { NovelCard, Source, SourceHost, SourceLine } from "../types";
 
 const BASE_URL = "https://kolnovel.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;
@@ -57,14 +56,15 @@ export function createKolNovelProSource(host: SourceHost): Source {
       return parseHomeSections(parseHtmlDocument(resp.text), BASE_URL);
     },
 
-    async search(query, page) {
-      const pageNum = Math.max(1, page ?? 1);
-      const params = new URLSearchParams({ s: query });
-      if (pageNum > 1) params.set("paged", String(pageNum));
-      const url = `${BASE_URL}/?${params.toString()}`;
-      host.log("info", `search(${query}, page=${pageNum}) → ${url}`);
-      const resp = await host.fetch(url);
-      return parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, pageNum);
+    async search(query) {
+      host.log("info", `search(${query}) via ts_ac_do_search`);
+      const cards = await liveSearch(host, query);
+      return { cards, hasMore: false, query, page: 1 };
+    },
+
+    async searchSuggest(query) {
+      host.log("info", `searchSuggest(${query})`);
+      return liveSearch(host, query);
     },
 
     async getNovel(url) {
@@ -114,6 +114,67 @@ export function createKolNovelProSource(host: SourceHost): Source {
       return imageStore.get(ref) ?? null;
     },
   };
+}
+
+// ── live search (ts_ac_do_search) ───────────────────────────────────────────
+
+interface TsAcItem {
+  post_title?: string;
+  post_link?: string;
+  post_image?: string;
+  post_genres?: string;
+  post_status?: string;
+}
+interface TsAcResponse {
+  series?: Array<{ all?: TsAcItem[] }>;
+}
+
+/** Query the site's live autocomplete — the only working search on the pro
+ *  site (the `?s=` results page returns a WordPress error). GET
+ *  admin-ajax.php?action=ts_ac_do_search&ts_ac_query=… → JSON. Returns [] on an
+ *  empty query or an unparseable response. */
+async function liveSearch(host: SourceHost, query: string): Promise<NovelCard[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const url = `${AJAX_URL}?action=ts_ac_do_search&ts_ac_query=${encodeURIComponent(q)}`;
+  const resp = await host.fetch(url, {
+    headers: { "X-Requested-With": "XMLHttpRequest" },
+  });
+  let json: TsAcResponse;
+  try {
+    json = JSON.parse(resp.text) as TsAcResponse;
+  } catch {
+    return [];
+  }
+  return liveSearchCards(json);
+}
+
+/** Flatten the ts_ac JSON (`series[].all[]`) into NovelCards. Links + images
+ *  come back as absolute kolnovel.com URLs. */
+function liveSearchCards(json: TsAcResponse): NovelCard[] {
+  const out: NovelCard[] = [];
+  for (const group of json.series ?? []) {
+    for (const item of group.all ?? []) {
+      const url = (item.post_link ?? "").trim();
+      const title = (item.post_title ?? "").replace(/\s+/g, " ").trim();
+      if (!url || !title) continue;
+      const genres = (item.post_genres ?? "")
+        .split(",")
+        .map((g) => g.trim())
+        .filter((g) => g.length > 0)
+        .slice(0, 3);
+      const status = (item.post_status ?? "").trim();
+      const badges = [...genres];
+      if (status) badges.push(status);
+      out.push({
+        url,
+        title,
+        coverUrl: item.post_image ? item.post_image.trim() : undefined,
+        badges: badges.length > 0 ? badges : undefined,
+      });
+    }
+  }
+  return out;
 }
 
 /** The WordPress post id is the trailing number in the chapter permalink,
