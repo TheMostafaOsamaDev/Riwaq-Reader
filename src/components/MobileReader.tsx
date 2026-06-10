@@ -276,6 +276,12 @@ export function MobileReader({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // Streamed (source) chapters load their body async, so the paragraphs
+    // aren't in the DOM on this effect's first run. Bail until they exist —
+    // the chapter content-id dep re-runs this effect once they mount, so
+    // resume lands on the saved paragraph instead of falling through to
+    // scrollTop = 0 (which dropped the reader at the chapter start).
+    if (el.querySelectorAll("[data-p-index]").length === 0) return;
     // Resuming at paragraph 0 means "start of chapter" — snap to the very
     // top so the chapter heading BookBody renders above paragraph 0 stays
     // visible. Using offsetTop of p0 would scroll the heading off-screen.
@@ -307,8 +313,11 @@ export function MobileReader({
         resumeOffsetRef.current,
       ) - chromeOffset,
     );
+    // book.chapters[currentChapter]?.id changes when a streamed chapter's
+    // content is spliced in (its `#0` → `#<n>` id bump), re-running this so
+    // resume fires once the paragraphs are actually in the DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, book.id, jumpNonce]);
+  }, [currentChapter, book.id, jumpNonce, book.chapters[currentChapter]?.id]);
 
   useEffect(() => {
     const el = scrollRef.current;
