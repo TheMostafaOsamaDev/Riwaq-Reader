@@ -130,15 +130,22 @@ interface TsAcResponse {
 }
 
 /** Query the site's live autocomplete — the only working search on the pro
- *  site (the `?s=` results page returns a WordPress error). GET
- *  admin-ajax.php?action=ts_ac_do_search&ts_ac_query=… → JSON. Returns [] on an
- *  empty query or an unparseable response. */
+ *  site (the `?s=` results page returns a WordPress error). Must be POST: the
+ *  GET variant is served from the page cache and returns stale, query-agnostic
+ *  results (verified live), whereas POST runs the real query. Returns [] on an
+ *  empty query or an unparseable response.
+ *
+ *    POST /wp-admin/admin-ajax.php  action=ts_ac_do_search&ts_ac_query=<q>  → JSON */
 async function liveSearch(host: SourceHost, query: string): Promise<NovelCard[]> {
   const q = query.trim();
   if (!q) return [];
-  const url = `${AJAX_URL}?action=ts_ac_do_search&ts_ac_query=${encodeURIComponent(q)}`;
-  const resp = await host.fetch(url, {
-    headers: { "X-Requested-With": "XMLHttpRequest" },
+  const resp = await host.fetch(AJAX_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    body: `action=ts_ac_do_search&ts_ac_query=${encodeURIComponent(q)}`,
   });
   let json: TsAcResponse;
   try {
