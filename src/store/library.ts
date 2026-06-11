@@ -73,6 +73,18 @@ export interface BookIndexEntry {
       via the right-click menu on a shelf card. Undefined for older books
       that predate this field. */
   status?: BookStatus;
+  /** What kind of library entry this is. Older entries (and any EPUB /
+   *  DOCX import) don't carry the field — they're treated as "epub" by
+   *  callers. "source" entries are lightweight bookmarks: no book.json,
+   *  no book.epub on disk; the chapter list and content live on the
+   *  source website and are fetched on demand. */
+  kind?: "epub" | "source";
+  /** Source extension id (e.g. "kolnovel"). Present only on
+   *  kind === "source" entries. */
+  sourceId?: string;
+  /** Novel index page URL — the canonical handle this source uses to
+   *  identify the novel. Present only on kind === "source" entries. */
+  novelUrl?: string;
 }
 
 export interface BookState {
@@ -81,6 +93,10 @@ export interface BookState {
   /** Index of the topmost-visible paragraph within currentChapter. Lets the
       reader resume from the same scroll position, not just the chapter. */
   paragraphIndex: number;
+  /** 0..1 — how far the viewport top sits INTO the topmost-visible paragraph,
+      so resume lands at the exact scroll position, not just the paragraph top.
+      Absent on older saves and on paginated captures → treated as 0. */
+  paragraphOffset?: number;
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -103,6 +119,13 @@ export interface Highlight {
   note?: string;
   color: "yellow" | "blue" | "pink" | "green";
   ts: number;
+  /** When a selection spans multiple paragraphs, every highlight created
+   *  from that one user gesture shares the same groupId. Tap-to-delete
+   *  on any member deletes the whole group so the user sees a single
+   *  logical highlight (even though storage is per-paragraph). Absent
+   *  on single-paragraph highlights and on legacy saves that pre-date
+   *  this field. */
+  groupId?: string;
 }
 
 interface LibraryFile {
@@ -157,6 +180,7 @@ async function readState(id: string): Promise<BookState> {
       bookId: id,
       currentChapter: 0,
       paragraphIndex: 0,
+      paragraphOffset: 0,
       highlights: [],
     };
   }
@@ -171,6 +195,9 @@ async function readState(id: string): Promise<BookState> {
       paragraphIndex: typeof parsed.paragraphIndex === "number"
         ? parsed.paragraphIndex
         : 0,
+      paragraphOffset: typeof parsed.paragraphOffset === "number"
+        ? parsed.paragraphOffset
+        : 0,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
   } catch {
@@ -178,6 +205,7 @@ async function readState(id: string): Promise<BookState> {
       bookId: id,
       currentChapter: 0,
       paragraphIndex: 0,
+      paragraphOffset: 0,
       highlights: [],
     };
   }
@@ -483,6 +511,156 @@ export async function importEpubBytes(
   return entry;
 }
 
+/**
+ * Lightweight "Add to library" for a source-backed novel. Persists the
+ * novel snapshot (metadata + volumes + chapter index — see
+ * `store/sourceLibrary.ts`) and downloads the cover. Does NOT download
+ * chapter content; that happens per-chapter via the download queue.
+ *
+ * If the same (sourceId, novelUrl) is already in the library, this
+ * returns the existing entry but refreshes its snapshot from the source
+ * so reopening picks up any newly published chapters. The refresh is
+ * best-effort — when the network is unavailable the existing snapshot
+ * stays put.
+ */
+export async function addNovelToLibrary(
+  sourceId: string,
+  novelUrl: string,
+): Promise<BookIndexEntry> {
+  const { getSource } = await import("../sources/registry");
+  const { createHost } = await import("../sources/host");
+  const { writeSnapshotFromSourceNovel } = await import("./sourceLibrary");
+  const source = getSource(sourceId);
+  if (!source) throw new Error(`Unknown source: ${sourceId}`);
+
+  const existing = await findSourceEntry(sourceId, novelUrl);
+
+  const novel = await source.getNovel(novelUrl);
+  const id =
+    existing?.id ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+
+  await ensureRoot();
+  const dir = bookDir(id);
+  if (!(await exists(dir, { baseDir: BASE }))) {
+    await mkdir(dir, { baseDir: BASE, recursive: true });
+  }
+
+  // Download the cover up front so the library card has something to
+  // render without going back over the network on every list refresh.
+  // Cover failure isn't fatal — the entry still works, just without a
+  // thumbnail.
+  let coverFile: string | undefined = existing?.coverFile;
+  if (novel.coverUrl && !existing?.coverFile) {
+    try {
+      const host = createHost(sourceId);
+      const bytes = await host.fetchBytes(novel.coverUrl);
+      const ext = extensionFromCoverUrl(novel.coverUrl);
+      coverFile = `cover.${ext}`;
+      await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[library] couldn't download cover:", e);
+    }
+  }
+
+  // Persist the snapshot (volumes + chapters with downloadedAt/readAt
+  // carried over from any prior snapshot).
+  await writeSnapshotFromSourceNovel(id, sourceId, novelUrl, novel);
+
+  const chapterCount = novel.volumes.reduce(
+    (a, v) => a + v.chapters.length,
+    0,
+  );
+
+  const entry: BookIndexEntry = {
+    ...(existing ?? {}),
+    id,
+    title: novel.title,
+    author: novel.author,
+    language: novel.language,
+    chapterCount,
+    addedAt: existing?.addedAt ?? Date.now(),
+    progress: existing?.progress ?? 0,
+    kind: "source",
+    sourceId,
+    novelUrl,
+    ...(coverFile ? { coverFile } : {}),
+    ...(novel.description ? { description: novel.description } : {}),
+  };
+
+  const idx = await readIndex();
+  const at = idx.books.findIndex((b) => b.id === id);
+  if (at === -1) {
+    idx.books.push(entry);
+  } else {
+    idx.books[at] = entry;
+  }
+  await writeIndex(idx);
+  return entry;
+}
+
+/** Find a source-backed entry for the given (sourceId, novelUrl), if
+ *  one exists. Returns null when the novel hasn't been added yet. */
+export async function findSourceEntry(
+  sourceId: string,
+  novelUrl: string,
+): Promise<BookIndexEntry | null> {
+  const idx = await readIndex();
+  return (
+    idx.books.find(
+      (b) =>
+        b.kind === "source" &&
+        b.sourceId === sourceId &&
+        b.novelUrl === novelUrl,
+    ) ?? null
+  );
+}
+
+/** Pluck a sane file extension from a cover URL (`/foo/bar/cover.jpg?x=1`
+ *  → `jpg`). Falls back to `jpg` when nothing maps. The cover doesn't
+ *  need to round-trip through a MIME detector since the EPUB pipeline
+ *  isn't involved for source entries. */
+function extensionFromCoverUrl(url: string): string {
+  const path = url.split("?")[0].split("#")[0];
+  const m = path.match(/\.([a-z0-9]{2,5})$/i);
+  if (!m) return "jpg";
+  const ext = m[1].toLowerCase();
+  if (ext === "jpeg") return "jpg";
+  return ext;
+}
+
+/**
+ * Run a Source (scraper extension) against a URL and add the resulting
+ * EPUB to the library. Driven by the existing import-progress store so
+ * the modal + minimized dock surface the long scrape automatically.
+ *
+ * Source lookup is dynamic to avoid eagerly loading every extension file
+ * on app start — the registry resolves only the requested id.
+ */
+export async function importFromSourceUrl(
+  sourceId: string,
+  url: string,
+  options?: {
+    /** Inclusive chapter id range. When set, only those chapters are
+     *  scraped and the resulting EPUB's title is suffixed with the range. */
+    chapterIdRange?: { start: number; end: number };
+  },
+): Promise<BookIndexEntry> {
+  const { getSource } = await import("../sources/registry");
+  const { runFullSourceImport } = await import("../sources/importer");
+
+  const source = getSource(sourceId);
+  if (!source) {
+    throw new Error(`Unknown source: ${sourceId}`);
+  }
+  return runFullSourceImport(source, url, importEpubBytes, options) as Promise<
+    BookIndexEntry
+  >;
+}
+
 export interface ImportFolderResult {
   imported: BookIndexEntry[];
   errors: { file: string; message: string }[];
@@ -640,36 +818,27 @@ export async function coverSrcFor(
 
 /** Resolve a chapter image's storage-relative `src` (e.g. `images/img-001.jpg`)
  *  into an asset-protocol URL the webview can load. The file lives at
- *  `$APPDATA/leaflet/books/<bookId>/<src>`, which is in the Tauri asset scope. */
+ *  `$APPDATA/leaflet/books/<bookId>/<src>`, which is in the Tauri asset scope.
+ *
+ *  Absolute URLs (http/https/data:) pass through unchanged so the same
+ *  resolver works for the streaming reader, which mounts a virtual EpubBook
+ *  whose image items reference remote URLs directly without a local copy. */
 export async function chapterImageSrcFor(
   bookId: string,
   src: string,
 ): Promise<string> {
+  // Streaming books reference images by their origin URL. Don't try to
+  // join them against a non-existent local storage path; the webview can
+  // fetch them directly.
+  if (/^(https?:|data:|asset:|blob:)/i.test(src)) {
+    return src;
+  }
   const root = await getAppDataDir();
   // Split on `/` so the path joins are platform-correct (Windows backslashes
   // come from `join`, not from the stored hrefs).
   const parts = src.split("/").filter((p) => p.length > 0);
   const abs = await join(root, ROOT, "books", bookId, ...parts);
   return convertFileSrc(abs);
-}
-
-/**
- * Dev-only nuke: remove every book from the index and wipe the books/
- * directory. Useful while iterating on the parser or UI. Called from a
- * dev-mode button in the Library header.
- */
-export async function clearLibrary(): Promise<void> {
-  const idx = await readIndex();
-  for (const b of idx.books) {
-    try {
-      // Recursive — books may contain an `images/` subdir of in-flow art
-      // that the per-file remove path wouldn't reach.
-      await remove(bookDir(b.id), { baseDir: BASE, recursive: true });
-    } catch {
-      // best-effort — a missing dir shouldn't stop the sweep
-    }
-  }
-  await writeIndex({ version: 1, books: [] });
 }
 
 /**
@@ -725,6 +894,23 @@ export async function deleteBook(id: string): Promise<void> {
   }
 }
 
+/**
+ * Stamp a book's `lastReadAt` to "now" without touching its reading
+ * position. Called when the user opens a book, so the Library's
+ * "Continue reading" hero picks the most-recently-opened book even when
+ * the user exits before a chapter change has run `updateReadingPosition`
+ * (e.g. they opened a book, scrolled within the current chapter, and
+ * tapped back). Without this, the hero would still point at whichever
+ * book the user previously switched chapters in.
+ */
+export async function markBookOpened(id: string): Promise<void> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return;
+  entry.lastReadAt = Date.now();
+  await writeIndex(idx);
+}
+
 export async function updateReadingPosition(
   id: string,
   currentChapter: number,
@@ -735,6 +921,7 @@ export async function updateReadingPosition(
   // A chapter switch resets paragraph progress for that chapter — the new
   // chapter starts at the top.
   state.paragraphIndex = 0;
+  state.paragraphOffset = 0;
   await writeState(state);
 
   const idx = await readIndex();
@@ -750,6 +937,32 @@ export async function updateReadingPosition(
 }
 
 /**
+ * Stamp `lastReadAt` + `progress` on a *source* library entry as the user
+ * reads it in the streaming reader. The source-novel reader (SourceStreamReader)
+ * is the analogue of openBook + changeChapter for the local reader, but it
+ * persists its scroll position in localStorage, not in `state.json` — so unlike
+ * `updateReadingPosition` this only touches the library index and never writes a
+ * `state.json`. Without this, a source entry's `lastReadAt` stays undefined and
+ * its `progress` stays 0, so the Library's "Continue reading" hero (which keys
+ * off `lastReadAt`) and the auto-"Reading" tab (which keys off `progress`) both
+ * skip it even right after the user finished reading it. No-op when the entry
+ * is missing.
+ */
+export async function updateSourceReadingPosition(
+  id: string,
+  currentChapter: number,
+  chapterCount: number,
+): Promise<void> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return;
+  entry.progress =
+    chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
+  entry.lastReadAt = Date.now();
+  await writeIndex(idx);
+}
+
+/**
  * Persist the topmost-visible paragraph index within the current chapter.
  * Called as the user scrolls (debounced). Doesn't touch the library index —
  * that's only for chapter-level progress / lastReadAt.
@@ -757,9 +970,11 @@ export async function updateReadingPosition(
 export async function updateParagraphPosition(
   id: string,
   paragraphIndex: number,
+  paragraphOffset?: number,
 ): Promise<void> {
   const state = await readState(id);
   state.paragraphIndex = paragraphIndex;
+  state.paragraphOffset = paragraphOffset ?? 0;
   await writeState(state);
 }
 
@@ -784,6 +999,19 @@ export async function deleteHighlight(
 ): Promise<void> {
   const state = await readState(id);
   state.highlights = state.highlights.filter((h) => h.id !== highlightId);
+  await writeState(state);
+}
+
+/** Delete several highlights atomically. Used when a multi-paragraph
+ *  highlight group is removed via any one of its members. */
+export async function deleteHighlights(
+  id: string,
+  highlightIds: string[],
+): Promise<void> {
+  if (highlightIds.length === 0) return;
+  const ids = new Set(highlightIds);
+  const state = await readState(id);
+  state.highlights = state.highlights.filter((h) => !ids.has(h.id));
   await writeState(state);
 }
 
