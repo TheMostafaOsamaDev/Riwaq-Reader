@@ -367,6 +367,40 @@ export function SettingsPanel({
         </Field>
       )}
 
+      {mobile && t.mobileTapNav && (
+        <Field
+          label={`Tap zone width · ${t.mobileTapZoneWidth}%`}
+          theme={theme}
+        >
+          <input
+            type="range"
+            min={10}
+            max={45}
+            step={1}
+            value={t.mobileTapZoneWidth}
+            onChange={(e) => setTweak("mobileTapZoneWidth", +e.target.value)}
+            style={{ width: "100%", color: theme.ink }}
+          />
+        </Field>
+      )}
+
+      {mobile && t.mobileTapNav && (
+        <Field
+          label={`Tap scroll length · ${t.mobileTapStride}%`}
+          theme={theme}
+        >
+          <input
+            type="range"
+            min={30}
+            max={100}
+            step={5}
+            value={t.mobileTapStride}
+            onChange={(e) => setTweak("mobileTapStride", +e.target.value)}
+            style={{ width: "100%", color: theme.ink }}
+          />
+        </Field>
+      )}
+
     </PanelShell>
   );
 }

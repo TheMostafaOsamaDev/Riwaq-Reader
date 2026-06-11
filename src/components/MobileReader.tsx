@@ -254,6 +254,11 @@ export function MobileReader({
     ? "none"
     : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
   const [sheet, setSheet] = useState<ActivePanel>(null);
+  // Bumping this remounts the tap-zone preview overlays so the CSS
+  // keyframe animation restarts. The 3s timer below resets it to 0,
+  // unmounting the divs (otherwise they'd sit as opacity-0 elements).
+  const [zoneFlash, setZoneFlash] = useState(0);
+  const isFirstZoneRender = useRef(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
   const startEndpointRef = useRef<RangeEndpoint | null>(null);
@@ -744,6 +749,27 @@ export function MobileReader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlights]);
 
+  // Flash the left/right tap-zone overlays whenever the user changes
+  // the zone width — or turns tap-nav on — so they get a momentary
+  // preview of how wide the new zones are. Skip the very first render
+  // (initial mount shouldn't flash a setting that hasn't been touched)
+  // and skip while tap-nav is off (the zones are inert, no point
+  // previewing them).
+  useEffect(() => {
+    if (isFirstZoneRender.current) {
+      isFirstZoneRender.current = false;
+      return;
+    }
+    if (!t.mobileTapNav) return;
+    setZoneFlash((n) => n + 1);
+  }, [t.mobileTapZoneWidth, t.mobileTapNav]);
+
+  useEffect(() => {
+    if (zoneFlash === 0) return;
+    const id = window.setTimeout(() => setZoneFlash(0), 3000);
+    return () => window.clearTimeout(id);
+  }, [zoneFlash]);
+
   const dismissSelection = () => {
     setSelAnchor(null);
     setSelRects([]);
@@ -879,15 +905,15 @@ export function MobileReader({
             setShowChrome((s) => !s);
             return;
           }
-          // Three vertical bands: left third pages back, right third
-          // pages forward, center toggles the chrome. We page by ~one
-          // viewport with a small overlap so the user keeps a line of
-          // context across the jump.
+          // Two side bands of configurable width page up/down; the
+          // remaining center band toggles the chrome. The stride (how
+          // far one tap scrolls) is also user-configurable as a
+          // percentage of the visible reader height.
           const el = e.currentTarget;
           const rect = el.getBoundingClientRect();
           const x = e.clientX - rect.left;
-          const edge = rect.width / 3;
-          const stride = Math.max(120, rect.height - 80);
+          const edge = rect.width * (t.mobileTapZoneWidth / 100);
+          const stride = rect.height * (t.mobileTapStride / 100);
           if (x < edge) {
             el.scrollBy({ top: -stride, behavior: "smooth" });
           } else if (x > rect.width - edge) {
@@ -1301,6 +1327,43 @@ export function MobileReader({
           onDismiss={() => setActiveHl(null)}
         />
       )}
+      {zoneFlash > 0 && (
+        // Sit above the settings sheet (zIndex 20) so the user sees
+        // the preview while the slider that drives it is open. The
+        // 18% tint is light enough that the slider underneath stays
+        // legible. pointerEvents:none keeps taps flowing through to
+        // the controls behind it.
+        <>
+          <div
+            key={`zone-l-${zoneFlash}`}
+            aria-hidden
+            style={tapZoneFlashStyle("left", t.mobileTapZoneWidth, theme)}
+          />
+          <div
+            key={`zone-r-${zoneFlash}`}
+            aria-hidden
+            style={tapZoneFlashStyle("right", t.mobileTapZoneWidth, theme)}
+          />
+        </>
+      )}
     </div>
   );
+}
+
+function tapZoneFlashStyle(
+  side: "left" | "right",
+  widthPct: number,
+  theme: Theme,
+): CSSProperties {
+  return {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    [side]: 0,
+    width: `${widthPct}%`,
+    background: theme.ink,
+    pointerEvents: "none",
+    zIndex: 30,
+    animation: "leaflet-zone-flash 3000ms ease-out forwards",
+  };
 }
