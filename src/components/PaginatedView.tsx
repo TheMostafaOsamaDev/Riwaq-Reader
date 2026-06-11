@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { paginatedFraction } from "./readerProgress";
 
 /**
  * Paginated layout for the reader. Lays the chapter content into CSS
@@ -52,6 +53,9 @@ interface Props {
   onParagraphChange?: (paragraphIndex: number) => void;
   /** Receives an imperative API for keyboard / button page navigation. */
   onApi?: (api: PaginatedAPI) => void;
+  /** Fires whenever the within-chapter page position changes, as a 0..1
+      fraction ((page + 1) / totalPages). Drives the header progress bar. */
+  onChapterProgress?: (fraction: number) => void;
   children: ReactNode;
 }
 
@@ -62,6 +66,7 @@ export function PaginatedView({
   initialParagraph,
   onParagraphChange,
   onApi,
+  onChapterProgress,
   children,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -247,6 +252,11 @@ export function PaginatedView({
       totalPages,
     });
   }, [page, totalPages, onApi]);
+
+  // Report within-chapter progress for the header bar.
+  useEffect(() => {
+    onChapterProgress?.(paginatedFraction(page, totalPages));
+  }, [page, totalPages, onChapterProgress]);
 
   return (
     <div
