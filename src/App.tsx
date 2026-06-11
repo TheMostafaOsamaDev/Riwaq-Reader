@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { AnimatedSwap } from "./components/AnimatedSwap";
+import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { DesktopReader } from "./components/DesktopReader";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
+import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
+import { SourceStreamReader } from "./components/SourceStreamReader";
+import { startDownloadNotifier } from "./store/downloadNotifier";
+import { loadPersistedQueue } from "./store/downloadQueue";
 import type { EpubBook } from "./epub/types";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
+import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
-  deleteHighlight,
+  deleteHighlights,
   loadBook,
+  markBookOpened,
   saveHighlight,
   updateHighlightNote,
   updateParagraphPosition,
@@ -16,6 +25,7 @@ import {
   type BookState,
   type Highlight,
 } from "./store/library";
+import { MOTION, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
@@ -32,14 +42,52 @@ interface Loaded {
    * in the reader's own ref.
    */
   resumeParagraph: number;
+  /**
+   * 0..1 sub-paragraph scroll offset to resume at, paired with
+   * resumeParagraph. Set from the persisted BookState on open, reset to 0 on
+   * chapter change / highlight jump (those land at a paragraph's top).
+   */
+  resumeOffset: number;
+  /**
+   * Bumped by every highlight-jump (or other targeted scroll) so the
+   * reader's chapter-mount effect re-fires even when the jump target is
+   * inside the chapter already on screen. Without this, tapping a
+   * highlight in the current chapter is a no-op for the scroll effect
+   * (deps unchanged).
+   */
+  jumpNonce: number;
+}
+
+interface StreamingSession {
+  sourceId: string;
+  novelUrl: string;
+  startChapterId?: number;
 }
 
 function App() {
+  // Listen for Android launch-intent extras (e.g., notification taps
+  // routing to the download queue). Has to live above the Library so
+  // any emitted intents reach the Library's subscriber.
+  useLaunchIntent();
   const [t, setTweak] = useTweaks();
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const lightbox = useLightbox();
+  // Streaming reader — opened from the Store when the user clicks "Read"
+  // on a novel detail page. Non-null = full-viewport reader overlays
+  // everything else (Library + Store). Closing returns to the Store at
+  // the same novel.
+  const [streaming, setStreaming] = useState<StreamingSession | null>(null);
+
+  const openStream = useCallback(
+    (sourceId: string, novelUrl: string, chapterId?: number) => {
+      setStreaming({ sourceId, novelUrl, startChapterId: chapterId });
+    },
+    [],
+  );
+  const closeStream = useCallback(() => setStreaming(null), []);
 
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
@@ -57,26 +105,87 @@ function App() {
       'meta[name="theme-color"]',
     );
     if (meta) meta.content = theme.bg;
-  }, [theme.bg, theme.ink]);
+    // Match the Android status/navigation-bar icon contrast to the
+    // in-app theme. Light themes (light, sepia) need dark icons; dark
+    // themes (dark, oled) need light icons. The OS DayNight setting
+    // would otherwise leave white icons on a light bar. No-op / silent
+    // throw off Android — invoke just rejects and we ignore it.
+    const darkIcons = themeKey === "light" || themeKey === "sepia";
+    void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
+  }, [theme.bg, theme.ink, themeKey]);
 
-  const openBook = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { book, state } = await loadBook(id);
-      setLoaded({
-        book,
-        state,
-        currentChapter: state.currentChapter,
-        resumeParagraph: state.paragraphIndex,
-      });
-      setActivePanel(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+  // Bridge the download queue to the system notification tray.
+  // Idempotent — subsequent calls are no-ops, so React 18 dev
+  // re-mount doesn't double-subscribe.
+  useEffect(() => {
+    // Restore any jobs that were in flight when the app last died.
+    // The function is idempotent. Order matters: load BEFORE the
+    // notifier subscribes so the initial emit (which marks
+    // interrupted jobs) doesn't trigger a notification flurry on
+    // launch.
+    (async () => {
+      await loadPersistedQueue();
+      startDownloadNotifier();
+    })();
   }, []);
+
+  const reduced = useReducedMotion();
+  // Holds the deferred setLoading(false) so a rapid re-open of a different
+  // book can clear it before it fires for the previous load.
+  const loadingTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current !== null) {
+        window.clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const openBook = useCallback(
+    async (id: string) => {
+      if (loadingTimeoutRef.current !== null) {
+        window.clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const { book, state } = await loadBook(id);
+        // Stamp `lastReadAt` on open so the Library's "Continue reading"
+        // hero picks the book the user just opened, even when they exit
+        // before a chapter change has triggered `updateReadingPosition`.
+        // Awaited so the write commits before the Library remounts on
+        // back-out and re-fetches the index.
+        await markBookOpened(id);
+        setLoaded({
+          book,
+          state,
+          currentChapter: state.currentChapter,
+          resumeParagraph: state.paragraphIndex,
+          resumeOffset: state.paragraphOffset ?? 0,
+          jumpNonce: 0,
+        });
+        setActivePanel(null);
+        // Keep the spinner up over the AnimatedSwap crossfade so the
+        // user doesn't catch the Library through the reader's fade-in.
+        // The delay matches the .leaflet-view-enter keyframe (MOTION.med
+        // = 240ms); reduced-motion users get the swap instantly, so
+        // there's nothing to wait for.
+        if (reduced) {
+          setLoading(false);
+        } else {
+          loadingTimeoutRef.current = window.setTimeout(() => {
+            loadingTimeoutRef.current = null;
+            setLoading(false);
+          }, MOTION.med);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setLoading(false);
+      }
+    },
+    [reduced],
+  );
 
   const closeBook = useCallback(() => {
     setLoaded(null);
@@ -103,7 +212,12 @@ function App() {
           clearTimeout(paragraphSaveTimer.current);
           paragraphSaveTimer.current = null;
         }
-        return { ...prev, currentChapter: clamped, resumeParagraph: 0 };
+        return {
+          ...prev,
+          currentChapter: clamped,
+          resumeParagraph: 0,
+          resumeOffset: 0,
+        };
       });
     },
     [],
@@ -111,16 +225,24 @@ function App() {
 
   // Debounce paragraph saves so we don't hammer disk on every scroll event.
   const paragraphSaveTimer = useRef<number | null>(null);
-  const onParagraphChange = useCallback((idx: number) => {
+  const onParagraphChange = useCallback((idx: number, offset?: number) => {
     if (paragraphSaveTimer.current)
       clearTimeout(paragraphSaveTimer.current);
     paragraphSaveTimer.current = window.setTimeout(() => {
       paragraphSaveTimer.current = null;
       setLoaded((prev) => {
         if (!prev) return prev;
-        if (prev.state.paragraphIndex === idx) return prev;
-        void updateParagraphPosition(prev.book.id, idx);
-        return { ...prev, state: { ...prev.state, paragraphIndex: idx } };
+        const off = offset ?? 0;
+        if (
+          prev.state.paragraphIndex === idx &&
+          (prev.state.paragraphOffset ?? 0) === off
+        )
+          return prev;
+        void updateParagraphPosition(prev.book.id, idx, off);
+        return {
+          ...prev,
+          state: { ...prev.state, paragraphIndex: idx, paragraphOffset: off },
+        };
       });
     }, 600);
   }, []);
@@ -141,6 +263,7 @@ function App() {
       text: string;
       color: HighlightColor;
       note?: string;
+      groupId?: string;
     }) => {
       if (!loaded) return;
       const saved = await saveHighlight(loaded.book.id, input);
@@ -162,7 +285,18 @@ function App() {
   const removeHighlight = useCallback(
     async (highlightId: string) => {
       if (!loaded) return;
-      await deleteHighlight(loaded.book.id, highlightId);
+      // If the highlight is part of a multi-paragraph group, delete
+      // every member of the group so the user-visible "one selection
+      // = one highlight" mental model holds.
+      const target = loaded.state.highlights.find((h) => h.id === highlightId);
+      if (!target) return;
+      const ids = target.groupId
+        ? loaded.state.highlights
+            .filter((h) => h.groupId === target.groupId)
+            .map((h) => h.id)
+        : [highlightId];
+      await deleteHighlights(loaded.book.id, ids);
+      const idSet = new Set(ids);
       setLoaded((prev) =>
         prev
           ? {
@@ -170,7 +304,7 @@ function App() {
               state: {
                 ...prev.state,
                 highlights: prev.state.highlights.filter(
-                  (h) => h.id !== highlightId,
+                  (h) => !idSet.has(h.id),
                 ),
               },
             }
@@ -225,6 +359,13 @@ function App() {
               ...prev,
               currentChapter: h.chapter,
               resumeParagraph: h.paragraphIndex,
+              // A highlight jump lands at the paragraph's top, not a stale
+              // mid-paragraph offset from wherever the reader last was.
+              resumeOffset: 0,
+              // Bump even if chapter + paragraph are identical to what
+              // they were last jump — guarantees the reader's scroll
+              // effect re-runs and lands on the highlight.
+              jumpNonce: prev.jumpNonce + 1,
             }
           : prev,
       );
@@ -270,55 +411,105 @@ function App() {
           {error}
         </div>
       )}
-      {!inReader ? (
-        <Library
-          theme={theme}
-          layout={isMobile ? "mobile" : "desktop"}
-          onOpen={openBook}
-        />
-      ) : isMobile ? (
-        <MobileReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          book={loaded!.book}
-          state={loaded!.state}
-          currentChapter={loaded!.currentChapter}
-          resumeParagraph={loaded!.resumeParagraph}
-          onChapterChange={changeChapter}
-          onParagraphChange={onParagraphChange}
-          onCreateHighlight={createHighlight}
-          onDeleteHighlight={removeHighlight}
-          onUpdateHighlightNote={editHighlightNote}
-          onJumpToHighlight={jumpToHighlight}
-          onBack={closeBook}
-        />
-      ) : (
-        <DesktopReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          book={loaded!.book}
-          state={loaded!.state}
-          currentChapter={loaded!.currentChapter}
-          resumeParagraph={loaded!.resumeParagraph}
-          onChapterChange={changeChapter}
-          onParagraphChange={onParagraphChange}
-          onCreateHighlight={createHighlight}
-          onDeleteHighlight={removeHighlight}
-          onUpdateHighlightNote={editHighlightNote}
-          onJumpToHighlight={jumpToHighlight}
-          activePanel={activePanel}
-          setActivePanel={setActivePanel}
-          onBack={closeBook}
-        />
-      )}
+      {/* Stream reader overlay. AnimatedSwap's slots are position:absolute
+          with no z-index, so without this wrapper the next AnimatedSwap
+          (Library/Reader) sits on top in document order and hides the
+          streaming layer for the duration of its fade-in. The wrapper's
+          z-index keeps the streaming layer above the Library throughout
+          the animation; pointer-events flips off when no stream is active
+          so the empty slot doesn't swallow clicks meant for the Library. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 30,
+          pointerEvents: streaming ? "auto" : "none",
+        }}
+      >
+        <AnimatedSwap viewKey={streaming ? "stream" : "none"}>
+          {streaming ? (
+            <SourceStreamReader
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              layout={isMobile ? "mobile" : "desktop"}
+              sourceId={streaming.sourceId}
+              novelUrl={streaming.novelUrl}
+              startChapterId={streaming.startChapterId}
+              onClose={closeStream}
+            />
+          ) : null}
+        </AnimatedSwap>
+      </div>
+      {/* Library ↔ Reader transition. viewKey is derived from the open
+          book + layout so a layout change (e.g., rotating into landscape
+          on mobile-landscape) ALSO crossfades cleanly. */}
+      <AnimatedSwap
+        viewKey={
+          inReader ? (isMobile ? "reader-mobile" : "reader-desktop") : "library"
+        }
+      >
+        {!inReader ? (
+          <Library
+            theme={theme}
+            themeKey={themeKey}
+            setTweak={setTweak}
+            layout={isMobile ? "mobile" : "desktop"}
+            onOpen={openBook}
+            onStreamRead={openStream}
+            streamActive={streaming !== null}
+          />
+        ) : isMobile ? (
+          <MobileReader
+            theme={theme}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
+            book={loaded!.book}
+            state={loaded!.state}
+            currentChapter={loaded!.currentChapter}
+            resumeParagraph={loaded!.resumeParagraph}
+            resumeOffset={loaded!.resumeOffset}
+            jumpNonce={loaded!.jumpNonce}
+            onChapterChange={changeChapter}
+            onParagraphChange={onParagraphChange}
+            onCreateHighlight={createHighlight}
+            onDeleteHighlight={removeHighlight}
+            onUpdateHighlightNote={editHighlightNote}
+            onJumpToHighlight={jumpToHighlight}
+            onBack={closeBook}
+          />
+        ) : (
+          <DesktopReader
+            theme={theme}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
+            book={loaded!.book}
+            state={loaded!.state}
+            currentChapter={loaded!.currentChapter}
+            resumeParagraph={loaded!.resumeParagraph}
+            resumeOffset={loaded!.resumeOffset}
+            jumpNonce={loaded!.jumpNonce}
+            onChapterChange={changeChapter}
+            onParagraphChange={onParagraphChange}
+            onCreateHighlight={createHighlight}
+            onDeleteHighlight={removeHighlight}
+            onUpdateHighlightNote={editHighlightNote}
+            onJumpToHighlight={jumpToHighlight}
+            activePanel={activePanel}
+            setActivePanel={setActivePanel}
+            onBack={closeBook}
+          />
+        )}
+      </AnimatedSwap>
       {/* Mounted at the app root so a docx import keeps showing across the
           Library → Reader transition (e.g. user clicks "Continue in
           background" then opens an existing book while the import finishes). */}
       <ImportProgress theme={theme} />
+      {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
+      <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
     </div>
   );
 }

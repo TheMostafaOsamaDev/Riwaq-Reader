@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { isImageItem, type ChapterItem, type EpubChapter } from "../epub/types";
 import { chapterImageSrcFor, type Highlight } from "../store/library";
+import { open as openLightbox } from "../store/lightbox";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -36,6 +37,10 @@ interface Props {
   /** Highlights that anchor into this chapter. BookBody renders any
       whose paragraphIndex matches the displayed paragraph index. */
   highlights?: Highlight[];
+  /** When false, disables native text selection in the body — used by
+      MobileReader, which drives its own selection via custom pointer
+      handlers. Defaults to true so the desktop reader is unaffected. */
+  selectable?: boolean;
 }
 
 /** Resolve every image item's storage-relative src to a webview-loadable
@@ -87,6 +92,7 @@ export function BookBody({
   rtl,
   widthPercent = 100,
   highlights = [],
+  selectable = true,
 }: Props) {
   const clampedPercent = Math.max(50, Math.min(100, widthPercent));
   const resolvedAlign =
@@ -141,10 +147,25 @@ export function BookBody({
   return (
     <div
       dir={rtl ? "rtl" : "ltr"}
+      data-book-body
       style={{
         ...common,
         fontFamily: bodyFont,
         textAlign: resolvedAlign,
+        // Native selection is suppressed when selectable=false (mobile
+        // reader). MobileReader drives its own selection via custom
+        // pointer handlers — without this, Android/Samsung shows the
+        // OS text-selection toolbar which can't be hidden at the app
+        // layer. Desktop passes selectable=true (the default) so its
+        // native selection is unaffected.
+        userSelect: selectable ? undefined : "none",
+        WebkitUserSelect: selectable ? undefined : "none",
+        // touch-action: pan-y so the browser handles vertical scroll
+        // natively with momentum (the compositor-driven smooth scroll
+        // we lost when we briefly used touch-action: none). MobileReader's
+        // gesture effect calls preventDefault on pointermove during
+        // active selection drag to suppress scroll only when needed.
+        touchAction: selectable ? undefined : "pan-y",
       }}
     >
       <div style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}>
@@ -193,6 +214,10 @@ export function BookBody({
               src={imageUrls.get(p.src)}
               alt={p.alt ?? ""}
               loading="lazy"
+              onClick={() => {
+                const url = imageUrls.get(p.src);
+                if (url) openLightbox(url, p.alt);
+              }}
               style={{
                 maxWidth: "100%",
                 height: "auto",
@@ -201,6 +226,7 @@ export function BookBody({
                 // radius so unstyled photos look intentional in-flow.
                 borderRadius: 6,
                 background: theme.chrome,
+                cursor: "zoom-in",
               }}
             />
           </figure>
@@ -247,8 +273,22 @@ function renderParagraph(
             background: hlBg(h.color, themeKey),
             color: "inherit",
             borderRadius: 2,
-            padding: "0 0.05em",
+            // No `padding` here. Earlier we used `padding: 0 0.05em` for
+            // a little colored breathing room around the text, but with
+            // `box-decoration-break: clone` the padding is applied to
+            // every wrapped fragment — reflowing the paragraph the
+            // moment a highlight is created and shifting where the user
+            // was reading. Box-shadow paints the same visual extension
+            // without occupying inline-direction layout space.
+            boxShadow: `0.05em 0 0 ${hlBg(h.color, themeKey)}, -0.05em 0 0 ${hlBg(h.color, themeKey)}`,
             cursor: "pointer",
+            // Treat the highlight as a complete box on every wrapped
+            // line. Without this, the default `slice` mode renders the
+            // background and box-shadow only on the very first/last
+            // line, and middle lines stretch flush to the line edges —
+            // which visually breaks across line wraps.
+            boxDecorationBreak: "clone",
+            WebkitBoxDecorationBreak: "clone",
           }}
         >
           {text.slice(start, end)}
