@@ -58,15 +58,40 @@ Everything is local. Books and reading state live in your own filesystem.
 
 ## Install
 
-Pre-built binaries land on [GitHub Releases](https://github.com/TheMostafaOsamaDev/Leaflet-ebook-reader/releases) when a `v*` tag is cut.
+Pre-built binaries are attached to each [GitHub Release](https://github.com/TheMostafaOsamaDev/Leaflet-ebook-reader/releases) (cut from a `v*` tag). Pick the file for your platform:
 
-**Windows note:** binaries aren't code-signed yet, so SmartScreen will warn. After downloading: right-click the installer → Properties → check "Unblock" → re-run.
+| Platform | Download |
+|---|---|
+| **Windows** (most PCs) | `Leaflet_<ver>_x64-setup.exe` — or the `_x64_en-US.msi` |
+| **Windows on ARM** (Surface Pro X, Snapdragon laptops) | `Leaflet_<ver>_arm64-setup.exe` |
+| **macOS** (Intel **and** Apple Silicon) | `Leaflet_<ver>_universal.dmg` |
+| **Linux** — Debian/Ubuntu | `Leaflet_<ver>_amd64.deb` · `_arm64.deb` |
+| **Linux** — Fedora/RHEL | `Leaflet-<ver>-1.x86_64.rpm` · `.aarch64.rpm` |
+| **Linux** — portable | `Leaflet_<ver>_amd64.AppImage` · `_aarch64.AppImage` |
+| **Android** | `app-universal-release.apk` (installs on any phone) |
 
-**macOS note:** unsigned and un-notarized. Gatekeeper will refuse to open the `.dmg` until you remove the quarantine attribute: `xattr -d com.apple.quarantine /path/to/Leaflet.dmg`.
+> Binaries are **not code-signed** yet, so desktop OSes warn on first launch. One-time steps below — they don't recur after the first run.
 
-**Linux:** the AppImage / `.deb` is unsigned but should run as-is.
+**Windows** — SmartScreen shows "Windows protected your PC": click **More info → Run anyway**. (Or before launching: right-click the installer → **Properties** → tick **Unblock** → OK.)
 
-**Android:** sideload the APK from Releases. Play Store distribution isn't planned — F-Droid is a possible future channel.
+**macOS** — unsigned and un-notarized, so Gatekeeper blocks it. Easiest path: open the `.dmg`, drag **Leaflet** to Applications, then **right-click the app → Open → Open**. If it still refuses, clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Leaflet.app
+```
+
+**Linux** — the `.deb` / `.rpm` / `.AppImage` are unsigned but run as-is. For the AppImage, mark it executable first:
+
+```bash
+chmod +x Leaflet_*.AppImage && ./Leaflet_*.AppImage
+```
+
+**Android** — sideload the APK (your browser or file manager will ask to allow "install from unknown sources"). Play Store distribution isn't planned — F-Droid is a possible future channel.
+
+**Verify your download (optional)** — every release ships a `SHA256SUMS` manifest. Put it next to your download and check:
+
+- Linux: `sha256sum --ignore-missing -c SHA256SUMS`
+- macOS: `shasum -a 256 <file>` and compare against the matching line in `SHA256SUMS`
 
 ## Supported sources
 
