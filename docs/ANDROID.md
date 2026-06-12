@@ -17,7 +17,7 @@ Tauri v2 has first-class Android support. The app's frontend is the same bundle 
    ```bash
    java -version
    ```
-4. Export env vars (see SETUP.md snippet).
+4. Export env vars (see [`setup.md`](./setup.md) snippet).
 
 ## Rust Android targets
 
