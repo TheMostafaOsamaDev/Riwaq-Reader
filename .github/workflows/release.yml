@@ -74,7 +74,12 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev
+            libssl-dev \
+            xdg-utils
+            # xdg-utils provides /usr/bin/xdg-open, which Tauri's AppImage
+            # bundler copies into the bundle. The x86_64 ubuntu-22.04 image
+            # ships it; the ubuntu-22.04-arm image does NOT, so the arm64
+            # AppImage build fails without this. Installed on both for parity.
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -133,7 +138,12 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev
+            libssl-dev \
+            xdg-utils
+            # xdg-utils provides /usr/bin/xdg-open, which Tauri's AppImage
+            # bundler copies into the bundle. The x86_64 ubuntu-22.04 image
+            # ships it; the ubuntu-22.04-arm image does NOT, so the arm64
+            # AppImage build fails without this. Installed on both for parity.
 
       - uses: dtolnay/rust-toolchain@stable
 
