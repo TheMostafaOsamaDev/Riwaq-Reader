@@ -6,14 +6,31 @@
 #                         platform binaries attached + auto-generated
 #                         notes. You manually hit "Publish" once you've
 #                         downloaded + verified the binaries.
-#   - workflow_dispatch → manual smoke test. Builds all three platforms
-#                         but doesn't create or upload to any release.
+#   - workflow_dispatch → manual smoke test. Builds every platform but
+#                         doesn't create or upload to any release.
 #                         Useful when iterating on the workflow itself.
+#
+# Artifacts attached to a release:
+#   - Linux x86_64   → .deb, .AppImage, .rpm
+#   - Linux arm64    → .deb, .AppImage, .rpm
+#   - Windows x86_64 → .msi (WiX) + .exe (NSIS)
+#   - Windows arm64  → .exe (NSIS only; WiX/MSI can't target arm64)
+#   - macOS universal→ .dmg + .app.tar.gz (Intel + Apple Silicon, one file)
+#   - Android        → single universal .apk (arm64-v8a + armeabi-v7a)
+#   - SHA256SUMS     → checksums of every asset above (added last)
 #
 # No secrets required. Default GITHUB_TOKEN is sufficient.
 #
-# Out of scope (deferred): macOS / iOS builds, code signing (Windows EV,
-# Apple Dev ID, Android release keystore), F-Droid metadata.
+# Out of scope (deferred): iOS builds, in-app auto-updater, code signing
+# (Windows cert, Apple Dev ID notarization, Android release keystore),
+# F-Droid metadata. Because nothing is signed, the macOS .dmg trips
+# Gatekeeper and the Windows .exe trips SmartScreen on first launch —
+# see the README for the one-time "open anyway" steps users follow.
+#
+# NOTE: the `linux-arm64` and `windows-arm64` jobs run on GitHub's
+# hosted arm64 runners, which are FREE only for PUBLIC repositories. If
+# this repo ever goes private those two jobs start billing — remove them
+# or expect charges.
 
 name: Release
 
@@ -84,6 +101,62 @@ jobs:
           generateReleaseNotes: true
 
   # ──────────────────────────────────────────────────────────────────
+  # Linux arm64 — .deb, .AppImage, .rpm
+  # Runs NATIVELY on GitHub's hosted arm64 runner (free for public
+  # repos). Native is required: arm64 AppImages can only be assembled on
+  # an arm64 host, so cross-compiling on x86_64 would break the AppImage.
+  # Artifacts carry the arch in their filename (*_arm64.deb / *_aarch64.*)
+  # so they don't collide with the x86_64 job on the same draft release.
+  # ──────────────────────────────────────────────────────────────────
+  linux-arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: linux-arm64
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + (on tag) publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+
+  # ──────────────────────────────────────────────────────────────────
   # Windows x86_64 — .msi (WiX) + .exe (NSIS)
   # ──────────────────────────────────────────────────────────────────
   windows:
@@ -124,7 +197,114 @@ jobs:
           generateReleaseNotes: true
 
   # ──────────────────────────────────────────────────────────────────
-  # Android — APK (ARM + ARM64; x86 / x86_64 skipped, phones are ARM)
+  # Windows arm64 — .exe (NSIS only)
+  # Runs NATIVELY on the free hosted `windows-11-arm` runner (public
+  # repos only), so the binary is genuinely built on arm64 rather than
+  # cross-compiled untested. WiX/MSI does NOT support arm64, so we force
+  # `--bundles nsis`; without it the build picks up the MSI target and
+  # fails. WebView2 stays on the default downloadBootstrapper, which
+  # pulls the correct arm64 runtime on the user's machine.
+  # ──────────────────────────────────────────────────────────────────
+  windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: windows-arm64
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + (on tag) publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Pin the arm64 triple AND restrict to NSIS — the default
+          # Windows bundle set includes WiX/MSI, which can't build arm64.
+          args: --target aarch64-pc-windows-msvc --bundles nsis
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+
+  # ──────────────────────────────────────────────────────────────────
+  # macOS universal — .dmg + .app.tar.gz (Intel x86_64 + Apple Silicon)
+  # `macos-latest` is an Apple Silicon (arm64) host, so BOTH rustup
+  # targets must be installed: `universal-apple-darwin` lipo-merges the
+  # arm64 and x86_64 slices into one fat binary / one .dmg. Unsigned, so
+  # users clear the Gatekeeper quarantine on first launch (README).
+  # ──────────────────────────────────────────────────────────────────
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + (on tag) publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Forwarded verbatim to `tauri build` → builds both slices and
+          # lipo-merges them into a universal .app / .dmg / .app.tar.gz.
+          args: --target universal-apple-darwin
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+
+  # ──────────────────────────────────────────────────────────────────
+  # Android — single UNIVERSAL .apk (arm64-v8a + armeabi-v7a in one file)
+  # Tauri builds a universal APK by DEFAULT (no --split-per-abi), so the
+  # two ABIs below are packed into ONE app-universal-release.apk that
+  # installs on any phone regardless of architecture. x86/x86_64 skipped
+  # — phones are ARM (add `x86_64` to --target, plus the matching rustup
+  # target, only for emulator / Chromebook coverage). Still DEBUG-signed
+  # (no release keystore in CI) — fine for sideloading; a release
+  # keystore is the deferred next step.
   # ──────────────────────────────────────────────────────────────────
   android:
     runs-on: ubuntu-22.04
@@ -188,15 +368,16 @@ jobs:
         # nonexistent path.
         run: sed -i '/^org\.gradle\.java\.home=/d' src-tauri/gen/android/gradle.properties
 
-      - name: Build Android APK (ARM + ARM64)
+      - name: Build universal Android APK (arm64-v8a + armeabi-v7a)
         # Tauri's android `--target` takes the short ABI names
         # (aarch64, armv7, i686, x86_64), NOT the full Rust target
         # triples — those are only what `rustup target add` consumes
         # above. Multi-target syntax is space-separated values after a
-        # single `--target` flag; comma-separated is rejected.
+        # single `--target` flag; comma-separated is rejected. WITHOUT
+        # --split-per-abi, both ABIs are packed into ONE universal APK.
         run: pnpm tauri android build --apk --target aarch64 armv7
 
-      - name: Upload APK(s) to draft release (on tag push only)
+      - name: Upload APK to draft release (on tag push only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
@@ -209,7 +390,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload APK(s) as workflow artifact (always)
+      - name: Upload APK as workflow artifact (always)
         # Even on workflow_dispatch (no tag), keep the APK reachable so
         # the manual smoke-test produces something the user can download
         # and install on a phone.
@@ -219,3 +400,59 @@ jobs:
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  # ──────────────────────────────────────────────────────────────────
+  # Checksums — runs LAST. Downloads every asset attached to the draft
+  # release for this tag, writes a single SHA256SUMS manifest, and
+  # uploads it back to the same draft. Tag pushes only (workflow_dispatch
+  # builds create no release, so there's nothing to checksum).
+  #
+  # `needs:` every build job so the manifest covers ALL artifacts. If any
+  # build job fails, this is skipped — we don't publish checksums for a
+  # half-built release. (Don't add `if: always()`.)
+  # ──────────────────────────────────────────────────────────────────
+  checksums:
+    needs: [linux, linux-arm64, windows, windows-arm64, macos, android]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release assets, build SHA256SUMS, upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh reads GH_TOKEN, then GITHUB_TOKEN
+          GH_REPO: ${{ github.repository }}        # pin the repo so no checkout is needed
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          workdir="$(mktemp -d)"
+
+          # `gh release download "$TAG"` downloads ALL assets of that
+          # release by default. gh resolves the DRAFT release by its tag
+          # when authenticated. By the time this job runs, every build
+          # job has finished (via `needs:`), so all binaries are attached.
+          gh release download "$TAG" --dir "$workdir"
+
+          cd "$workdir"
+
+          # Exclude any SHA256SUMS from a previous re-run so we never hash
+          # the manifest into itself. (assets download flat → maxdepth 1.)
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS' -printf '%P\n' | sort > .assetlist
+
+          if [ ! -s .assetlist ]; then
+            echo "::warning::No assets attached to draft release $TAG yet; skipping SHA256SUMS."
+            exit 0
+          fi
+
+          # Hash bare filenames (no path prefix) so the manifest verifies
+          # with a plain `sha256sum -c SHA256SUMS` after downloading.
+          xargs -a .assetlist sha256sum > SHA256SUMS
+          rm -f .assetlist
+
+          echo "----- SHA256SUMS -----"
+          cat SHA256SUMS
+
+          # --clobber replaces a SHA256SUMS left from an earlier run of
+          # this same tag, keeping the job safely re-runnable.
+          gh release upload "$TAG" SHA256SUMS --clobber
