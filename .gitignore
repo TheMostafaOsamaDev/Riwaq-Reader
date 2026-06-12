@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
 # TypeScript / Vite build artefacts
 *.tsbuildinfo
 vite.config.js
@@ -27,6 +32,22 @@ src-tauri/gen/android/buildSrc/.gradle
 src-tauri/gen/android/app/.cxx
 src-tauri/gen/android/local.properties
 src-tauri/gen/android/.idea
+
+# Android release signing — NEVER commit
+src-tauri/gen/android/key.properties
+*.jks
+*.keystore
+
+# Tauri updater signing key (if the updater is ever enabled)
+.tauri/
+
+# Tauri iOS (generated on build)
+src-tauri/gen/apple/build
+src-tauri/gen/apple/.build
+src-tauri/gen/apple/Externals
+src-tauri/gen/apple/*.xcodeproj/project.xcworkspace/
+src-tauri/gen/apple/*.xcodeproj/xcuserdata/
+src-tauri/gen/apple/*.xcworkspace/xcuserdata/
 
 # Claude Code
 .claude
