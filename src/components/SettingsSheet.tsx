@@ -20,12 +20,17 @@ import {
   type ThemePref,
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
+import { useI18n } from "../i18n/useI18n";
+import type { UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
   themeKey: ThemeKey;
   /** Raw preference (may be "system"). Falls back to themeKey if omitted. */
   themePref?: ThemePref;
+  /** Raw UI-language preference (may be "system"), so the sheet can
+   *  highlight "Auto" rather than the resolved concrete locale. */
+  uiLang: UiLangPref;
   setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onClose: () => void;
@@ -43,14 +48,66 @@ const THEME_SWATCHES: ReadonlyArray<{
   { key: "oled", label: "OLED", bg: "#000000", ink: "#b8ad94" },
 ];
 
+function LangSegRow({
+  theme,
+  value,
+  onChange,
+  options,
+}: {
+  theme: Theme;
+  value: UiLangPref;
+  onChange: (next: UiLangPref) => void;
+  options: { value: UiLangPref; label: string }[];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        background: theme.chrome,
+        borderRadius: 10,
+        padding: 4,
+      }}
+    >
+      {options.map((o) => {
+        const selected = value === o.value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            aria-pressed={selected}
+            style={{
+              flex: 1,
+              border: "none",
+              background: selected ? theme.bg : "transparent",
+              color: theme.ink,
+              padding: "9px 4px",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 12.5,
+              fontWeight: 500,
+              boxShadow: selected ? `0 1px 2px ${theme.rule}` : "none",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SettingsSheet({
   theme,
   themeKey,
   themePref,
+  uiLang,
   setTweak,
   layout,
   onClose,
 }: Props) {
+  const { tr } = useI18n();
   const isMobile = layout === "mobile";
   const pref = themePref ?? themeKey;
 
@@ -97,6 +154,19 @@ export function SettingsSheet({
         >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
             <BrandMark themeKey={themeKey} size={76} />
+          </div>
+          <SectionLabel theme={theme} label={tr("settings.language")} />
+          <div style={{ marginTop: 8, marginBottom: 20 }}>
+            <LangSegRow
+              theme={theme}
+              value={uiLang}
+              onChange={(v) => setTweak("uiLang", v)}
+              options={[
+                { value: "system", label: tr("settings.language.auto") },
+                { value: "en", label: "English" },
+                { value: "ar", label: "العربية" },
+              ]}
+            />
           </div>
           <SectionLabel theme={theme} label="Theme" />
           <div

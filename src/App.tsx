@@ -472,6 +472,7 @@ function App() {
               theme={theme}
               themeKey={themeKey}
               themePref={themePref}
+              uiLang={t.uiLang}
               setTweak={setTweak}
               layout={isMobile ? "mobile" : "desktop"}
               onOpen={openBook}

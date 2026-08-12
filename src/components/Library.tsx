@@ -54,6 +54,7 @@ import {
   type ThemeKey,
   type ThemePref,
 } from "../styles/tokens";
+import type { UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -65,6 +66,10 @@ interface Props {
   /** Raw stored preference (may be "system"), so the Settings sheet can
    *  highlight the System option rather than the resolved concrete theme. */
   themePref: ThemePref;
+  /** Raw UI-language preference (may be "system"), threaded through so
+   *  the mobile Settings sheet's Language control can highlight "Auto"
+   *  rather than the resolved concrete locale. */
+  uiLang: UiLangPref;
   setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onOpen: (bookId: string) => void;
@@ -119,6 +124,7 @@ export function Library({
   theme,
   themeKey,
   themePref,
+  uiLang,
   setTweak,
   layout,
   onOpen,
@@ -664,6 +670,7 @@ export function Library({
             theme={theme}
             themeKey={themeKey}
             themePref={themePref}
+            uiLang={uiLang}
             setTweak={setTweak}
             layout={layout}
             onClose={() => setSettingsOpen(false)}
