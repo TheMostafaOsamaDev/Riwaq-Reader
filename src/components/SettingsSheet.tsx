@@ -11,12 +11,21 @@
 // the two side pages feel consistent.
 
 import { Icon } from "./Icon";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
+import { BrandMark } from "./BrandMark";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  type ThemeKey,
+  type ThemePref,
+} from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 
 interface Props {
   theme: Theme;
   themeKey: ThemeKey;
+  /** Raw preference (may be "system"). Falls back to themeKey if omitted. */
+  themePref?: ThemePref;
   setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onClose: () => void;
@@ -37,11 +46,13 @@ const THEME_SWATCHES: ReadonlyArray<{
 export function SettingsSheet({
   theme,
   themeKey,
+  themePref,
   setTweak,
   layout,
   onClose,
 }: Props) {
   const isMobile = layout === "mobile";
+  const pref = themePref ?? themeKey;
 
   return (
     // The scrim, centering, and enter/exit animation live in
@@ -84,6 +95,9 @@ export function SettingsSheet({
             padding: "16px 18px 24px",
           }}
         >
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+            <BrandMark themeKey={themeKey} size={76} />
+          </div>
           <SectionLabel theme={theme} label="Theme" />
           <div
             style={{
@@ -94,7 +108,7 @@ export function SettingsSheet({
             }}
           >
             {THEME_SWATCHES.map((s) => {
-              const selected = themeKey === s.key;
+              const selected = pref === s.key;
               return (
                 <button
                   key={s.key}
@@ -140,6 +154,47 @@ export function SettingsSheet({
               );
             })}
           </div>
+          <button
+            onClick={() => setTweak("theme", "system")}
+            aria-pressed={pref === "system"}
+            style={{
+              marginTop: 10,
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 14px",
+              borderRadius: 12,
+              background: theme.chrome,
+              color: theme.ink,
+              border:
+                pref === "system"
+                  ? `2px solid ${theme.ink}`
+                  : `1px solid ${theme.rule}`,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              textAlign: "left",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                flexShrink: 0,
+                background:
+                  "linear-gradient(135deg, #f4ecd8 0 50%, #1a1614 50% 100%)",
+                border: `1px solid ${theme.rule}`,
+              }}
+            />
+            <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>System</span>
+              <span style={{ fontSize: 11, color: theme.muted }}>
+                Follows your device's light / dark setting
+              </span>
+            </span>
+          </button>
           <p
             style={{
               marginTop: 18,

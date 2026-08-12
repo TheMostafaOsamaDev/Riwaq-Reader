@@ -48,6 +48,7 @@ import {
   titleFontFor,
   type Theme,
   type ThemeKey,
+  type ThemePref,
 } from "../styles/tokens";
 
 interface Props {
@@ -57,6 +58,9 @@ interface Props {
    *  active and dispatch theme changes without forcing the user
    *  into the reader to find the picker. */
   themeKey: ThemeKey;
+  /** Raw stored preference (may be "system"), so the Settings sheet can
+   *  highlight the System option rather than the resolved concrete theme. */
+  themePref: ThemePref;
   setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onOpen: (bookId: string) => void;
@@ -110,6 +114,7 @@ function useBooks() {
 export function Library({
   theme,
   themeKey,
+  themePref,
   setTweak,
   layout,
   onOpen,
@@ -653,6 +658,7 @@ export function Library({
           <SettingsSheet
             theme={theme}
             themeKey={themeKey}
+            themePref={themePref}
             setTweak={setTweak}
             layout={layout}
             onClose={() => setSettingsOpen(false)}

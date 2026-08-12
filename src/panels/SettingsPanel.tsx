@@ -140,7 +140,6 @@ function SegRow<T extends string>({
 
 export function SettingsPanel({
   theme,
-  themeKey,
   t,
   setTweak,
   onClose,
@@ -172,7 +171,7 @@ export function SettingsPanel({
               onClick={() => setTweak("theme", k)}
               style={{
                 border:
-                  themeKey === k
+                  t.theme === k
                     ? `1.5px solid ${theme.ink}`
                     : `1px solid ${theme.rule}`,
                 background: bg,
@@ -209,6 +208,47 @@ export function SettingsPanel({
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setTweak("theme", "system")}
+          aria-pressed={t.theme === "system"}
+          style={{
+            marginTop: 6,
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 12px",
+            borderRadius: 8,
+            background: theme.hover,
+            color: theme.ink,
+            border:
+              t.theme === "system"
+                ? `1.5px solid ${theme.ink}`
+                : `1px solid ${theme.rule}`,
+            cursor: "pointer",
+            fontFamily: FONT_STACKS.sans,
+            textAlign: "left",
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              flexShrink: 0,
+              background:
+                "linear-gradient(135deg, #f4ecd8 0 50%, #1a1614 50% 100%)",
+              border: `1px solid ${theme.rule}`,
+            }}
+          />
+          <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>System</span>
+            <span style={{ fontSize: 10, color: theme.muted }}>
+              Follows your OS light / dark setting
+            </span>
+          </span>
+        </button>
       </Field>
 
       <Field label="Font" theme={theme}>

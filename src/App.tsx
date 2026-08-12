@@ -27,7 +27,7 @@ import {
 } from "./store/library";
 import { MOTION, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES } from "./styles/tokens";
+import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES, resolveTheme } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
 
 interface Loaded {
@@ -95,7 +95,12 @@ function App() {
   const isMobile = useMediaQuery(
     "(max-width: 720px), (pointer: coarse) and (max-height: 480px)",
   );
-  const themeKey = t.theme;
+  // "system" resolves to light/dark from the OS setting; useMediaQuery
+  // re-renders when the user flips OS appearance, so the whole app
+  // (and the theme-aware brand mark) re-themes live.
+  const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+  const themePref = t.theme;
+  const themeKey = resolveTheme(themePref, prefersDark);
   const theme = THEMES[themeKey];
 
   useEffect(() => {
@@ -454,6 +459,7 @@ function App() {
           <Library
             theme={theme}
             themeKey={themeKey}
+            themePref={themePref}
             setTweak={setTweak}
             layout={isMobile ? "mobile" : "desktop"}
             onOpen={openBook}

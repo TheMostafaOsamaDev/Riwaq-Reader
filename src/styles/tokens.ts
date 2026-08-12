@@ -3,6 +3,17 @@
 
 export type ThemeKey = "light" | "sepia" | "dark" | "oled";
 
+/** Stored theme preference: the four concrete themes plus "system",
+ *  which resolves to light/dark from the OS `prefers-color-scheme`. */
+export type ThemePref = ThemeKey | "system";
+
+/** Resolve a stored preference to a concrete theme key. "system" maps to
+ *  dark/light from the OS setting; the four concrete keys pass through. */
+export function resolveTheme(pref: ThemePref, prefersDark: boolean): ThemeKey {
+  if (pref === "system") return prefersDark ? "dark" : "light";
+  return pref;
+}
+
 export interface Theme {
   bg: string;
   paper: string;
