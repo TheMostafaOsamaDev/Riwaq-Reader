@@ -151,10 +151,17 @@ component for visual consistency:
 - English/Arabic labels shown each in their own script; "Auto" localized.
 - Changing it re-renders the whole app live (context + resolved `dir`).
 
-## Coverage — "infra + all primary chrome" (this pass)
+## Coverage — full app (all app-authored UI text)
 
-Extract and translate strings (including `aria-label` / `title`) across the
-surfaces the user navigates:
+**Scope expanded (2026-08-13):** from "primary chrome" to **every string the app
+itself authors**, everywhere. The boundary is UI-text-vs-data: translate all
+app-authored labels, titles, dialog body paragraphs, empty states, tooltips,
+toasts, and user-facing status/error messages; **never** translate dynamic or
+remote *content* — the imported book's own text, and novel titles / synopses /
+chapter names / author names scraped from web sources — nor source **brand
+names** (KolNovel, Cenele, …). Those are data, shown in their source language.
+
+Primary chrome (Tasks 4–8):
 
 - Navigation & library: `LibrarySidebar`, `Library` + tabs, `ShelvesPage`,
   `NewShelfDialog`.
@@ -168,11 +175,21 @@ surfaces the user navigates:
   `DownloadQueueView`.
 - Cross-cutting: toast messages (`Toast`), the `App.tsx` spinner/error labels.
 
-**Deferred (still render English this pass):** deep Store / source-extension
-internals (`SourceHomeView`, `SourcesListView`, `NovelDetailView`,
-`SourceStreamReader`, `src/sources/**`) and raw thrown-error strings. The typed
-catalog makes finishing these mechanical later — every new string added anywhere
-goes through `tr` from now on.
+Full coverage (Tasks 9–13) — the previously-deferred surfaces:
+
+- Store / sources UI: `SourcesListView`, `SourceHomeView`, `NovelDetailView`,
+  `SourceStreamReader`, and app-authored labels/statuses/section-headings and
+  hardcoded source **descriptions** in `src/sources/**` (e.g. "Load more",
+  "Read more", "Ongoing", "Completed", "Hot updates", "Recommendations",
+  "Fetching chapters", "Building EPUB"). Brand names and scraped data stay.
+- Document manager: `DocxManageView` (section list, restore/delete affordances).
+- User-facing error / system / status messages: thrown-error strings that
+  surface in toasts/dialogs, and any remaining empty-state / body-paragraph copy
+  across the whole app.
+
+Low-level/technical throw strings that only reach dev logs (e.g. "no 2d canvas
+context", "zip folder creation failed", internal invariant guards) may stay in
+English — they are not user-facing UI.
 
 ## Testing / verification
 
@@ -190,7 +207,11 @@ goes through `tr` from now on.
 ## Out of scope (YAGNI)
 
 - Languages beyond `en` / `ar` (architecture supports them; none added now).
-- Translating deferred Store/source internals and low-level error messages.
+- **Machine-translating dynamic/remote content** — book text, and scraped novel
+  titles/synopses/chapter names. That would need a runtime translation service
+  and is its own separate project; content stays in its source language.
+- Translating source **brand names** and low-level/technical throw strings that
+  never surface in the UI.
 - Per-book UI-language overrides.
 - A full ICU / plural-rules framework.
 - Server/remote translation loading (catalogs are static TS modules).

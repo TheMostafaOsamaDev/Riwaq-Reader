@@ -715,38 +715,131 @@ git commit -m "feat(i18n): translate + RTL search, dialogs, import/download, toa
 
 ---
 
-### Task 9: Final RTL audit, full drive-through, build gate
+> **Scope expansion (2026-08-13):** the user extended coverage from "primary
+> chrome" to **all app-authored UI text**. Tasks 9–13 below translate + mirror
+> the previously-deferred Store/sources surfaces, the docx manager, and
+> user-facing error/status messages. The boundary holds: translate app-authored
+> text only; leave book content, scraped novel titles/synopses/chapter/author
+> names, and source **brand names** in their source language. Every task uses
+> the same recipe established in Tasks 4–8 (add keys to BOTH `en.ts`/`ar.ts`,
+> consume `tr`/`dir` via `useI18n()`, convert direction-sensitive physical CSS
+> to logical properties, flip directional icons via `rtl-flip-x` or inline
+> `dir` composition, gate on `npx tsc --noEmit` + app drive, one commit, NO
+> Claude/AI attribution in the message).
 
-Catch stragglers and lock the invariants.
+**CSS conversion recipe (all Tasks 9–14):** `textAlign:"left"`→`"start"` /
+`"right"`→`"end"`; `left`/`right`→`insetInlineStart`/`insetInlineEnd`;
+`margin/padding Left/Right`→`…InlineStart/End`; `borderLeft/Right`→
+`borderInline Start/End`; asymmetric `borderRadius` corners→logical corners.
+Leave symmetric `left:0;right:0` and centering `translateX(-50%)` alone. For an
+icon that already has an inline `transform`, compose the flip inline
+(`transform: [dir==="rtl" && "scaleX(-1)", rotation].filter(Boolean).join(" ") || "none"`)
+— never emit the invalid `"scaleX(-1) none"`.
 
-**Files:**
-- Modify: any file surfaced by the audit greps below (targeted fixes only)
+### Task 9: Store — sources list + source home + source definitions
 
-- [ ] **Step 1: Untranslated-string sweep.** Across the covered surfaces, find leftover hardcoded chrome text:
-`grep -rnE '"[A-Z][a-z]+( [A-Za-z…]+)*"' src/components src/panels src/App.tsx | grep -vE 'FONT_|theme\.|Icon name=|aria-label=\{|import |from "'`
-Review hits; route any real UI string through `tr` (add keys to both catalogs). Deferred Store/source files (`SourceHomeView`, `SourcesListView`, `NovelDetailView`, `SourceStreamReader`, `src/sources/**`) and raw thrown errors are out of scope — do not translate them this pass.
+**Files:** Modify `src/components/SourcesListView.tsx`, `src/components/SourceHomeView.tsx`, app-authored UI strings in `src/sources/**` (labels/statuses/section headings + hardcoded source **descriptions**; NOT brand names like "KolNovel"/"Cenele" or scraped data), `src/i18n/en.ts`, `src/i18n/ar.ts`.
 
-- [ ] **Step 2: Residual physical-CSS sweep** in covered files:
-`grep -rnE 'textAlign: "(left|right)"|margin(Left|Right):|padding(Left|Right):|border(Left|Right):|[^a-zA-Z](left|right): ' src/components src/panels | grep -vE 'translateX|SourceHome|SourcesList|NovelDetail|SourceStream|sources/'`
-Convert any remaining direction-sensitive value in a covered chrome file to its logical equivalent. (Symmetric `left:0;right:0` pairs and centering transforms are fine.)
+**Interfaces:** Consumes `useI18n`, `Icon` `className`/`rtl-flip-x`.
 
-- [ ] **Step 3: Verify — full build**
-
-Run: `npx tsc --noEmit && pnpm build`
-Expected: both PASS (production bundle compiles; catalogs complete).
-
-- [ ] **Step 4: Verify — full drive-through matrix** (Playwright / `run` skill). For UI ∈ {Auto, English, العربية}:
-  1. Language switch is live (no reload) and persists across reload.
-  2. Under العربية every covered surface is Arabic + mirrored: sidebar right, panels from the correct side, back/prev-next/disclosure icons flipped, text right-aligned.
-  3. **Decoupling matrix:** {Arabic UI + English book} → chrome RTL, content LTR; {English UI + Arabic book} → chrome LTR, content RTL. Content direction never follows the UI.
-  4. Themes (light/sepia/dark/oled/system) still switch correctly under both directions.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat(i18n): final RTL audit + build gate for Arabic UI"
+- [ ] **Step 1: Extract + key.** Per file: `grep -nE '>[A-Z][^<{]+<|aria-label="[^"]+"|placeholder="[^"]+"|title="[^"]+"' <file>`. Known app-authored strings to key (add en/ar, namespace `store.*`/`source.*`): `"Back to sources"`, `"Ongoing"`, `"Completed"`, `"Completed Novels"`, `"Hiatus"`, `"Hot updates"`, `"Trending this week"`, `"Trending updates"`, `"Recommendations"`, `"Load more"`, `"Read more"`, `"Source"`, `"Search…"`. For `src/sources/**`, key the hardcoded source **description** sentences and any status/section labels the UI renders; leave the source `name`/id brand fields untranslated. Example:
+```ts
+// en.ts
+  "store.backToSources": "Back to sources",
+  "store.ongoing": "Ongoing",
+  "store.completed": "Completed",
+  "store.hotUpdates": "Hot updates",
+  "store.recommendations": "Recommendations",
+  "store.loadMore": "Load more",
+  "store.readMore": "Read more",
 ```
+```ts
+// ar.ts
+  "store.backToSources": "العودة إلى المصادر",
+  "store.ongoing": "مستمرة",
+  "store.completed": "مكتملة",
+  "store.hotUpdates": "تحديثات رائجة",
+  "store.recommendations": "توصيات",
+  "store.loadMore": "تحميل المزيد",
+  "store.readMore": "قراءة المزيد",
+```
+- [ ] **Step 2: Consume `tr`/`dir`** in both view files; replace literals. Where a source description is data-bound (`source.description`), decide per the boundary: if it's a hardcoded English sentence the app ships, route it through `tr`; if it's scraped, leave it.
+- [ ] **Step 3: Convert physical CSS → logical** per the recipe grep; flip any back/nav directional icons with `rtl-flip-x`.
+- [ ] **Step 4: Verify — tsc** → `npx tsc --noEmit` PASS.
+- [ ] **Step 5: Verify — behavior.** UI=العربية: open Store → sources list + a source home; labels/section headings Arabic + right-aligned, back icon flipped; **scraped novel titles/covers stay in their source language** (decoupling holds). English reverts.
+- [ ] **Step 6: Commit** — `git add` the touched files + catalogs; message: `feat(i18n): translate + RTL store sources list & home`.
+
+### Task 10: Novel detail view (`NovelDetailView.tsx`)
+
+Large file (~1.7k lines); its own task. Translate app-authored labels/actions; leave scraped novel title/synopsis/author/chapter names as data.
+
+**Files:** Modify `src/components/NovelDetailView.tsx`, `src/i18n/en.ts`, `src/i18n/ar.ts`.
+
+- [ ] **Step 1: Extract + key** with the Task-9 grep. Known app-authored strings: `"Add to library"` / `"Add directly to library"`, `"Read"`, `"Download range"`, `"Cover gallery"`, `"No cover"`, `"Chapters"`, `"Author"` (the label, not the scraped name), `"Description"`/`"Synopsis"` (label), `"Recommendations"`, `"Read more"`, plus button/aria labels. Namespace `novel.*`. **Do NOT key** the actual novel title, synopsis text, chapter titles, or author value — those are scraped data.
+- [ ] **Step 2: Consume `tr`/`dir`**; replace the app-authored literals only.
+- [ ] **Step 3: Convert physical CSS → logical** (recipe grep); flip directional icons (back, carousel prev/next) appropriately.
+- [ ] **Step 4: Verify — tsc** PASS.
+- [ ] **Step 5: Verify — behavior.** UI=العربية: open a novel detail page; action buttons/labels/section headings Arabic + mirrored; the novel's own title/synopsis/chapter list stay in their source language. English reverts.
+- [ ] **Step 6: Commit** — message: `feat(i18n): translate + RTL novel detail view`.
+
+### Task 11: Streaming reader (`SourceStreamReader.tsx`)
+
+The web-source reader. Reuse `reader.*` keys where the chrome matches the local reader; scraped chapter **content** stays in its own direction (independent of UI locale — same invariant as Task 6).
+
+**Files:** Modify `src/components/SourceStreamReader.tsx`, `src/i18n/en.ts`, `src/i18n/ar.ts`.
+
+- [ ] **Step 1: Extract + key** with the grep. Reuse existing `reader.*` keys (back/prev/next chapter, toc, progress, settings) where identical; add `stream.*` keys for anything unique (loading/streaming status, "Downloading chapters", chapter-fetch states surfaced here).
+- [ ] **Step 2: Consume `tr`/`dir`**; replace literals; flip prev/next chapter + back icons (`rtl-flip-x`).
+- [ ] **Step 3: Reader-chrome direction.** If this file hardcodes `dir="ltr"` on its reader chrome (as `DesktopReader`/`MobileReader` did — see the Task 1 ledger note), rewire that chrome wrapper to the UI `dir` from `useI18n()`, while the **scraped chapter content** keeps setting its own direction. Verify the decoupling.
+- [ ] **Step 4: Convert physical CSS → logical** (recipe grep).
+- [ ] **Step 5: Verify — tsc** PASS.
+- [ ] **Step 6: Verify — behavior.** UI=العربية: open a novel and Read; streaming-reader chrome Arabic + mirrored; chapter content direction follows the CONTENT, not the UI. English reverts.
+- [ ] **Step 7: Commit** — message: `feat(i18n): translate + RTL streaming reader`.
+
+### Task 12: Document manager (`DocxManageView.tsx`)
+
+Large file (~1.2k lines); its own task. The .docx section-management UI.
+
+**Files:** Modify `src/components/DocxManageView.tsx`, `src/i18n/en.ts`, `src/i18n/ar.ts`.
+
+- [ ] **Step 1: Extract + key** with the grep. Known strings: `"Document content"`, `"Document sections"`, `"Delete this section"`, `"Restore this section"`, `"Hide deleted"`, `"Delete selected"`, `"Delete this section"`, plus aria/title variants. Namespace `docx.*`. Section names/body derived from the document are data — leave them.
+- [ ] **Step 2: Consume `tr`/`dir`**; replace app-authored literals (labels, aria-labels, titles, empty states).
+- [ ] **Step 3: Convert physical CSS → logical** (recipe grep); flip any directional icons.
+- [ ] **Step 4: Verify — tsc** PASS.
+- [ ] **Step 5: Verify — behavior.** UI=العربية: open the docx manager; section-list chrome, delete/restore affordances, headings Arabic + mirrored; the document's own section text stays as-is. English reverts.
+- [ ] **Step 6: Commit** — message: `feat(i18n): translate + RTL docx section manager`.
+
+### Task 13: User-facing error / status / message sweep
+
+Whole-app pass for the remaining app-authored copy: user-facing thrown-error messages surfaced in toasts/dialogs, status strings, and any leftover empty-state / body-paragraph text.
+
+**Files:** Modify any file with a user-facing string not yet keyed (likely `src/store/**` import/download flows, `src/sources/**` status strings, remaining bits of `ImportProgress`/`DownloadQueueView`, and thrown `Error(...)` messages that reach the UI), `src/i18n/en.ts`, `src/i18n/ar.ts`.
+
+- [ ] **Step 1: Find user-facing thrown errors + statuses.** `grep -rnoE 'throw new Error\("[^"]+"\)' src` and `grep -rnE '"[A-Z][a-z]+( [A-Za-z…]+)+"' src/store src/sources`. Triage: a message is **in scope** if it can appear in a toast/dialog/status the user sees (`"Another import is already running"`, `"This novel has no chapters to convert."`, `"Building EPUB"`, `"Fetching chapters"`, `"Adding to library"`, `"Download range"`). It is **out of scope** if it only reaches dev logs / is an internal invariant (`"no 2d canvas context"`, `"zip folder creation failed"`, `"useI18n must be used within <I18nProvider>"`). Namespace `error.*`/`status.*`.
+- [ ] **Step 2: Route in-scope messages through `tr`.** For strings thrown deep in non-React modules (`src/store`, `src/sources`) where `useI18n()` isn't available, translate at the **display site** (the toast/dialog/status component that renders the caught message) rather than at the throw site — i.e. map a stable error code/key to `tr(...)` where it's shown. Where a message is only ever built and shown inside a React component, use `tr` directly. Add en/ar for each keyed message.
+- [ ] **Step 3: Verify — tsc** PASS.
+- [ ] **Step 4: Verify — behavior.** UI=العربية: trigger a couple of these paths (e.g. start a second import → the "already running" message; a download/status flow) and confirm the surfaced message is Arabic. Confirm technical/dev-only strings were intentionally left.
+- [ ] **Step 5: Commit** — message: `feat(i18n): translate user-facing error & status messages`.
+
+### Task 14: Final full-app audit, full drive-through, build gate
+
+Catch stragglers across the WHOLE app (no exclusions now) and lock the invariants.
+
+**Files:** Modify any file surfaced by the audit greps (targeted fixes only), `src/i18n/en.ts`, `src/i18n/ar.ts`.
+
+- [ ] **Step 1: Untranslated-string sweep (whole app).**
+`grep -rnE '"[A-Z][a-z]+( [A-Za-z…]+)*"' src/components src/panels src/App.tsx src/store src/sources | grep -vE 'FONT_|theme\.|Icon name=|import |from "'`
+Review hits; route any remaining app-authored UI string through `tr`. Confirm the intentional exclusions are still English on purpose: scraped novel titles/synopses/chapter/author names, source **brand names**, and dev-only throw strings (list them in the report so the exclusion is explicit, not accidental).
+- [ ] **Step 2: Residual physical-CSS sweep (whole app).**
+`grep -rnE 'textAlign: "(left|right)"|margin(Left|Right):|padding(Left|Right):|border(Left|Right):|[^a-zA-Z](left|right): ' src/components src/panels`
+Convert any remaining direction-sensitive value to its logical equivalent (symmetric pairs / centering transforms are fine).
+- [ ] **Step 3: Verify — full build.** `npx tsc --noEmit && pnpm build` → both PASS.
+- [ ] **Step 4: Verify — full drive-through matrix** (Playwright). For UI ∈ {Auto, English, العربية}:
+  1. Language switch is live (no reload) and persists across reload.
+  2. Under العربية every surface — chrome AND Store/sources/docx/streaming reader — is Arabic + mirrored: sidebar right, panels from the correct side, back/prev-next/disclosure icons flipped, text right-aligned, no stray RTL artifacts (e.g. the scrollbar-sliver class of bug).
+  3. **Decoupling matrix:** {Arabic UI + English/scraped content} → chrome RTL, content LTR; {English UI + Arabic content} → chrome LTR, content RTL. Content direction never follows the UI.
+  4. Themes (light/sepia/dark/oled/system) still switch correctly under both directions.
+- [ ] **Step 5: Commit** — `git add -A`; message: `feat(i18n): final full-app RTL audit + build gate`.
 
 ---
 
@@ -758,13 +851,14 @@ git commit -m "feat(i18n): final RTL audit + build gate for Arabic UI"
 - Auto-detect (`detectLocale`) + `DIR_FOR` → Task 1 (Step 3, 8). ✓
 - Root `dir`/`lang` + shell `dir` replaces hardcoded `ltr` → Task 1 (Step 8). ✓
 - Settings Language selector (`[Auto|English|العربية]`) → Task 2. ✓
-- Logical-property RTL conversion → Tasks 4–8, audited in Task 9. ✓
-- Directional-icon flipping → Task 3 (primitive) + Tasks 4/6 (applied). ✓
+- Logical-property RTL conversion → Tasks 4–13, audited in Task 14. ✓
+- Directional-icon flipping → Task 3 (primitive) + Tasks 4/6/9/10/11 (applied). ✓
 - Dir-aware panel `side`/slide → Task 2 (PanelShell) + Task 7 (panels). ✓
-- Coverage set (sidebar, library, reader chrome, panels, search, dialogs, import/download, toasts, app-root) → Tasks 4–8. ✓
-- Deferred Store/source internals + raw errors → explicitly excluded in Tasks 8–9. ✓
+- Primary-chrome coverage (sidebar, library, reader chrome, panels, search, dialogs, import/download, toasts, app-root) → Tasks 4–8. ✓
+- Full coverage (scope expansion): Store/sources list+home+definitions → Task 9; novel detail → Task 10; streaming reader → Task 11; docx manager → Task 12; user-facing error/status messages → Task 13. ✓
+- Excluded on purpose (data, not UI): book content, scraped novel titles/synopses/chapter/author names, source brand names, dev-only throw strings → confirmed in Task 14 Step 1. ✓
 - Chrome Arabic font → no task needed (Readex Pro sans already Latin+Arabic; noted in Tech Stack). ✓
-- Verification: tsc + drive matrix + decoupling → each task's Verify steps + Task 9. ✓
+- Verification: tsc + drive matrix + decoupling → each task's Verify steps + Task 14. ✓
 
 **Placeholder scan:** No "TBD/TODO/handle edge cases". Per-surface tasks give the extraction grep + concrete example keys/values + the exact conversion recipe rather than a full 200-key dump; completeness is enforced by the tsc gate (`ar.ts: Messages`). This is intentional, not a placeholder.
 
