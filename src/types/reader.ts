@@ -1,3 +1,5 @@
+import type { ThemePref } from "../styles/tokens";
+
 export type ActivePanel =
   | null
   | "toc"
@@ -20,7 +22,10 @@ export type ActivePanel =
 export type ReadingMode = "paginated-2" | "paginated-1" | "scroll";
 
 export interface Tweaks {
-  theme: "light" | "sepia" | "dark" | "oled";
+  /** Theme preference. "system" follows the OS light/dark setting; the
+      four concrete values pin a specific theme. Resolved to a concrete
+      ThemeKey at render time via resolveTheme(). */
+  theme: ThemePref;
   fontFamily: "serif" | "sans" | "dyslexic" | "cairo" | "lateef" | "tajawal";
   fontSize: number;
   lineHeight: number;
