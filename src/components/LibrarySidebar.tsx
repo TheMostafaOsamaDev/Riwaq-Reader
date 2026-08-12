@@ -128,8 +128,18 @@ export function LibrarySidebar({
         <span style={{ fontSize: 10.5, color: theme.muted, border: `1px solid ${theme.rule}`, borderRadius: 5, padding: "2px 6px", fontWeight: 600, lineHeight: 1 }}>⌘K</span>
       </button>
 
-      {/* Scrollable nav */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+      {/* Scrollable nav. The vertical scrollbar's reserved gutter sits on the
+          container's inline-end edge — physically right in LTR, physically
+          left in RTL — so without a buffer it lands flush against the
+          collapsible rows' disclosure-chevron column, and its rounded thumb
+          end reads as a stray sliver right beside the row's own rounded
+          corner (worst under the OLED theme, where the low-opacity thumb
+          gets the most contrast against near-black). `paddingInlineEnd`
+          gives the gutter breathing room on whichever side it lands, and
+          `scrollbarGutter: "stable"` keeps that space reserved consistently
+          so nothing reflows if the list ever becomes short enough to stop
+          scrolling. */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingInlineEnd: 8, scrollbarGutter: "stable" }}>
         <SectionLabel theme={theme}>{tr("sidebar.main")}</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 5, padding: "0 4px" }}>
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}
