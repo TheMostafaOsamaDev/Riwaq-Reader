@@ -13,6 +13,10 @@ import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
 import { SettingsSheet } from "./SettingsSheet";
+import { LibrarySidebar } from "./LibrarySidebar";
+import { SearchOverlay } from "./SearchOverlay";
+import { ShelvesPage } from "./ShelvesPage";
+import { NewShelfDialog } from "./NewShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
@@ -498,6 +502,7 @@ export function Library({
 
   const layoutCommonProps = {
     theme,
+    themeKey,
     books,
     covers,
     loading,
@@ -680,6 +685,7 @@ export function Library({
 
 interface LayoutProps {
   theme: Theme;
+  themeKey: ThemeKey;
   books: BookIndexEntry[];
   covers: Record<string, string>;
   loading: boolean;
@@ -721,7 +727,7 @@ interface LayoutProps {
 
 /** "store" is a top-level destination, not a book filter — when the tab
  *  is set to "store" the body swaps out the shelf for the source browser. */
-type LibraryTab = "all" | BookStatus | "store";
+export type LibraryTab = "all" | BookStatus | "store";
 
 const TABS: { key: LibraryTab; label: string }[] = [
   { key: "all", label: "Library" },
@@ -754,6 +760,7 @@ function matchesTab(b: BookIndexEntry, tab: LibraryTab): boolean {
 
 function DesktopLibrary({
   theme,
+  themeKey,
   books,
   covers,
   loading,
@@ -771,11 +778,35 @@ function DesktopLibrary({
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
   onOpenQueue,
+  onOpenSettings,
   onDelete,
   onEdit,
   onCardContextMenu,
 }: LayoutProps) {
-  const visible = books.filter((b) => matchesTab(b, tab));
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [shelvesView, setShelvesView] = useState(false);
+  const [newShelfOpen, setNewShelfOpen] = useState(false);
+  const [shelves, setShelves] = useState<string[]>(["Favorites", "To read"]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const q = query.trim().toLowerCase();
+  const visible = books
+    .filter((b) => matchesTab(b, tab))
+    .filter(
+      (b) =>
+        !q ||
+        b.title.toLowerCase().includes(q) ||
+        (b.author ?? "").toLowerCase().includes(q),
+    );
   // Hero is the "continue reading" affordance — only meaningful on the full
   // library view. On a filtered tab we render a flat shelf so every match is
   // equally weighted.
@@ -795,96 +826,37 @@ function DesktopLibrary({
         fontFamily: FONT_STACKS.sans,
         overflow: "hidden",
         display: "flex",
-        flexDirection: "column",
+        flexDirection: "row",
       }}
     >
+      <LibrarySidebar
+        theme={theme}
+        themeKey={themeKey}
+        tab={tab}
+        setTab={(t) => { setShelvesView(false); setTab(t); }}
+        importing={importing}
+        onImport={onImport}
+        onImportDocx={onImportDocx}
+        onImportFolder={onImportFolder}
+        onOpenQueue={onOpenQueue}
+        onOpenSettings={onOpenSettings}
+        onOpenSearch={() => setSearchOpen(true)}
+        shelves={shelves}
+        shelvesActive={shelvesView}
+        onOpenShelves={() => setShelvesView(true)}
+        onNewShelf={() => setNewShelfOpen(true)}
+      />
       <div
         style={{
+          flex: 1,
+          minWidth: 0,
+          height: "100%",
           display: "flex",
-          alignItems: "center",
-          gap: 18,
-          padding: "20px 40px",
-          borderBottom: `0.5px solid ${theme.rule}`,
+          flexDirection: "column",
+          overflow: "hidden",
+          background: theme.bg,
         }}
       >
-        <div
-          style={{
-            fontFamily: FONT_SERIF_DISPLAY,
-            fontSize: 20,
-            fontStyle: "italic",
-            fontWeight: 500,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Leaflet
-        </div>
-        <div style={{ display: "flex", gap: 4, marginLeft: 12 }}>
-          {TABS.map(({ key, label }) => {
-            const active = key === tab;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                style={{
-                  border: "none",
-                  background: active ? theme.hover : "transparent",
-                  color: active ? theme.ink : theme.muted,
-                  padding: "6px 12px",
-                  borderRadius: 7,
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ flex: 1 }} />
-        {/* Import buttons only make sense in library mode. Store mode is
-            self-contained (browse → click → import lives in the Novel
-            detail view), so we hide the whole cluster to avoid
-            duplicate paths in the header. */}
-        {tab !== "store" && (
-          <>
-            <QueueIconButton theme={theme} onClick={onOpenQueue} />
-            <Button
-              theme={theme}
-              variant="outline"
-              size="sm"
-              onClick={onImportFolder}
-              disabled={importing}
-              leadingIcon={<Icon name="folder" size={13} />}
-              style={{ marginRight: 8 }}
-            >
-              Import folder
-            </Button>
-            <Button
-              theme={theme}
-              variant="outline"
-              size="sm"
-              onClick={onImportDocx}
-              disabled={importing}
-              leadingIcon={<Icon name="doc" size={13} />}
-              title="Convert a Word document to EPUB on import"
-              style={{ marginRight: 8 }}
-            >
-              Import .docx
-            </Button>
-            <Button
-              theme={theme}
-              variant="primary"
-              size="sm"
-              onClick={onImport}
-              disabled={importing}
-              leadingIcon={<Icon name="plus" size={13} />}
-            >
-              {importing ? "Importing…" : "Import EPUB"}
-            </Button>
-          </>
-        )}
-      </div>
 
       {/* Body cross-fades when the user switches tab or opens/closes a
           Store source detail. The wrapper provides the positioning
@@ -899,12 +871,16 @@ function DesktopLibrary({
       >
         <AnimatedSwap
           viewKey={
-            sourceDetailView
-              ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-              : `tab:${tab}`
+            shelvesView
+              ? "shelves"
+              : sourceDetailView
+                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                : `tab:${tab}`
           }
         >
-      {sourceDetailView ? (
+      {shelvesView ? (
+        <ShelvesPage theme={theme} shelves={shelves} onNewShelf={() => setNewShelfOpen(true)} />
+      ) : sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
         // NovelDetailView the Store uses for browsing. Tabs above stay
         // visible — clicking any tab exits the detail view.
@@ -1023,6 +999,29 @@ function DesktopLibrary({
       )}
         </AnimatedSwap>
       </div>
+      </div>
+      {searchOpen && (
+        <SearchOverlay
+          theme={theme}
+          themeKey={themeKey}
+          books={books}
+          covers={covers}
+          onOpen={onOpen}
+          setTab={setTab}
+          setQuery={setQuery}
+          onOpenSettings={onOpenSettings}
+          onOpenQueue={onOpenQueue}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+      {newShelfOpen && (
+        <NewShelfDialog
+          theme={theme}
+          existing={shelves}
+          onCreate={(name) => setShelves((s) => [...s, name])}
+          onClose={() => setNewShelfOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2291,7 +2290,7 @@ function EmptyState({
           marginBottom: 22,
         }}
       >
-        Import an EPUB to start reading. Leaflet parses it locally — no
+        Import an EPUB to start reading. Riwaq parses it locally — no
         uploads, no accounts.
       </div>
       <Button
@@ -2396,72 +2395,6 @@ function relTime(ts: number): string {
 //
 // Subscribes to the download queue so the badge reflects in-flight
 // jobs in real time. Same visual shape in desktop + mobile headers.
-
-function QueueIconButton({
-  theme,
-  onClick,
-}: {
-  theme: Theme;
-  onClick: () => void;
-}) {
-  // Active = queued or running. We don't include terminal jobs in the
-  // badge since the user has already seen them.
-  const [active, setActive] = useState(() => activeJobCount(getQueueState()));
-  useEffect(() => {
-    const off = subscribeToQueue((s) => setActive(activeJobCount(s)));
-    return off;
-  }, []);
-  return (
-    <button
-      onClick={onClick}
-      aria-label={
-        active === 0
-          ? "Open downloads"
-          : `Open downloads — ${active} active`
-      }
-      title="Downloads"
-      style={{
-        position: "relative",
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        border: `0.5px solid ${theme.rule}`,
-        background: "transparent",
-        color: theme.ink,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 8,
-      }}
-    >
-      <Icon name="download" size={16} />
-      {active > 0 && (
-        <span
-          style={{
-            position: "absolute",
-            top: -3,
-            right: -3,
-            minWidth: 16,
-            height: 16,
-            padding: "0 4px",
-            borderRadius: 8,
-            background: theme.ink,
-            color: theme.bg,
-            fontSize: 10,
-            fontWeight: 700,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            lineHeight: 1,
-          }}
-        >
-          {active > 99 ? "99+" : active}
-        </span>
-      )}
-    </button>
-  );
-}
 
 /** Badge count = work the user might want to address. That includes
  *  jobs that were interrupted by the app dying mid-flight — the
