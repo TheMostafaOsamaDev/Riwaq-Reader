@@ -368,3 +368,11 @@ input:focus-visible,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Horizontally mirror directional icons (back/next arrows, disclosure
+   chevrons) when the UI language is right-to-left. Applied via className on
+   the specific icons that encode a left/right meaning — never blanket-applied,
+   so non-directional glyphs (search, settings, download) stay upright. */
+[dir="rtl"] .rtl-flip-x {
+  transform: scaleX(-1);
+}

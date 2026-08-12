@@ -8,6 +8,7 @@ export interface IconProps {
   stroke?: number;
   fill?: string;
   style?: CSSProperties;
+  className?: string;
 }
 
 export const ICONS = {
@@ -51,6 +52,7 @@ export function Icon({
   stroke = 1.5,
   fill = "none",
   style,
+  className,
 }: IconProps) {
   return (
     <svg
@@ -63,6 +65,7 @@ export function Icon({
       strokeLinecap="round"
       strokeLinejoin="round"
       style={style}
+      className={className}
     >
       <path d={ICONS[name]} />
     </svg>
