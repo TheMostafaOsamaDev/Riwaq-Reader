@@ -1,0 +1,43 @@
+// English UI catalog — the SOURCE OF TRUTH for message keys. Every key here
+// MUST have an Arabic counterpart in ./ar.ts (the `Messages` type makes a
+// missing key a compile error). Keys are flat + dot-namespaced.
+export const en = {
+  // common (reused across surfaces)
+  "common.close": "Close",
+  "common.cancel": "Cancel",
+  "common.back": "Back",
+  "common.done": "Done",
+  "common.delete": "Delete",
+  "common.retry": "Retry",
+
+  // settings panel
+  "settings.title": "Reading",
+  "settings.subtitle": "Appearance & typography",
+  "settings.language": "Language",
+  "settings.language.auto": "Auto",
+  "settings.language.en": "English",
+  "settings.language.ar": "العربية",
+  "settings.theme": "Theme",
+  "settings.theme.system": "System",
+  "settings.theme.systemHint": "Follows your OS light / dark setting",
+  "settings.font": "Font",
+  "settings.fontSize": "Font size · {n}px",
+  "settings.lineHeight": "Line height · {n}",
+  "settings.letterSpacing": "Letter spacing · {n}em",
+  "settings.contentWidth": "Content width · {n}%",
+  "settings.alignment": "Alignment",
+  "settings.align.auto": "Auto",
+  "settings.readingMode": "Reading mode",
+  "settings.mode.paginated2": "Two pages",
+  "settings.mode.paginated1": "Single page",
+  "settings.mode.scroll": "Scroll",
+  "settings.tapToTurn": "Tap to turn pages",
+  "settings.on": "On",
+  "settings.off": "Off",
+  "settings.tapZoneWidth": "Tap zone width · {n}%",
+  "settings.tapStride": "Tap scroll length · {n}%",
+
+  // app-root
+  "app.loadingBook": "Loading book…",
+  "panel.close": "Close panel",
+} as const;
