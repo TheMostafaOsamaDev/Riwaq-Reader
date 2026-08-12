@@ -40,4 +40,26 @@ export const en = {
   // app-root
   "app.loadingBook": "Loading book…",
   "panel.close": "Close panel",
+
+  // library sidebar
+  "sidebar.searchLibrary": "Search library",
+  "sidebar.main": "Main",
+  "sidebar.library": "Library",
+  "sidebar.reading": "Reading",
+  "sidebar.finished": "Finished",
+  "sidebar.wishlist": "Wishlist",
+  "sidebar.store": "Store",
+  "sidebar.shelves": "Shelves",
+  "sidebar.newShelf": "New shelf",
+  "sidebar.downloads": "Downloads",
+  "sidebar.settings": "Settings",
+  "sidebar.importBook": "Import book",
+  "sidebar.importing": "Importing…",
+  "sidebar.moreImport": "More import options",
+  "sidebar.folderOfEpubs": "Folder of EPUBs",
+  "sidebar.wordDoc": "Word document",
+  "sidebar.expand": "Expand {name}",
+  "sidebar.collapse": "Collapse {name}",
+  "sidebar.doubleClickExpand": "Double-click to expand",
+  "sidebar.doubleClickCollapse": "Double-click to collapse",
 } as const;

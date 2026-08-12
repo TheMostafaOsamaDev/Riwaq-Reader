@@ -14,6 +14,8 @@ import type { IconProps } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
 import type { LibraryTab } from "./Library";
+import { useI18n } from "../i18n/useI18n";
+import type { Dir, MsgKey, Tr } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -44,10 +46,10 @@ function useDownloadSummary() {
   return { count: active.length, active: active.length > 0, progress };
 }
 
-const TREE: { key: LibraryTab; label: string }[] = [
-  { key: "reading", label: "Reading" },
-  { key: "finished", label: "Finished" },
-  { key: "wishlist", label: "Wishlist" },
+const TREE_KEYS: { key: LibraryTab; k: MsgKey }[] = [
+  { key: "reading", k: "sidebar.reading" },
+  { key: "finished", k: "sidebar.finished" },
+  { key: "wishlist", k: "sidebar.wishlist" },
 ];
 
 export function LibrarySidebar({
@@ -67,6 +69,7 @@ export function LibrarySidebar({
   onOpenShelves,
   onNewShelf,
 }: Props) {
+  const { tr, dir } = useI18n();
   const dark = themeKey === "dark" || themeKey === "oled";
   const gold = dark ? "#d4a84a" : "#c9a24a";
   const goldSoft = dark ? "rgba(212,168,74,0.22)" : "rgba(201,162,74,0.18)";
@@ -115,37 +118,37 @@ export function LibrarySidebar({
         style={{
           display: "flex", alignItems: "center", gap: 9, width: "calc(100% - 8px)", margin: "0 4px 12px",
           background: theme.bg, border: `1px solid ${theme.rule}`, borderRadius: 11, padding: "9px 11px",
-          cursor: "pointer", font: "inherit", color: theme.muted, textAlign: "left", transition: TRANSITION,
+          cursor: "pointer", font: "inherit", color: theme.muted, textAlign: "start", transition: TRANSITION,
         }}
         onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
         onMouseLeave={(e) => (e.currentTarget.style.background = theme.bg)}
       >
         <Icon name="search" size={16} />
-        <span style={{ flex: 1, fontSize: 13 }}>Search library</span>
+        <span style={{ flex: 1, fontSize: 13 }}>{tr("sidebar.searchLibrary")}</span>
         <span style={{ fontSize: 10.5, color: theme.muted, border: `1px solid ${theme.rule}`, borderRadius: 5, padding: "2px 6px", fontWeight: 600, lineHeight: 1 }}>⌘K</span>
       </button>
 
       {/* Scrollable nav */}
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-        <SectionLabel theme={theme}>Main</SectionLabel>
+        <SectionLabel theme={theme}>{tr("sidebar.main")}</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 5, padding: "0 4px" }}>
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}
           <div>
-            <CollapsibleRow theme={theme} dark={dark} icon="grid" label="Library" active={tab === "all" && !shelvesActive} open={openLib} onActivate={() => setTab("all")} setOpen={setOpenLib} />
+            <CollapsibleRow theme={theme} dark={dark} icon="grid" label={tr("sidebar.library")} active={tab === "all" && !shelvesActive} open={openLib} onActivate={() => setTab("all")} setOpen={setOpenLib} dir={dir} tr={tr} />
             <Collapse open={openLib}>
               <Tree theme={theme}>
-                {TREE.map((t) => (
-                  <TreeButton key={t.key} theme={theme} label={t.label} active={tab === t.key} onClick={() => setTab(t.key)} />
+                {TREE_KEYS.map((t) => (
+                  <TreeButton key={t.key} theme={theme} label={tr(t.k)} active={tab === t.key} onClick={() => setTab(t.key)} />
                 ))}
               </Tree>
             </Collapse>
           </div>
 
-          <NavRow theme={theme} icon="globe" label="Store" active={tab === "store" && !shelvesActive} onClick={() => setTab("store")} />
+          <NavRow theme={theme} icon="globe" label={tr("sidebar.store")} active={tab === "store" && !shelvesActive} onClick={() => setTab("store")} />
 
           {/* Shelves (collapsible) — row + tree grouped so the nav gap stays uniform */}
           <div>
-            <CollapsibleRow theme={theme} dark={dark} icon="layers" label="Shelves" active={shelvesActive} open={openShelves} onActivate={onOpenShelves} setOpen={setOpenShelves} />
+            <CollapsibleRow theme={theme} dark={dark} icon="layers" label={tr("sidebar.shelves")} active={shelvesActive} open={openShelves} onActivate={onOpenShelves} setOpen={setOpenShelves} dir={dir} tr={tr} />
             <Collapse open={openShelves}>
               <Tree theme={theme}>
                 {shelves.map((s) => (
@@ -153,11 +156,11 @@ export function LibrarySidebar({
                 ))}
                 <button
                   onClick={onNewShelf}
-                  style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", border: 0, background: "transparent", color: theme.muted, font: "inherit", fontSize: 13, fontWeight: 500, padding: "8px 12px", borderRadius: 9, cursor: "pointer", transition: TRANSITION }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "start", border: 0, background: "transparent", color: theme.muted, font: "inherit", fontSize: 13, fontWeight: 500, padding: "8px 12px", borderRadius: 9, cursor: "pointer", transition: TRANSITION }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  <Icon name="plus" size={14} /> New shelf
+                  <Icon name="plus" size={14} /> {tr("sidebar.newShelf")}
                 </button>
               </Tree>
             </Collapse>
@@ -166,7 +169,7 @@ export function LibrarySidebar({
           {/* Downloads — constant height, progress fills inside */}
           <button
             onClick={onOpenQueue}
-            title="Downloads"
+            title={tr("sidebar.downloads")}
             style={{
               position: "relative", overflow: "hidden", height: 38, display: "flex", alignItems: "center", gap: 11,
               padding: "0 12px", border: 0, borderRadius: 10, background: "transparent", color: theme.ink, font: "inherit",
@@ -175,17 +178,17 @@ export function LibrarySidebar({
             onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: dl.active ? `${Math.max(6, Math.round(dl.progress * 100))}%` : 0, background: goldSoft, borderRadius: 10, transition: "width .35s ease", zIndex: 0 }} />
+            <span style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: dl.active ? `${Math.max(6, Math.round(dl.progress * 100))}%` : 0, background: goldSoft, borderRadius: 10, transition: "width .35s ease", zIndex: 0 }} />
             <span style={{ position: "relative", zIndex: 1, color: theme.muted, display: "flex" }}><Icon name="download" size={18} /></span>
-            <span style={{ position: "relative", zIndex: 1 }}>Downloads</span>
+            <span style={{ position: "relative", zIndex: 1 }}>{tr("sidebar.downloads")}</span>
             {dl.active ? (
-              <span style={{ position: "relative", zIndex: 1, marginLeft: "auto", fontSize: 11.5, fontWeight: 600, color: theme.ink, fontVariantNumeric: "tabular-nums" }}>{Math.round(dl.progress * 100)}%</span>
+              <span style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", fontSize: 11.5, fontWeight: 600, color: theme.ink, fontVariantNumeric: "tabular-nums" }}>{Math.round(dl.progress * 100)}%</span>
             ) : dl.count > 0 ? (
-              <span style={{ position: "relative", zIndex: 1, marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: goldSoft, color: gold, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{dl.count}</span>
+              <span style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: goldSoft, color: gold, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{dl.count}</span>
             ) : null}
           </button>
 
-          <NavRow theme={theme} icon="settings" label="Settings" active={false} onClick={onOpenSettings} />
+          <NavRow theme={theme} icon="settings" label={tr("sidebar.settings")} active={false} onClick={onOpenSettings} />
         </nav>
       </div>
 
@@ -198,7 +201,8 @@ export function LibrarySidebar({
               disabled={importing}
               style={{
                 flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 40, border: 0,
-                borderRight: `1px solid ${dark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.18)"}`, borderRadius: "11px 0 0 11px",
+                borderInlineEnd: `1px solid ${dark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.18)"}`,
+                borderStartStartRadius: 11, borderEndStartRadius: 11, borderStartEndRadius: 0, borderEndEndRadius: 0,
                 background: theme.ink, color: theme.paper, font: "inherit", fontSize: 13.5, fontWeight: 600,
                 cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1, transition: TRANSITION,
               }}
@@ -206,12 +210,16 @@ export function LibrarySidebar({
               onMouseLeave={(e) => { if (!importing) e.currentTarget.style.opacity = "1"; }}
             >
               <Icon name="plus" size={16} />
-              {importing ? "Importing…" : "Import book"}
+              {importing ? tr("sidebar.importing") : tr("sidebar.importBook")}
             </button>
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              aria-label="More import options"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 40, border: 0, borderRadius: "0 11px 11px 0", background: theme.ink, color: theme.paper, cursor: "pointer", transition: TRANSITION }}
+              aria-label={tr("sidebar.moreImport")}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 40, border: 0,
+                borderStartStartRadius: 0, borderEndStartRadius: 0, borderStartEndRadius: 11, borderEndEndRadius: 11,
+                background: theme.ink, color: theme.paper, cursor: "pointer", transition: TRANSITION,
+              }}
               onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
               onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
             >
@@ -220,8 +228,8 @@ export function LibrarySidebar({
           </div>
           {menuOpen && (
             <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 6px)", background: theme.paper, border: `1px solid ${theme.rule}`, borderRadius: 12, boxShadow: "0 16px 36px rgba(0,0,0,0.18)", padding: 6, zIndex: 20 }}>
-              <MenuItem theme={theme} icon="folder" label="Folder of EPUBs" onClick={() => { setMenuOpen(false); onImportFolder(); }} />
-              <MenuItem theme={theme} icon="doc" label="Word document" tag=".docx" onClick={() => { setMenuOpen(false); onImportDocx(); }} />
+              <MenuItem theme={theme} icon="folder" label={tr("sidebar.folderOfEpubs")} onClick={() => { setMenuOpen(false); onImportFolder(); }} />
+              <MenuItem theme={theme} icon="doc" label={tr("sidebar.wordDoc")} tag=".docx" onClick={() => { setMenuOpen(false); onImportDocx(); }} />
             </div>
           )}
         </div>
@@ -246,8 +254,8 @@ function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
 
 function Tree({ theme, children }: { theme: Theme; children: ReactNode }) {
   return (
-    <div style={{ position: "relative", margin: "4px 0 0 22px", paddingLeft: 14 }}>
-      <span style={{ position: "absolute", left: 0, top: 2, bottom: 14, width: 1, background: theme.rule }} />
+    <div style={{ position: "relative", marginBlockStart: 4, marginInlineStart: 22, paddingInlineStart: 14 }}>
+      <span style={{ position: "absolute", insetInlineStart: 0, top: 2, bottom: 14, width: 1, background: theme.rule }} />
       {children}
     </div>
   );
@@ -258,24 +266,24 @@ function TreeButton({ theme, label, active, onClick }: { theme: Theme; label: st
     <button
       onClick={onClick}
       style={{
-        position: "relative", display: "block", width: "100%", textAlign: "left", border: 0,
+        position: "relative", display: "block", width: "100%", textAlign: "start", border: 0,
         background: active ? theme.ink : "transparent", color: active ? theme.paper : theme.muted, fontWeight: active ? 600 : 500,
         fontSize: 13, fontFamily: "inherit", padding: "8px 12px", borderRadius: 9, cursor: "pointer", transition: TRANSITION,
       }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = theme.hover; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
     >
-      <span style={{ position: "absolute", left: -14, top: "50%", width: 10, height: 1, background: theme.rule }} />
+      <span style={{ position: "absolute", insetInlineStart: -14, top: "50%", width: 10, height: 1, background: theme.rule }} />
       {label}
     </button>
   );
 }
 
 function CollapsibleRow({
-  theme, dark, icon, label, active, open, onActivate, setOpen,
+  theme, dark, icon, label, active, open, onActivate, setOpen, dir, tr,
 }: {
   theme: Theme; dark: boolean; icon: IconProps["name"]; label: string; active: boolean; open: boolean;
-  onActivate: () => void; setOpen: (v: boolean) => void;
+  onActivate: () => void; setOpen: (v: boolean) => void; dir: Dir; tr: Tr;
 }) {
   // Split row modelled on the bottom Import split-button: both sides share the
   // row's own colour (solid ink when active, transparent when idle), parted only
@@ -305,11 +313,11 @@ function CollapsibleRow({
           onActivate();
           setOpen(true);
         }}
-        title={`Double-click to ${open ? "collapse" : "expand"}`}
+        title={tr(open ? "sidebar.doubleClickCollapse" : "sidebar.doubleClickExpand")}
         style={{
           flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", border: 0,
           background: sectionBg, color: fg, fontWeight: active ? 600 : 500, fontSize: 13.5, fontFamily: "inherit",
-          cursor: "pointer", textAlign: "left", userSelect: "none", WebkitUserSelect: "none", transition: TRANSITION,
+          cursor: "pointer", textAlign: "start", userSelect: "none", WebkitUserSelect: "none", transition: TRANSITION,
         }}
         onMouseEnter={(e) => { if (active) e.currentTarget.style.opacity = "0.9"; else e.currentTarget.style.background = theme.hover; }}
         onMouseLeave={(e) => { if (active) e.currentTarget.style.opacity = "1"; else e.currentTarget.style.background = "transparent"; }}
@@ -319,15 +327,26 @@ function CollapsibleRow({
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+        aria-label={tr(open ? "sidebar.collapse" : "sidebar.expand", { name: label })}
         style={{
           width: 38, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: 0,
-          borderLeft: `1px solid ${divider}`, background: sectionBg, color: iconColor, cursor: "pointer", transition: TRANSITION,
+          borderInlineStart: `1px solid ${divider}`, background: sectionBg, color: iconColor, cursor: "pointer", transition: TRANSITION,
         }}
         onMouseEnter={(e) => { if (active) e.currentTarget.style.opacity = "0.9"; else e.currentTarget.style.background = theme.hover; }}
         onMouseLeave={(e) => { if (active) e.currentTarget.style.opacity = "1"; else e.currentTarget.style.background = "transparent"; }}
       >
-        <Icon name="chevronR" size={15} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 180ms ease" }} />
+        <Icon
+          name="chevronR"
+          size={15}
+          style={{
+            // Compose the RTL mirror + open-state rotation without ever emitting
+            // "scaleX(-1) none" — combining a transform function with the `none`
+            // keyword is invalid CSS and gets silently rejected by the browser,
+            // which would leave the chevron stuck showing its previous rotation.
+            transform: [dir === "rtl" ? "scaleX(-1)" : "", open ? "rotate(90deg)" : ""].filter(Boolean).join(" ") || "none",
+            transition: "transform 180ms ease",
+          }}
+        />
       </button>
     </div>
   );
@@ -348,7 +367,7 @@ function NavRow({ theme, icon, label, active, onClick }: { theme: Theme; icon: I
       style={{
         position: "relative", display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", border: 0, borderRadius: 10,
         background: active ? theme.ink : "transparent", color: active ? theme.paper : theme.ink, fontWeight: active ? 600 : 500, fontSize: 13.5,
-        fontFamily: "inherit", cursor: "pointer", textAlign: "left", width: "100%", transition: TRANSITION,
+        fontFamily: "inherit", cursor: "pointer", textAlign: "start", width: "100%", transition: TRANSITION,
       }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = theme.hover; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
@@ -363,13 +382,13 @@ function MenuItem({ theme, icon, label, tag, onClick }: { theme: Theme; icon: Ic
   return (
     <button
       onClick={onClick}
-      style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", border: 0, background: "transparent", color: theme.ink, font: "inherit", fontWeight: 500, fontSize: 13, padding: 10, borderRadius: 8, cursor: "pointer", textAlign: "left", transition: TRANSITION }}
+      style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", border: 0, background: "transparent", color: theme.ink, font: "inherit", fontWeight: 500, fontSize: 13, padding: 10, borderRadius: 8, cursor: "pointer", textAlign: "start", transition: TRANSITION }}
       onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
       <span style={{ color: theme.muted, display: "flex" }}><Icon name={icon} size={17} /></span>
       {label}
-      {tag && <span style={{ marginLeft: "auto", fontSize: 10.5, color: theme.muted }}>{tag}</span>}
+      {tag && <span style={{ marginInlineStart: "auto", fontSize: 10.5, color: theme.muted }}>{tag}</span>}
     </button>
   );
 }
