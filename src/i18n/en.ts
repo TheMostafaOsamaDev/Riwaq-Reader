@@ -12,6 +12,13 @@ export const en = {
   "common.confirm": "Confirm",
   "common.save": "Save",
   "common.saving": "Saving…",
+  // Display-time fallback for a blank `Book.author` — NEVER persist this
+  // string itself into data (a UI-locale string baked into a data field
+  // would freeze in whatever language was active at save time and stay
+  // wrong forever after). Apply only at read-only display sites, e.g.
+  // `book.author || tr(...)` in BookCover/Library — never in an editable
+  // input's `value`.
+  "common.unknownAuthor": "Unknown author",
 
   // settings panel
   "settings.title": "Reading",
@@ -186,7 +193,6 @@ export const en = {
   "search.clearHistory": "Clear history",
   "search.removeRecent": "Remove {term}",
   "search.jumpTo": "Jump to",
-  "search.unknownAuthor": "Unknown",
 
   // edit-book modal
   "dialog.editBook.ariaLabel": "Edit book details",
@@ -391,7 +397,6 @@ export const en = {
   "docx.coverSelectedInline": "cover selected",
   "docx.titleLabel": "Title",
   "docx.authorLabel": "Author",
-  "docx.unknownAuthor": "Unknown author",
   "docx.addToLibrary": "Add to library",
   "docx.adding": "Adding…",
   "docx.addFailedPrefix": "Couldn't add:",

@@ -12,6 +12,7 @@ export const ar: Messages = {
   "common.confirm": "تأكيد",
   "common.save": "حفظ",
   "common.saving": "جارٍ الحفظ…",
+  "common.unknownAuthor": "مؤلف غير معروف",
 
   "settings.title": "القراءة",
   "settings.subtitle": "المظهر والخطوط",
@@ -176,7 +177,6 @@ export const ar: Messages = {
   "search.clearHistory": "مسح السجل",
   "search.removeRecent": "إزالة {term}",
   "search.jumpTo": "انتقل إلى",
-  "search.unknownAuthor": "غير معروف",
 
   "dialog.editBook.ariaLabel": "تعديل تفاصيل الكتاب",
   "dialog.editBook.title": "تعديل الكتاب",
@@ -344,7 +344,6 @@ export const ar: Messages = {
   "docx.coverSelectedInline": "تم اختيار الغلاف",
   "docx.titleLabel": "العنوان",
   "docx.authorLabel": "المؤلف",
-  "docx.unknownAuthor": "مؤلف غير معروف",
   "docx.addToLibrary": "إضافة إلى المكتبة",
   "docx.adding": "جارٍ الإضافة…",
   "docx.addFailedPrefix": "تعذّرت الإضافة:",

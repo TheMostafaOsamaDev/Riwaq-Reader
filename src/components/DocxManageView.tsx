@@ -63,7 +63,12 @@ export function DocxManageView({
 
   // ── editable bits ──────────────────────────────────────────────────────
   const [title, setTitle] = useState<string>(staged.fallbackTitle);
-  const [author, setAuthor] = useState<string>(() => tr("docx.unknownAuthor"));
+  // Empty by default — NOT a translated fallback string. A localized
+  // "Unknown author" is only ever a display-time affordance (the input's
+  // placeholder here; `|| tr(...)` at read-only render sites elsewhere) so
+  // the persisted `Book.author` never freezes in whatever UI locale was
+  // active at import time.
+  const [author, setAuthor] = useState<string>("");
 
   // ── deletion state ────────────────────────────────────────────────────
   // Stored as a "kept" set so the default invariant ("everything is kept
@@ -205,7 +210,7 @@ export function DocxManageView({
     try {
       await onCommit(
         { keptBlockIds: keptIds, coverImageId },
-        { title: title.trim() || staged.fallbackTitle, author: author.trim() || tr("docx.unknownAuthor") },
+        { title: title.trim() || staged.fallbackTitle, author: author.trim() },
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -415,6 +420,7 @@ function Header({
           value={author}
           onChange={onAuthorChange}
           flex={1}
+          placeholder={tr("common.unknownAuthor")}
         />
       </div>
 
@@ -449,12 +455,17 @@ function LabeledInput({
   value,
   onChange,
   flex,
+  placeholder,
 }: {
   theme: Theme;
   label: string;
   value: string;
   onChange: (s: string) => void;
   flex?: number;
+  /** Shown only while the field is empty — never persisted. Used for the
+   *  "Unknown author" hint so the fallback stays a display-time affordance
+   *  instead of being baked into the actual field value. */
+  placeholder?: string;
 }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", flex }}>
@@ -473,6 +484,7 @@ function LabeledInput({
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
         style={{
           fontFamily: "inherit",
           fontSize: 13,

@@ -241,7 +241,7 @@ export function SearchOverlay({
                       />
                       <span style={{ minWidth: 0 }}>
                         <span style={{ display: "block", fontSize: 14, color: theme.ink, fontWeight: 500 }}>{b.title}</span>
-                        <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{b.author || tr("search.unknownAuthor")}</span>
+                        <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{b.author || tr("common.unknownAuthor")}</span>
                       </span>
                     </button>
                   ))}

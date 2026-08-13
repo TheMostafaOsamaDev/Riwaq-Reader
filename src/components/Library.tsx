@@ -1903,6 +1903,7 @@ function MobileShelfCard({
   onOpen: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
+  const { tr } = useI18n();
   const longPress = useLongPress(onContextMenu);
   return (
     <div
@@ -1954,7 +1955,7 @@ function MobileShelfCard({
         {book.title}
       </div>
       <div style={{ fontSize: 9.5, color: theme.muted, marginTop: 2 }}>
-        {book.author}
+        {book.author || tr("common.unknownAuthor")}
       </div>
       {book.progress > 0 && book.progress < 1 && (
         <div
@@ -2056,7 +2057,10 @@ function HeroContinueCard({
           {book.title}
         </h1>
         <div style={{ fontSize: 13, color: theme.muted, marginBottom: 22 }}>
-          {tr("library.byAuthorChapters", { author: book.author, n: book.chapterCount })}
+          {tr("library.byAuthorChapters", {
+            author: book.author || tr("common.unknownAuthor"),
+            n: book.chapterCount,
+          })}
         </div>
         <div
           style={{
@@ -2213,7 +2217,7 @@ function LibraryCard({
           {book.title}
         </div>
         <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
-          {book.author}
+          {book.author || tr("common.unknownAuthor")}
         </div>
         <div
           style={{

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   title: string;
@@ -34,6 +35,7 @@ export function BookCover({
   src,
   fluid = false,
 }: Props) {
+  const { tr } = useI18n();
   const { w, h } = BOOK_COVER_DIMS[size];
   const [p1, p2, p3] = palette;
   const [failed, setFailed] = useState(false);
@@ -156,7 +158,7 @@ export function BookCover({
             textOverflow: "ellipsis",
           }}
         >
-          {author}
+          {author || tr("common.unknownAuthor")}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
