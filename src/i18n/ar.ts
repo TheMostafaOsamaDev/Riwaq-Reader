@@ -146,6 +146,29 @@ export const ar: Messages = {
   "reader.readingSettings": "إعدادات القراءة",
   "reader.readingProgress": "تقدّم القراءة",
 
+  "toc.searchChapters": "بحث في الفصول",
+  "toc.clearSearch": "مسح البحث",
+  "toc.noMatches": "لا فصول تطابق “{term}”.",
+  "toc.now": "الآن",
+
+  "highlights.title": "التظليلات",
+  "highlights.subtitleNone": "لا شيء بعد",
+  "highlights.subtitleCountOne": "{n} في هذا الكتاب",
+  "highlights.subtitleCountOther": "{n} في هذا الكتاب",
+  "highlights.emptyTitle": "لا تظليلات بعد",
+  "highlights.emptyBody":
+    "حدّد نصًا أثناء القراءة لتظليله، ثم أضف ملاحظة لتتذكر سبب أهميته.",
+  "highlights.chapterLabel": "الفصل {n}",
+  "highlights.addNote": "إضافة ملاحظة",
+  "highlights.editNote": "تعديل الملاحظة",
+  "highlights.notePlaceholder": "ملاحظة…",
+  "highlights.actions": "خيارات التظليل",
+  "highlights.delete": "حذف التظليل",
+
+  "progress.ofBook": "من الكتاب",
+  "progress.chapterOfTotal": "الفصل {n} من {total}",
+  "progress.chaptersLeft": "تبقّى {n}",
+
   "search.placeholder": "ابحث عن كتب، مؤلفين…",
   "search.results": "النتائج",
   "search.noMatches": "لا نتائج — صفِّ الرف حسب “{term}”",

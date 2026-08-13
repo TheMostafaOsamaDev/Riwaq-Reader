@@ -3,11 +3,15 @@
 // mounts and runs the slide-in keyframe; when it flips false the
 // panel stays mounted long enough to slide back out, then unmounts.
 //
-// `side` mirrors PanelShell's existing prop: "left" panels live on
-// the left of the reader column and slide from the left edge.
-// "right" panels mirror that on the other side.
+// `side` mirrors PanelShell's existing prop and is a LOGICAL position:
+// "left" panels live on the reader column's leading edge in LTR — but
+// under RTL the chrome's flex row mirrors (Task 6), so a "left" panel
+// physically renders on the right, and the slide-in keyframe is chosen
+// to match wherever it actually lands (see `physicalSide` below), not
+// the static prop.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useI18n } from "../i18n/useI18n";
 import { MOTION, useReducedMotion } from "../styles/motion";
 
 interface Props {
@@ -19,6 +23,7 @@ interface Props {
 type Phase = "enter" | "open" | "exit";
 
 export function AnimatedPanel({ open, side, children }: Props) {
+  const { dir } = useI18n();
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState<Phase | null>(open ? "enter" : null);
   // Remember the last children seen while open so the user sees the
@@ -48,10 +53,16 @@ export function AnimatedPanel({ open, side, children }: Props) {
 
   if (phase === null) return null;
 
-  const enterClass =
-    side === "left" ? "leaflet-panel-enter-left" : "leaflet-panel-enter-right";
-  const exitClass =
-    side === "left" ? "leaflet-panel-exit-left" : "leaflet-panel-exit-right";
+  // The chrome root's flex row mirrors under RTL (Task 6), so a panel
+  // declared side="left" can end up resting on the physical right edge
+  // (and vice versa). The slide keyframes in global.css are physical —
+  // translateX(±100%) — so pick the keyframe by where the panel actually
+  // lands on screen, not by the static `side` prop, or it would sweep in
+  // from the wrong edge, across the reading column.
+  const physicalSide =
+    dir === "rtl" ? (side === "left" ? "right" : "left") : side;
+  const enterClass = `leaflet-panel-enter-${physicalSide}`;
+  const exitClass = `leaflet-panel-exit-${physicalSide}`;
   const cls = reduced
     ? undefined
     : phase === "enter"

@@ -152,6 +152,32 @@ export const en = {
   "reader.readingSettings": "Reading settings",
   "reader.readingProgress": "Reading progress",
 
+  // TOC panel (reuses reader.toc for its own title — see PanelShell usage)
+  "toc.searchChapters": "Search chapters",
+  "toc.clearSearch": "Clear search",
+  "toc.noMatches": "No chapters match “{term}”.",
+  "toc.now": "Now",
+
+  // Highlights panel
+  "highlights.title": "Highlights",
+  "highlights.subtitleNone": "None yet",
+  "highlights.subtitleCountOne": "{n} in this book",
+  "highlights.subtitleCountOther": "{n} in this book",
+  "highlights.emptyTitle": "No highlights yet",
+  "highlights.emptyBody":
+    "Select text while reading to highlight it, then add a note to remember why it mattered.",
+  "highlights.chapterLabel": "Chapter {n}",
+  "highlights.addNote": "Add note",
+  "highlights.editNote": "Edit note",
+  "highlights.notePlaceholder": "Note…",
+  "highlights.actions": "Highlight actions",
+  "highlights.delete": "Delete highlight",
+
+  // Progress overlay (heading reuses reader.readingProgress)
+  "progress.ofBook": "of book",
+  "progress.chapterOfTotal": "chapter {n} of {total}",
+  "progress.chaptersLeft": "{n} left",
+
   // search overlay (⌘K / Ctrl-K command palette)
   "search.placeholder": "Search books, authors…",
   "search.results": "Results",

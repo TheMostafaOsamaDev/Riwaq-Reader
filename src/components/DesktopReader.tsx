@@ -426,21 +426,21 @@ export function DesktopReader({
       const atBottom =
         el.scrollHeight - el.scrollTop - el.clientHeight <= 1;
       const atTop = el.scrollTop <= 1;
-      let dir: "down" | "up" | null = null;
+      let overscrollDir: "down" | "up" | null = null;
       if (atBottom && goingDown && currentChapter < chapterCount - 1) {
-        dir = "down";
+        overscrollDir = "down";
       } else if (atTop && goingUp && currentChapter > 0) {
-        dir = "up";
+        overscrollDir = "up";
       }
-      if (dir === null) {
+      if (overscrollDir === null) {
         if (overscrollDirRef.current !== null) reset();
         return;
       }
       // Block the browser's own bounce so the wheel events stay ours
       // until we've decided whether to flip chapters.
       e.preventDefault();
-      if (overscrollDirRef.current !== dir) {
-        overscrollDirRef.current = dir;
+      if (overscrollDirRef.current !== overscrollDir) {
+        overscrollDirRef.current = overscrollDir;
         overscrollAmtRef.current = 0;
       }
       overscrollAmtRef.current = Math.min(
@@ -448,10 +448,10 @@ export function DesktopReader({
         overscrollAmtRef.current + Math.abs(e.deltaY),
       );
       const pct = Math.min(1, overscrollAmtRef.current / OVERSCROLL_THRESHOLD);
-      setOverscroll({ dir, pct });
+      setOverscroll({ dir: overscrollDir, pct });
 
       if (overscrollAmtRef.current >= OVERSCROLL_THRESHOLD) {
-        const triggered = dir;
+        const triggered = overscrollDir;
         reset();
         if (triggered === "down") {
           nextChapter();
@@ -1053,14 +1053,12 @@ export function DesktopReader({
           <div
             style={{
               width: 380,
-              // Kept physical (not borderInlineStart): AnimatedPanel's
-              // side="right" slide is itself a physical translateX(100%)
-              // unaffected by `dir` (out of this task's scope — panel-side
-              // mirroring is a separate concern), so this panel always sits
-              // on the physical right; the divider must stay on its
-              // physical-left edge (the one facing the reading column)
-              // regardless of UI direction.
-              borderLeft: `0.5px solid ${theme.rule}`,
+              // Logical, not physical: under RTL the chrome's flex row
+              // mirrors (Task 6), so this side="right" panel can land on
+              // the physical left. borderInlineStart always faces the
+              // reading column — physical right in LTR, physical left in
+              // RTL — matching PanelShell's own side-border logic.
+              borderInlineStart: `0.5px solid ${theme.rule}`,
               background: theme.bg,
               padding: 24,
               display: "flex",
