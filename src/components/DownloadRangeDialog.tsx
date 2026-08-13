@@ -21,6 +21,7 @@ import { enqueueRange } from "../store/downloadQueue";
 import type { SourceNovel } from "../sources/types";
 import { Button } from "./Button";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -56,6 +57,7 @@ export function DownloadRangeDialog({
   onStarted,
   onCompleted,
 }: Props) {
+  const { tr } = useI18n();
   const source = useMemo(() => getSource(sourceId), [sourceId]);
   // Two data sources to populate the dropdowns:
   //   - the persisted snapshot (offline, the typical path now that
@@ -137,9 +139,10 @@ export function DownloadRangeDialog({
                     // is partial, but keep going with what we have.
                     if (cancelled) return;
                     setError(
-                      `Volume "${persisted.title}" couldn't be loaded — ${
-                        e instanceof Error ? e.message : String(e)
-                      }. Range can still target loaded volumes.`,
+                      tr("downloads.range.volumeLoadError", {
+                        title: persisted.title,
+                        error: e instanceof Error ? e.message : String(e),
+                      }),
                     );
                   } finally {
                     if (!cancelled) setPreloadDone((n) => n + 1);
@@ -235,9 +238,7 @@ export function DownloadRangeDialog({
   const submit = useCallback(() => {
     if (startId === null || endId === null) return;
     if (!libraryEntryId || !snapshot) {
-      setError(
-        "This range download requires the novel to be in your library first.",
-      );
+      setError(tr("downloads.range.needsLibrary"));
       return;
     }
     enqueueRange(
@@ -248,7 +249,7 @@ export function DownloadRangeDialog({
     );
     onStarted();
     onCompleted();
-  }, [startId, endId, snapshot, libraryEntryId, onStarted, onCompleted]);
+  }, [startId, endId, snapshot, libraryEntryId, onStarted, onCompleted, tr]);
 
   return (
     // The scrim, centering, and enter/exit animation live in AnimatedDialog
@@ -280,12 +281,10 @@ export function DownloadRangeDialog({
               letterSpacing: "-0.01em",
             }}
           >
-            Download a chapter range
+            {tr("downloads.range.title")}
           </div>
           <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.5 }}>
-            Pick the first and last chapter to include. Chapters are
-            queued for download and show up in the downloads panel —
-            already-downloaded chapters are skipped.
+            {tr("downloads.range.body")}
           </div>
         </div>
 
@@ -306,7 +305,7 @@ export function DownloadRangeDialog({
                 color: theme.muted,
               }}
             >
-              Loading chapter list…
+              {tr("downloads.range.loading")}
             </div>
           ) : (
             <>
@@ -333,7 +332,7 @@ export function DownloadRangeDialog({
               )}
               <RangePicker
                 theme={theme}
-                label="From"
+                label={tr("downloads.range.from")}
                 choices={choices}
                 value={startId}
                 onChange={setStartId}
@@ -341,7 +340,7 @@ export function DownloadRangeDialog({
               />
               <RangePicker
                 theme={theme}
-                label="To"
+                label={tr("downloads.range.to")}
                 choices={choices}
                 value={endId}
                 onChange={setEndId}
@@ -354,12 +353,20 @@ export function DownloadRangeDialog({
                   paddingTop: 4,
                 }}
               >
-                {pendingInRange} chapter
-                {pendingInRange === 1 ? "" : "s"} will be queued for
-                download
-                {countSelected(startId, endId) !== pendingInRange &&
-                  ` (${countSelected(startId, endId) - pendingInRange} already on disk)`}
-                .
+                {tr(
+                  pendingInRange === 1
+                    ? "downloads.range.queueCountOne"
+                    : "downloads.range.queueCountOther",
+                  {
+                    n: pendingInRange,
+                    extra:
+                      countSelected(startId, endId) !== pendingInRange
+                        ? tr("downloads.range.alreadyOnDisk", {
+                            n: countSelected(startId, endId) - pendingInRange,
+                          })
+                        : "",
+                  },
+                )}
               </div>
             </>
           )}
@@ -375,7 +382,7 @@ export function DownloadRangeDialog({
           }}
         >
           <Button theme={theme} variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {tr("common.cancel")}
           </Button>
           <Button
             theme={theme}
@@ -391,10 +398,10 @@ export function DownloadRangeDialog({
             onClick={submit}
           >
             {preloading
-              ? "Loading volumes…"
+              ? tr("downloads.range.loadingVolumes")
               : pendingInRange === 0
-                ? "Nothing to download"
-                : `Queue ${pendingInRange}`}
+                ? tr("downloads.range.nothingToDownload")
+                : tr("downloads.range.queueButton", { n: pendingInRange })}
           </Button>
         </div>
     </div>
@@ -412,6 +419,7 @@ interface PreloadProgressProps {
  *  proportional to (done / total) and the text counts up as each
  *  volume's AJAX call lands. */
 function PreloadProgress({ theme, done, total }: PreloadProgressProps) {
+  const { tr } = useI18n();
   const pct = total > 0 ? Math.min(1, done / total) : 0;
   return (
     <div
@@ -434,7 +442,7 @@ function PreloadProgress({ theme, done, total }: PreloadProgressProps) {
           color: theme.ink,
         }}
       >
-        <span>Loading every volume's chapters…</span>
+        <span>{tr("downloads.range.preloadLabel")}</span>
         <span style={{ color: theme.muted, fontVariantNumeric: "tabular-nums" }}>
           {done} / {total}
         </span>

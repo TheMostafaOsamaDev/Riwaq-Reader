@@ -27,6 +27,8 @@ import {
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
+import type { Tr } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -35,6 +37,7 @@ interface Props {
 }
 
 export function DownloadQueueView({ theme, layout, onClose }: Props) {
+  const { tr } = useI18n();
   // Snapshot the queue once on mount and re-snapshot on every
   // emission. Job objects are mutated in place by the queue, but
   // setState with a fresh array forces React to re-render.
@@ -135,14 +138,12 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
                   lineHeight: 1.6,
                 }}
               >
-                No downloads yet. Tap the download icon on any chapter
-                to save it offline, or use "Save as offline book" from
-                a novel's detail page to bake it into your library.
+                {tr("downloads.emptyState")}
               </div>
             )}
           {interrupted.length > 0 && (
             <Section
-              title="Interrupted"
+              title={tr("downloads.sectionInterrupted")}
               tone="warn"
               theme={theme}
               action={
@@ -153,38 +154,38 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
                     size="sm"
                     onClick={retryAll}
                   >
-                    Retry all
+                    {tr("downloads.retryAll")}
                   </Button>
                 ) : null
               }
             >
               {interrupted.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} />
+                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
               ))}
             </Section>
           )}
           {activeConversions.length > 0 && (
             <Section
-              title="Saving as offline book"
+              title={tr("downloads.sectionSavingOffline")}
               tone="accent"
               theme={theme}
             >
               {activeConversions.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} />
+                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
               ))}
             </Section>
           )}
           {activeDownloads.length > 0 && (
-            <Section title="Downloading chapters" theme={theme}>
+            <Section title={tr("downloads.sectionDownloading")} theme={theme}>
               {activeDownloads.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} />
+                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
               ))}
             </Section>
           )}
           {recent.length > 0 && (
-            <Section title="Recent" theme={theme}>
+            <Section title={tr("downloads.sectionRecent")} theme={theme}>
               {recent.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} />
+                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
               ))}
             </Section>
           )}
@@ -212,6 +213,7 @@ function Header({
   onClose,
   onClearCompleted,
 }: HeaderProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -227,7 +229,7 @@ function Header({
           was underneath). Matches NovelDetailView's header. */}
       <button
         onClick={onClose}
-        aria-label="Back"
+        aria-label={tr("common.back")}
         style={{
           width: 34,
           height: 34,
@@ -256,7 +258,7 @@ function Header({
             letterSpacing: "-0.01em",
           }}
         >
-          Downloads
+          {tr("sidebar.downloads")}
         </h2>
         <div
           style={{
@@ -268,20 +270,31 @@ function Header({
             fontWeight: 500,
           }}
         >
-          {interruptedCount > 0
-            ? `${interruptedCount} interrupted${
-                activeCount > 0 ? ` · ${activeCount} in progress` : ""
-              }`
-            : activeCount === 0
-              ? "All caught up"
-              : activeCount === 1
-                ? "1 in progress"
-                : `${activeCount} in progress`}
+          {(() => {
+            const interruptedText = tr(
+              interruptedCount === 1
+                ? "downloads.interruptedOne"
+                : "downloads.interruptedOther",
+              { n: interruptedCount },
+            );
+            const activeText = tr(
+              activeCount === 1
+                ? "downloads.activeCountOne"
+                : "downloads.activeCountOther",
+              { n: activeCount },
+            );
+            if (interruptedCount > 0) {
+              return activeCount > 0
+                ? `${interruptedText} · ${activeText}`
+                : interruptedText;
+            }
+            return activeCount === 0 ? tr("downloads.allCaughtUp") : activeText;
+          })()}
         </div>
       </div>
       {onClearCompleted && (
         <Button theme={theme} variant="ghost" size="sm" onClick={onClearCompleted}>
-          Clear completed
+          {tr("downloads.clearCompleted")}
         </Button>
       )}
     </div>
@@ -379,9 +392,18 @@ function Section({
 
 // ── row ───────────────────────────────────────────────────────────────────
 
-function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
+function JobRow({
+  theme,
+  job,
+  tr,
+}: {
+  theme: Theme;
+  job: DownloadJob;
+  tr: Tr;
+}) {
   const isActive = job.status === "queued" || job.status === "running";
-  const statusLine = describe(job);
+  const statusLine = describe(job, tr);
+  const subtitle = subtitleFor(job, tr);
   return (
     <div
       style={{
@@ -415,9 +437,9 @@ function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
-          title={subtitleFor(job)}
+          title={subtitle}
         >
-          {subtitleFor(job)}
+          {subtitle}
         </div>
         <div style={{ marginTop: 6 }}>
           <ProgressBar theme={theme} job={job} />
@@ -440,8 +462,8 @@ function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
       {isActive && (
         <button
           onClick={() => cancelJob(job.id)}
-          title="Cancel"
-          aria-label="Cancel download"
+          title={tr("common.cancel")}
+          aria-label={tr("downloads.cancelDownload")}
           style={{
             background: "transparent",
             border: `0.5px solid ${theme.rule}`,
@@ -462,8 +484,8 @@ function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
       {job.status === "interrupted" && (
         <button
           onClick={() => retryJob(job.id)}
-          title="Retry"
-          aria-label="Retry"
+          title={tr("common.retry")}
+          aria-label={tr("common.retry")}
           style={{
             background: theme.ink,
             border: "none",
@@ -483,7 +505,7 @@ function JobRow({ theme, job }: { theme: Theme; job: DownloadJob }) {
           }}
         >
           <Icon name="download" size={12} />
-          Retry
+          {tr("common.retry")}
         </button>
       )}
     </div>
@@ -516,15 +538,17 @@ function ProgressBar({ theme, job }: { theme: Theme; job: DownloadJob }) {
   );
 }
 
-function describe(job: DownloadJob): string {
+function describe(job: DownloadJob, tr: Tr): string {
   switch (job.status) {
     case "queued":
-      return "Waiting…";
+      return tr("downloads.statusWaiting");
     case "running":
       // Conversion jobs carry a free-form `phase` label that's more
       // useful than a bare percentage ("Building EPUB" / "Saving to
-      // library" / "Fetching chapter 47 / 213"). For chapter jobs we
-      // just show the percent.
+      // library" / "Fetching chapter 47 / 213"). That label is produced
+      // deep in the conversion pipeline (store/storeConversion.ts) and
+      // isn't yet localized — tracked separately from this surface's
+      // own strings. For chapter jobs we just show the percent.
       if (job.kind === "conversion") {
         return `${job.phase} · ${Math.round(job.progress * 100)}%`;
       }
@@ -532,29 +556,41 @@ function describe(job: DownloadJob): string {
     case "done":
       if (job.kind === "conversion") {
         const n = job.producedEntryIds.length;
-        return n === 1 ? "Saved 1 book" : `Saved ${n} books`;
+        return tr(
+          n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
+          { n },
+        );
       }
-      return "Downloaded";
+      return tr("downloads.statusDownloaded");
     case "error":
-      return `Failed: ${job.error ?? "unknown error"}`;
+      return tr("downloads.statusFailed", {
+        error: job.error ?? tr("downloads.unknownError"),
+      });
     case "cancelled":
-      return "Cancelled";
+      return tr("downloads.statusCancelled");
     case "interrupted":
       // Distinguish conversion mid-flight (some volumes already
       // produced) from a freshly-interrupted chapter download.
       if (job.kind === "conversion" && job.producedEntryIds.length > 0) {
         const n = job.producedEntryIds.length;
-        return `Interrupted — ${n} book${n === 1 ? "" : "s"} already saved`;
+        return tr(
+          n === 1
+            ? "downloads.statusInterruptedPartialOne"
+            : "downloads.statusInterruptedPartialOther",
+          { n },
+        );
       }
-      return "Interrupted — tap Retry to resume";
+      return tr("downloads.statusInterruptedResume");
   }
 }
 
 /** Second line of each row: chapter title for chapter jobs, mode
  *  description for conversion jobs. */
-function subtitleFor(job: DownloadJob): string {
+function subtitleFor(job: DownloadJob, tr: Tr): string {
   if (job.kind === "chapter") return job.chapterTitle;
-  return job.mode === "single"
-    ? "Save as one book"
-    : "Save each volume as its own book";
+  return tr(
+    job.mode === "single"
+      ? "downloads.saveOffline.singleTitle"
+      : "downloads.saveOffline.perVolumeTitle",
+  );
 }

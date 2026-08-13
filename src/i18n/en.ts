@@ -9,6 +9,9 @@ export const en = {
   "common.done": "Done",
   "common.delete": "Delete",
   "common.retry": "Retry",
+  "common.confirm": "Confirm",
+  "common.save": "Save",
+  "common.saving": "Saving…",
 
   // settings panel
   "settings.title": "Reading",
@@ -148,4 +151,121 @@ export const en = {
   "reader.showProgressBar": "Show progress bar",
   "reader.readingSettings": "Reading settings",
   "reader.readingProgress": "Reading progress",
+
+  // search overlay (⌘K / Ctrl-K command palette)
+  "search.placeholder": "Search books, authors…",
+  "search.results": "Results",
+  "search.noMatches": "No matches — filter the shelf for “{term}”",
+  "search.recentSearches": "Recent searches",
+  "search.clearHistory": "Clear history",
+  "search.removeRecent": "Remove {term}",
+  "search.jumpTo": "Jump to",
+  "search.unknownAuthor": "Unknown",
+
+  // edit-book modal
+  "dialog.editBook.ariaLabel": "Edit book details",
+  "dialog.editBook.title": "Edit book",
+  "dialog.editBook.subtitle": "Title, author, description, and cover",
+  "dialog.editBook.replaceCover": "Replace cover…",
+  "dialog.editBook.rescanCover": "Rescan from EPUB",
+  "dialog.editBook.fieldTitle": "Title",
+  "dialog.editBook.fieldAuthor": "Author",
+  "dialog.editBook.fieldDescription": "Description",
+
+  // docx import-choice modal
+  "import.choice.title": "Import a Word document",
+  "import.choice.subtitle": "How would you like to handle this document?",
+  "import.choice.directTitle": "Add directly to library",
+  "import.choice.directDesc":
+    "Convert and import as-is. The first image becomes the cover.",
+  "import.choice.manageTitle": "Manage before importing",
+  "import.choice.manageDesc":
+    "Pick the cover, trim pages, and review images before adding.",
+
+  // docx import-progress modal/dock
+  "import.progress.titleFailed": "Import failed",
+  "import.progress.titleComplete": "Import complete",
+  "import.progress.titleImporting": "Importing document",
+  "import.progress.continueInBackground": "Continue in background",
+  "import.progress.dismiss": "Dismiss",
+  "import.progress.addedToLibrary": "Added to your library.",
+  "import.progress.staysRunning": "Stays running if you close this.",
+  "import.progress.dockAriaLabel": "Open import progress",
+  "import.progress.dockFailedHint": "Import failed — click to view",
+  "import.progress.dockImportingHint": "Importing — click to view",
+
+  // download-range dialog (source-backed novels)
+  "downloads.range.title": "Download a chapter range",
+  "downloads.range.body":
+    "Pick the first and last chapter to include. Chapters are queued for download and show up in the downloads panel — already-downloaded chapters are skipped.",
+  "downloads.range.loading": "Loading chapter list…",
+  "downloads.range.preloadLabel": "Loading every volume's chapters…",
+  "downloads.range.volumeLoadError":
+    'Volume "{title}" couldn\'t be loaded — {error}. Range can still target loaded volumes.',
+  "downloads.range.needsLibrary":
+    "This range download requires the novel to be in your library first.",
+  "downloads.range.from": "From",
+  "downloads.range.to": "To",
+  "downloads.range.queueCountOne":
+    "{n} chapter will be queued for download{extra}.",
+  "downloads.range.queueCountOther":
+    "{n} chapters will be queued for download{extra}.",
+  "downloads.range.alreadyOnDisk": " ({n} already on disk)",
+  "downloads.range.loadingVolumes": "Loading volumes…",
+  "downloads.range.nothingToDownload": "Nothing to download",
+  "downloads.range.queueButton": "Queue {n}",
+
+  // save-as-offline-book dialog
+  "downloads.saveOffline.title": "Save as offline book",
+  "downloads.saveOffline.loading": "Loading volume listing…",
+  "downloads.saveOffline.readError":
+    "Couldn't read this novel's snapshot. Try reopening it from the library and try again.",
+  "downloads.saveOffline.description":
+    "Bakes the novel into a standalone EPUB that lives in your library alongside imported books. Chapters that aren't downloaded yet will be fetched on the fly during conversion. The original entry in your library stays put.",
+  "downloads.saveOffline.singleTitle": "Save as one book",
+  "downloads.saveOffline.singleDetail":
+    "Volumes become sections inside a single EPUB. Best when you read on a tablet or e-reader and prefer one big file.",
+  "downloads.saveOffline.perVolumeTitle": "Save each volume as its own book",
+  "downloads.saveOffline.perVolumeDetailOne":
+    "Creates {n} separate EPUB in your library, one per volume. Better for novels with many volumes; you can read one at a time and finish it cleanly.",
+  "downloads.saveOffline.perVolumeDetailOther":
+    "Creates {n} separate EPUBs in your library, one per volume. Better for novels with many volumes; you can read one at a time and finish it cleanly.",
+  "downloads.saveOffline.onlyOneVolume": "This novel only has one volume.",
+  "downloads.saveOffline.volumesCountOne": "{n} volume",
+  "downloads.saveOffline.volumesCountOther": "{n} volumes",
+  "downloads.saveOffline.chaptersCountOne": "{n} chapter",
+  "downloads.saveOffline.chaptersCountOther": "{n} chapters",
+  "downloads.saveOffline.alreadyDownloaded": "{n} already downloaded",
+  "downloads.saveOffline.volumesNotLoadedOne":
+    "{n} volume not loaded — open the detail view first",
+  "downloads.saveOffline.volumesNotLoadedOther":
+    "{n} volumes not loaded — open the detail view first",
+
+  // download queue view (Downloads dialog)
+  "downloads.emptyState":
+    'No downloads yet. Tap the download icon on any chapter to save it offline, or use "Save as offline book" from a novel\'s detail page to bake it into your library.',
+  "downloads.sectionInterrupted": "Interrupted",
+  "downloads.retryAll": "Retry all",
+  "downloads.sectionSavingOffline": "Saving as offline book",
+  "downloads.sectionDownloading": "Downloading chapters",
+  "downloads.sectionRecent": "Recent",
+  "downloads.cancelDownload": "Cancel download",
+  "downloads.interruptedOne": "{n} interrupted",
+  "downloads.interruptedOther": "{n} interrupted",
+  "downloads.activeCountOne": "{n} in progress",
+  "downloads.activeCountOther": "{n} in progress",
+  "downloads.allCaughtUp": "All caught up",
+  "downloads.clearCompleted": "Clear completed",
+  "downloads.statusWaiting": "Waiting…",
+  "downloads.statusSavedOne": "Saved {n} book",
+  "downloads.statusSavedOther": "Saved {n} books",
+  "downloads.statusDownloaded": "Downloaded",
+  "downloads.statusFailed": "Failed: {error}",
+  "downloads.unknownError": "unknown error",
+  "downloads.statusCancelled": "Cancelled",
+  "downloads.statusInterruptedPartialOne":
+    "Interrupted — {n} book already saved",
+  "downloads.statusInterruptedPartialOther":
+    "Interrupted — {n} books already saved",
+  "downloads.statusInterruptedResume": "Interrupted — tap Retry to resume",
 } as const;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
@@ -30,7 +30,7 @@ import type { HighlightColor } from "./styles/tokens";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES, resolveTheme } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
-import { detectLocale, DIR_FOR } from "./i18n";
+import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 
 interface Loaded {
   book: EpubBook;
@@ -110,6 +110,9 @@ function App() {
     typeof navigator !== "undefined" ? navigator.language : "en",
   );
   const uiDir = DIR_FOR[uiLocale];
+  // App owns the I18nProvider (below), so it's above that context and
+  // can't call useI18n() itself — build the translator directly instead.
+  const tr = useMemo(() => makeTr(uiLocale), [uiLocale]);
 
   useEffect(() => {
     document.documentElement.lang = uiLocale;
@@ -407,7 +410,7 @@ function App() {
           overflow: "hidden",
         }}
       >
-        {loading && <FullPageSpinner theme={theme} label="Loading book…" />}
+        {loading && <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />}
         {error && !loading && (
           <div
             style={{

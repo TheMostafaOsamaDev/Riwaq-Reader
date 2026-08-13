@@ -6,6 +6,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { paletteForId } from "../store/palette";
 import type { BookIndexEntry } from "../store/library";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -39,6 +40,7 @@ export function EditBookModal({
   onSetCover,
   onRescanCover,
 }: Props) {
+  const { tr } = useI18n();
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author);
   const [description, setDescription] = useState(book.description ?? "");
@@ -134,7 +136,7 @@ export function EditBookModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Edit book details"
+      aria-label={tr("dialog.editBook.ariaLabel")}
       onClick={requestClose}
       style={{
         position: "fixed",
@@ -181,15 +183,15 @@ export function EditBookModal({
                 color: theme.ink,
               }}
             >
-              Edit book
+              {tr("dialog.editBook.title")}
             </div>
             <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
-              Title, author, description, and cover
+              {tr("dialog.editBook.subtitle")}
             </div>
           </div>
           <button
             onClick={requestClose}
-            aria-label="Close"
+            aria-label={tr("common.close")}
             style={{
               width: 28,
               height: 28,
@@ -233,7 +235,7 @@ export function EditBookModal({
                 size="sm"
                 onClick={() => onSetCover()}
               >
-                Replace cover…
+                {tr("dialog.editBook.replaceCover")}
               </Button>
               <Button
                 theme={theme}
@@ -241,27 +243,27 @@ export function EditBookModal({
                 size="sm"
                 onClick={() => onRescanCover()}
               >
-                Rescan from EPUB
+                {tr("dialog.editBook.rescanCover")}
               </Button>
             </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <FieldLabel theme={theme}>Title</FieldLabel>
+            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldTitle")}</FieldLabel>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               style={textInput(theme)}
             />
 
-            <FieldLabel theme={theme}>Author</FieldLabel>
+            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldAuthor")}</FieldLabel>
             <input
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               style={textInput(theme)}
             />
 
-            <FieldLabel theme={theme}>Description</FieldLabel>
+            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldDescription")}</FieldLabel>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -291,11 +293,11 @@ export function EditBookModal({
             size="sm"
             onClick={() => void onDelete()}
           >
-            Remove from library
+            {tr("library.removeFromLibrary")}
           </Button>
           <div style={{ flex: 1 }} />
           <Button theme={theme} variant="outline" size="sm" onClick={requestClose}>
-            Cancel
+            {tr("common.cancel")}
           </Button>
           <Button
             theme={theme}
@@ -304,7 +306,7 @@ export function EditBookModal({
             onClick={submit}
             disabled={saving}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? tr("common.saving") : tr("common.save")}
           </Button>
         </div>
       </div>
@@ -351,6 +353,7 @@ function MobileEditPage({
   onSetCover,
   onRescanCover,
 }: MobileProps) {
+  const { tr } = useI18n();
   // Track Save's disabled state separately from `saving` so the visual stays
   // accurate during the in-flight request. We don't gate on dirtiness — users
   // expect Save to always be tappable on a phone, and the parent already
@@ -385,7 +388,7 @@ function MobileEditPage({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Edit book details"
+        aria-label={tr("dialog.editBook.ariaLabel")}
         style={{
           position: "fixed",
           left: 0,
@@ -427,7 +430,7 @@ function MobileEditPage({
         >
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={tr("common.close")}
             style={{
               width: 40,
               height: 40,
@@ -458,7 +461,7 @@ function MobileEditPage({
               textOverflow: "ellipsis",
             }}
           >
-            Edit book
+            {tr("dialog.editBook.title")}
           </div>
           <Button
             theme={theme}
@@ -467,7 +470,7 @@ function MobileEditPage({
             onClick={onSave}
             disabled={saveDisabled}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? tr("common.saving") : tr("common.save")}
           </Button>
         </div>
 
@@ -514,7 +517,7 @@ function MobileEditPage({
                 size="sm"
                 onClick={() => onSetCover()}
               >
-                Replace cover…
+                {tr("dialog.editBook.replaceCover")}
               </Button>
               <Button
                 theme={theme}
@@ -522,14 +525,14 @@ function MobileEditPage({
                 size="sm"
                 onClick={() => onRescanCover()}
               >
-                Rescan from EPUB
+                {tr("dialog.editBook.rescanCover")}
               </Button>
             </div>
           </div>
 
           {/* Form fields — each in its own labeled block. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <Field label="Title" theme={theme}>
+            <Field label={tr("dialog.editBook.fieldTitle")} theme={theme}>
               <input
                 value={title}
                 onChange={(e) => onTitleChange(e.target.value)}
@@ -539,7 +542,7 @@ function MobileEditPage({
               />
             </Field>
 
-            <Field label="Author" theme={theme}>
+            <Field label={tr("dialog.editBook.fieldAuthor")} theme={theme}>
               <input
                 value={author}
                 onChange={(e) => onAuthorChange(e.target.value)}
@@ -549,7 +552,7 @@ function MobileEditPage({
               />
             </Field>
 
-            <Field label="Description" theme={theme}>
+            <Field label={tr("dialog.editBook.fieldDescription")} theme={theme}>
               <textarea
                 value={description}
                 onChange={(e) => onDescriptionChange(e.target.value)}
@@ -579,7 +582,7 @@ function MobileEditPage({
             onClick={() => void onDelete()}
             leadingIcon={<Icon name="trash" size={16} stroke={1.7} />}
           >
-            Remove from library
+            {tr("library.removeFromLibrary")}
           </Button>
         </div>
       </div>

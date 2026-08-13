@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Button, type ButtonVariant } from "./Button";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -17,12 +18,18 @@ export function ConfirmDialog({
   theme,
   title,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   confirmVariant = "destructive",
   onConfirm,
   onCancel,
 }: Props) {
+  // Every current call site passes explicit labels (tr()'d by the caller) —
+  // these are just a locale-aware safety net for any future caller that
+  // doesn't.
+  const { tr } = useI18n();
+  const resolvedConfirmLabel = confirmLabel ?? tr("common.confirm");
+  const resolvedCancelLabel = cancelLabel ?? tr("common.cancel");
   // Focus Cancel by default so a stray Enter press doesn't confirm a
   // destructive action. Esc cancels for keyboard parity with the OS dialog
   // we replaced.
@@ -86,7 +93,7 @@ export function ConfirmDialog({
             size="sm"
             onClick={onCancel}
           >
-            {cancelLabel}
+            {resolvedCancelLabel}
           </Button>
           <Button
             theme={theme}
@@ -94,7 +101,7 @@ export function ConfirmDialog({
             size="sm"
             onClick={onConfirm}
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </Button>
         </div>
       </div>

@@ -9,6 +9,8 @@ import type { IconProps } from "./Icon";
 import { FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import type { BookIndexEntry } from "../store/library";
 import type { LibraryTab } from "./Library";
+import { useI18n } from "../i18n/useI18n";
+import type { MsgKey } from "../i18n";
 
 const RECENT_KEY = "riwaq:recent-searches:v1";
 
@@ -41,14 +43,14 @@ interface Props {
   onClose: () => void;
 }
 
-const JUMPS: { label: string; icon: IconProps["name"]; go: "all" | "reading" | "finished" | "wishlist" | "store" | "downloads" | "settings" }[] = [
-  { label: "Library", icon: "grid", go: "all" },
-  { label: "Reading", icon: "book", go: "reading" },
-  { label: "Finished", icon: "check", go: "finished" },
-  { label: "Wishlist", icon: "bookmark", go: "wishlist" },
-  { label: "Store", icon: "globe", go: "store" },
-  { label: "Downloads", icon: "download", go: "downloads" },
-  { label: "Settings", icon: "settings", go: "settings" },
+const JUMPS: { key: MsgKey; icon: IconProps["name"]; go: "all" | "reading" | "finished" | "wishlist" | "store" | "downloads" | "settings" }[] = [
+  { key: "sidebar.library", icon: "grid", go: "all" },
+  { key: "sidebar.reading", icon: "book", go: "reading" },
+  { key: "sidebar.finished", icon: "check", go: "finished" },
+  { key: "sidebar.wishlist", icon: "bookmark", go: "wishlist" },
+  { key: "sidebar.store", icon: "globe", go: "store" },
+  { key: "sidebar.downloads", icon: "download", go: "downloads" },
+  { key: "sidebar.settings", icon: "settings", go: "settings" },
 ];
 
 export function SearchOverlay({
@@ -63,6 +65,7 @@ export function SearchOverlay({
   onOpenQueue,
   onClose,
 }: Props) {
+  const { tr } = useI18n();
   const dark = themeKey === "dark" || themeKey === "oled";
   const [term, setTerm] = useState("");
   const [recent, setRecent] = useState<string[]>(loadRecent);
@@ -167,7 +170,7 @@ export function SearchOverlay({
                 else if (q) applyFilter(term);
               }
             }}
-            placeholder="Search books, authors…"
+            placeholder={tr("search.placeholder")}
             style={{
               flex: 1,
               minWidth: 0,
@@ -202,7 +205,7 @@ export function SearchOverlay({
           {q ? (
             results.length ? (
               <>
-                <OverlayLabel theme={theme} icon="search">Results</OverlayLabel>
+                <OverlayLabel theme={theme} icon="search">{tr("search.results")}</OverlayLabel>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {results.map((b) => (
                     <button
@@ -217,7 +220,7 @@ export function SearchOverlay({
                         borderRadius: 10,
                         background: "transparent",
                         cursor: "pointer",
-                        textAlign: "left",
+                        textAlign: "start",
                         font: "inherit",
                         transition: "background-color 120ms ease",
                       }}
@@ -238,7 +241,7 @@ export function SearchOverlay({
                       />
                       <span style={{ minWidth: 0 }}>
                         <span style={{ display: "block", fontSize: 14, color: theme.ink, fontWeight: 500 }}>{b.title}</span>
-                        <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{b.author || "Unknown"}</span>
+                        <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{b.author || tr("search.unknownAuthor")}</span>
                       </span>
                     </button>
                   ))}
@@ -253,21 +256,21 @@ export function SearchOverlay({
                   background: "transparent", color: theme.muted, cursor: "pointer", font: "inherit", fontSize: 14,
                 }}
               >
-                <Icon name="search" size={16} /> No matches — filter the shelf for “{term.trim()}”
+                <Icon name="search" size={16} /> {tr("search.noMatches", { term: term.trim() })}
               </button>
             )
           ) : (
             <>
               {recent.length > 0 && (
                 <>
-                  <OverlayLabel theme={theme} icon="clock" action={{ label: "Clear history", onClick: () => { setRecent([]); saveRecent([]); } }}>
-                    Recent searches
+                  <OverlayLabel theme={theme} icon="clock" action={{ label: tr("search.clearHistory"), onClick: () => { setRecent([]); saveRecent([]); } }}>
+                    {tr("search.recentSearches")}
                   </OverlayLabel>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
                     {recent.map((r) => (
                       <span key={r} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: theme.chrome, borderRadius: 20, padding: "7px 8px 7px 13px", fontSize: 13, color: theme.ink }}>
                         <button onClick={() => { setTerm(r); inputRef.current?.focus(); }} style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", font: "inherit", padding: 0 }}>{r}</button>
-                        <button aria-label={`Remove ${r}`} onClick={() => { const n = recent.filter((x) => x !== r); setRecent(n); saveRecent(n); }} style={{ display: "flex", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", padding: 0 }}>
+                        <button aria-label={tr("search.removeRecent", { term: r })} onClick={() => { const n = recent.filter((x) => x !== r); setRecent(n); saveRecent(n); }} style={{ display: "flex", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", padding: 0 }}>
                           <Icon name="close" size={13} />
                         </button>
                       </span>
@@ -275,11 +278,11 @@ export function SearchOverlay({
                   </div>
                 </>
               )}
-              <OverlayLabel theme={theme} icon="globe">Jump to</OverlayLabel>
+              <OverlayLabel theme={theme} icon="globe">{tr("search.jumpTo")}</OverlayLabel>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 {JUMPS.map((j) => (
                   <button
-                    key={j.label}
+                    key={j.key}
                     onClick={() => jump(j.go)}
                     style={{
                       display: "inline-flex", alignItems: "center", gap: 9,
@@ -291,7 +294,7 @@ export function SearchOverlay({
                     onMouseLeave={(e) => { e.currentTarget.style.background = theme.chrome; e.currentTarget.style.transform = "none"; }}
                   >
                     <span style={{ color: theme.muted, display: "flex" }}><Icon name={j.icon} size={16} /></span>
-                    {j.label}
+                    {tr(j.key)}
                   </button>
                 ))}
               </div>
@@ -319,7 +322,7 @@ function OverlayLabel({
       <Icon name={icon} size={13} />
       <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>{children}</span>
       {action && (
-        <button onClick={action.onClick} style={{ marginLeft: "auto", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+        <button onClick={action.onClick} style={{ marginInlineStart: "auto", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
           {action.label}
         </button>
       )}

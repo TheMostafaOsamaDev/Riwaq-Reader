@@ -9,6 +9,9 @@ export const ar: Messages = {
   "common.done": "تم",
   "common.delete": "حذف",
   "common.retry": "إعادة المحاولة",
+  "common.confirm": "تأكيد",
+  "common.save": "حفظ",
+  "common.saving": "جارٍ الحفظ…",
 
   "settings.title": "القراءة",
   "settings.subtitle": "المظهر والخطوط",
@@ -142,4 +145,111 @@ export const ar: Messages = {
   "reader.showProgressBar": "إظهار شريط التقدّم",
   "reader.readingSettings": "إعدادات القراءة",
   "reader.readingProgress": "تقدّم القراءة",
+
+  "search.placeholder": "ابحث عن كتب، مؤلفين…",
+  "search.results": "النتائج",
+  "search.noMatches": "لا نتائج — صفِّ الرف حسب “{term}”",
+  "search.recentSearches": "عمليات بحث حديثة",
+  "search.clearHistory": "مسح السجل",
+  "search.removeRecent": "إزالة {term}",
+  "search.jumpTo": "انتقل إلى",
+  "search.unknownAuthor": "غير معروف",
+
+  "dialog.editBook.ariaLabel": "تعديل تفاصيل الكتاب",
+  "dialog.editBook.title": "تعديل الكتاب",
+  "dialog.editBook.subtitle": "العنوان والمؤلف والوصف والغلاف",
+  "dialog.editBook.replaceCover": "استبدال الغلاف…",
+  "dialog.editBook.rescanCover": "إعادة المسح من EPUB",
+  "dialog.editBook.fieldTitle": "العنوان",
+  "dialog.editBook.fieldAuthor": "المؤلف",
+  "dialog.editBook.fieldDescription": "الوصف",
+
+  "import.choice.title": "استيراد مستند Word",
+  "import.choice.subtitle": "كيف تريد التعامل مع هذا المستند؟",
+  "import.choice.directTitle": "إضافة مباشرة إلى المكتبة",
+  "import.choice.directDesc":
+    "تحويل واستيراد كما هو. تصبح أول صورة هي الغلاف.",
+  "import.choice.manageTitle": "إدارة قبل الاستيراد",
+  "import.choice.manageDesc":
+    "اختر الغلاف، وقصّ الصفحات، وراجع الصور قبل الإضافة.",
+
+  "import.progress.titleFailed": "فشل الاستيراد",
+  "import.progress.titleComplete": "اكتمل الاستيراد",
+  "import.progress.titleImporting": "جارٍ استيراد المستند",
+  "import.progress.continueInBackground": "المتابعة في الخلفية",
+  "import.progress.dismiss": "تجاهل",
+  "import.progress.addedToLibrary": "أُضيف إلى مكتبتك.",
+  "import.progress.staysRunning": "يستمر العمل إذا أغلقت هذه النافذة.",
+  "import.progress.dockAriaLabel": "فتح تقدّم الاستيراد",
+  "import.progress.dockFailedHint": "فشل الاستيراد — اضغط للعرض",
+  "import.progress.dockImportingHint": "جارٍ الاستيراد — اضغط للعرض",
+
+  "downloads.range.title": "تنزيل نطاق من الفصول",
+  "downloads.range.body":
+    "اختر أول وآخر فصل ليتم تضمينهما. تُضاف الفصول إلى قائمة التنزيل وتظهر في لوحة التنزيلات — يتم تخطي الفصول التي سبق تنزيلها.",
+  "downloads.range.loading": "جارٍ تحميل قائمة الفصول…",
+  "downloads.range.preloadLabel": "جارٍ تحميل فصول كل مجلد…",
+  "downloads.range.volumeLoadError":
+    "تعذّر تحميل المجلد “{title}” — {error}. لا يزال بالإمكان تحديد نطاق من المجلدات المُحمَّلة.",
+  "downloads.range.needsLibrary":
+    "يتطلب تنزيل هذا النطاق أن تكون الرواية في مكتبتك أولًا.",
+  "downloads.range.from": "من",
+  "downloads.range.to": "إلى",
+  "downloads.range.queueCountOne": "سيتم إضافة {n} فصل إلى قائمة التنزيل{extra}.",
+  "downloads.range.queueCountOther":
+    "سيتم إضافة {n} فصول إلى قائمة التنزيل{extra}.",
+  "downloads.range.alreadyOnDisk": " ({n} على القرص مسبقًا)",
+  "downloads.range.loadingVolumes": "جارٍ تحميل المجلدات…",
+  "downloads.range.nothingToDownload": "لا شيء لتنزيله",
+  "downloads.range.queueButton": "إضافة {n} إلى القائمة",
+
+  "downloads.saveOffline.title": "حفظ كتاب غير متصل",
+  "downloads.saveOffline.loading": "جارٍ تحميل قائمة المجلدات…",
+  "downloads.saveOffline.readError":
+    "تعذّرت قراءة لقطة هذه الرواية. حاول إعادة فتحها من المكتبة والمحاولة مرة أخرى.",
+  "downloads.saveOffline.description":
+    "يحوّل الرواية إلى ملف EPUB مستقل يُضاف إلى مكتبتك جنبًا إلى جنب مع الكتب المستوردة. الفصول التي لم تُنزَّل بعد سيتم جلبها أثناء التحويل. يبقى العنصر الأصلي في مكتبتك كما هو.",
+  "downloads.saveOffline.singleTitle": "حفظ ككتاب واحد",
+  "downloads.saveOffline.singleDetail":
+    "تصبح المجلدات أقسامًا داخل ملف EPUB واحد. الأنسب عند القراءة على جهاز لوحي أو قارئ إلكتروني وتفضيل ملف كبير واحد.",
+  "downloads.saveOffline.perVolumeTitle": "حفظ كل مجلد ككتاب مستقل",
+  "downloads.saveOffline.perVolumeDetailOne":
+    "ينشئ {n} ملف EPUB منفصل في مكتبتك، واحد لكل مجلد. أنسب للروايات ذات المجلدات الكثيرة؛ يمكنك قراءة واحد في كل مرة وإنهاءه بسهولة.",
+  "downloads.saveOffline.perVolumeDetailOther":
+    "ينشئ {n} ملفات EPUB منفصلة في مكتبتك، واحدًا لكل مجلد. أنسب للروايات ذات المجلدات الكثيرة؛ يمكنك قراءة واحد في كل مرة وإنهاءه بسهولة.",
+  "downloads.saveOffline.onlyOneVolume": "هذه الرواية تحتوي على مجلد واحد فقط.",
+  "downloads.saveOffline.volumesCountOne": "{n} مجلد",
+  "downloads.saveOffline.volumesCountOther": "{n} مجلدات",
+  "downloads.saveOffline.chaptersCountOne": "{n} فصل",
+  "downloads.saveOffline.chaptersCountOther": "{n} فصول",
+  "downloads.saveOffline.alreadyDownloaded": "{n} تم تنزيله مسبقًا",
+  "downloads.saveOffline.volumesNotLoadedOne":
+    "{n} مجلد لم يُحمَّل — افتح صفحة التفاصيل أولًا",
+  "downloads.saveOffline.volumesNotLoadedOther":
+    "{n} مجلدات لم تُحمَّل — افتح صفحة التفاصيل أولًا",
+
+  "downloads.emptyState":
+    "لا توجد تنزيلات بعد. اضغط على أيقونة التنزيل في أي فصل لحفظه دون اتصال، أو استخدم “حفظ كتاب غير متصل” من صفحة تفاصيل الرواية لتضمينه في مكتبتك.",
+  "downloads.sectionInterrupted": "متوقفة",
+  "downloads.retryAll": "إعادة محاولة الكل",
+  "downloads.sectionSavingOffline": "جارٍ الحفظ ككتاب غير متصل",
+  "downloads.sectionDownloading": "جارٍ تنزيل الفصول",
+  "downloads.sectionRecent": "الأخيرة",
+  "downloads.cancelDownload": "إلغاء التنزيل",
+  "downloads.interruptedOne": "{n} متوقف",
+  "downloads.interruptedOther": "{n} متوقفة",
+  "downloads.activeCountOne": "{n} قيد التقدم",
+  "downloads.activeCountOther": "{n} قيد التقدم",
+  "downloads.allCaughtUp": "لا شيء معلّق",
+  "downloads.clearCompleted": "مسح المكتمل",
+  "downloads.statusWaiting": "في الانتظار…",
+  "downloads.statusSavedOne": "تم حفظ {n} كتاب",
+  "downloads.statusSavedOther": "تم حفظ {n} كتب",
+  "downloads.statusDownloaded": "تم التنزيل",
+  "downloads.statusFailed": "فشل: {error}",
+  "downloads.unknownError": "خطأ غير معروف",
+  "downloads.statusCancelled": "أُلغي",
+  "downloads.statusInterruptedPartialOne": "توقف — تم حفظ {n} كتاب بالفعل",
+  "downloads.statusInterruptedPartialOther": "توقف — تم حفظ {n} كتب بالفعل",
+  "downloads.statusInterruptedResume": "توقف — اضغط على إعادة المحاولة للمتابعة",
 };
