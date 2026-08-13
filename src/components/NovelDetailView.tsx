@@ -57,6 +57,7 @@ function buildFlagMap(snapshot: SourceSnapshot): Map<number, ChapterFlags> {
   return out;
 }
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "./Skeleton";
@@ -108,6 +109,7 @@ export function NovelDetailView({
   onImportComplete,
   onOpenRangeDialog,
 }: Props) {
+  const { tr } = useI18n();
   const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
   const [state, setState] = useState<State>({
     loading: true,
@@ -257,11 +259,7 @@ export function NovelDetailView({
 
   const onRemoveFromLibrary = useCallback(async () => {
     if (working || !libraryEntryId) return;
-    if (
-      !confirm(
-        "Remove this novel from your library? Your downloaded chapter ranges (if any) are kept.",
-      )
-    ) {
+    if (!confirm(tr("novel.removeConfirm"))) {
       return;
     }
     setWorking(true);
@@ -275,12 +273,12 @@ export function NovelDetailView({
     } finally {
       setWorking(false);
     }
-  }, [working, libraryEntryId, onImportComplete]);
+  }, [working, libraryEntryId, onImportComplete, tr]);
 
   if (!source) {
     return (
       <div style={{ padding: 40, color: theme.muted }}>
-        Source “{sourceId}” isn't installed.
+        {tr("store.notInstalled", { sourceId })}
       </div>
     );
   }
@@ -305,7 +303,7 @@ export function NovelDetailView({
       >
         <button
           onClick={onBack}
-          aria-label="Back"
+          aria-label={tr("common.back")}
           style={{
             width: 34,
             height: 34,
@@ -320,7 +318,7 @@ export function NovelDetailView({
             flexShrink: 0,
           }}
         >
-          <Icon name="arrowL" size={16} />
+          <Icon name="arrowL" size={16} className="rtl-flip-x" />
         </button>
         <div
           style={{
@@ -350,7 +348,9 @@ export function NovelDetailView({
             lineHeight: 1.5,
           }}
         >
-          Couldn't load this novel — {state.error ?? "no data returned"}
+          {tr("novel.loadError", {
+            error: state.error ?? tr("novel.noDataReturned"),
+          })}
         </div>
       ) : (
         <>
@@ -444,6 +444,7 @@ function NovelHeader({
   showFullDesc,
   setShowFullDesc,
 }: NovelHeaderProps) {
+  const { tr } = useI18n();
   const desc = novel.description ?? "";
   const isLongDesc = desc.length > 280;
   const visibleDesc = showFullDesc || !isLongDesc ? desc : desc.slice(0, 280) + "…";
@@ -485,7 +486,9 @@ function NovelHeader({
               theme={theme}
             />
           ) : (
-            <span style={{ color: theme.muted, fontSize: 12 }}>No cover</span>
+            <span style={{ color: theme.muted, fontSize: 12 }}>
+              {tr("novel.noCover")}
+            </span>
           )}
         </div>
       </div>
@@ -593,7 +596,11 @@ function NovelHeader({
               lineHeight: 1.6,
               color: theme.ink,
               direction: novel.direction,
-              textAlign: novel.direction === "rtl" ? "right" : "left",
+              // Logical: with `direction` set on this element, "start"
+              // resolves to left for ltr content and right for rtl
+              // content — same effect as the old ternary without hand-
+              // computing the physical side.
+              textAlign: "start",
             }}
           >
             {visibleDesc}
@@ -612,7 +619,7 @@ function NovelHeader({
                   padding: 0,
                 }}
               >
-                {showFullDesc ? "less" : "more"}
+                {showFullDesc ? tr("novel.descLess") : tr("novel.descMore")}
               </button>
             )}
           </div>
@@ -634,10 +641,15 @@ function NovelCoverImage({
   size: number;
   theme: Theme;
 }) {
+  const { tr } = useI18n();
   const [src, setSrc] = useState(() => optimizedCoverUrl(coverUrl, size));
   const [failed, setFailed] = useState(false);
   if (failed) {
-    return <span style={{ color: theme.muted, fontSize: 12 }}>No cover</span>;
+    return (
+      <span style={{ color: theme.muted, fontSize: 12 }}>
+        {tr("novel.noCover")}
+      </span>
+    );
   }
   return (
     <img
@@ -700,6 +712,7 @@ function ActionRow({
   onOpenRangeDialog,
   onOpenSaveOffline,
 }: ActionRowProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -717,7 +730,7 @@ function ActionRow({
         onClick={onRead}
         leadingIcon={<Icon name="type" size={14} />}
       >
-        Read
+        {tr("novel.read")}
       </Button>
       {inLibrary ? (
         <Button
@@ -728,7 +741,7 @@ function ActionRow({
           disabled={working || !libraryCheckDone}
           leadingIcon={<Icon name="trash" size={14} />}
         >
-          {working ? "Removing…" : "Remove from library"}
+          {working ? tr("novel.removing") : tr("library.removeFromLibrary")}
         </Button>
       ) : (
         <Button
@@ -739,7 +752,7 @@ function ActionRow({
           disabled={working || !libraryCheckDone}
           leadingIcon={<Icon name="bookmark" size={14} />}
         >
-          {working ? "Adding…" : "Add to library"}
+          {working ? tr("novel.adding") : tr("novel.addToLibrary")}
         </Button>
       )}
       <Button
@@ -750,7 +763,7 @@ function ActionRow({
         disabled={working || chapterCount === 0}
         leadingIcon={<Icon name="slider" size={14} />}
       >
-        Download range
+        {tr("novel.downloadRange")}
       </Button>
       {onOpenSaveOffline && (
         <Button
@@ -761,7 +774,7 @@ function ActionRow({
           disabled={working || chapterCount === 0}
           leadingIcon={<Icon name="download" size={14} />}
         >
-          Save as offline book
+          {tr("downloads.saveOffline.title")}
         </Button>
       )}
     </div>
@@ -806,6 +819,7 @@ function ChapterSearch({
   novelUrl,
   onOpenChapter,
 }: ChapterSearchProps) {
+  const { tr } = useI18n();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<ChapterSearchState>({
     loading: false,
@@ -882,7 +896,7 @@ function ChapterSearch({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search chapters…"
+          placeholder={tr("novel.searchChaptersPlaceholder")}
           style={{
             flex: 1,
             minWidth: 0,
@@ -899,7 +913,7 @@ function ChapterSearch({
         {query.length > 0 && (
           <button
             onClick={() => setQuery("")}
-            aria-label="Clear chapter search"
+            aria-label={tr("novel.clearChapterSearch")}
             style={{
               background: "transparent",
               border: "none",
@@ -916,6 +930,7 @@ function ChapterSearch({
       </div>
       {inSearchMode && (
         <div
+          className="leaflet-scroll-hidden"
           style={{
             marginTop: 8,
             border: `0.5px solid ${theme.rule}`,
@@ -927,15 +942,15 @@ function ChapterSearch({
         >
           {state.loading && state.results === null ? (
             <div style={{ padding: 14, color: theme.muted, fontSize: 12.5 }}>
-              Searching chapters…
+              {tr("novel.searchingChapters")}
             </div>
           ) : state.error ? (
             <div style={{ padding: 14, color: theme.muted, fontSize: 12.5 }}>
-              Couldn't search chapters — {state.error}
+              {tr("novel.searchChaptersError", { error: state.error })}
             </div>
           ) : state.results && state.results.length === 0 ? (
             <div style={{ padding: 14, color: theme.muted, fontSize: 12.5 }}>
-              No matches for “{state.query}”.
+              {tr("store.noSuggestMatches", { query: state.query })}
             </div>
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
@@ -1056,6 +1071,7 @@ interface VolumeErrorPanelProps {
 }
 
 function VolumeErrorPanel({ theme, message, onRetry }: VolumeErrorPanelProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -1070,7 +1086,9 @@ function VolumeErrorPanel({ theme, message, onRetry }: VolumeErrorPanelProps) {
         gap: 12,
       }}
     >
-      <span style={{ flex: 1 }}>Couldn't load chapters — {message}</span>
+      <span style={{ flex: 1 }}>
+        {tr("novel.chaptersLoadError", { error: message })}
+      </span>
       <button
         onClick={onRetry}
         style={{
@@ -1084,7 +1102,7 @@ function VolumeErrorPanel({ theme, message, onRetry }: VolumeErrorPanelProps) {
           cursor: "pointer",
         }}
       >
-        Retry
+        {tr("common.retry")}
       </button>
     </div>
   );
@@ -1129,6 +1147,7 @@ function ChapterDownloadButton({
    *  fans out. */
   queueJob: import("../store/downloadQueue").DownloadJob | undefined;
 }) {
+  const { tr } = useI18n();
   const onClick = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -1174,14 +1193,18 @@ function ChapterDownloadButton({
           : "idle";
   const label =
     status === "downloaded"
-      ? "Downloaded"
+      ? tr("downloads.statusDownloaded")
       : status === "queued"
-        ? "Queued — click to cancel"
+        ? tr("novel.queuedClickCancel")
         : status === "running"
-          ? `Downloading (${Math.round((queueJob?.progress ?? 0) * 100)}%) — click to cancel`
+          ? tr("novel.downloadingClickCancel", {
+              pct: Math.round((queueJob?.progress ?? 0) * 100),
+            })
           : status === "error"
-            ? `Failed: ${queueJob?.error ?? "unknown error"}`
-            : "Download chapter";
+            ? tr("downloads.statusFailed", {
+                error: queueJob?.error ?? tr("downloads.unknownError"),
+              })
+            : tr("novel.downloadChapter");
   return (
     <button
       onClick={onClick}
@@ -1284,6 +1307,7 @@ function VolumesAccordion({
   onChapterFlagsChange,
   onNovelPatch,
 }: VolumesAccordionProps) {
+  const { tr } = useI18n();
   // Open the first volume by default; subsequent volumes start collapsed
   // to keep the page short on a 100+ chapter novel.
   const [open, setOpen] = useState<Set<number>>(
@@ -1501,7 +1525,7 @@ function VolumesAccordion({
           letterSpacing: "-0.005em",
         }}
       >
-        Chapters
+        {tr("novel.chaptersHeading")}
       </h2>
       {novel.volumes.map((v) => {
         const isOpen = open.has(v.id);
@@ -1533,7 +1557,11 @@ function VolumesAccordion({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                <Icon name={isOpen ? "chevronD" : "chevronR"} size={14} />
+                <Icon
+                  name={isOpen ? "chevronD" : "chevronR"}
+                  size={14}
+                  className={isOpen ? undefined : "rtl-flip-x"}
+                />
                 <span
                   style={{
                     fontSize: 13.5,
@@ -1550,9 +1578,9 @@ function VolumesAccordion({
                 style={{ fontSize: 11, color: theme.muted, flexShrink: 0 }}
               >
                 {v.chapters.length > 0
-                  ? `${v.chapters.length} ch.`
+                  ? tr("novel.chapterCountShort", { n: v.chapters.length })
                   : v.chapterCount
-                    ? `${v.chapterCount} ch.`
+                    ? tr("novel.chapterCountShort", { n: v.chapterCount })
                     : "—"}
               </span>
             </button>
@@ -1591,6 +1619,7 @@ function VolumesAccordion({
             )}
             {isOpen && v.chapters.length > 0 && (
               <ul
+                className="leaflet-scroll-hidden"
                 style={{
                   listStyle: "none",
                   margin: 0,

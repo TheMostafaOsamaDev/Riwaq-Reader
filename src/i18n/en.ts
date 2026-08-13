@@ -328,4 +328,35 @@ export const en = {
     "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
   "source.section.trendingFallback": "Trending",
   "source.section.hotUpdatesFallback": "Hot updates",
+
+  // novel detail view (NovelDetailView.tsx) — action row, chapter search,
+  // volumes accordion, per-chapter download button. The novel's own
+  // scraped title/synopsis/author name/chapter+volume titles are NOT
+  // here — those render as raw data. "novel.volumeFallback" backs the
+  // "Volume N" placeholder title kolnovel-theme.ts/cenele.ts generate
+  // when a source's own volume has no scraped label (surfaced in this
+  // view + the downloads dialogs).
+  "novel.loadError": "Couldn't load this novel — {error}",
+  "novel.noDataReturned": "no data returned",
+  "novel.noCover": "No cover",
+  "novel.descMore": "more",
+  "novel.descLess": "less",
+  "novel.read": "Read",
+  "novel.addToLibrary": "Add to library",
+  "novel.adding": "Adding…",
+  "novel.removing": "Removing…",
+  "novel.downloadRange": "Download range",
+  "novel.removeConfirm":
+    "Remove this novel from your library? Your downloaded chapter ranges (if any) are kept.",
+  "novel.searchChaptersPlaceholder": "Search chapters…",
+  "novel.clearChapterSearch": "Clear chapter search",
+  "novel.searchingChapters": "Searching chapters…",
+  "novel.searchChaptersError": "Couldn't search chapters — {error}",
+  "novel.chaptersHeading": "Chapters",
+  "novel.chapterCountShort": "{n} ch.",
+  "novel.chaptersLoadError": "Couldn't load chapters — {error}",
+  "novel.queuedClickCancel": "Queued — click to cancel",
+  "novel.downloadingClickCancel": "Downloading ({pct}%) — click to cancel",
+  "novel.downloadChapter": "Download chapter",
+  "novel.volumeFallback": "Volume {n}",
 } as const;

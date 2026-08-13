@@ -35,6 +35,7 @@
 // `isDecoyElement` for the detection heuristics.
 
 import { absolutizeUrl, parseHtmlDocument } from "../host";
+import { makeTr, type Locale } from "../../i18n";
 import type {
   NovelCard,
   Source,
@@ -45,6 +46,20 @@ import type {
   SourceSection,
   SourceVolume,
 } from "../types";
+
+/** Best-effort current UI locale for the rare case a volume has no
+ *  scraped label and we fall back to a fixed "Volume N" name. This
+ *  module runs outside the component tree (plain DOM parsing, no React
+ *  context available), so it reads `document.documentElement.lang`
+ *  instead of `useI18n()` — App.tsx keeps that attribute in sync with
+ *  the user's UI-language preference. Mirrors kolnovel-theme.ts's
+ *  identically-named helper. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 const SOURCE_ID = "cenele";
 const BASE_URL = "https://cenele.com";
@@ -200,7 +215,11 @@ export function createCeneleSource(host: SourceHost): Source {
         nextId += count;
         return {
           id: ourId,
-          title: shell.label || `Volume ${shell.num}`,
+          title:
+            shell.label ||
+            makeTr(currentUiLocale())("novel.volumeFallback", {
+              n: shell.num,
+            }),
           chapters: [],
           chapterCount: count,
           key: String(shell.num),

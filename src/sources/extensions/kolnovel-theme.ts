@@ -384,7 +384,9 @@ export function parseVolumes(doc: Document, pageUrl: string): SourceVolume[] {
   let runningChapterId = 1;
   return volumeBuckets.map((b, vi) => ({
     id: vi + 1,
-    title: b.title || `Volume ${vi + 1}`,
+    title:
+      b.title ||
+      makeTr(currentUiLocale())("novel.volumeFallback", { n: vi + 1 }),
     chapters: b.anchors.map<SourceChapter>((a) => {
       const href = a.getAttribute("href") || "";
       const titleEl = a.querySelector(".epl-title");
