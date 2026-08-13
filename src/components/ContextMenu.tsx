@@ -88,7 +88,7 @@ export function ContextMenu({
   onDelete,
   onClose,
 }: ContextMenuProps) {
-  const { tr } = useI18n();
+  const { tr, dir } = useI18n();
   const STATUS_OPTIONS = getStatusOptions(tr);
   // `(hover: none)` alone misses Android Chrome configs that report
   // `hover: hover`, so OR with `(pointer: coarse)` (the rest of the app's
@@ -263,6 +263,11 @@ export function ContextMenu({
       }
       const inSubmenu = subFocus >= 0;
       const n = STATUS_OPTIONS.length;
+      // Under RTL the submenu flyout opens toward the inline-start (visually
+      // left), so the enter/exit arrows swap: ArrowLeft opens, ArrowRight
+      // closes. Mirrors the reader's forward/back arrow swap (DesktopReader).
+      const enterSubmenuKey = dir === "rtl" ? "ArrowLeft" : "ArrowRight";
+      const exitSubmenuKey = dir === "rtl" ? "ArrowRight" : "ArrowLeft";
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -280,7 +285,7 @@ export function ContextMenu({
             setMainFocus((p) => (p < 0 ? 2 : (p - 1 + 3) % 3));
           }
           break;
-        case "ArrowRight":
+        case enterSubmenuKey:
           // From the Status row, enter the submenu and focus the first
           // option (or the current status, if one is already set).
           e.preventDefault();
@@ -292,7 +297,7 @@ export function ContextMenu({
             setSubFocus(initial >= 0 ? initial : 0);
           }
           break;
-        case "ArrowLeft":
+        case exitSubmenuKey:
           // Exits the submenu back to the Status row.
           e.preventDefault();
           if (inSubmenu) {
