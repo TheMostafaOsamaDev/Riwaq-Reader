@@ -327,4 +327,11 @@ export const ar: Messages = {
   "novel.downloadingClickCancel": "جارٍ التنزيل ({pct}٪) — اضغط للإلغاء",
   "novel.downloadChapter": "تنزيل الفصل",
   "novel.volumeFallback": "المجلد {n}",
+
+  "stream.loadingNovel": "جارٍ تحميل الرواية…",
+  "stream.noChapters": "هذه الرواية لا تحتوي على فصول.",
+  "stream.loadErrorTitle": "تعذّر تحميل هذه الرواية",
+  "stream.loadingChapter": "جارٍ تحميل الفصل…",
+  "stream.chapterErrorTitle": "تعذّر تحميل هذا الفصل",
+  "stream.backToNovel": "العودة إلى الرواية",
 };

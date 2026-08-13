@@ -359,4 +359,17 @@ export const en = {
   "novel.downloadingClickCancel": "Downloading ({pct}%) — click to cancel",
   "novel.downloadChapter": "Download chapter",
   "novel.volumeFallback": "Volume {n}",
+
+  // streaming reader (SourceStreamReader.tsx) — status/error chrome unique
+  // to the source-backed streaming reader (novel load, chapter fetch). The
+  // reader's own toolbar/back/prev/next/TOC/progress/settings chrome reuses
+  // reader.* — DesktopReader/MobileReader render it directly and already
+  // resolve it from the UI locale. Scraped chapter content, and the novel's
+  // own title, are NOT here — they render as raw data.
+  "stream.loadingNovel": "Loading novel…",
+  "stream.noChapters": "This novel has no chapters.",
+  "stream.loadErrorTitle": "Couldn't load this novel",
+  "stream.loadingChapter": "Loading chapter…",
+  "stream.chapterErrorTitle": "Couldn't load this chapter",
+  "stream.backToNovel": "Back to novel",
 } as const;

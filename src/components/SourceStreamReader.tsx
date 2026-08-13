@@ -56,6 +56,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 import type { ActivePanel, Tweaks } from "../types/reader";
 import type { HighlightColor } from "../styles/tokens";
 
@@ -91,6 +92,12 @@ export function SourceStreamReader({
   onClose,
 }: Props) {
   const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
+  // UI locale/direction for this reader's OWN chrome (the fixed-pane
+  // loading/error overlays below, and the wrapper around DesktopReader /
+  // MobileReader). The scraped chapter content stays independent — its
+  // direction is set by DesktopReader/MobileReader/BookBody from the
+  // book's own language, never from `dir` here.
+  const { tr, dir } = useI18n();
 
   // Novel-level load state. Three top-level slices because they all
   // change together: when the index page resolves, we set `novel`,
@@ -170,7 +177,7 @@ export function SourceStreamReader({
           })),
         );
         if (flatList.length === 0) {
-          setLoadError("This novel has no chapters.");
+          setLoadError(tr("stream.noChapters"));
           return;
         }
         const builtBook = buildVirtualBook(
@@ -224,7 +231,7 @@ export function SourceStreamReader({
     return () => {
       cancelled = true;
     };
-  }, [source, novelUrl, sourceId, startChapterId, persistKey, libraryEntryId]);
+  }, [source, novelUrl, sourceId, startChapterId, persistKey, libraryEntryId, tr]);
 
   // ── fetch a specific chapter's content (cached) ─────────────────────────
   // Splices new chapter items into the book by producing a fresh object
@@ -435,7 +442,7 @@ export function SourceStreamReader({
     );
   }
   if (!book || !novel) {
-    return <FullPaneLoading theme={theme} label="Loading novel…" />;
+    return <FullPaneLoading theme={theme} label={tr("stream.loadingNovel")} />;
   }
 
   const state: BookState = {
@@ -452,6 +459,13 @@ export function SourceStreamReader({
 
   return (
     <div
+      // Reader CHROME (this wrapper, plus the chapter loading/error
+      // overlays below) follows the UI language. DesktopReader /
+      // MobileReader set their own `dir={dir}` on their own root too
+      // (belt-and-suspenders — see their own comments); the scraped
+      // chapter CONTENT they render sets its own direction further down,
+      // independent of this `dir`, from the book's own language.
+      dir={dir}
       style={{
         position: "fixed",
         inset: 0,
@@ -681,8 +695,13 @@ function writePersisted(key: string, state: PersistedState): void {
 // ── overlay panes ──────────────────────────────────────────────────────────
 
 function FullPaneLoading({ theme, label }: { theme: Theme; label: string }) {
+  // Standalone chrome root (this pane replaces the whole reader while the
+  // novel is loading) — follows the UI direction, same as the main
+  // wrapper below. There's no book content here yet to decouple from.
+  const { dir } = useI18n();
   return (
     <div
+      dir={dir}
       style={{
         position: "fixed",
         inset: 0,
@@ -711,8 +730,13 @@ function FullPaneError({
   message: string;
   onClose: () => void;
 }) {
+  // Standalone chrome root, same reasoning as FullPaneLoading — follows
+  // the UI direction. `message` is raw error data (network/parse errors,
+  // or e.message) — never passed through tr().
+  const { tr, dir } = useI18n();
   return (
     <div
+      dir={dir}
       style={{
         position: "fixed",
         inset: 0,
@@ -730,11 +754,14 @@ function FullPaneError({
     >
       <button
         onClick={onClose}
-        aria-label="Close"
+        aria-label={tr("common.close")}
         style={{
           position: "absolute",
           top: 16,
-          left: 16,
+          // Logical inline-start so this corner button mirrors to the
+          // opposite physical side under RTL, matching the rest of the
+          // reader chrome's converted positioning.
+          insetInlineStart: 16,
           width: 36,
           height: 36,
           borderRadius: 18,
@@ -750,7 +777,7 @@ function FullPaneError({
         <Icon name="close" size={16} />
       </button>
       <div style={{ fontSize: 14, color: theme.muted }}>
-        Couldn't load this novel
+        {tr("stream.loadErrorTitle")}
       </div>
       <div style={{ maxWidth: 500, textAlign: "center", fontSize: 13 }}>
         {message}
@@ -760,6 +787,9 @@ function FullPaneError({
 }
 
 function ChapterLoadingOverlay({ theme }: { theme: Theme }) {
+  // Nested inside the main wrapper (which already sets dir={dir}) — no
+  // dir attribute of its own needed, it inherits the chrome direction.
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -781,7 +811,7 @@ function ChapterLoadingOverlay({ theme }: { theme: Theme }) {
         pointerEvents: "none",
       }}
     >
-      Loading chapter…
+      {tr("stream.loadingChapter")}
     </div>
   );
 }
@@ -797,6 +827,9 @@ function ChapterErrorOverlay({
   onRetry: () => void;
   onBack: () => void;
 }) {
+  // Also nested inside the main wrapper — inherits dir from there.
+  // `message` is raw error data — never passed through tr().
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -824,7 +857,7 @@ function ChapterErrorOverlay({
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 600 }}>
-          Couldn't load this chapter
+          {tr("stream.chapterErrorTitle")}
         </div>
         <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.5 }}>
           {message}
@@ -843,7 +876,7 @@ function ChapterErrorOverlay({
               cursor: "pointer",
             }}
           >
-            Retry
+            {tr("common.retry")}
           </button>
           <button
             onClick={onBack}
@@ -858,7 +891,7 @@ function ChapterErrorOverlay({
               cursor: "pointer",
             }}
           >
-            Back to novel
+            {tr("stream.backToNovel")}
           </button>
         </div>
       </div>
