@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "../components/Icon";
+import { SystemThemeGlyph } from "../components/SystemThemeGlyph";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -10,7 +11,7 @@ import {
 import type { Tweaks } from "../types/reader";
 import { PanelShell } from "./PanelShell";
 import { useI18n } from "../i18n/useI18n";
-import type { UiLangPref } from "../i18n";
+import type { MsgKey, UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -149,7 +150,12 @@ export function SettingsPanel({
   side = "right",
   mobile,
 }: Props) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  // "Aa" reads fine in Latin UIs, but is meaningless (and Fraunces has no
+  // Arabic glyphs to fall back on) when the UI is Arabic — swap to an
+  // Arabic-capable font + glyph pair so the preview never shows tofu.
+  const previewGlyph = locale === "ar" ? "أب" : "Aa";
+  const previewFontFamily = locale === "ar" ? FONT_STACKS.sans : FONT_SERIF_DISPLAY;
   return (
     <PanelShell
       theme={theme}
@@ -203,12 +209,12 @@ export function SettingsPanel({
             >
               <span
                 style={{
-                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontFamily: previewFontFamily,
                   fontSize: 18,
-                  fontStyle: "italic",
+                  fontStyle: locale === "ar" ? "normal" : "italic",
                 }}
               >
-                Aa
+                {previewGlyph}
               </span>
               <span
                 style={{
@@ -216,10 +222,9 @@ export function SettingsPanel({
                   fontSize: 9.5,
                   color: ink,
                   opacity: 0.7,
-                  textTransform: "capitalize",
                 }}
               >
-                {k}
+                {tr(`settings.theme.${k}` as MsgKey)}
               </span>
             </button>
           ))}
@@ -246,18 +251,7 @@ export function SettingsPanel({
             textAlign: "left",
           }}
         >
-          <span
-            aria-hidden
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 11,
-              flexShrink: 0,
-              background:
-                "linear-gradient(135deg, #f4ecd8 0 50%, #1a1614 50% 100%)",
-              border: `1px solid ${theme.rule}`,
-            }}
-          />
+          <SystemThemeGlyph size={22} />
           <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <span style={{ fontSize: 12, fontWeight: 600 }}>
               {tr("settings.theme.system")}

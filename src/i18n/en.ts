@@ -20,6 +20,11 @@ export const en = {
   "settings.theme": "Theme",
   "settings.theme.system": "System",
   "settings.theme.systemHint": "Follows your OS light / dark setting",
+  "settings.theme.systemHintDevice": "Follows your device's light / dark setting",
+  "settings.theme.light": "Light",
+  "settings.theme.sepia": "Sepia",
+  "settings.theme.dark": "Dark",
+  "settings.theme.oled": "OLED",
   "settings.font": "Font",
   "settings.fontSize": "Font size · {n}px",
   "settings.lineHeight": "Line height · {n}",
@@ -36,6 +41,8 @@ export const en = {
   "settings.off": "Off",
   "settings.tapZoneWidth": "Tap zone width · {n}%",
   "settings.tapStride": "Tap scroll length · {n}%",
+  "settings.moreOptionsHint":
+    "More reading options (font, size, line height) live inside the reader's Settings panel.",
 
   // app-root
   "app.loadingBook": "Loading book…",

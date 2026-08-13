@@ -19,6 +19,11 @@ export const ar: Messages = {
   "settings.theme": "السمة",
   "settings.theme.system": "النظام",
   "settings.theme.systemHint": "يتبع إعداد الفاتح / الداكن في نظامك",
+  "settings.theme.systemHintDevice": "يتبع إعداد الفاتح / الداكن في جهازك",
+  "settings.theme.light": "فاتح",
+  "settings.theme.sepia": "سيبيا",
+  "settings.theme.dark": "داكن",
+  "settings.theme.oled": "OLED",
   "settings.font": "الخط",
   "settings.fontSize": "حجم الخط · {n}ب",
   "settings.lineHeight": "ارتفاع السطر · {n}",
@@ -35,6 +40,8 @@ export const ar: Messages = {
   "settings.off": "إيقاف",
   "settings.tapZoneWidth": "عرض منطقة النقر · {n}٪",
   "settings.tapStride": "مسافة تمرير النقرة · {n}٪",
+  "settings.moreOptionsHint":
+    "خيارات قراءة إضافية (الخط، الحجم، ارتفاع السطر) متاحة داخل لوحة إعدادات القارئ.",
 
   "app.loadingBook": "جارٍ تحميل الكتاب…",
   "panel.close": "إغلاق اللوحة",
