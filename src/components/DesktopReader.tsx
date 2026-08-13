@@ -28,6 +28,8 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
+import type { Tr } from "../i18n";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
@@ -108,10 +110,14 @@ export function DesktopReader({
   setActivePanel,
   onBack,
 }: Props) {
+  const { tr, dir } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const mode = t.readingMode;
   const isPaginated = mode !== "scroll";
   const paginatedColumns: 1 | 2 = mode === "paginated-2" ? 2 : 1;
+  // Content direction — derived from the BOOK's own language, independent of
+  // the UI locale above. Feeds BookBody/PaginatedView's own `dir` attribute
+  // (set on their own elements, so it never inherits from the chrome below).
   const rtl = isRtlLanguage(book.language);
 
   // The live paragraph for the current chapter — updated by both the
@@ -669,11 +675,12 @@ export function DesktopReader({
 
   return (
     <div
-      // Force LTR on the reader chrome regardless of the user's RTL
-      // preference — only BookBody flips. Belt-and-suspenders with the
-      // App-level `dir="ltr"` so a stray nested dir cascade can't reach
-      // the header, panels, or bottom progress bar.
-      dir="ltr"
+      // Reader CHROME follows the UI language (toolbars, panels, bottom
+      // progress bar all mirror under Arabic). Book CONTENT direction is
+      // independent — BookBody/PaginatedView set their own `dir` from the
+      // book's language on their own elements below, which overrides this
+      // cascade for their subtree regardless of what `dir` resolves to here.
+      dir={dir}
       style={{
         width: "100%",
         height: "100%",
@@ -698,21 +705,21 @@ export function DesktopReader({
         }}
       >
         <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
-        <button onClick={onBack} style={chromeBtn(theme)} aria-label="Back to library">
+        <button onClick={onBack} style={chromeBtn(theme)} aria-label={tr("reader.backToLibrary")}>
           <Icon name="home" size={16} />
         </button>
         <div style={{ width: 1, height: 18, background: theme.rule, margin: "0 4px" }} />
         <button
           onClick={() => toggle("toc")}
           style={chromeBtn(theme, activePanel === "toc")}
-          aria-label="Table of contents"
+          aria-label={tr("reader.toc")}
         >
           <Icon name="list" size={16} />
         </button>
         <button
           onClick={() => toggle("highlights")}
           style={chromeBtn(theme, activePanel === "highlights")}
-          aria-label="Highlights"
+          aria-label={tr("reader.highlights")}
         >
           <Icon name="highlight" size={16} />
         </button>
@@ -765,7 +772,7 @@ export function DesktopReader({
             }}
           >
             <span>
-              Chapter {currentChapter + 1} of {chapterCount}
+              {tr("reader.chapterOfTotal", { n: currentChapter + 1, total: chapterCount })}
             </span>
           </div>
         </div>
@@ -773,14 +780,14 @@ export function DesktopReader({
         <button
           onClick={() => toggle("progress")}
           style={chromeBtn(theme, activePanel === "progress")}
-          aria-label="Progress"
+          aria-label={tr("reader.progress")}
         >
           <Icon name="clock" size={16} />
         </button>
         <button
           onClick={() => toggle("settings")}
           style={chromeBtn(theme, activePanel === "settings")}
-          aria-label="Settings"
+          aria-label={tr("reader.settings")}
         >
           <Icon name="type" size={16} />
         </button>
@@ -896,10 +903,10 @@ export function DesktopReader({
             </div>
           )}
           {overscroll && (
-            <OverscrollIndicator theme={theme} state={overscroll} />
+            <OverscrollIndicator theme={theme} state={overscroll} tr={tr} />
           )}
           {chapterToast && (
-            <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} />
+            <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} tr={tr} />
           )}
 
           <div
@@ -916,7 +923,7 @@ export function DesktopReader({
             <button
               onClick={prevChapter}
               disabled={currentChapter === 0}
-              aria-label="Previous chapter"
+              aria-label={tr("reader.prevChapter")}
               style={{
                 ...chromeBtn(theme),
                 width: 28,
@@ -925,14 +932,14 @@ export function DesktopReader({
                 cursor: currentChapter === 0 ? "not-allowed" : "pointer",
               }}
             >
-              <Icon name="arrowL" size={14} />
+              <Icon name="arrowL" size={14} className="rtl-flip-x" />
             </button>
             <span style={{ fontVariantNumeric: "tabular-nums", minWidth: 32 }}>
               {pct}%
             </span>
             <div
               role="slider"
-              aria-label="Chapter"
+              aria-label={tr("reader.chapterProgress")}
               aria-valuemin={1}
               aria-valuemax={Math.max(1, chapterCount)}
               aria-valuenow={currentChapter + 1}
@@ -979,7 +986,7 @@ export function DesktopReader({
                     key={i}
                     style={{
                       position: "absolute",
-                      left: `${p * 100}%`,
+                      insetInlineStart: `${p * 100}%`,
                       top: -2,
                       width: 1,
                       height: 7,
@@ -991,7 +998,7 @@ export function DesktopReader({
                 <div
                   style={{
                     position: "absolute",
-                    left: `${pct}%`,
+                    insetInlineStart: `${pct}%`,
                     top: "50%",
                     transform: `translate(-50%, -50%) scale(${dragging ? 1.25 : 1})`,
                     width: 12,
@@ -1018,7 +1025,7 @@ export function DesktopReader({
             <button
               onClick={nextChapter}
               disabled={currentChapter >= chapterCount - 1}
-              aria-label="Next chapter"
+              aria-label={tr("reader.nextChapter")}
               style={{
                 ...chromeBtn(theme),
                 width: 28,
@@ -1028,7 +1035,7 @@ export function DesktopReader({
                   currentChapter >= chapterCount - 1 ? "not-allowed" : "pointer",
               }}
             >
-              <Icon name="arrowR" size={14} />
+              <Icon name="arrowR" size={14} className="rtl-flip-x" />
             </button>
           </div>
         </div>
@@ -1046,6 +1053,13 @@ export function DesktopReader({
           <div
             style={{
               width: 380,
+              // Kept physical (not borderInlineStart): AnimatedPanel's
+              // side="right" slide is itself a physical translateX(100%)
+              // unaffected by `dir` (out of this task's scope — panel-side
+              // mirroring is a separate concern), so this panel always sits
+              // on the physical right; the divider must stay on its
+              // physical-left edge (the one facing the reading column)
+              // regardless of UI direction.
               borderLeft: `0.5px solid ${theme.rule}`,
               background: theme.bg,
               padding: 24,
@@ -1103,9 +1117,11 @@ export function DesktopReader({
 function ChapterToast({
   theme,
   info,
+  tr,
 }: {
   theme: Theme;
   info: { title: string; number: number; total: number };
+  tr: Tr;
 }) {
   return (
     <div
@@ -1143,7 +1159,7 @@ function ChapterToast({
           marginBottom: 6,
         }}
       >
-        Chapter {info.number} of {info.total}
+        {tr("reader.chapterOfTotal", { n: info.number, total: info.total })}
       </div>
       <div
         style={{
@@ -1177,9 +1193,11 @@ function ChapterToast({
 function OverscrollIndicator({
   theme,
   state,
+  tr,
 }: {
   theme: Theme;
   state: { dir: "down" | "up"; pct: number };
+  tr: Tr;
 }) {
   const isDown = state.dir === "down";
   return (
@@ -1214,7 +1232,7 @@ function OverscrollIndicator({
         <Icon name="chevronD" size={12} />
       </span>
       <span>
-        {isDown ? "Keep scrolling for next chapter" : "Keep scrolling for previous chapter"}
+        {isDown ? tr("reader.keepScrollingNext") : tr("reader.keepScrollingPrev")}
       </span>
       <div
         style={{

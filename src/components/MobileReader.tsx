@@ -28,6 +28,7 @@ import {
   anchorFromRange,
   type SelectionAnchor,
 } from "../lib/selectionAnchor";
+import { useI18n } from "../i18n/useI18n";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
@@ -242,6 +243,7 @@ export function MobileReader({
   onJumpToHighlight,
   onBack,
 }: Props) {
+  const { tr, dir } = useI18n();
   const [showChrome, setShowChrome] = useState(true);
   const [showProgress, setShowProgress] = useState(true);
   const reduced = useReducedMotion();
@@ -269,6 +271,9 @@ export function MobileReader({
   const resumeOffsetRef = useRef(resumeOffset);
   resumeOffsetRef.current = resumeOffset;
   const progressFillRef = useRef<HTMLDivElement>(null);
+  // Content direction — derived from the BOOK's own language, independent of
+  // the UI locale above. BookBody sets its own `dir` from this on its own
+  // element, so it never inherits from the chrome wrapper below.
   const rtl = isRtlLanguage(book.language);
   // Read by the scroll-to-resume effect so it knows whether the chrome is
   // currently occluding the top of the scroll area. Tracked via a ref so a
@@ -804,8 +809,12 @@ export function MobileReader({
 
   return (
     <div
-      // Mobile reader chrome stays LTR — RTL applies only to BookBody.
-      dir="ltr"
+      // Reader CHROME follows the UI language (toolbars, sheet all mirror
+      // under Arabic). Book CONTENT direction is independent — BookBody
+      // sets its own `dir` from the book's language on its own element
+      // below, overriding this cascade for its subtree regardless of what
+      // `dir` resolves to here.
+      dir={dir}
       style={{
         width: "100%",
         height: "100%",
@@ -851,9 +860,9 @@ export function MobileReader({
           <button
             onClick={onBack}
             style={{ ...mobileTab(theme), width: 36, height: 36 }}
-            aria-label="Back to library"
+            aria-label={tr("reader.backToLibrary")}
           >
-            <Icon name="arrowL" size={16} />
+            <Icon name="arrowL" size={16} className="rtl-flip-x" />
           </button>
           <div
             style={{
@@ -884,7 +893,7 @@ export function MobileReader({
               {book.title}
             </div>
             <div style={{ fontSize: 10, color: theme.muted }}>
-              Chapter {currentChapter + 1} / {chapterCount}
+              {tr("reader.chapterOfTotal", { n: currentChapter + 1, total: chapterCount })}
             </div>
           </div>
         </div>
@@ -994,7 +1003,7 @@ export function MobileReader({
                 prevChapter();
               }}
               disabled={currentChapter === 0}
-              aria-label="Previous chapter"
+              aria-label={tr("reader.prevChapter")}
               style={{
                 ...mobileTab(theme),
                 width: 28,
@@ -1002,7 +1011,7 @@ export function MobileReader({
                 opacity: currentChapter === 0 ? 0.35 : 1,
               }}
             >
-              <Icon name="arrowL" size={14} />
+              <Icon name="arrowL" size={14} className="rtl-flip-x" />
             </button>
             <span style={{ fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
             <div
@@ -1012,7 +1021,7 @@ export function MobileReader({
               onPointerUp={onTrackPointerEnd}
               onPointerCancel={onTrackPointerEnd}
               role="slider"
-              aria-label="Chapter progress"
+              aria-label={tr("reader.chapterProgress")}
               aria-valuemin={1}
               aria-valuemax={chapterCount}
               aria-valuenow={displayChapter + 1}
@@ -1051,7 +1060,7 @@ export function MobileReader({
                     key={i}
                     style={{
                       position: "absolute",
-                      left: `${p * 100}%`,
+                      insetInlineStart: `${p * 100}%`,
                       top: -2,
                       width: 1,
                       height: 7,
@@ -1063,7 +1072,7 @@ export function MobileReader({
                 <div
                   style={{
                     position: "absolute",
-                    left: `${pct}%`,
+                    insetInlineStart: `${pct}%`,
                     top: "50%",
                     transform: `translate(-50%, -50%) scale(${draggingTarget !== null ? 1.4 : 1})`,
                     width: 10,
@@ -1079,16 +1088,18 @@ export function MobileReader({
                 <div
                   style={{
                     position: "absolute",
-                    // Anchor on the thumb and shift the chip back by a
+                    // Anchor on the thumb (insetInlineStart so the anchor
+                    // itself mirrors under RTL) and shift the chip back by a
                     // fraction of its own width that matches how far along
-                    // the bar we are. pct=0% → no shift (chip extends
-                    // right); pct=100% → full -100% shift (chip extends
-                    // left); pct=50% → -50% (centered). Net effect: the
-                    // chip slides under itself as the thumb approaches
-                    // either edge and never overflows the track.
-                    left: `${pct}%`,
+                    // the bar we are, so it never overflows the track.
+                    // LTR: pct=0% → no shift (chip extends toward the end);
+                    // pct=100% → -100% (chip extends back toward the start).
+                    // RTL mirrors this — the sign flips because the anchor
+                    // is now measured from the physical right, so "further
+                    // along" approaches the physical left edge instead.
+                    insetInlineStart: `${pct}%`,
                     bottom: "calc(100% - 4px)",
-                    transform: `translateX(-${pct}%)`,
+                    transform: `translateX(${(dir === "rtl" ? 1 : -1) * pct}%)`,
                     background: theme.chrome,
                     color: theme.ink,
                     border: `0.5px solid ${theme.rule}`,
@@ -1104,8 +1115,10 @@ export function MobileReader({
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.18)",
                   }}
                 >
-                  Chapter {draggingTarget + 1} —{" "}
-                  {book.chapters[draggingTarget]?.title ?? ""}
+                  {tr("reader.chapterDash", {
+                    n: draggingTarget + 1,
+                    title: book.chapters[draggingTarget]?.title ?? "",
+                  })}
                   <span
                     aria-hidden
                     style={{
@@ -1114,7 +1127,7 @@ export function MobileReader({
                       // under the thumb's real screen position. Clamped
                       // inside the chip so it doesn't poke past the
                       // rounded corners at the extremes.
-                      left: `clamp(12px, ${pct}%, calc(100% - 12px))`,
+                      insetInlineStart: `clamp(12px, ${pct}%, calc(100% - 12px))`,
                       bottom: -4,
                       width: 8,
                       height: 8,
@@ -1133,7 +1146,7 @@ export function MobileReader({
                 nextChapter();
               }}
               disabled={currentChapter >= chapterCount - 1}
-              aria-label="Next chapter"
+              aria-label={tr("reader.nextChapter")}
               style={{
                 ...mobileTab(theme),
                 width: 28,
@@ -1141,7 +1154,7 @@ export function MobileReader({
                 opacity: currentChapter >= chapterCount - 1 ? 0.35 : 1,
               }}
             >
-              <Icon name="arrowR" size={14} />
+              <Icon name="arrowR" size={14} className="rtl-flip-x" />
             </button>
           </div>
           )}
@@ -1149,21 +1162,21 @@ export function MobileReader({
             <button
               onClick={() => setSheet("toc")}
               style={mobileTab(theme)}
-              aria-label="Table of contents"
+              aria-label={tr("reader.toc")}
             >
               <Icon name="list" size={18} />
             </button>
             <button
               onClick={() => setSheet("highlights")}
               style={mobileTab(theme)}
-              aria-label="Highlights"
+              aria-label={tr("reader.highlights")}
             >
               <Icon name="highlight" size={18} />
             </button>
             <button
               onClick={() => setShowProgress((s) => !s)}
               style={mobileTab(theme)}
-              aria-label={showProgress ? "Hide progress bar" : "Show progress bar"}
+              aria-label={showProgress ? tr("reader.hideProgressBar") : tr("reader.showProgressBar")}
               aria-pressed={showProgress}
             >
               <Icon name="slider" size={18} />
@@ -1171,14 +1184,14 @@ export function MobileReader({
             <button
               onClick={() => setSheet("progress")}
               style={mobileTab(theme)}
-              aria-label="Progress"
+              aria-label={tr("reader.progress")}
             >
               <Icon name="clock" size={18} />
             </button>
             <button
               onClick={() => setSheet("settings")}
               style={mobileTab(theme)}
-              aria-label="Settings"
+              aria-label={tr("reader.settings")}
             >
               <Icon name="type" size={18} />
             </button>
@@ -1194,13 +1207,13 @@ export function MobileReader({
         height="82%"
         label={
           sheet === "toc"
-            ? "Table of contents"
+            ? tr("reader.toc")
             : sheet === "settings"
-              ? "Reading settings"
+              ? tr("reader.readingSettings")
               : sheet === "highlights"
-                ? "Highlights"
+                ? tr("reader.highlights")
                 : sheet === "progress"
-                  ? "Reading progress"
+                  ? tr("reader.readingProgress")
                   : undefined
         }
       >

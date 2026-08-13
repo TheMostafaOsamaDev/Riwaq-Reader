@@ -123,4 +123,22 @@ export const en = {
   "shelves.namePlaceholder": "e.g. Favorites, Summer reads…",
   "shelves.duplicateName": "A shelf with that name already exists.",
   "shelves.create": "Create shelf",
+
+  // reader chrome (desktop + mobile toolbars, chapter progress, mobile sheet)
+  "reader.backToLibrary": "Back to library",
+  "reader.prevChapter": "Previous chapter",
+  "reader.nextChapter": "Next chapter",
+  "reader.chapterProgress": "Chapter progress",
+  "reader.toc": "Table of contents",
+  "reader.highlights": "Highlights",
+  "reader.progress": "Progress",
+  "reader.settings": "Settings",
+  "reader.chapterOfTotal": "Chapter {n} of {total}",
+  "reader.chapterDash": "Chapter {n} — {title}",
+  "reader.keepScrollingNext": "Keep scrolling for next chapter",
+  "reader.keepScrollingPrev": "Keep scrolling for previous chapter",
+  "reader.hideProgressBar": "Hide progress bar",
+  "reader.showProgressBar": "Show progress bar",
+  "reader.readingSettings": "Reading settings",
+  "reader.readingProgress": "Reading progress",
 } as const;
