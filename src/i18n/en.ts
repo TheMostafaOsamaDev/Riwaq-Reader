@@ -372,4 +372,65 @@ export const en = {
   "stream.loadingChapter": "Loading chapter…",
   "stream.chapterErrorTitle": "Couldn't load this chapter",
   "stream.backToNovel": "Back to novel",
+
+  // docx manage-import view (DocxManageView.tsx) — the "manage before
+  // importing" section manager for staged .docx conversions. The document's
+  // OWN content (source filename, detected language code, section/heading
+  // text, body preview, and unrecognized block-tag names) is DATA and is
+  // NOT translated here — it renders raw / as interpolation params.
+  // "RTL"/"LTR" and the H1–H6/IMG/P block-type codes are technical
+  // structure notation (same rationale as "OLED"/"px" above) and stay
+  // literal Latin abbreviations in both locales; only the spelled-out
+  // block-type words (LIST/QUOTE/TABLE) are localized.
+  "docx.manageImport": "Manage import",
+  "docx.sectionsKept": "{n} of {total} sections kept",
+  "docx.removedCount": "{n} removed",
+  "docx.imageCountOne": "{n} image",
+  "docx.imageCountOther": "{n} images",
+  "docx.noCoverInline": "no cover",
+  "docx.coverSelectedInline": "cover selected",
+  "docx.titleLabel": "Title",
+  "docx.authorLabel": "Author",
+  "docx.unknownAuthor": "Unknown author",
+  "docx.addToLibrary": "Add to library",
+  "docx.adding": "Adding…",
+  "docx.addFailedPrefix": "Couldn't add:",
+  "docx.nothingToImport":
+    "Nothing to import — restore at least one section.",
+  "docx.coverGalleryAriaLabel": "Cover gallery",
+  "docx.coverHeading": "Cover",
+  "docx.coverOneSelected": "1 image selected",
+  "docx.pickImage": "Pick an image",
+  "docx.noImages": "No images",
+  "docx.noCoverTitle": "Use no cover (auto-generated placeholder)",
+  "docx.noCoverButton": "No cover",
+  "docx.galleryEmpty": "The gallery of the doc is empty.",
+  "docx.autoCoverHint": "An auto-generated cover will be used.",
+  "docx.coverCandidatesAriaLabel": "Cover candidates",
+  "docx.thumbSelected": "Selected",
+  "docx.imageIndex": "Image {n}",
+  "docx.documentContentAriaLabel": "Document content",
+  "docx.sectionCountOne": "{n} section",
+  "docx.sectionCountOther": "{n} sections",
+  "docx.selectedCount": "{n} selected",
+  "docx.clearSelection": "Clear",
+  "docx.deleteSelectedCount": "Delete {n}",
+  "docx.selectAll": "Select all",
+  "docx.hideDeleted": "Hide deleted",
+  "docx.showDeletedCount": "Show deleted ({n})",
+  "docx.restoreAll": "Restore all",
+  "docx.emptyNoContent": "This document has no readable content.",
+  "docx.emptyAllRemoved":
+    "Every section has been removed. Restore at least one to import.",
+  "docx.documentSectionsAriaLabel": "Document sections",
+  "docx.pageNumber": "Page {n}",
+  "docx.removedTag": "removed",
+  "docx.placeholderImage": "(image)",
+  "docx.placeholderTable": "(table)",
+  "docx.placeholderEmpty": "(empty)",
+  "docx.deleteSection": "Delete this section",
+  "docx.restoreSection": "Restore this section",
+  "docx.blockTypeList": "LIST",
+  "docx.blockTypeQuote": "QUOTE",
+  "docx.blockTypeTable": "TABLE",
 } as const;

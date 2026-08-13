@@ -21,6 +21,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { VirtualList, VirtualGrid } from "./VirtualList";
+import { useI18n } from "../i18n/useI18n";
+import type { Tr } from "../i18n";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -56,11 +58,12 @@ export function DocxManageView({
   onCommit,
   onCancel,
 }: Props) {
+  const { tr } = useI18n();
   const isMobile = layout === "mobile";
 
   // ── editable bits ──────────────────────────────────────────────────────
   const [title, setTitle] = useState<string>(staged.fallbackTitle);
-  const [author, setAuthor] = useState<string>("Unknown author");
+  const [author, setAuthor] = useState<string>(() => tr("docx.unknownAuthor"));
 
   // ── deletion state ────────────────────────────────────────────────────
   // Stored as a "kept" set so the default invariant ("everything is kept
@@ -194,7 +197,7 @@ export function DocxManageView({
   const onAdd = useCallback(async () => {
     if (busy) return;
     if (keptIds.size === 0) {
-      setError("Nothing to import — restore at least one section.");
+      setError(tr("docx.nothingToImport"));
       return;
     }
     setBusy(true);
@@ -202,13 +205,13 @@ export function DocxManageView({
     try {
       await onCommit(
         { keptBlockIds: keptIds, coverImageId },
-        { title: title.trim() || staged.fallbackTitle, author: author.trim() || "Unknown author" },
+        { title: title.trim() || staged.fallbackTitle, author: author.trim() || tr("docx.unknownAuthor") },
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
-  }, [busy, keptIds, coverImageId, title, author, staged.fallbackTitle, onCommit]);
+  }, [busy, keptIds, coverImageId, title, author, staged.fallbackTitle, onCommit, tr]);
 
   // Esc cancels (when not busy).
   useEffect(() => {
@@ -261,7 +264,7 @@ export function DocxManageView({
             fontSize: 12.5,
           }}
         >
-          <strong style={{ fontWeight: 600 }}>Couldn't add: </strong>
+          <strong style={{ fontWeight: 600 }}>{tr("docx.addFailedPrefix")} </strong>
           {error}
         </div>
       )}
@@ -336,6 +339,7 @@ function Header({
   onCancel,
   onAdd,
 }: HeaderProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -359,16 +363,33 @@ function Header({
             marginBottom: 4,
           }}
         >
-          Manage import
+          {tr("docx.manageImport")}
         </div>
         <div style={{ fontSize: 12, color: theme.muted }}>
+          {/* Filename + detected language code are the document's OWN
+              metadata — data, not app copy, so they render raw. RTL/LTR is
+              a technical direction code (like "OLED"/"px" elsewhere in the
+              catalog) and stays a literal Latin abbreviation in both
+              locales. */}
           {staged.sourceFilename} · {staged.language || "und"} ·{" "}
-          {staged.dir === "rtl" ? "RTL" : "LTR"} · {keptCount} of{" "}
-          {staged.blocks.length} sections kept
-          {deletedCount > 0 ? ` · ${deletedCount} removed` : ""} ·{" "}
-          {staged.imageOrder.length}{" "}
-          {staged.imageOrder.length === 1 ? "image" : "images"}
-          {coverImageId === null ? " · no cover" : " · cover selected"}
+          {staged.dir === "rtl" ? "RTL" : "LTR"} ·{" "}
+          {tr("docx.sectionsKept", {
+            n: keptCount,
+            total: staged.blocks.length,
+          })}
+          {deletedCount > 0
+            ? ` · ${tr("docx.removedCount", { n: deletedCount })}`
+            : ""}{" "}
+          ·{" "}
+          {tr(
+            staged.imageOrder.length === 1
+              ? "docx.imageCountOne"
+              : "docx.imageCountOther",
+            { n: staged.imageOrder.length },
+          )}
+          {coverImageId === null
+            ? ` · ${tr("docx.noCoverInline")}`
+            : ` · ${tr("docx.coverSelectedInline")}`}
         </div>
       </div>
 
@@ -383,14 +404,14 @@ function Header({
       >
         <LabeledInput
           theme={theme}
-          label="Title"
+          label={tr("docx.titleLabel")}
           value={title}
           onChange={onTitleChange}
           flex={2}
         />
         <LabeledInput
           theme={theme}
-          label="Author"
+          label={tr("docx.authorLabel")}
           value={author}
           onChange={onAuthorChange}
           flex={1}
@@ -405,7 +426,7 @@ function Header({
           onClick={onCancel}
           disabled={busy}
         >
-          Cancel
+          {tr("common.cancel")}
         </Button>
         <Button
           theme={theme}
@@ -415,7 +436,7 @@ function Header({
           disabled={busy || keptCount === 0}
           leadingIcon={<Icon name="check" size={13} />}
         >
-          {busy ? "Adding…" : "Add to library"}
+          {busy ? tr("docx.adding") : tr("docx.addToLibrary")}
         </Button>
       </div>
     </div>
@@ -484,6 +505,7 @@ function CoverPanel({
   coverImageId,
   onPickCover,
 }: CoverPanelProps) {
+  const { tr } = useI18n();
   const isMobile = layout === "mobile";
   const hasImages = staged.imageOrder.length > 0;
 
@@ -493,16 +515,19 @@ function CoverPanel({
 
   return (
     <aside
-      aria-label="Cover gallery"
+      aria-label={tr("docx.coverGalleryAriaLabel")}
       style={{
-        // Desktop: pinned left rail. Mobile: top strip ~280px tall so the
-        // user can still see the block list below without scrolling.
+        // Desktop: pinned left rail (pinned to the *inline-start* side, so
+        // it flips to the right in RTL). Mobile: top strip ~280px tall so
+        // the user can still see the block list below without scrolling.
         width: isMobile ? "100%" : 320,
         height: isMobile ? 280 : "auto",
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
-        borderRight: isMobile ? "none" : `0.5px solid ${theme.rule}`,
+        // Divider sits on the inline-end edge of the rail — logical so it
+        // stays between the rail and the block list panel when mirrored.
+        borderInlineEnd: isMobile ? "none" : `0.5px solid ${theme.rule}`,
         borderBottom: isMobile ? `0.5px solid ${theme.rule}` : "none",
         background: theme.chrome,
       }}
@@ -525,7 +550,7 @@ function CoverPanel({
               textTransform: "uppercase",
             }}
           >
-            Cover
+            {tr("docx.coverHeading")}
           </div>
           <div
             style={{
@@ -538,16 +563,16 @@ function CoverPanel({
           >
             {hasImages
               ? coverImageId
-                ? "1 image selected"
-                : "Pick an image"
-              : "No images"}
+                ? tr("docx.coverOneSelected")
+                : tr("docx.pickImage")
+              : tr("docx.noImages")}
           </div>
         </div>
         {hasImages && (
           <button
             onClick={() => onPickCover(null)}
             disabled={coverImageId === null}
-            title="Use no cover (auto-generated placeholder)"
+            title={tr("docx.noCoverTitle")}
             style={{
               border: `0.5px solid ${theme.rule}`,
               background: "transparent",
@@ -560,7 +585,7 @@ function CoverPanel({
               fontFamily: "inherit",
             }}
           >
-            No cover
+            {tr("docx.noCoverButton")}
           </button>
         )}
       </div>
@@ -586,16 +611,16 @@ function CoverPanel({
           >
             <Icon name="doc" size={28} style={{ opacity: 0.45 }} />
             <div style={{ marginTop: 8 }}>
-              The gallery of the doc is empty.
+              {tr("docx.galleryEmpty")}
             </div>
             <div style={{ marginTop: 4, fontSize: 11.5 }}>
-              An auto-generated cover will be used.
+              {tr("docx.autoCoverHint")}
             </div>
           </div>
         </div>
       ) : (
         <VirtualGrid
-          ariaLabel="Cover candidates"
+          ariaLabel={tr("docx.coverCandidatesAriaLabel")}
           items={staged.imageOrder}
           columns={columns}
           rowHeight={GALLERY_ROW_HEIGHT}
@@ -611,6 +636,7 @@ function CoverPanel({
             />
           )}
           itemKey={(imageId) => imageId}
+          className="leaflet-scroll-hidden"
           style={{
             flex: 1,
             padding: `0 ${GALLERY_GAP}px ${GALLERY_GAP}px`,
@@ -636,6 +662,7 @@ function CoverThumb({
   selected: boolean;
   onClick: () => void;
 }) {
+  const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
@@ -691,7 +718,7 @@ function CoverThumb({
           textAlign: "center",
         }}
       >
-        {selected ? "Selected" : `Image ${index + 1}`}
+        {selected ? tr("docx.thumbSelected") : tr("docx.imageIndex", { n: index + 1 })}
       </span>
     </button>
   );
@@ -736,9 +763,10 @@ function BlockListPanel({
   onClearSelection,
   onRestoreAll,
 }: BlockListPanelProps) {
+  const { tr } = useI18n();
   return (
     <section
-      aria-label="Document content"
+      aria-label={tr("docx.documentContentAriaLabel")}
       style={{
         flex: 1,
         minWidth: 0,
@@ -757,16 +785,22 @@ function BlockListPanel({
           flexWrap: "wrap",
         }}
       >
-        <div style={{ fontSize: 12, color: theme.muted, marginRight: 4 }}>
-          {visibleBlocks.length}{" "}
-          {visibleBlocks.length === 1 ? "section" : "sections"}
-          {selectedCount > 0 ? ` · ${selectedCount} selected` : ""}
+        <div style={{ fontSize: 12, color: theme.muted, marginInlineEnd: 4 }}>
+          {tr(
+            visibleBlocks.length === 1
+              ? "docx.sectionCountOne"
+              : "docx.sectionCountOther",
+            { n: visibleBlocks.length },
+          )}
+          {selectedCount > 0
+            ? ` · ${tr("docx.selectedCount", { n: selectedCount })}`
+            : ""}
         </div>
         <div style={{ flex: 1 }} />
         {selectedCount > 0 ? (
           <>
             <PillButton theme={theme} onClick={onClearSelection}>
-              Clear
+              {tr("docx.clearSelection")}
             </PillButton>
             <PillButton
               theme={theme}
@@ -774,7 +808,7 @@ function BlockListPanel({
               onClick={onDeleteSelected}
               leadingIcon={<Icon name="close" size={11} />}
             >
-              Delete {selectedCount}
+              {tr("docx.deleteSelectedCount", { n: selectedCount })}
             </PillButton>
           </>
         ) : (
@@ -783,16 +817,18 @@ function BlockListPanel({
             onClick={onSelectAllVisible}
             disabled={visibleBlocks.length === 0}
           >
-            Select all
+            {tr("docx.selectAll")}
           </PillButton>
         )}
         {deletedCount > 0 && (
           <>
             <PillButton theme={theme} onClick={onToggleShowDeleted}>
-              {showDeleted ? "Hide deleted" : `Show deleted (${deletedCount})`}
+              {showDeleted
+                ? tr("docx.hideDeleted")
+                : tr("docx.showDeletedCount", { n: deletedCount })}
             </PillButton>
             <PillButton theme={theme} onClick={onRestoreAll}>
-              Restore all
+              {tr("docx.restoreAll")}
             </PillButton>
           </>
         )}
@@ -812,12 +848,12 @@ function BlockListPanel({
           }}
         >
           {staged.blocks.length === 0
-            ? "This document has no readable content."
-            : "Every section has been removed. Restore at least one to import."}
+            ? tr("docx.emptyNoContent")
+            : tr("docx.emptyAllRemoved")}
         </div>
       ) : (
         <VirtualList
-          ariaLabel="Document sections"
+          ariaLabel={tr("docx.documentSectionsAriaLabel")}
           items={visibleBlocks}
           itemHeight={BLOCK_ROW_HEIGHT}
           renderItem={(block) => (
@@ -833,6 +869,7 @@ function BlockListPanel({
             />
           )}
           itemKey={(block) => block.id}
+          className="leaflet-scroll-hidden"
           style={{ flex: 1, padding: "8px 12px 16px" }}
         />
       )}
@@ -908,6 +945,7 @@ function BlockRow({
   onDelete,
   onRestore,
 }: BlockRowProps) {
+  const { tr } = useI18n();
   const firstImage =
     block.imageIds.length > 0
       ? imagesById.get(block.imageIds[0])?.blobUrl ?? null
@@ -974,8 +1012,12 @@ function BlockRow({
             alignItems: "center",
           }}
         >
-          <span>Page {block.id + 1}</span>
-          {!kept && <span style={{ color: "#c04a3a" }}>· removed</span>}
+          <span>{tr("docx.pageNumber", { n: block.id + 1 })}</span>
+          {!kept && (
+            <span style={{ color: "#c04a3a" }}>
+              · {tr("docx.removedTag")}
+            </span>
+          )}
         </div>
         <div
           style={{
@@ -1003,10 +1045,10 @@ function BlockRow({
           {previewText.length > 0
             ? previewText
             : block.type === "img"
-              ? "(image)"
+              ? tr("docx.placeholderImage")
               : block.type === "table"
-                ? "(table)"
-                : "(empty)"}
+                ? tr("docx.placeholderTable")
+                : tr("docx.placeholderEmpty")}
         </div>
       </div>
 
@@ -1043,7 +1085,7 @@ function BlockRow({
               style={{
                 position: "absolute",
                 bottom: 2,
-                right: 2,
+                insetInlineEnd: 2,
                 fontSize: 9,
                 fontWeight: 600,
                 background: "rgba(0,0,0,0.65)",
@@ -1072,8 +1114,8 @@ function BlockRow({
               e.stopPropagation();
               onDelete();
             }}
-            aria-label="Delete this section"
-            title="Delete this section"
+            aria-label={tr("docx.deleteSection")}
+            title={tr("docx.deleteSection")}
             style={{
               width: 26,
               height: 26,
@@ -1095,8 +1137,8 @@ function BlockRow({
               e.stopPropagation();
               onRestore();
             }}
-            aria-label="Restore this section"
-            title="Restore this section"
+            aria-label={tr("docx.restoreSection")}
+            title={tr("docx.restoreSection")}
             style={{
               width: 26,
               height: 26,
@@ -1163,7 +1205,8 @@ function SelectionDot({
 }
 
 function TypeBadge({ theme, block }: { theme: Theme; block: StagedBlock }) {
-  const label = labelFor(block);
+  const { tr } = useI18n();
+  const label = labelFor(block, tr);
   return (
     <span
       style={{
@@ -1187,7 +1230,13 @@ function TypeBadge({ theme, block }: { theme: Theme; block: StagedBlock }) {
   );
 }
 
-function labelFor(block: StagedBlock): string {
+// Block-type badge labels. H1–H6 / IMG / P are treated as technical
+// structure codes — like "OLED" or the "px" unit elsewhere in the i18n
+// catalog — and stay literal Latin abbreviations in both locales. LIST /
+// QUOTE / TABLE are spelled-out words rather than codes, so they're
+// localized. `block.tag` in the default case is the document's own
+// (unrecognized) tag name — data, left raw.
+function labelFor(block: StagedBlock, tr: Tr): string {
   switch (block.type) {
     case "h1":
     case "h2":
@@ -1199,11 +1248,11 @@ function labelFor(block: StagedBlock): string {
     case "img":
       return "IMG";
     case "list":
-      return "LIST";
+      return tr("docx.blockTypeList");
     case "blockquote":
-      return "QUOTE";
+      return tr("docx.blockTypeQuote");
     case "table":
-      return "TABLE";
+      return tr("docx.blockTypeTable");
     case "p":
       return "P";
     default:
