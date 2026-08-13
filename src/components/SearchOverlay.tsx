@@ -290,7 +290,7 @@ export function SearchOverlay({
                       padding: "9px 15px 9px 13px", cursor: "pointer", font: "inherit", fontSize: 13.5, fontWeight: 500, color: theme.ink,
                       transition: "background-color 120ms ease, transform 120ms ease",
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = theme.hover; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = theme.chromeHover; e.currentTarget.style.transform = "translateY(-1px)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = theme.chrome; e.currentTarget.style.transform = "none"; }}
                   >
                     <span style={{ color: theme.muted, display: "flex" }}><Icon name={j.icon} size={16} /></span>

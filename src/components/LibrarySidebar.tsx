@@ -120,7 +120,7 @@ export function LibrarySidebar({
           background: theme.bg, border: `1px solid ${theme.rule}`, borderRadius: 11, padding: "9px 11px",
           cursor: "pointer", font: "inherit", color: theme.muted, textAlign: "start", transition: TRANSITION,
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
+        onMouseEnter={(e) => (e.currentTarget.style.background = theme.chromeHover)}
         onMouseLeave={(e) => (e.currentTarget.style.background = theme.bg)}
       >
         <Icon name="search" size={16} />

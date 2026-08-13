@@ -337,7 +337,12 @@ function ModeOption({
         display: "flex",
         gap: 12,
         padding: "14px 16px",
-        background: selected ? theme.hover : theme.chrome,
+        // Selected uses the opaque `chromeHover` (a hair darker/lighter than
+        // the unselected `chrome`) plus the strong ink border, so the active
+        // choice reads as MORE prominent. Previously it used the faint
+        // translucent `hover`, which made the selected option look fainter
+        // than the unselected ones.
+        background: selected ? theme.chromeHover : theme.chrome,
         border: selected
           ? `2px solid ${theme.ink}`
           : `0.5px solid ${theme.rule}`,
