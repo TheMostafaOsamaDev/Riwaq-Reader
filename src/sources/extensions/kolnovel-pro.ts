@@ -36,8 +36,7 @@ export function createKolNovelProSource(host: SourceHost): Source {
       name: "KolNovel Pro",
       baseUrl: BASE_URL,
       language: "ar",
-      description:
-        "Arabic novels from kolnovel.com — read as HTML chapters with the official illustrations (PDF fallback for chapters without HTML).",
+      descriptionKey: "source.kolnovelPro.description",
       version: "0.1.0",
     },
 

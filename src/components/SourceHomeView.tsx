@@ -10,6 +10,7 @@
 //     query returns to sections mode without re-fetching them.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../i18n/useI18n";
 import { getSource } from "../sources/registry";
 import type {
   NovelCard as NovelCardData,
@@ -68,6 +69,7 @@ export function SourceHomeView({
   onBack,
   onOpenNovel,
 }: Props) {
+  const { tr } = useI18n();
   const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
 
   const [sectionsState, setSectionsState] = useState<SectionsState>({
@@ -224,7 +226,7 @@ export function SourceHomeView({
           fontFamily: FONT_STACKS.sans,
         }}
       >
-        Source “{sourceId}” isn't installed.
+        {tr("store.notInstalled", { sourceId })}
       </div>
     );
   }
@@ -320,6 +322,7 @@ function HomeHeader({
   suggestState,
   onOpenSuggestion,
 }: HomeHeaderProps) {
+  const { tr } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const isMobile = layout === "mobile";
 
@@ -349,7 +352,7 @@ function HomeHeader({
       >
         <button
           onClick={onBack}
-          aria-label="Back to sources"
+          aria-label={tr("store.backToSources")}
           style={{
             width: 34,
             height: 34,
@@ -364,7 +367,7 @@ function HomeHeader({
             flexShrink: 0,
           }}
         >
-          <Icon name="arrowL" size={16} />
+          <Icon name="arrowL" size={16} className="rtl-flip-x" />
         </button>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
@@ -445,6 +448,7 @@ function SearchInputWithSuggest({
   suggestState,
   onOpenSuggestion,
 }: SearchInputWithSuggestProps) {
+  const { tr } = useI18n();
   // Click-outside dismissal. Walk composedPath instead of contains() so
   // dropdown clicks on portals or shadow-DOM children would still count
   // as inside (we don't use any here yet but it future-proofs cheaply).
@@ -497,7 +501,7 @@ function SearchInputWithSuggest({
               onCloseSuggest();
             }
           }}
-          placeholder="Search…"
+          placeholder={tr("store.searchPlaceholder")}
           style={{
             flex: 1,
             minWidth: 0,
@@ -529,15 +533,17 @@ interface SuggestDropdownProps {
 }
 
 function SuggestDropdown({ theme, state, onPick }: SuggestDropdownProps) {
+  const { tr } = useI18n();
   return (
     <div
       // Float over the page content; absolute is enough because the
       // parent positioned itself relatively.
+      className="leaflet-scroll-hidden"
       style={{
         position: "absolute",
         top: "calc(100% + 4px)",
-        left: 0,
-        right: 0,
+        insetInlineStart: 0,
+        insetInlineEnd: 0,
         zIndex: 50,
         background: theme.bg,
         border: `0.5px solid ${theme.rule}`,
@@ -552,19 +558,19 @@ function SuggestDropdown({ theme, state, onPick }: SuggestDropdownProps) {
         <div
           style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
         >
-          Searching…
+          {tr("store.searching")}
         </div>
       ) : state.error ? (
         <div
           style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
         >
-          Couldn't load suggestions — {state.error}
+          {tr("store.suggestError", { error: state.error })}
         </div>
       ) : state.items && state.items.length === 0 ? (
         <div
           style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
         >
-          No matches for “{state.query}”.
+          {tr("store.noSuggestMatches", { query: state.query })}
         </div>
       ) : (
         (state.items ?? []).map((card, i) => (
@@ -644,6 +650,7 @@ interface SectionsListProps {
 }
 
 function SectionsList({ theme, state, onOpenNovel }: SectionsListProps) {
+  const { tr } = useI18n();
   if (state.loading) {
     return <SectionsListSkeleton theme={theme} />;
   }
@@ -661,14 +668,14 @@ function SectionsList({ theme, state, onOpenNovel }: SectionsListProps) {
           marginTop: 24,
         }}
       >
-        Couldn't load this source — {state.error}
+        {tr("store.loadSourceError", { error: state.error })}
       </div>
     );
   }
   if (state.sections.length === 0) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: theme.muted }}>
-        No sections found.
+        {tr("store.noSections")}
       </div>
     );
   }
@@ -693,6 +700,7 @@ interface SectionRowProps {
 }
 
 function SectionRow({ theme, section, onOpenNovel }: SectionRowProps) {
+  const { tr } = useI18n();
   return (
     <div>
       <div
@@ -716,7 +724,12 @@ function SectionRow({ theme, section, onOpenNovel }: SectionRowProps) {
         </h3>
         {section.viewMoreUrl && (
           <span style={{ fontSize: 11, color: theme.muted }}>
-            {section.cards.length} items
+            {tr(
+              section.cards.length === 1
+                ? "store.itemsCountOne"
+                : "store.itemsCountOther",
+              { n: section.cards.length },
+            )}
           </span>
         )}
       </div>
@@ -749,6 +762,7 @@ function SearchResults({
   onClear,
   onOpenNovel,
 }: SearchResultsProps) {
+  const { tr } = useI18n();
   return (
     <div style={{ marginTop: 18 }}>
       <div
@@ -767,10 +781,12 @@ function SearchResults({
             color: theme.ink,
           }}
         >
-          {state.loading ? "Searching…" : `Results for “${state.query}”`}
+          {state.loading
+            ? tr("store.searching")
+            : tr("store.resultsFor", { query: state.query })}
         </h3>
         <Button theme={theme} variant="ghost" size="sm" onClick={onClear}>
-          Clear
+          {tr("store.clear")}
         </Button>
       </div>
       {state.loading ? (
@@ -796,11 +812,11 @@ function SearchResults({
             fontSize: 13,
           }}
         >
-          Search failed — {state.error}
+          {tr("store.searchFailed", { error: state.error })}
         </div>
       ) : state.result && state.result.cards.length === 0 ? (
         <div style={{ padding: 32, textAlign: "center", color: theme.muted }}>
-          No matches.
+          {tr("store.noResults")}
         </div>
       ) : (
         <ResultsGrid

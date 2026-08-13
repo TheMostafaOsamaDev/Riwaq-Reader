@@ -294,4 +294,38 @@ export const en = {
   "downloads.statusInterruptedPartialOther":
     "Interrupted — {n} books already saved",
   "downloads.statusInterruptedResume": "Interrupted — tap Retry to resume",
+
+  // store — sources list + a source's home (browse/search its homepage)
+  "store.title": "Sources",
+  "store.subtitle":
+    "Browse novels from supported websites, then add them to your library or stream them inline.",
+  "store.noSources": "No sources installed yet.",
+  "store.backToSources": "Back to sources",
+  "store.searchPlaceholder": "Search…",
+  "store.searching": "Searching…",
+  "store.suggestError": "Couldn't load suggestions — {error}",
+  "store.noSuggestMatches": "No matches for “{query}”.",
+  "store.loadSourceError": "Couldn't load this source — {error}",
+  "store.noSections": "No sections found.",
+  "store.itemsCountOne": "{n} item",
+  "store.itemsCountOther": "{n} items",
+  "store.resultsFor": "Results for “{query}”",
+  "store.clear": "Clear",
+  "store.searchFailed": "Search failed — {error}",
+  "store.noResults": "No matches.",
+  "store.notInstalled": "Source “{sourceId}” isn't installed.",
+
+  // source — app-authored copy shipped with the bundled source extensions.
+  // Brand names/ids (KolNovel, Cenele, …) and anything scraped from a
+  // source's own site are NOT here — only the app's own English sentences:
+  // the sources-list card descriptions, and the fallback section headings
+  // used on the rare occasion a source's homepage doesn't yield one.
+  "source.cenele.description":
+    "Arabic translations of Asian web novels from cenele.com (فضاء الروايات).",
+  "source.kolnovel.description":
+    "Arabic translations of Asian novels from free.kolnovel.com.",
+  "source.kolnovelPro.description":
+    "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
+  "source.section.trendingFallback": "Trending",
+  "source.section.hotUpdatesFallback": "Hot updates",
 } as const;

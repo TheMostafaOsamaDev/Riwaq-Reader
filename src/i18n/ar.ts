@@ -275,4 +275,32 @@ export const ar: Messages = {
   "downloads.statusInterruptedPartialOne": "توقف — تم حفظ {n} كتاب بالفعل",
   "downloads.statusInterruptedPartialOther": "توقف — تم حفظ {n} كتب بالفعل",
   "downloads.statusInterruptedResume": "توقف — اضغط على إعادة المحاولة للمتابعة",
+
+  "store.title": "المصادر",
+  "store.subtitle":
+    "تصفّح الروايات من المواقع المدعومة، ثم أضفها إلى مكتبتك أو اقرأها مباشرةً.",
+  "store.noSources": "لا مصادر مثبَّتة بعد.",
+  "store.backToSources": "العودة إلى المصادر",
+  "store.searchPlaceholder": "بحث…",
+  "store.searching": "جارٍ البحث…",
+  "store.suggestError": "تعذّر تحميل الاقتراحات — {error}",
+  "store.noSuggestMatches": "لا نتائج لـ “{query}”.",
+  "store.loadSourceError": "تعذّر تحميل هذا المصدر — {error}",
+  "store.noSections": "لا أقسام لعرضها.",
+  "store.itemsCountOne": "{n} عنصر",
+  "store.itemsCountOther": "{n} عناصر",
+  "store.resultsFor": "نتائج “{query}”",
+  "store.clear": "مسح",
+  "store.searchFailed": "فشل البحث — {error}",
+  "store.noResults": "لا نتائج.",
+  "store.notInstalled": "المصدر “{sourceId}” غير مثبَّت.",
+
+  "source.cenele.description":
+    "ترجمات عربية لروايات الويب الآسيوية من cenele.com (فضاء الروايات).",
+  "source.kolnovel.description":
+    "ترجمات عربية للروايات الآسيوية من free.kolnovel.com.",
+  "source.kolnovelPro.description":
+    "روايات عربية من kolnovel.com تُقدَّم كفصول PDF مع الرسوم التوضيحية الرسمية.",
+  "source.section.trendingFallback": "الرائج",
+  "source.section.hotUpdatesFallback": "تحديثات رائجة",
 };

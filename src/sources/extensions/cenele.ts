@@ -110,8 +110,7 @@ export function createCeneleSource(host: SourceHost): Source {
       name: "Cenele",
       baseUrl: BASE_URL,
       language: "ar",
-      description:
-        "Arabic translations of Asian web novels from cenele.com (فضاء الروايات).",
+      descriptionKey: "source.cenele.description",
       version: "0.1.0",
     },
     // Cenele loads chapter lists per volume via AJAX. Most novels have

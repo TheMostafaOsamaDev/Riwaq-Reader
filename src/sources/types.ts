@@ -20,6 +20,8 @@
 // All shapes are JSON-serializable so a snapshot of any scrape can be
 // persisted for resume / debugging without losing fidelity.
 
+import type { MsgKey } from "../i18n";
+
 // ── chapter-body shapes (unchanged from the original importer) ─────────────
 
 export type SourceLineType = "text" | "image";
@@ -202,8 +204,16 @@ export interface SourceMetadata {
   baseUrl: string;
   /** BCP-47 language tag the source primarily produces. */
   language: string;
-  /** One-line description shown in the sources list. */
+  /** One-line description shown in the sources list, used verbatim. Prefer
+   *  `descriptionKey` for the app's own bundled sources so the copy
+   *  translates with the UI language; this plain field exists for future
+   *  sideloaded/third-party sources that ship their own (already-localized
+   *  or single-language) text. */
   description?: string;
+  /** i18n key resolved via `tr()` for the sources-list card description.
+   *  Takes precedence over `description` when both are present — used by
+   *  the app's own bundled sources (see registry.ts). */
+  descriptionKey?: MsgKey;
   /** Absolute URL of an icon/logo. Shown on the source card in the store.
    *  When absent the UI falls back to a generated avatar from the name. */
   iconUrl?: string;

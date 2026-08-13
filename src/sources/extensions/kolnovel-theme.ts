@@ -6,6 +6,7 @@
 // PDF fallback owned by kolnovel-pro.ts).
 
 import { absolutizeUrl } from "../host";
+import { makeTr, type Locale } from "../../i18n";
 import type {
   NovelCard,
   SourceChapter,
@@ -16,6 +17,19 @@ import type {
   SourceSection,
   SourceVolume,
 } from "../types";
+
+/** Best-effort current UI locale for the rare case a homepage scrape
+ *  doesn't yield a section heading and we fall back to a fixed name. This
+ *  module runs outside the component tree (plain DOM parsing, no React
+ *  context available), so it reads `document.documentElement.lang` instead
+ *  of `useI18n()` — App.tsx keeps that attribute in sync with the user's
+ *  UI-language preference. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 // ── home-page parsing ───────────────────────────────────────────────────────
 
@@ -78,7 +92,8 @@ function parseSectionElement(
 
 function parseTrendArea(el: Element, id: string, baseUrl: string): SourceSection | null {
   const title =
-    cleanTitle(el.querySelector(".topareatitle")?.textContent) || "Trending";
+    cleanTitle(el.querySelector(".topareatitle")?.textContent) ||
+    makeTr(currentUiLocale())("source.section.trendingFallback");
   const cards: NovelCard[] = [];
   for (const item of Array.from(el.querySelectorAll(".trendlist"))) {
     const link = item.querySelector(".thumbtr a") as HTMLAnchorElement | null;
@@ -107,7 +122,8 @@ function parseTrendArea(el: Element, id: string, baseUrl: string): SourceSection
 
 function parseHomeHot(el: Element, id: string, baseUrl: string): SourceSection | null {
   const title =
-    cleanTitle(el.querySelector(".topareatitle")?.textContent) || "Hot updates";
+    cleanTitle(el.querySelector(".topareatitle")?.textContent) ||
+    makeTr(currentUiLocale())("source.section.hotUpdatesFallback");
   const cards: NovelCard[] = [];
   for (const item of Array.from(el.querySelectorAll(".hotoday"))) {
     const link = item.querySelector(".inhotoday > a") as HTMLAnchorElement | null;
