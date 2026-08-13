@@ -6,6 +6,8 @@ import {
   type HighlightColor,
   type Theme,
 } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
+import type { MsgKey } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -25,6 +27,14 @@ interface Props {
 const COLORS: HighlightColor[] = ["yellow", "blue", "pink", "green"];
 const DEFAULT_COLOR: HighlightColor = "yellow";
 
+/** Localized color name for the swatch aria-labels below. */
+const COLOR_NAME_KEY: Record<HighlightColor, MsgKey> = {
+  yellow: "color.yellow",
+  blue: "color.blue",
+  pink: "color.pink",
+  green: "color.green",
+};
+
 export function SelectionPopover({
   theme,
   anchor,
@@ -33,6 +43,7 @@ export function SelectionPopover({
   onAddNote,
   onDismiss,
 }: Props) {
+  const { tr } = useI18n();
   const [noteMode, setNoteMode] = useState(false);
   const [noteColor, setNoteColor] = useState<HighlightColor>(DEFAULT_COLOR);
   const [note, setNote] = useState("");
@@ -64,7 +75,7 @@ export function SelectionPopover({
   return (
     <div
       role="toolbar"
-      aria-label="Highlight options"
+      aria-label={tr("selection.ariaLabel")}
       data-popover="highlight"
       onMouseDown={(e) => {
         // Keep the underlying selection alive while the user clicks our
@@ -98,7 +109,7 @@ export function SelectionPopover({
             <button
               key={c}
               onClick={() => onPick(c)}
-              aria-label={`Highlight ${c}`}
+              aria-label={tr("selection.colorAriaLabel", { color: tr(COLOR_NAME_KEY[c]) })}
               style={{
                 width: 22,
                 height: 22,
@@ -120,8 +131,8 @@ export function SelectionPopover({
           />
           <button
             onClick={() => setNoteMode(true)}
-            aria-label="Add note"
-            title="Add note"
+            aria-label={tr("highlights.addNote")}
+            title={tr("highlights.addNote")}
             style={{
               width: 28,
               height: 28,
@@ -145,7 +156,7 @@ export function SelectionPopover({
               <button
                 key={c}
                 onClick={() => setNoteColor(c)}
-                aria-label={`Color ${c}`}
+                aria-label={tr("selection.colorPickAriaLabel", { color: tr(COLOR_NAME_KEY[c]) })}
                 style={{
                   width: 18,
                   height: 18,
@@ -171,7 +182,7 @@ export function SelectionPopover({
                 onAddNote(noteColor, note);
               }
             }}
-            placeholder="Why does this matter?"
+            placeholder={tr("highlights.whyMatterPlaceholder")}
             rows={3}
             style={{
               width: "100%",
@@ -195,13 +206,13 @@ export function SelectionPopover({
               }}
               style={ghostBtn(theme)}
             >
-              Cancel
+              {tr("common.cancel")}
             </button>
             <button
               onClick={() => onAddNote(noteColor, note)}
               style={primaryBtn(theme)}
             >
-              Save
+              {tr("common.save")}
             </button>
           </div>
         </>

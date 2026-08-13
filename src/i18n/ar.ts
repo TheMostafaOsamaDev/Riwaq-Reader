@@ -13,6 +13,7 @@ export const ar: Messages = {
   "common.save": "حفظ",
   "common.saving": "جارٍ الحفظ…",
   "common.unknownAuthor": "مؤلف غير معروف",
+  "common.untitled": "بلا عنوان",
 
   "settings.title": "القراءة",
   "settings.subtitle": "المظهر والخطوط",
@@ -127,6 +128,8 @@ export const ar: Messages = {
   "shelves.sectionEmpty": "لا كتب في هذا الرف بعد.",
   "shelves.dialogHint": "سمِّ مجموعة. يمكنك إضافة كتب إليها لاحقًا.",
   "shelves.namePlaceholder": "مثال: المفضلة، قراءات الصيف…",
+  "shelves.defaultFavorites": "المفضلة",
+  "shelves.defaultToRead": "للقراءة لاحقًا",
   "shelves.duplicateName": "يوجد رف بهذا الاسم بالفعل.",
   "shelves.create": "إنشاء رف",
 
@@ -147,6 +150,8 @@ export const ar: Messages = {
   "reader.readingSettings": "إعدادات القراءة",
   "reader.readingProgress": "تقدّم القراءة",
 
+  "lightbox.closeImage": "إغلاق الصورة",
+
   "toc.searchChapters": "بحث في الفصول",
   "toc.clearSearch": "مسح البحث",
   "toc.noMatches": "لا فصول تطابق “{term}”.",
@@ -165,6 +170,15 @@ export const ar: Messages = {
   "highlights.notePlaceholder": "ملاحظة…",
   "highlights.actions": "خيارات التظليل",
   "highlights.delete": "حذف التظليل",
+  "highlights.whyMatterPlaceholder": "لماذا هذا مهم؟",
+
+  "selection.ariaLabel": "خيارات التظليل",
+  "selection.colorAriaLabel": "تظليل {color}",
+  "selection.colorPickAriaLabel": "لون {color}",
+  "color.yellow": "أصفر",
+  "color.blue": "أزرق",
+  "color.pink": "وردي",
+  "color.green": "أخضر",
 
   "progress.ofBook": "من الكتاب",
   "progress.chapterOfTotal": "الفصل {n} من {total}",
@@ -294,6 +308,8 @@ export const ar: Messages = {
   "store.searchFailed": "فشل البحث — {error}",
   "store.noResults": "لا نتائج.",
   "store.notInstalled": "المصدر “{sourceId}” غير مثبَّت.",
+  "carousel.scrollLeft": "التمرير لليسار",
+  "carousel.scrollRight": "التمرير لليمين",
 
   "source.cenele.description":
     "ترجمات عربية لروايات الويب الآسيوية من cenele.com (فضاء الروايات).",
@@ -385,6 +401,7 @@ export const ar: Messages = {
   "docx.blockTypeList": "قائمة",
   "docx.blockTypeQuote": "اقتباس",
   "docx.blockTypeTable": "جدول",
+  "picker.filterImage": "صورة",
 
   "status.importedDocOne": "تم استيراد “{title}” — {n} فصل.",
   "status.importedDocOther": "تم استيراد “{title}” — {n} فصول.",
@@ -436,6 +453,8 @@ export const ar: Messages = {
   "error.sourceNotInstalledDownload":
     "المصدر “{sourceId}” غير مثبَّت — يتعذّر تنزيل هذا الفصل.",
 
+  "status.notif.channelName": "التنزيلات",
+  "status.notif.channelDescription": "تنزيلات الفصول وتحويلات الكتب غير المتصلة",
   "status.notif.convertingTitle": "جارٍ تحويل {novel}",
   "status.notif.percentDone": "اكتمل {pct}٪",
   "status.notif.preparingOfflineBook": "جارٍ تجهيز كتاب غير متصل",

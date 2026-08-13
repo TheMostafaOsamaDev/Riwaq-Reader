@@ -275,7 +275,7 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
   const title =
     cleanTitle(sertobig.querySelector("h1.entry-title")?.textContent) ||
     cleanTitle(doc.querySelector("h1.entry-title")?.textContent) ||
-    "Unknown title";
+    makeTr(currentUiLocale())("common.untitled");
 
   const originalTitle =
     cleanTitle(sertobig.querySelector(".alter")?.textContent) || undefined;

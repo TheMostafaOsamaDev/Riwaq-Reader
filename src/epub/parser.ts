@@ -8,6 +8,20 @@ import type {
   ImageItem,
   ParsedEpub,
 } from "./types";
+import { makeTr, type Locale } from "../i18n";
+
+/** Best-effort current UI locale. This module runs outside the component
+ *  tree (plain parsing, no React context available), so it reads
+ *  `document.documentElement.lang` instead of `useI18n()` — App.tsx keeps
+ *  that attribute in sync with the user's UI-language preference. Same
+ *  pattern as `currentUiLocale()` in kolnovel-theme.ts / cenele.ts /
+ *  library.ts. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 // EPUB 3 / EPUB 2 parser.
 //
@@ -46,7 +60,8 @@ export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
 
   const basePath = dirname(opfPath);
 
-  const title = firstText(opf, DC_NS, "title") ?? "Untitled";
+  const title =
+    firstText(opf, DC_NS, "title") ?? makeTr(currentUiLocale())("common.untitled");
   // Empty (not "Unknown author") — matches the docx import fix: a blank
   // author persists as "" so the Task-12 display-time fallback
   // (`common.unknownAuthor`) localizes it wherever the book is rendered,

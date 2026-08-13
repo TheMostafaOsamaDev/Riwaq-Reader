@@ -363,8 +363,13 @@ function CollapsibleRow({
 }
 
 function SectionLabel({ theme, children }: { theme: Theme; children: ReactNode }) {
+  // Tracking + uppercasing are a Latin-typography convention: extra
+  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
+  // no-op on Arabic anyway. Skip both when the UI is Arabic.
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   return (
-    <div style={{ display: "flex", alignItems: "center", padding: "12px 12px 7px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: theme.muted }}>
+    <div style={{ display: "flex", alignItems: "center", padding: "12px 12px 7px", fontSize: 10.5, fontWeight: 600, letterSpacing: isAr ? "normal" : "0.12em", textTransform: isAr ? "none" : "uppercase", color: theme.muted }}>
       {children}
     </div>
   );

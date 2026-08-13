@@ -86,6 +86,7 @@ interface Props {
 }
 
 function useBooks() {
+  const { tr } = useI18n();
   const [books, setBooks] = useState<BookIndexEntry[]>([]);
   const [covers, setCovers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -109,11 +110,12 @@ function useBooks() {
       for (const [id, url] of entries) if (url) next[id] = url;
       setCovers(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tr]);
 
   useEffect(() => {
     refresh();
@@ -203,7 +205,8 @@ export function Library({
       const entry = await pickAndImportEpub();
       if (entry) await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     } finally {
       setImporting(false);
     }
@@ -252,7 +255,7 @@ export function Library({
       // import-progress modal also shows the error, but it's easy to miss
       // if it's been minimized to the dock.
       console.error("docx import failed:", e);
-      setError(message);
+      setError(errorLabel(message, tr));
       showToast("error", tr("status.importFailed", { error: errorLabel(message, tr) }));
     } finally {
       setImporting(false);
@@ -270,7 +273,7 @@ export function Library({
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.error("docx staging failed:", e);
-      setError(message);
+      setError(errorLabel(message, tr));
       showToast("error", tr("status.docReadError", { error: errorLabel(message, tr) }));
     } finally {
       setImporting(false);
@@ -361,7 +364,8 @@ export function Library({
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     } finally {
       setImporting(false);
     }
@@ -380,7 +384,8 @@ export function Library({
       }
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
 
@@ -389,7 +394,8 @@ export function Library({
       await setCoverFromFile(id);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
 
@@ -405,7 +411,8 @@ export function Library({
       await refresh();
       setEditingId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
 
@@ -431,7 +438,8 @@ export function Library({
       await refresh();
       closeContextMenu();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
   // Single source of truth for the remove-confirmation popup. Every entry
@@ -812,7 +820,13 @@ function DesktopLibrary({
   const [searchOpen, setSearchOpen] = useState(false);
   const [shelvesView, setShelvesView] = useState(false);
   const [newShelfOpen, setNewShelfOpen] = useState(false);
-  const [shelves, setShelves] = useState<string[]>(["Favorites", "To read"]);
+  // Seed shelf names — app-authored defaults for a first-run shelf list
+  // (this state isn't persisted yet), so they must come from the current
+  // UI locale rather than a frozen English literal.
+  const [shelves, setShelves] = useState<string[]>(() => [
+    tr("shelves.defaultFavorites"),
+    tr("shelves.defaultToRead"),
+  ]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -1076,7 +1090,8 @@ function MobileLibrary({
   onOpenSettings,
   onCardContextMenu,
 }: LayoutProps) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   // Filter to the selected status tab. "store" is handled separately
   // (a body swap, not a filter); the tab pills exclude it on mobile
   // because Store toggling lives in the bottom nav.
@@ -1274,8 +1289,8 @@ function MobileLibrary({
                       fontSize: 9.5,
                       fontWeight: 600,
                       color: theme.muted,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
+                      letterSpacing: isAr ? "normal" : "0.1em",
+                      textTransform: isAr ? "none" : "uppercase",
                       marginBottom: 4,
                     }}
                   >
@@ -1332,8 +1347,8 @@ function MobileLibrary({
                 fontSize: 10.5,
                 fontWeight: 600,
                 color: theme.muted,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
+                letterSpacing: isAr ? "normal" : "0.1em",
+                textTransform: isAr ? "none" : "uppercase",
                 marginBottom: 14,
               }}
             >
@@ -2011,7 +2026,8 @@ function HeroContinueCard({
   onDelete: () => void;
   onEdit: () => void;
 }) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   const palette = paletteForId(book.id);
   return (
     <div
@@ -2039,8 +2055,8 @@ function HeroContinueCard({
             fontSize: 10.5,
             fontWeight: 600,
             color: theme.muted,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
+            letterSpacing: isAr ? "normal" : "0.12em",
+            textTransform: isAr ? "none" : "uppercase",
             marginBottom: 10,
           }}
         >
@@ -2165,7 +2181,8 @@ function LibraryCard({
   onOpen: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <div
       // Pin the whole card to the cover width so the title row's
@@ -2204,8 +2221,8 @@ function LibraryCard({
                 color: "#fff",
                 fontSize: 9.5,
                 fontWeight: 700,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
+                letterSpacing: isAr ? "normal" : "0.1em",
+                textTransform: isAr ? "none" : "uppercase",
                 fontFamily: FONT_STACKS.sans,
                 backdropFilter: "blur(6px)",
                 pointerEvents: "none",
@@ -2250,8 +2267,8 @@ function LibraryCard({
                 fontSize: 10,
                 color: theme.muted,
                 fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
+                letterSpacing: isAr ? "normal" : "0.06em",
+                textTransform: isAr ? "none" : "uppercase",
                 display: "flex",
                 alignItems: "center",
                 gap: 4,

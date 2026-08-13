@@ -26,7 +26,8 @@ export function TOCPanel({
   width,
   side = "left",
 }: Props) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const filtered = useMemo(() => {
@@ -126,8 +127,8 @@ export function TOCPanel({
                     fontSize: 9,
                     color: theme.muted,
                     fontWeight: 600,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
+                    letterSpacing: isAr ? "normal" : "0.06em",
+                    textTransform: isAr ? "none" : "uppercase",
                   }}
                 >
                   {tr("toc.now")}

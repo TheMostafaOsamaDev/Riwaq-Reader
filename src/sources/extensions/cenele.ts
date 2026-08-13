@@ -703,7 +703,7 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
 
   const title =
     sanitizeText(doc.querySelector(".manga-title h2")?.textContent) ||
-    "Unknown title";
+    makeTr(currentUiLocale())("common.untitled");
   const originalTitle =
     sanitizeText(
       doc.querySelector(".manga-alt-title .manga-alt-label")?.textContent,

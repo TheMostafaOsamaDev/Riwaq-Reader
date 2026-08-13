@@ -19,6 +19,12 @@ export const en = {
   // `book.author || tr(...)` in BookCover/Library — never in an editable
   // input's `value`.
   "common.unknownAuthor": "Unknown author",
+  // Display-time (and, for the source parsers, synthesis-time — see
+  // `currentUiLocale()` in cenele.ts/kolnovel-theme.ts) fallback for a title
+  // that couldn't be determined (no <dc:title> in an EPUB, an unusable docx
+  // filename, or a scraped novel page missing its title element). Same
+  // never-persist-untranslated-English rationale as `common.unknownAuthor`.
+  "common.untitled": "Untitled",
 
   // settings panel
   "settings.title": "Reading",
@@ -138,6 +144,10 @@ export const en = {
   "shelves.sectionEmpty": "No books in this shelf yet.",
   "shelves.dialogHint": "Name a collection. You can add books to it later.",
   "shelves.namePlaceholder": "e.g. Favorites, Summer reads…",
+  // Seed names for the first-run shelf list (LibraryLayout — not persisted
+  // yet, so these must track the current locale rather than freeze English).
+  "shelves.defaultFavorites": "Favorites",
+  "shelves.defaultToRead": "To read",
   "shelves.duplicateName": "A shelf with that name already exists.",
   "shelves.create": "Create shelf",
 
@@ -159,6 +169,10 @@ export const en = {
   "reader.readingSettings": "Reading settings",
   "reader.readingProgress": "Reading progress",
 
+  // Chapter-image lightbox (Lightbox.tsx) — full-viewport image viewer
+  // opened by tapping an inline chapter image.
+  "lightbox.closeImage": "Close image",
+
   // TOC panel (reuses reader.toc for its own title — see PanelShell usage)
   "toc.searchChapters": "Search chapters",
   "toc.clearSearch": "Clear search",
@@ -179,6 +193,22 @@ export const en = {
   "highlights.notePlaceholder": "Note…",
   "highlights.actions": "Highlight actions",
   "highlights.delete": "Delete highlight",
+  // Shared by SelectionPopover.tsx (new highlight) and
+  // HighlightActionPopover.tsx (existing highlight) — the longer note
+  // placeholder shown in each popover's note-composer mode. (The panel's
+  // own note field uses the shorter `highlights.notePlaceholder`.)
+  "highlights.whyMatterPlaceholder": "Why does this matter?",
+
+  // Text-selection popover (SelectionPopover.tsx, new highlight) — reuses
+  // highlights.addNote for its own "Add note" button. Highlight-color swatch
+  // aria-labels interpolate one of the color.* names below.
+  "selection.ariaLabel": "Highlight options",
+  "selection.colorAriaLabel": "Highlight {color}",
+  "selection.colorPickAriaLabel": "Color {color}",
+  "color.yellow": "yellow",
+  "color.blue": "blue",
+  "color.pink": "pink",
+  "color.green": "green",
 
   // Progress overlay (heading reuses reader.readingProgress)
   "progress.ofBook": "of book",
@@ -320,6 +350,13 @@ export const en = {
   "store.searchFailed": "Search failed — {error}",
   "store.noResults": "No matches.",
   "store.notInstalled": "Source “{sourceId}” isn't installed.",
+  // Section carousel (SectionCarousel.tsx) arrow buttons on a source's home
+  // page. "left"/"right" name the button's fixed physical position on
+  // screen, not a scroll direction — the carousel already reverses the
+  // underlying scroll math under RTL so the visible arrow always moves
+  // content the way it looks like it should.
+  "carousel.scrollLeft": "Scroll left",
+  "carousel.scrollRight": "Scroll right",
 
   // source — app-authored copy shipped with the bundled source extensions.
   // Brand names/ids (KolNovel, Cenele, …) and anything scraped from a
@@ -446,6 +483,13 @@ export const en = {
   "docx.blockTypeQuote": "QUOTE",
   "docx.blockTypeTable": "TABLE",
 
+  // Native file-picker filter labels (Tauri's open() dialog — the "Files of
+  // type" dropdown on Windows/Linux; the doc-import filter reuses
+  // sidebar.wordDoc's identical text). Resolved via currentUiLocale() the
+  // same way the source parsers do, since these store functions have no
+  // React context.
+  "picker.filterImage": "Image",
+
   // ── Task 13: user-facing error / status message sweep ──────────────────
   // Library.tsx toast bodies (dynamic parts — book/doc titles, counts, and
   // caught-error `.message` text — travel as interpolation params; see the
@@ -516,6 +560,12 @@ export const en = {
   // runs outside the component tree, so it resolves the UI locale the same
   // way kolnovel-theme.ts / cenele.ts already do (`document.documentElement.lang`)
   // and calls `makeTr()` directly rather than using `useI18n()`.
+  // Android notification-channel metadata (registered once, lazily, on the
+  // first permitted notification — see ensureChannel() in
+  // downloadNotifier.ts). Resolved the same way as the rest of this file.
+  "status.notif.channelName": "Downloads",
+  "status.notif.channelDescription":
+    "Chapter downloads and offline-book conversions",
   "status.notif.convertingTitle": "Converting {novel}",
   "status.notif.percentDone": "{pct}% done",
   "status.notif.preparingOfflineBook": "Preparing offline book",

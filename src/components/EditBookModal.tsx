@@ -597,14 +597,19 @@ function FieldLabel({
   theme: Theme;
   children: React.ReactNode;
 }) {
+  // Tracking + uppercasing are a Latin-typography convention: extra
+  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
+  // no-op on Arabic anyway. Skip both when the UI is Arabic.
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <div
       style={{
         fontSize: 10.5,
         fontWeight: 600,
         color: theme.muted,
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
+        letterSpacing: isAr ? "normal" : "0.08em",
+        textTransform: isAr ? "none" : "uppercase",
       }}
     >
       {children}

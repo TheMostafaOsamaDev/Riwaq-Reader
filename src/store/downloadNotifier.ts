@@ -80,10 +80,11 @@ let channelRegistered = false;
 async function ensureChannel(): Promise<void> {
   if (channelRegistered) return;
   try {
+    const tr = makeTr(currentUiLocale());
     await createChannel({
       id: CHANNEL_ID,
-      name: "Downloads",
-      description: "Chapter downloads and offline-book conversions",
+      name: tr("status.notif.channelName"),
+      description: tr("status.notif.channelDescription"),
       importance: Importance.Low,
       lights: false,
       vibration: false,

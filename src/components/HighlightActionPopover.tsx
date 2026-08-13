@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import type { Highlight } from "../store/library";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -21,6 +22,7 @@ export function HighlightActionPopover({
   onUpdateNote,
   onDismiss,
 }: Props) {
+  const { tr } = useI18n();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(highlight.note ?? "");
 
@@ -43,7 +45,7 @@ export function HighlightActionPopover({
   return (
     <div
       role="toolbar"
-      aria-label="Highlight actions"
+      aria-label={tr("highlights.actions")}
       data-popover="highlight"
       onMouseDown={(e) => {
         // Same trick as SelectionPopover — keep focus/selection state
@@ -74,16 +76,16 @@ export function HighlightActionPopover({
         <>
           <button
             onClick={() => setEditing(true)}
-            aria-label={highlight.note ? "Edit note" : "Add note"}
-            title={highlight.note ? "Edit note" : "Add note"}
+            aria-label={highlight.note ? tr("highlights.editNote") : tr("highlights.addNote")}
+            title={highlight.note ? tr("highlights.editNote") : tr("highlights.addNote")}
             style={iconBtn(theme)}
           >
             <Icon name="pencil" size={14} />
           </button>
           <button
             onClick={onDelete}
-            aria-label="Remove highlight"
-            title="Remove highlight"
+            aria-label={tr("highlights.delete")}
+            title={tr("highlights.delete")}
             style={{ ...iconBtn(theme), color: "#c66" }}
           >
             <Icon name="close" size={14} />
@@ -101,7 +103,7 @@ export function HighlightActionPopover({
                 onUpdateNote(draft);
               }
             }}
-            placeholder="Why does this matter?"
+            placeholder={tr("highlights.whyMatterPlaceholder")}
             rows={3}
             style={{
               width: "100%",
@@ -127,13 +129,13 @@ export function HighlightActionPopover({
               }}
               style={ghostBtn(theme)}
             >
-              Cancel
+              {tr("common.cancel")}
             </button>
             <button
               onClick={() => onUpdateNote(draft)}
               style={primaryBtn(theme)}
             >
-              Save
+              {tr("common.save")}
             </button>
           </div>
         </>

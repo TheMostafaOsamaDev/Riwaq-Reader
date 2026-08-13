@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../styles/tokens";
+import { FONT_SERIF_DISPLAY, FONT_STACKS, isArabicTitle } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -148,8 +148,19 @@ export function BookCover({
           style={{
             marginTop: size === "lg" ? 10 : 6,
             fontSize: authorSize,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
+            // Extra letter-spacing + uppercasing are a Latin-typography
+            // convention that breaks Arabic glyph joining/ligatures. The
+            // author line can be Arabic either via the book's own (content)
+            // author name or the UI-locale "Unknown author" fallback, so
+            // check the actual rendered text's script rather than the UI
+            // locale — same detector BookCover's title uses (titleFontFor/
+            // isArabicTitle below).
+            letterSpacing: isArabicTitle(author || tr("common.unknownAuthor"))
+              ? "normal"
+              : "0.18em",
+            textTransform: isArabicTitle(author || tr("common.unknownAuthor"))
+              ? "none"
+              : "uppercase",
             fontFamily: FONT_STACKS.sans,
             fontWeight: 600,
             opacity: 0.7,

@@ -21,7 +21,8 @@ export function ProgressOverlay({
   chapterCount,
   chapterTitle,
 }: Props) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   const pct = chapterCount > 0
     ? Math.round(((currentChapter + 1) / chapterCount) * 100)
     : 0;
@@ -54,8 +55,8 @@ export function ProgressOverlay({
         style={{
           fontSize: 10.5,
           fontWeight: 600,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
+          letterSpacing: isAr ? "normal" : "0.08em",
+          textTransform: isAr ? "none" : "uppercase",
           color: theme.muted,
           marginBottom: 14,
         }}

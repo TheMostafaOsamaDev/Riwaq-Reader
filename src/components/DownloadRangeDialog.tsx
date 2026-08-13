@@ -485,14 +485,19 @@ function RangePicker({
   onChange,
   disabled,
 }: RangePickerProps) {
+  // Tracking + uppercasing are a Latin-typography convention: extra
+  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
+  // no-op on Arabic anyway. Skip both when the UI is Arabic.
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <span
         style={{
           fontSize: 11,
           fontWeight: 600,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
+          letterSpacing: isAr ? "normal" : "0.04em",
+          textTransform: isAr ? "none" : "uppercase",
           color: theme.muted,
         }}
       >

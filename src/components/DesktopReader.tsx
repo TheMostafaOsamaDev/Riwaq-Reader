@@ -906,7 +906,7 @@ export function DesktopReader({
             <OverscrollIndicator theme={theme} state={overscroll} tr={tr} />
           )}
           {chapterToast && (
-            <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} tr={tr} />
+            <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} tr={tr} isAr={dir === "rtl"} />
           )}
 
           <div
@@ -1116,10 +1116,12 @@ function ChapterToast({
   theme,
   info,
   tr,
+  isAr,
 }: {
   theme: Theme;
   info: { title: string; number: number; total: number };
   tr: Tr;
+  isAr: boolean;
 }) {
   return (
     <div
@@ -1151,8 +1153,8 @@ function ChapterToast({
         style={{
           fontSize: 10,
           fontWeight: 600,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
+          letterSpacing: isAr ? "normal" : "0.14em",
+          textTransform: isAr ? "none" : "uppercase",
           color: theme.muted,
           marginBottom: 6,
         }}

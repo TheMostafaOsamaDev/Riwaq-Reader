@@ -214,7 +214,8 @@ function Header({
   onClose,
   onClearCompleted,
 }: HeaderProps) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <div
       style={{
@@ -266,8 +267,8 @@ function Header({
             marginTop: 2,
             fontSize: 11,
             color: theme.muted,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
+            letterSpacing: isAr ? "normal" : "0.04em",
+            textTransform: isAr ? "none" : "uppercase",
             fontWeight: 500,
           }}
         >

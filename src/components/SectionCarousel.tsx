@@ -16,6 +16,7 @@ import {
 import type { ReactNode } from "react";
 import type { Theme } from "../styles/tokens";
 import { Icon } from "./Icon";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -171,10 +172,11 @@ interface ArrowProps {
 }
 
 function ArrowButton({ theme, side, visible, onClick }: ArrowProps) {
+  const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
-      aria-label={side === "left" ? "Scroll left" : "Scroll right"}
+      aria-label={side === "left" ? tr("carousel.scrollLeft") : tr("carousel.scrollRight")}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       style={{

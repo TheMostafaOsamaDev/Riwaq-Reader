@@ -331,13 +331,18 @@ function Header({ theme, onClose }: { theme: Theme; onClose: () => void }) {
 }
 
 function SectionLabel({ theme, label }: { theme: Theme; label: string }) {
+  // Tracking + uppercasing are a Latin-typography convention: extra
+  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
+  // no-op on Arabic anyway. Skip both when the UI is Arabic.
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <div
       style={{
         fontSize: 11,
         fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
+        textTransform: isAr ? "none" : "uppercase",
+        letterSpacing: isAr ? "normal" : "0.08em",
         color: theme.muted,
       }}
     >
