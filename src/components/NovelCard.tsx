@@ -21,6 +21,7 @@ import {
   looksLikeMissingPlaceholder,
   optimizedCoverUrl,
 } from "../sources/images";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export function NovelCard({ theme, card, onClick }: Props) {
+  const { tr } = useI18n();
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   // Two-tier source: thumbnail first, full-size fallback on error.
@@ -46,7 +48,7 @@ export function NovelCard({ theme, card, onClick }: Props) {
       style={{
         display: "flex",
         flexDirection: "column",
-        textAlign: "left",
+        textAlign: "start",
         background: "transparent",
         border: "none",
         padding: 0,
@@ -121,7 +123,7 @@ export function NovelCard({ theme, card, onClick }: Props) {
               textAlign: "center",
             }}
           >
-            No cover
+            {tr("novel.noCover")}
           </div>
         )}
         {card.badges && card.badges.length > 0 && (

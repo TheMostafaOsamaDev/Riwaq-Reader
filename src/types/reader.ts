@@ -1,4 +1,5 @@
 import type { ThemePref } from "../styles/tokens";
+import type { UiLangPref } from "../i18n";
 
 export type ActivePanel =
   | null
@@ -22,6 +23,10 @@ export type ActivePanel =
 export type ReadingMode = "paginated-2" | "paginated-1" | "scroll";
 
 export interface Tweaks {
+  /** UI-language preference for the app chrome (NOT book content). "system"
+      resolves from the OS/browser locale; "en"/"ar" pin a language. Drives the
+      shell's reading direction. Book content direction stays derived per-book. */
+  uiLang: UiLangPref;
   /** Theme preference. "system" follows the OS light/dark setting; the
       four concrete values pin a specific theme. Resolved to a concrete
       ThemeKey at render time via resolveTheme(). */

@@ -33,8 +33,7 @@ export function createKolNovelSource(host: SourceHost): Source {
       name: "KolNovel",
       baseUrl: BASE_URL,
       language: "ar",
-      description:
-        "Arabic translations of Asian web novels from free.kolnovel.com.",
+      descriptionKey: "source.kolnovel.description",
       version: "0.2.0",
     },
 

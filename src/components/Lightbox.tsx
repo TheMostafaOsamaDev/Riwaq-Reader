@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   /** URL the lightbox displays. When null, the lightbox is unmounted. */
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function Lightbox({ src, alt, onClose }: Props) {
+  const { tr } = useI18n();
   // Two-stage open/close: when `src` flips from null → string we mount
   // and start invisible, then on the next frame set `entered: true` to
   // trigger the fade-in. On close, we set `entered: false`, wait for
@@ -83,11 +85,11 @@ export function Lightbox({ src, alt, onClose }: Props) {
           e.stopPropagation();
           onClose();
         }}
-        aria-label="Close image"
+        aria-label={tr("lightbox.closeImage")}
         style={{
           position: "absolute",
           top: 16,
-          right: 16,
+          insetInlineEnd: 16,
           width: 40,
           height: 40,
           borderRadius: 20,

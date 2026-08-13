@@ -6,6 +6,7 @@
 // PDF fallback owned by kolnovel-pro.ts).
 
 import { absolutizeUrl } from "../host";
+import { makeTr, type Locale } from "../../i18n";
 import type {
   NovelCard,
   SourceChapter,
@@ -16,6 +17,19 @@ import type {
   SourceSection,
   SourceVolume,
 } from "../types";
+
+/** Best-effort current UI locale for the rare case a homepage scrape
+ *  doesn't yield a section heading and we fall back to a fixed name. This
+ *  module runs outside the component tree (plain DOM parsing, no React
+ *  context available), so it reads `document.documentElement.lang` instead
+ *  of `useI18n()` — App.tsx keeps that attribute in sync with the user's
+ *  UI-language preference. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 // ── home-page parsing ───────────────────────────────────────────────────────
 
@@ -78,7 +92,8 @@ function parseSectionElement(
 
 function parseTrendArea(el: Element, id: string, baseUrl: string): SourceSection | null {
   const title =
-    cleanTitle(el.querySelector(".topareatitle")?.textContent) || "Trending";
+    cleanTitle(el.querySelector(".topareatitle")?.textContent) ||
+    makeTr(currentUiLocale())("source.section.trendingFallback");
   const cards: NovelCard[] = [];
   for (const item of Array.from(el.querySelectorAll(".trendlist"))) {
     const link = item.querySelector(".thumbtr a") as HTMLAnchorElement | null;
@@ -107,7 +122,8 @@ function parseTrendArea(el: Element, id: string, baseUrl: string): SourceSection
 
 function parseHomeHot(el: Element, id: string, baseUrl: string): SourceSection | null {
   const title =
-    cleanTitle(el.querySelector(".topareatitle")?.textContent) || "Hot updates";
+    cleanTitle(el.querySelector(".topareatitle")?.textContent) ||
+    makeTr(currentUiLocale())("source.section.hotUpdatesFallback");
   const cards: NovelCard[] = [];
   for (const item of Array.from(el.querySelectorAll(".hotoday"))) {
     const link = item.querySelector(".inhotoday > a") as HTMLAnchorElement | null;
@@ -256,10 +272,14 @@ export function parseSearchResults(
 export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string): SourceNovel {
   const sertobig = doc.querySelector(".sertobig") ?? doc;
 
+  // Empty (not "Untitled") when neither selector yields a title — a blank
+  // title persists as "" so the display-time fallback (`common.untitled`)
+  // localizes it wherever the novel is rendered, instead of freezing a
+  // locale-frozen literal into the novel's own stored title (same
+  // rationale as the author-blank fix elsewhere in this file).
   const title =
     cleanTitle(sertobig.querySelector("h1.entry-title")?.textContent) ||
-    cleanTitle(doc.querySelector("h1.entry-title")?.textContent) ||
-    "Unknown title";
+    cleanTitle(doc.querySelector("h1.entry-title")?.textContent);
 
   const originalTitle =
     cleanTitle(sertobig.querySelector(".alter")?.textContent) || undefined;
@@ -275,9 +295,13 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
 
   // serl rows — each is one labeled metadata field. We capture them all so
   // the UI can render a complete definition list, but also pluck the
-  // author out for the EPUB metadata.
+  // author out for the EPUB metadata. Empty (not "Unknown author") when
+  // no author row is found — same rationale as the epub/docx author fix:
+  // a blank `Book.author` lets the display-time fallback
+  // (`common.unknownAuthor`) localize it, instead of freezing an English
+  // literal into the novel's persisted data.
   const meta: SourceNovelMeta[] = [];
-  let author = "Unknown author";
+  let author = "";
   for (const row of Array.from(sertobig.querySelectorAll(".serl"))) {
     const label = cleanTitle(row.querySelector(".sername")?.textContent);
     const valEl = row.querySelector(".serval");
@@ -296,10 +320,7 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
     // Heuristic: the author row is labeled with "الكاتب" (Arabic for
     // "Writer/Author") on this theme. Fall back to first matching English
     // label too in case the theme switches language.
-    if (
-      /كاتب|writer|author/i.test(label) &&
-      author === "Unknown author"
-    ) {
+    if (/كاتب|writer|author/i.test(label) && !author) {
       author = value;
     }
   }
@@ -368,7 +389,9 @@ export function parseVolumes(doc: Document, pageUrl: string): SourceVolume[] {
   let runningChapterId = 1;
   return volumeBuckets.map((b, vi) => ({
     id: vi + 1,
-    title: b.title || `Volume ${vi + 1}`,
+    title:
+      b.title ||
+      makeTr(currentUiLocale())("novel.volumeFallback", { n: vi + 1 }),
     chapters: b.anchors.map<SourceChapter>((a) => {
       const href = a.getAttribute("href") || "";
       const titleEl = a.querySelector(".epl-title");
@@ -394,7 +417,14 @@ function sanitizeTitle(raw: string, fallbackId: number): string {
   const collapsed = cleanTitle(raw);
   const safe = collapsed.replace(/[\\/:*?"<>|]+/g, "").trim();
   const truncated = safe.length > 100 ? safe.slice(0, 100).trim() : safe;
-  return truncated || `${fallbackId} - No Title`;
+  // Rare technical fallback (a scraped chapter with no usable title text) —
+  // same pattern as the volume-title fallback above: synthesized directly
+  // here via `makeTr(currentUiLocale())` since this becomes the persisted
+  // chapter title (data), not something translated at a single display site.
+  return (
+    truncated ||
+    makeTr(currentUiLocale())("novel.chapterNoTitleFallback", { n: fallbackId })
+  );
 }
 
 function pickImageSrc(img: HTMLImageElement | null, baseUrl: string): string | undefined {

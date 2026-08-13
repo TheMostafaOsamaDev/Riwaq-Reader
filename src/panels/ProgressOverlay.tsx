@@ -4,6 +4,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -20,6 +21,8 @@ export function ProgressOverlay({
   chapterCount,
   chapterTitle,
 }: Props) {
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   const pct = chapterCount > 0
     ? Math.round(((currentChapter + 1) / chapterCount) * 100)
     : 0;
@@ -52,13 +55,13 @@ export function ProgressOverlay({
         style={{
           fontSize: 10.5,
           fontWeight: 600,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
+          letterSpacing: isAr ? "normal" : "0.08em",
+          textTransform: isAr ? "none" : "uppercase",
           color: theme.muted,
           marginBottom: 14,
         }}
       >
-        Reading progress
+        {tr("reader.readingProgress")}
       </div>
 
       <div
@@ -86,9 +89,9 @@ export function ProgressOverlay({
           %
         </span>
         <span
-          style={{ fontSize: 11, color: theme.muted, marginLeft: "auto" }}
+          style={{ fontSize: 11, color: theme.muted, marginInlineStart: "auto" }}
         >
-          of book
+          {tr("progress.ofBook")}
         </span>
       </div>
 
@@ -111,13 +114,16 @@ export function ProgressOverlay({
         </span>
         {" · "}
         <span style={{ fontVariantNumeric: "tabular-nums" }}>
-          chapter {currentChapter + 1} of {chapterCount}
+          {tr("progress.chapterOfTotal", {
+            n: currentChapter + 1,
+            total: chapterCount,
+          })}
         </span>
         {chaptersLeft > 0 && (
           <>
             {" · "}
             <span style={{ fontVariantNumeric: "tabular-nums" }}>
-              {chaptersLeft} left
+              {tr("progress.chaptersLeft", { n: chaptersLeft })}
             </span>
           </>
         )}
@@ -146,7 +152,7 @@ export function ProgressOverlay({
             key={i}
             style={{
               position: "absolute",
-              left: `${p * 100}%`,
+              insetInlineStart: `${p * 100}%`,
               top: -3,
               width: 1.5,
               height: 12,

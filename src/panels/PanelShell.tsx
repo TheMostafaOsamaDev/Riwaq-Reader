@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface PanelShellProps {
   theme: Theme;
@@ -27,11 +28,12 @@ export function PanelShell({
   icon,
   side,
 }: PanelShellProps) {
+  const { tr } = useI18n();
   const borderSide =
     side === "left"
-      ? { borderRight: `0.5px solid ${theme.rule}` }
+      ? { borderInlineEnd: `0.5px solid ${theme.rule}` }
       : side === "right"
-      ? { borderLeft: `0.5px solid ${theme.rule}` }
+      ? { borderInlineStart: `0.5px solid ${theme.rule}` }
       : {};
   return (
     <div
@@ -93,7 +95,7 @@ export function PanelShell({
           {onClose && (
             <button
               onClick={onClose}
-              aria-label="Close panel"
+              aria-label={tr("panel.close")}
               style={{
                 width: 26,
                 height: 26,

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../styles/tokens";
+import { FONT_SERIF_DISPLAY, FONT_STACKS, isArabicTitle } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   title: string;
@@ -34,10 +35,16 @@ export function BookCover({
   src,
   fluid = false,
 }: Props) {
+  const { tr } = useI18n();
   const { w, h } = BOOK_COVER_DIMS[size];
   const [p1, p2, p3] = palette;
   const [failed, setFailed] = useState(false);
   const showImage = !!src && !failed;
+  // Display-time fallback for a blank `Book.title` — a book/novel with no
+  // detected title persists as "" (see common.untitled's own doc comment)
+  // so this leaf renders the localized placeholder instead of an empty
+  // spine.
+  const displayTitle = title || tr("common.untitled");
 
   const shellStyle = {
     ...(fluid
@@ -55,7 +62,7 @@ export function BookCover({
       <div style={{ ...shellStyle, background: p1 }}>
         <img
           src={src!}
-          alt={`${title} — cover`}
+          alt={`${displayTitle} — cover`}
           loading="lazy"
           decoding="async"
           onError={() => setFailed(true)}
@@ -140,14 +147,25 @@ export function BookCover({
             overflow: "hidden",
           }}
         >
-          {title}
+          {displayTitle}
         </div>
         <div
           style={{
             marginTop: size === "lg" ? 10 : 6,
             fontSize: authorSize,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
+            // Extra letter-spacing + uppercasing are a Latin-typography
+            // convention that breaks Arabic glyph joining/ligatures. The
+            // author line can be Arabic either via the book's own (content)
+            // author name or the UI-locale "Unknown author" fallback, so
+            // check the actual rendered text's script rather than the UI
+            // locale — same detector BookCover's title uses (titleFontFor/
+            // isArabicTitle below).
+            letterSpacing: isArabicTitle(author || tr("common.unknownAuthor"))
+              ? "normal"
+              : "0.18em",
+            textTransform: isArabicTitle(author || tr("common.unknownAuthor"))
+              ? "none"
+              : "uppercase",
             fontFamily: FONT_STACKS.sans,
             fontWeight: 600,
             opacity: 0.7,
@@ -156,7 +174,7 @@ export function BookCover({
             textOverflow: "ellipsis",
           }}
         >
-          {author}
+          {author || tr("common.unknownAuthor")}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>

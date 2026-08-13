@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "../components/Icon";
+import { SystemThemeGlyph } from "../components/SystemThemeGlyph";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -9,6 +10,8 @@ import {
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 import { PanelShell } from "./PanelShell";
+import { useI18n } from "../i18n/useI18n";
+import type { MsgKey, UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -63,6 +66,11 @@ function Field({
   theme: Theme;
   children: ReactNode;
 }) {
+  // Tracking + uppercasing are a Latin-typography convention: extra
+  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
+  // no-op on Arabic anyway. Skip both when the UI is Arabic.
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <div
       style={{
@@ -75,8 +83,8 @@ function Field({
           fontSize: 10.5,
           fontWeight: 600,
           color: theme.muted,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
+          letterSpacing: isAr ? "normal" : "0.08em",
+          textTransform: isAr ? "none" : "uppercase",
           marginBottom: 10,
         }}
       >
@@ -147,17 +155,36 @@ export function SettingsPanel({
   side = "right",
   mobile,
 }: Props) {
+  const { tr, locale } = useI18n();
+  // "Aa" reads fine in Latin UIs, but is meaningless (and Fraunces has no
+  // Arabic glyphs to fall back on) when the UI is Arabic — swap to an
+  // Arabic-capable font + glyph pair so the preview never shows tofu.
+  const previewGlyph = locale === "ar" ? "أب" : "Aa";
+  const previewFontFamily = locale === "ar" ? FONT_STACKS.sans : FONT_SERIF_DISPLAY;
   return (
     <PanelShell
       theme={theme}
-      title="Reading"
-      subtitle="Appearance & typography"
+      title={tr("settings.title")}
+      subtitle={tr("settings.subtitle")}
       onClose={onClose}
       icon={<Icon name="type" size={14} />}
       width={width}
       side={side}
     >
-      <Field label="Theme" theme={theme}>
+      <Field label={tr("settings.language")} theme={theme}>
+        <SegRow<UiLangPref>
+          theme={theme}
+          value={t.uiLang}
+          onChange={(v) => setTweak("uiLang", v)}
+          options={[
+            { value: "system", label: tr("settings.language.auto") },
+            { value: "en", label: "English" },
+            { value: "ar", label: "العربية" },
+          ]}
+        />
+      </Field>
+
+      <Field label={tr("settings.theme")} theme={theme}>
         <div
           style={{
             display: "grid",
@@ -187,12 +214,12 @@ export function SettingsPanel({
             >
               <span
                 style={{
-                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontFamily: previewFontFamily,
                   fontSize: 18,
-                  fontStyle: "italic",
+                  fontStyle: locale === "ar" ? "normal" : "italic",
                 }}
               >
-                Aa
+                {previewGlyph}
               </span>
               <span
                 style={{
@@ -200,10 +227,9 @@ export function SettingsPanel({
                   fontSize: 9.5,
                   color: ink,
                   opacity: 0.7,
-                  textTransform: "capitalize",
                 }}
               >
-                {k}
+                {tr(`settings.theme.${k}` as MsgKey)}
               </span>
             </button>
           ))}
@@ -227,31 +253,22 @@ export function SettingsPanel({
                 : `1px solid ${theme.rule}`,
             cursor: "pointer",
             fontFamily: FONT_STACKS.sans,
-            textAlign: "left",
+            textAlign: "start",
           }}
         >
-          <span
-            aria-hidden
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 11,
-              flexShrink: 0,
-              background:
-                "linear-gradient(135deg, #f4ecd8 0 50%, #1a1614 50% 100%)",
-              border: `1px solid ${theme.rule}`,
-            }}
-          />
+          <SystemThemeGlyph size={22} />
           <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>System</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>
+              {tr("settings.theme.system")}
+            </span>
             <span style={{ fontSize: 10, color: theme.muted }}>
-              Follows your OS light / dark setting
+              {tr("settings.theme.systemHint")}
             </span>
           </span>
         </button>
       </Field>
 
-      <Field label="Font" theme={theme}>
+      <Field label={tr("settings.font")} theme={theme}>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {[FONT_ROW_LATIN, FONT_ROW_ARABIC].map((row, i) => (
             <SegRow<FontFamilyKey>
@@ -290,7 +307,10 @@ export function SettingsPanel({
         </div>
       </Field>
 
-      <Field label={`Font size · ${t.fontSize}px`} theme={theme}>
+      <Field
+        label={tr("settings.fontSize", { n: t.fontSize })}
+        theme={theme}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 10, color: theme.ink }}>
           <span
             style={{
@@ -321,7 +341,10 @@ export function SettingsPanel({
         </div>
       </Field>
 
-      <Field label={`Line height · ${t.lineHeight.toFixed(2)}`} theme={theme}>
+      <Field
+        label={tr("settings.lineHeight", { n: t.lineHeight.toFixed(2) })}
+        theme={theme}
+      >
         <input
           type="range"
           min={1.3}
@@ -334,7 +357,9 @@ export function SettingsPanel({
       </Field>
 
       <Field
-        label={`Letter spacing · ${t.letterSpacing.toFixed(2)}em`}
+        label={tr("settings.letterSpacing", {
+          n: t.letterSpacing.toFixed(2),
+        })}
         theme={theme}
       >
         <input
@@ -348,7 +373,10 @@ export function SettingsPanel({
         />
       </Field>
 
-      <Field label={`Content width · ${t.contentWidth}%`} theme={theme}>
+      <Field
+        label={tr("settings.contentWidth", { n: t.contentWidth })}
+        theme={theme}
+      >
         <input
           type="range"
           min={50}
@@ -360,13 +388,16 @@ export function SettingsPanel({
         />
       </Field>
 
-      <Field label="Alignment" theme={theme}>
+      <Field label={tr("settings.alignment")} theme={theme}>
         <SegRow<Tweaks["textAlign"]>
           theme={theme}
           value={t.textAlign}
           onChange={(v) => setTweak("textAlign", v)}
           options={[
-            { value: "auto", label: <span style={{ fontSize: 11 }}>Auto</span> },
+            {
+              value: "auto",
+              label: <span style={{ fontSize: 11 }}>{tr("settings.align.auto")}</span>,
+            },
             { value: "left", label: <span style={{ fontSize: 14 }}>⯇</span> },
             {
               value: "justify",
@@ -380,28 +411,28 @@ export function SettingsPanel({
         />
       </Field>
 
-      <Field label="Reading mode" theme={theme}>
+      <Field label={tr("settings.readingMode")} theme={theme}>
         <SegRow<Tweaks["readingMode"]>
           theme={theme}
           value={t.readingMode}
           onChange={(v) => setTweak("readingMode", v)}
           options={[
-            { value: "paginated-2", label: "Two pages" },
-            { value: "paginated-1", label: "Single page" },
-            { value: "scroll", label: "Scroll" },
+            { value: "paginated-2", label: tr("settings.mode.paginated2") },
+            { value: "paginated-1", label: tr("settings.mode.paginated1") },
+            { value: "scroll", label: tr("settings.mode.scroll") },
           ]}
         />
       </Field>
 
       {mobile && (
-        <Field label="Tap to turn pages" theme={theme}>
+        <Field label={tr("settings.tapToTurn")} theme={theme}>
           <SegRow<"on" | "off">
             theme={theme}
             value={t.mobileTapNav ? "on" : "off"}
             onChange={(v) => setTweak("mobileTapNav", v === "on")}
             options={[
-              { value: "on", label: <span style={{ fontSize: 11 }}>On</span> },
-              { value: "off", label: <span style={{ fontSize: 11 }}>Off</span> },
+              { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
+              { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
             ]}
           />
         </Field>
@@ -409,7 +440,7 @@ export function SettingsPanel({
 
       {mobile && t.mobileTapNav && (
         <Field
-          label={`Tap zone width · ${t.mobileTapZoneWidth}%`}
+          label={tr("settings.tapZoneWidth", { n: t.mobileTapZoneWidth })}
           theme={theme}
         >
           <input
@@ -426,7 +457,7 @@ export function SettingsPanel({
 
       {mobile && t.mobileTapNav && (
         <Field
-          label={`Tap scroll length · ${t.mobileTapStride}%`}
+          label={tr("settings.tapStride", { n: t.mobileTapStride })}
           theme={theme}
         >
           <input

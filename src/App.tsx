@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
@@ -29,6 +29,8 @@ import { MOTION, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES, resolveTheme } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
+import { I18nProvider } from "./i18n/I18nProvider";
+import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 
 interface Loaded {
   book: EpubBook;
@@ -102,6 +104,20 @@ function App() {
   const themePref = t.theme;
   const themeKey = resolveTheme(themePref, prefersDark);
   const theme = THEMES[themeKey];
+
+  const uiLocale = detectLocale(
+    t.uiLang,
+    typeof navigator !== "undefined" ? navigator.language : "en",
+  );
+  const uiDir = DIR_FOR[uiLocale];
+  // App owns the I18nProvider (below), so it's above that context and
+  // can't call useI18n() itself — build the translator directly instead.
+  const tr = useMemo(() => makeTr(uiLocale), [uiLocale]);
+
+  useEffect(() => {
+    document.documentElement.lang = uiLocale;
+    document.documentElement.dir = uiDir;
+  }, [uiLocale, uiDir]);
 
   useEffect(() => {
     document.body.style.background = theme.bg;
@@ -381,142 +397,143 @@ function App() {
   const inReader = loaded !== null;
 
   return (
-    <div
-      // Keep the app shell LTR — BookBody sets its own `dir` so the book
-      // content flips to RTL while the surrounding reader UI (settings
-      // panel, TOC, header, buttons) stays in its natural left-to-right
-      // orientation.
-      dir="ltr"
-      style={{
-        width: "100%",
-        height: "100%",
-        background: theme.bg,
-        color: theme.ink,
-        overflow: "hidden",
-      }}
-    >
-      {loading && <FullPageSpinner theme={theme} label="Loading book…" />}
-      {error && !loading && (
+    <I18nProvider locale={uiLocale}>
+      <div
+        // Shell direction follows the UI language. BookBody sets its own dir,
+        // so book content stays independent of the chrome.
+        dir={uiDir}
+        style={{
+          width: "100%",
+          height: "100%",
+          background: theme.bg,
+          color: theme.ink,
+          overflow: "hidden",
+        }}
+      >
+        {loading && <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />}
+        {error && !loading && (
+          <div
+            style={{
+              position: "absolute",
+              top: 20,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 50,
+              padding: "10px 16px",
+              background: "rgba(180,60,60,0.12)",
+              border: "0.5px solid rgba(180,60,60,0.4)",
+              borderRadius: 8,
+              fontSize: 12,
+              color: theme.ink,
+              fontFamily: FONT_STACKS.sans,
+            }}
+          >
+            {error}
+          </div>
+        )}
+        {/* Stream reader overlay. AnimatedSwap's slots are position:absolute
+            with no z-index, so without this wrapper the next AnimatedSwap
+            (Library/Reader) sits on top in document order and hides the
+            streaming layer for the duration of its fade-in. The wrapper's
+            z-index keeps the streaming layer above the Library throughout
+            the animation; pointer-events flips off when no stream is active
+            so the empty slot doesn't swallow clicks meant for the Library. */}
         <div
           style={{
             position: "absolute",
-            top: 20,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 50,
-            padding: "10px 16px",
-            background: "rgba(180,60,60,0.12)",
-            border: "0.5px solid rgba(180,60,60,0.4)",
-            borderRadius: 8,
-            fontSize: 12,
-            color: theme.ink,
-            fontFamily: FONT_STACKS.sans,
+            inset: 0,
+            zIndex: 30,
+            pointerEvents: streaming ? "auto" : "none",
           }}
         >
-          {error}
+          <AnimatedSwap viewKey={streaming ? "stream" : "none"}>
+            {streaming ? (
+              <SourceStreamReader
+                theme={theme}
+                themeKey={themeKey}
+                t={t}
+                setTweak={setTweak}
+                layout={isMobile ? "mobile" : "desktop"}
+                sourceId={streaming.sourceId}
+                novelUrl={streaming.novelUrl}
+                startChapterId={streaming.startChapterId}
+                onClose={closeStream}
+              />
+            ) : null}
+          </AnimatedSwap>
         </div>
-      )}
-      {/* Stream reader overlay. AnimatedSwap's slots are position:absolute
-          with no z-index, so without this wrapper the next AnimatedSwap
-          (Library/Reader) sits on top in document order and hides the
-          streaming layer for the duration of its fade-in. The wrapper's
-          z-index keeps the streaming layer above the Library throughout
-          the animation; pointer-events flips off when no stream is active
-          so the empty slot doesn't swallow clicks meant for the Library. */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 30,
-          pointerEvents: streaming ? "auto" : "none",
-        }}
-      >
-        <AnimatedSwap viewKey={streaming ? "stream" : "none"}>
-          {streaming ? (
-            <SourceStreamReader
+        {/* Library ↔ Reader transition. viewKey is derived from the open
+            book + layout so a layout change (e.g., rotating into landscape
+            on mobile-landscape) ALSO crossfades cleanly. */}
+        <AnimatedSwap
+          viewKey={
+            inReader ? (isMobile ? "reader-mobile" : "reader-desktop") : "library"
+          }
+        >
+          {!inReader ? (
+            <Library
+              theme={theme}
+              themeKey={themeKey}
+              themePref={themePref}
+              uiLang={t.uiLang}
+              setTweak={setTweak}
+              layout={isMobile ? "mobile" : "desktop"}
+              onOpen={openBook}
+              onStreamRead={openStream}
+              streamActive={streaming !== null}
+            />
+          ) : isMobile ? (
+            <MobileReader
               theme={theme}
               themeKey={themeKey}
               t={t}
               setTweak={setTweak}
-              layout={isMobile ? "mobile" : "desktop"}
-              sourceId={streaming.sourceId}
-              novelUrl={streaming.novelUrl}
-              startChapterId={streaming.startChapterId}
-              onClose={closeStream}
+              book={loaded!.book}
+              state={loaded!.state}
+              currentChapter={loaded!.currentChapter}
+              resumeParagraph={loaded!.resumeParagraph}
+              resumeOffset={loaded!.resumeOffset}
+              jumpNonce={loaded!.jumpNonce}
+              onChapterChange={changeChapter}
+              onParagraphChange={onParagraphChange}
+              onCreateHighlight={createHighlight}
+              onDeleteHighlight={removeHighlight}
+              onUpdateHighlightNote={editHighlightNote}
+              onJumpToHighlight={jumpToHighlight}
+              onBack={closeBook}
             />
-          ) : null}
+          ) : (
+            <DesktopReader
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              book={loaded!.book}
+              state={loaded!.state}
+              currentChapter={loaded!.currentChapter}
+              resumeParagraph={loaded!.resumeParagraph}
+              resumeOffset={loaded!.resumeOffset}
+              jumpNonce={loaded!.jumpNonce}
+              onChapterChange={changeChapter}
+              onParagraphChange={onParagraphChange}
+              onCreateHighlight={createHighlight}
+              onDeleteHighlight={removeHighlight}
+              onUpdateHighlightNote={editHighlightNote}
+              onJumpToHighlight={jumpToHighlight}
+              activePanel={activePanel}
+              setActivePanel={setActivePanel}
+              onBack={closeBook}
+            />
+          )}
         </AnimatedSwap>
+        {/* Mounted at the app root so a docx import keeps showing across the
+            Library → Reader transition (e.g. user clicks "Continue in
+            background" then opens an existing book while the import finishes). */}
+        <ImportProgress theme={theme} />
+        {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
+        <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
       </div>
-      {/* Library ↔ Reader transition. viewKey is derived from the open
-          book + layout so a layout change (e.g., rotating into landscape
-          on mobile-landscape) ALSO crossfades cleanly. */}
-      <AnimatedSwap
-        viewKey={
-          inReader ? (isMobile ? "reader-mobile" : "reader-desktop") : "library"
-        }
-      >
-        {!inReader ? (
-          <Library
-            theme={theme}
-            themeKey={themeKey}
-            themePref={themePref}
-            setTweak={setTweak}
-            layout={isMobile ? "mobile" : "desktop"}
-            onOpen={openBook}
-            onStreamRead={openStream}
-            streamActive={streaming !== null}
-          />
-        ) : isMobile ? (
-          <MobileReader
-            theme={theme}
-            themeKey={themeKey}
-            t={t}
-            setTweak={setTweak}
-            book={loaded!.book}
-            state={loaded!.state}
-            currentChapter={loaded!.currentChapter}
-            resumeParagraph={loaded!.resumeParagraph}
-            resumeOffset={loaded!.resumeOffset}
-            jumpNonce={loaded!.jumpNonce}
-            onChapterChange={changeChapter}
-            onParagraphChange={onParagraphChange}
-            onCreateHighlight={createHighlight}
-            onDeleteHighlight={removeHighlight}
-            onUpdateHighlightNote={editHighlightNote}
-            onJumpToHighlight={jumpToHighlight}
-            onBack={closeBook}
-          />
-        ) : (
-          <DesktopReader
-            theme={theme}
-            themeKey={themeKey}
-            t={t}
-            setTweak={setTweak}
-            book={loaded!.book}
-            state={loaded!.state}
-            currentChapter={loaded!.currentChapter}
-            resumeParagraph={loaded!.resumeParagraph}
-            resumeOffset={loaded!.resumeOffset}
-            jumpNonce={loaded!.jumpNonce}
-            onChapterChange={changeChapter}
-            onParagraphChange={onParagraphChange}
-            onCreateHighlight={createHighlight}
-            onDeleteHighlight={removeHighlight}
-            onUpdateHighlightNote={editHighlightNote}
-            onJumpToHighlight={jumpToHighlight}
-            activePanel={activePanel}
-            setActivePanel={setActivePanel}
-            onBack={closeBook}
-          />
-        )}
-      </AnimatedSwap>
-      {/* Mounted at the app root so a docx import keeps showing across the
-          Library → Reader transition (e.g. user clicks "Continue in
-          background" then opens an existing book while the import finishes). */}
-      <ImportProgress theme={theme} />
-      {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
-      <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
-    </div>
+    </I18nProvider>
   );
 }
 

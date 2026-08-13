@@ -13,6 +13,10 @@ import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
 import { SettingsSheet } from "./SettingsSheet";
+import { LibrarySidebar } from "./LibrarySidebar";
+import { SearchOverlay } from "./SearchOverlay";
+import { ShelvesPage } from "./ShelvesPage";
+import { NewShelfDialog } from "./NewShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
@@ -50,6 +54,9 @@ import {
   type ThemeKey,
   type ThemePref,
 } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
+import { errorLabel } from "../i18n/statusLabels";
+import type { MsgKey, Tr, UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -61,6 +68,10 @@ interface Props {
   /** Raw stored preference (may be "system"), so the Settings sheet can
    *  highlight the System option rather than the resolved concrete theme. */
   themePref: ThemePref;
+  /** Raw UI-language preference (may be "system"), threaded through so
+   *  the mobile Settings sheet's Language control can highlight "Auto"
+   *  rather than the resolved concrete locale. */
+  uiLang: UiLangPref;
   setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onOpen: (bookId: string) => void;
@@ -75,6 +86,7 @@ interface Props {
 }
 
 function useBooks() {
+  const { tr } = useI18n();
   const [books, setBooks] = useState<BookIndexEntry[]>([]);
   const [covers, setCovers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -98,11 +110,12 @@ function useBooks() {
       for (const [id, url] of entries) if (url) next[id] = url;
       setCovers(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tr]);
 
   useEffect(() => {
     refresh();
@@ -115,12 +128,14 @@ export function Library({
   theme,
   themeKey,
   themePref,
+  uiLang,
   setTweak,
   layout,
   onOpen,
   onStreamRead,
   streamActive,
 }: Props) {
+  const { tr } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -190,7 +205,8 @@ export function Library({
       const entry = await pickAndImportEpub();
       if (entry) await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     } finally {
       setImporting(false);
     }
@@ -225,7 +241,12 @@ export function Library({
         // a fast import looked like nothing happened.
         showToast(
           "info",
-          `Imported “${entry.title}” — ${entry.chapterCount} chapter${entry.chapterCount === 1 ? "" : "s"}.`,
+          tr(
+            entry.chapterCount === 1
+              ? "status.importedDocOne"
+              : "status.importedDocOther",
+            { title: entry.title || tr("common.untitled"), n: entry.chapterCount },
+          ),
         );
       }
     } catch (e) {
@@ -234,8 +255,8 @@ export function Library({
       // import-progress modal also shows the error, but it's easy to miss
       // if it's been minimized to the dock.
       console.error("docx import failed:", e);
-      setError(message);
-      showToast("error", `Import failed: ${message}`);
+      setError(errorLabel(message, tr));
+      showToast("error", tr("status.importFailed", { error: errorLabel(message, tr) }));
     } finally {
       setImporting(false);
     }
@@ -252,8 +273,8 @@ export function Library({
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.error("docx staging failed:", e);
-      setError(message);
-      showToast("error", `Couldn't read document: ${message}`);
+      setError(errorLabel(message, tr));
+      showToast("error", tr("status.docReadError", { error: errorLabel(message, tr) }));
     } finally {
       setImporting(false);
     }
@@ -280,18 +301,26 @@ export function Library({
         await refresh();
         showToast(
           "info",
-          `Imported “${entry.title}” — ${entry.chapterCount} chapter${entry.chapterCount === 1 ? "" : "s"}.`,
+          tr(
+            entry.chapterCount === 1
+              ? "status.importedDocOne"
+              : "status.importedDocOther",
+            { title: entry.title || tr("common.untitled"), n: entry.chapterCount },
+          ),
         );
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error("docx commit failed:", e);
-        showToast("error", `Couldn't add to library: ${message}`);
+        showToast(
+          "error",
+          tr("status.addToLibraryError", { error: errorLabel(message, tr) }),
+        );
         // Re-throw so the manage view can render its inline error and
         // re-enable the Add button.
         throw e;
       }
     },
-    [refresh, showToast, stagedDocx],
+    [refresh, showToast, stagedDocx, tr],
   );
 
   // Last-ditch cleanup if the component unmounts while a staging session
@@ -310,10 +339,7 @@ export function Library({
       const result = await pickAndImportFolder();
       if (!result) return;
       if (result.empty) {
-        showToast(
-          "warn",
-          "That folder has no EPUB files at its top level — can't import an empty folder.",
-        );
+        showToast("warn", tr("status.emptyFolderImport"));
         return;
       }
       await refresh();
@@ -322,16 +348,24 @@ export function Library({
       if (skipped > 0) {
         showToast(
           "warn",
-          `Imported ${n} book${n === 1 ? "" : "s"}, skipped ${skipped} that couldn't be parsed.`,
+          tr(
+            n === 1
+              ? "status.importedFolderSkippedOne"
+              : "status.importedFolderSkippedOther",
+            { n, skipped },
+          ),
         );
       } else {
         showToast(
           "info",
-          `Imported ${n} book${n === 1 ? "" : "s"}.`,
+          tr(n === 1 ? "status.importedFolderOne" : "status.importedFolderOther", {
+            n,
+          }),
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     } finally {
       setImporting(false);
     }
@@ -346,13 +380,12 @@ export function Library({
     try {
       const updated = await rescanCover(id);
       if (!updated) {
-        setError(
-          "Couldn't find a cover in the original EPUB. Try \u201CSet cover\u2026\u201D to pick an image yourself.",
-        );
+        setError(tr("status.coverNotFoundInEpub"));
       }
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
 
@@ -361,7 +394,8 @@ export function Library({
       await setCoverFromFile(id);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
 
@@ -377,7 +411,8 @@ export function Library({
       await refresh();
       setEditingId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
 
@@ -403,7 +438,8 @@ export function Library({
       await refresh();
       closeContextMenu();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(errorLabel(message, tr));
     }
   };
   // Single source of truth for the remove-confirmation popup. Every entry
@@ -498,6 +534,7 @@ export function Library({
 
   const layoutCommonProps = {
     theme,
+    themeKey,
     books,
     covers,
     loading,
@@ -585,18 +622,17 @@ export function Library({
         {pendingDelete && (
           <ConfirmDialog
             theme={theme}
-            title="Remove from library?"
+            title={tr("library.removeConfirmTitle")}
             message={
               <>
                 <strong style={{ color: theme.ink }}>
-                  “{pendingDelete.title}”
+                  “{pendingDelete.title || tr("common.untitled")}”
                 </strong>{" "}
-                will be removed from your library, including its reading
-                progress. This can't be undone.
+                {tr("library.removeConfirmSuffix")}
               </>
             }
-            confirmLabel="Remove"
-            cancelLabel="Cancel"
+            confirmLabel={tr("library.remove")}
+            cancelLabel={tr("common.cancel")}
             confirmVariant="destructive"
             onConfirm={performDelete}
             onCancel={cancelDelete}
@@ -659,6 +695,7 @@ export function Library({
             theme={theme}
             themeKey={themeKey}
             themePref={themePref}
+            uiLang={uiLang}
             setTweak={setTweak}
             layout={layout}
             onClose={() => setSettingsOpen(false)}
@@ -680,6 +717,7 @@ export function Library({
 
 interface LayoutProps {
   theme: Theme;
+  themeKey: ThemeKey;
   books: BookIndexEntry[];
   covers: Record<string, string>;
   loading: boolean;
@@ -721,14 +759,14 @@ interface LayoutProps {
 
 /** "store" is a top-level destination, not a book filter — when the tab
  *  is set to "store" the body swaps out the shelf for the source browser. */
-type LibraryTab = "all" | BookStatus | "store";
+export type LibraryTab = "all" | BookStatus | "store";
 
-const TABS: { key: LibraryTab; label: string }[] = [
-  { key: "all", label: "Library" },
-  { key: "reading", label: "Reading" },
-  { key: "finished", label: "Finished" },
-  { key: "wishlist", label: "Wishlist" },
-  { key: "store", label: "Store" },
+const TABS: { key: LibraryTab; msgKey: MsgKey }[] = [
+  { key: "all", msgKey: "sidebar.library" },
+  { key: "reading", msgKey: "sidebar.reading" },
+  { key: "finished", msgKey: "sidebar.finished" },
+  { key: "wishlist", msgKey: "sidebar.wishlist" },
+  { key: "store", msgKey: "sidebar.store" },
 ];
 
 // "Reading" is partly derived: a book the user has actually started but not
@@ -754,6 +792,7 @@ function matchesTab(b: BookIndexEntry, tab: LibraryTab): boolean {
 
 function DesktopLibrary({
   theme,
+  themeKey,
   books,
   covers,
   loading,
@@ -771,11 +810,42 @@ function DesktopLibrary({
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
   onOpenQueue,
+  onOpenSettings,
   onDelete,
   onEdit,
   onCardContextMenu,
 }: LayoutProps) {
-  const visible = books.filter((b) => matchesTab(b, tab));
+  const { tr } = useI18n();
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [shelvesView, setShelvesView] = useState(false);
+  const [newShelfOpen, setNewShelfOpen] = useState(false);
+  // Seed shelf names — app-authored defaults for a first-run shelf list
+  // (this state isn't persisted yet), so they must come from the current
+  // UI locale rather than a frozen English literal.
+  const [shelves, setShelves] = useState<string[]>(() => [
+    tr("shelves.defaultFavorites"),
+    tr("shelves.defaultToRead"),
+  ]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const q = query.trim().toLowerCase();
+  const visible = books
+    .filter((b) => matchesTab(b, tab))
+    .filter(
+      (b) =>
+        !q ||
+        b.title.toLowerCase().includes(q) ||
+        (b.author ?? "").toLowerCase().includes(q),
+    );
   // Hero is the "continue reading" affordance — only meaningful on the full
   // library view. On a filtered tab we render a flat shelf so every match is
   // equally weighted.
@@ -795,96 +865,37 @@ function DesktopLibrary({
         fontFamily: FONT_STACKS.sans,
         overflow: "hidden",
         display: "flex",
-        flexDirection: "column",
+        flexDirection: "row",
       }}
     >
+      <LibrarySidebar
+        theme={theme}
+        themeKey={themeKey}
+        tab={tab}
+        setTab={(t) => { setShelvesView(false); setTab(t); }}
+        importing={importing}
+        onImport={onImport}
+        onImportDocx={onImportDocx}
+        onImportFolder={onImportFolder}
+        onOpenQueue={onOpenQueue}
+        onOpenSettings={onOpenSettings}
+        onOpenSearch={() => setSearchOpen(true)}
+        shelves={shelves}
+        shelvesActive={shelvesView}
+        onOpenShelves={() => setShelvesView(true)}
+        onNewShelf={() => setNewShelfOpen(true)}
+      />
       <div
         style={{
+          flex: 1,
+          minWidth: 0,
+          height: "100%",
           display: "flex",
-          alignItems: "center",
-          gap: 18,
-          padding: "20px 40px",
-          borderBottom: `0.5px solid ${theme.rule}`,
+          flexDirection: "column",
+          overflow: "hidden",
+          background: theme.bg,
         }}
       >
-        <div
-          style={{
-            fontFamily: FONT_SERIF_DISPLAY,
-            fontSize: 20,
-            fontStyle: "italic",
-            fontWeight: 500,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Leaflet
-        </div>
-        <div style={{ display: "flex", gap: 4, marginLeft: 12 }}>
-          {TABS.map(({ key, label }) => {
-            const active = key === tab;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                style={{
-                  border: "none",
-                  background: active ? theme.hover : "transparent",
-                  color: active ? theme.ink : theme.muted,
-                  padding: "6px 12px",
-                  borderRadius: 7,
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ flex: 1 }} />
-        {/* Import buttons only make sense in library mode. Store mode is
-            self-contained (browse → click → import lives in the Novel
-            detail view), so we hide the whole cluster to avoid
-            duplicate paths in the header. */}
-        {tab !== "store" && (
-          <>
-            <QueueIconButton theme={theme} onClick={onOpenQueue} />
-            <Button
-              theme={theme}
-              variant="outline"
-              size="sm"
-              onClick={onImportFolder}
-              disabled={importing}
-              leadingIcon={<Icon name="folder" size={13} />}
-              style={{ marginRight: 8 }}
-            >
-              Import folder
-            </Button>
-            <Button
-              theme={theme}
-              variant="outline"
-              size="sm"
-              onClick={onImportDocx}
-              disabled={importing}
-              leadingIcon={<Icon name="doc" size={13} />}
-              title="Convert a Word document to EPUB on import"
-              style={{ marginRight: 8 }}
-            >
-              Import .docx
-            </Button>
-            <Button
-              theme={theme}
-              variant="primary"
-              size="sm"
-              onClick={onImport}
-              disabled={importing}
-              leadingIcon={<Icon name="plus" size={13} />}
-            >
-              {importing ? "Importing…" : "Import EPUB"}
-            </Button>
-          </>
-        )}
-      </div>
 
       {/* Body cross-fades when the user switches tab or opens/closes a
           Store source detail. The wrapper provides the positioning
@@ -899,12 +910,16 @@ function DesktopLibrary({
       >
         <AnimatedSwap
           viewKey={
-            sourceDetailView
-              ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-              : `tab:${tab}`
+            shelvesView
+              ? "shelves"
+              : sourceDetailView
+                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                : `tab:${tab}`
           }
         >
-      {sourceDetailView ? (
+      {shelvesView ? (
+        <ShelvesPage theme={theme} shelves={shelves} onNewShelf={() => setNewShelfOpen(true)} />
+      ) : sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
         // NovelDetailView the Store uses for browsing. Tabs above stay
         // visible — clicking any tab exits the detail view.
@@ -948,7 +963,7 @@ function DesktopLibrary({
 
         {loading && books.length === 0 ? (
           <div style={{ color: theme.muted, padding: 40, textAlign: "center" }}>
-            Loading your library…
+            {tr("library.loading")}
           </div>
         ) : books.length === 0 ? (
           <EmptyState theme={theme} onImport={onImport} importing={importing} />
@@ -986,12 +1001,12 @@ function DesktopLibrary({
                     letterSpacing: "-0.01em",
                   }}
                 >
-                  {tab === "all" ? "Your shelf" : shelfHeadingFor(tab)}
+                  {tab === "all" ? tr("library.yourShelf") : shelfHeadingFor(tab, tr)}
                 </h2>
                 <div
                   style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}
                 >
-                  {others.length} {others.length === 1 ? "book" : "books"} · sorted by recent
+                  {tr(others.length === 1 ? "library.bookCountOne" : "library.bookCountOther", { n: others.length })}
                 </div>
               </div>
             </div>
@@ -1023,6 +1038,29 @@ function DesktopLibrary({
       )}
         </AnimatedSwap>
       </div>
+      </div>
+      {searchOpen && (
+        <SearchOverlay
+          theme={theme}
+          themeKey={themeKey}
+          books={books}
+          covers={covers}
+          onOpen={onOpen}
+          setTab={setTab}
+          setQuery={setQuery}
+          onOpenSettings={onOpenSettings}
+          onOpenQueue={onOpenQueue}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+      {newShelfOpen && (
+        <NewShelfDialog
+          theme={theme}
+          existing={shelves}
+          onCreate={(name) => setShelves((s) => [...s, name])}
+          onClose={() => setNewShelfOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1052,6 +1090,8 @@ function MobileLibrary({
   onOpenSettings,
   onCardContextMenu,
 }: LayoutProps) {
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   // Filter to the selected status tab. "store" is handled separately
   // (a body swap, not a filter); the tab pills exclude it on mobile
   // because Store toggling lives in the bottom nav.
@@ -1064,6 +1104,10 @@ function MobileLibrary({
       ? visible.find((b) => b.lastReadAt !== undefined)
       : undefined;
   const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the font-family/line-height pick and the rendered
+  // text agree on what's actually on screen.
+  const heroDisplayTitle = hero ? hero.title || tr("common.untitled") : "";
 
   // Hero is at most one card per render — a single hook instance covers it.
   // Shelf cards each need their own long-press state, so they live in a
@@ -1086,6 +1130,12 @@ function MobileLibrary({
         // Android status bar / iOS notch: enableEdgeToEdge() lays the
         // WebView under the system bars, so without these insets the
         // Library title collides with the clock and signal icons.
+        // Left/Right (not Inline Start/End) deliberately — these mirror
+        // physical hardware insets (notch, rounded corners), which stay
+        // pinned to the device's physical edges regardless of UI language.
+        // There's no logical `env(safe-area-inset-inline-*)` counterpart,
+        // so flipping the property name here would silently swap which
+        // physical edge gets which inset in RTL.
         paddingTop: "env(safe-area-inset-top, 0px)",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
         paddingLeft: "env(safe-area-inset-left, 0px)",
@@ -1118,7 +1168,7 @@ function MobileLibrary({
               color: theme.ink,
             }}
           >
-            Library
+            {tr("sidebar.library")}
           </h1>
           <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
         </div>
@@ -1181,7 +1231,7 @@ function MobileLibrary({
         >
           <BackHeader
             theme={theme}
-            title="Store"
+            title={tr("sidebar.store")}
             onBack={() => setTab("all")}
           />
           <Store
@@ -1197,7 +1247,7 @@ function MobileLibrary({
 
         {loading && books.length === 0 ? (
           <div style={{ color: theme.muted, padding: 30, textAlign: "center" }}>
-            Loading…
+            {tr("library.loadingShort")}
           </div>
         ) : books.length === 0 ? (
           <EmptyState theme={theme} onImport={onImport} importing={importing} />
@@ -1243,25 +1293,25 @@ function MobileLibrary({
                       fontSize: 9.5,
                       fontWeight: 600,
                       color: theme.muted,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
+                      letterSpacing: isAr ? "normal" : "0.1em",
+                      textTransform: isAr ? "none" : "uppercase",
                       marginBottom: 4,
                     }}
                   >
-                    {hero.lastReadAt ? "Continue" : "Start reading"}
+                    {hero.lastReadAt ? tr("library.continue") : tr("library.startReading")}
                   </div>
                   <div
                     style={{
-                      fontFamily: titleFontFor(hero.title),
-                      fontStyle: isArabicTitle(hero.title) ? "normal" : "italic",
+                      fontFamily: titleFontFor(heroDisplayTitle),
+                      fontStyle: isArabicTitle(heroDisplayTitle) ? "normal" : "italic",
                       fontSize: 18,
-                      lineHeight: isArabicTitle(hero.title) ? 1.4 : 1.15,
+                      lineHeight: isArabicTitle(heroDisplayTitle) ? 1.4 : 1.15,
                       color: theme.ink,
                       letterSpacing: "-0.01em",
                       marginBottom: 4,
                     }}
                   >
-                    {hero.title}
+                    {heroDisplayTitle}
                   </div>
                   <div
                     style={{
@@ -1270,7 +1320,10 @@ function MobileLibrary({
                       marginBottom: 10,
                     }}
                   >
-                    {hero.chapterCount} chapters · {relTime(hero.lastReadAt ?? hero.addedAt)}
+                    {tr("library.chaptersAgo", {
+                      n: hero.chapterCount,
+                      rel: relTime(hero.lastReadAt ?? hero.addedAt, tr),
+                    })}
                   </div>
                   <div
                     style={{
@@ -1298,12 +1351,12 @@ function MobileLibrary({
                 fontSize: 10.5,
                 fontWeight: 600,
                 color: theme.muted,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
+                letterSpacing: isAr ? "normal" : "0.1em",
+                textTransform: isAr ? "none" : "uppercase",
                 marginBottom: 14,
               }}
             >
-              Your shelf
+              {tr("library.yourShelf")}
             </div>
             <div
               style={{
@@ -1392,6 +1445,7 @@ interface BackHeaderProps {
  *  border-bottom keeps the row visually separated from the body
  *  underneath. */
 function BackHeader({ theme, title, onBack }: BackHeaderProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -1405,7 +1459,7 @@ function BackHeader({ theme, title, onBack }: BackHeaderProps) {
     >
       <button
         onClick={onBack}
-        aria-label="Back to library"
+        aria-label={tr("library.backToLibrary")}
         style={{
           width: 34,
           height: 34,
@@ -1421,7 +1475,7 @@ function BackHeader({ theme, title, onBack }: BackHeaderProps) {
           fontFamily: "inherit",
         }}
       >
-        <Icon name="arrowL" size={16} />
+        <Icon name="arrowL" size={16} className="rtl-flip-x" />
       </button>
       <div
         style={{
@@ -1460,6 +1514,8 @@ interface MobileTabRowProps {
  *  Store tab from the desktop TABS list is intentionally skipped —
  *  Store toggling lives in the bottom nav (`globe` icon). */
 function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
+  const { tr, dir } = useI18n();
+  const rtl = dir === "rtl";
   const items = useMemo<typeof TABS>(
     () => TABS.filter((t) => t.key !== "store"),
     [],
@@ -1474,12 +1530,21 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
 
   // Recompute the scroll-edge state. Called on scroll, mount, and on
   // active-pill change (in case the pill widths drove a layout shift).
+  // Same RTL normalization as SectionCarousel.tsx's `recompute()`: in an
+  // RTL container, scrollLeft is 0 at the right edge and goes negative as
+  // the user scrolls toward the left content (older WebKit grows positive
+  // instead) — normalize to "distance from visual start" so the math reads
+  // the same in both directions.
   const updateEdges = useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 1);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  }, []);
+    const max = el.scrollWidth - el.clientWidth;
+    const sl = el.scrollLeft;
+    const distFromStart = rtl ? Math.abs(sl) : sl;
+    const distFromEnd = max - distFromStart;
+    setCanScrollLeft(distFromStart > 1);
+    setCanScrollRight(distFromEnd > 1);
+  }, [rtl]);
 
   useEffect(() => {
     updateEdges();
@@ -1530,15 +1595,20 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
     }
   }, [tab]);
 
-  const scrollBy = useCallback((direction: "left" | "right") => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const step = Math.max(el.clientWidth * 0.7, 120);
-    el.scrollBy({
-      left: direction === "left" ? -step : step,
-      behavior: "smooth",
-    });
-  }, []);
+  const scrollBy = useCallback(
+    (direction: "left" | "right") => {
+      const el = scrollerRef.current;
+      if (!el) return;
+      const step = Math.max(el.clientWidth * 0.7, 120);
+      // Same RTL sign-flip as SectionCarousel.tsx's `scrollByDir()` — in an
+      // RTL container the "left"/"right" arrow's *visual* meaning stays
+      // fixed (previous/next), but the underlying scrollLeft axis it needs
+      // to move along is mirrored.
+      const signed = (direction === "left" ? -1 : 1) * step * (rtl ? -1 : 1);
+      el.scrollBy({ left: signed, behavior: "smooth" });
+    },
+    [rtl],
+  );
 
   return (
     <div
@@ -1587,7 +1657,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
             zIndex: 0,
           }}
         />
-        {items.map(({ key, label }) => {
+        {items.map(({ key, msgKey }) => {
           const active = key === tab;
           return (
             <button
@@ -1613,7 +1683,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
                 transition: "color 200ms ease",
               }}
             >
-              {label}
+              {tr(msgKey)}
             </button>
           );
         })}
@@ -1653,12 +1723,13 @@ function PillScrollArrow({
   visible,
   onClick,
 }: PillScrollArrowProps) {
+  const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
-      aria-label={side === "left" ? "Scroll tabs left" : "Scroll tabs right"}
+      aria-label={tr(side === "left" ? "library.scrollTabsLeft" : "library.scrollTabsRight")}
       style={{
         position: "absolute",
         top: "50%",
@@ -1696,6 +1767,7 @@ function MobileBottomNav({
   onImportDocx,
   onOpenSettings,
 }: MobileBottomNavProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -1719,14 +1791,14 @@ function MobileBottomNav({
       <NavIconButton
         theme={theme}
         icon="globe"
-        ariaLabel={tab === "store" ? "Back to library" : "Open store"}
+        ariaLabel={tab === "store" ? tr("library.backToLibrary") : tr("library.openStore")}
         active={tab === "store"}
         onClick={onSetStore}
       />
       <NavIconButton
         theme={theme}
         icon="download"
-        ariaLabel="Open downloads"
+        ariaLabel={tr("library.openDownloads")}
         onClick={onOpenQueue}
         showQueueBadge
       />
@@ -1738,14 +1810,14 @@ function MobileBottomNav({
       <NavIconButton
         theme={theme}
         icon="doc"
-        ariaLabel="Import Word document"
+        ariaLabel={tr("library.importWordDoc")}
         onClick={onImportDocx}
         disabled={importing}
       />
       <NavIconButton
         theme={theme}
         icon="settings"
-        ariaLabel="Settings"
+        ariaLabel={tr("sidebar.settings")}
         onClick={onOpenSettings}
       />
     </div>
@@ -1807,7 +1879,7 @@ function NavIconButton({
           style={{
             position: "absolute",
             top: -2,
-            right: -2,
+            insetInlineEnd: -2,
             minWidth: 18,
             height: 18,
             padding: "0 5px",
@@ -1840,12 +1912,13 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
   // The focal action — filled + slightly larger than the outlined siblings
   // (50px vs 38px) + a soft drop shadow so it reads as the primary
   // affordance. Sits flush with the bar rather than protruding above it.
+  const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
       disabled={importing}
-      aria-label="Import EPUB"
-      title={importing ? "Importing…" : "Import EPUB"}
+      aria-label={tr("library.importEpub")}
+      title={importing ? tr("sidebar.importing") : tr("library.importEpub")}
       style={{
         width: 50,
         height: 50,
@@ -1880,7 +1953,12 @@ function MobileShelfCard({
   onOpen: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
+  const { tr } = useI18n();
   const longPress = useLongPress(onContextMenu);
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the font-family/line-height pick and the rendered
+  // text agree on what's actually on screen.
+  const displayTitle = book.title || tr("common.untitled");
   return (
     <div
       onClick={() => {
@@ -1911,7 +1989,7 @@ function MobileShelfCard({
       />
       <div
         style={{
-          fontFamily: titleFontFor(book.title),
+          fontFamily: titleFontFor(displayTitle),
           fontSize: 12,
           fontWeight: 500,
           marginTop: 8,
@@ -1928,10 +2006,10 @@ function MobileShelfCard({
           wordBreak: "break-word",
         }}
       >
-        {book.title}
+        {displayTitle}
       </div>
       <div style={{ fontSize: 9.5, color: theme.muted, marginTop: 2 }}>
-        {book.author}
+        {book.author || tr("common.unknownAuthor")}
       </div>
       {book.progress > 0 && book.progress < 1 && (
         <div
@@ -1971,7 +2049,13 @@ function HeroContinueCard({
   onDelete: () => void;
   onEdit: () => void;
 }) {
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   const palette = paletteForId(book.id);
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the tooltip, font-family pick, and rendered text all
+  // agree on what's actually on screen.
+  const displayTitle = book.title || tr("common.untitled");
   return (
     <div
       style={{
@@ -1998,23 +2082,23 @@ function HeroContinueCard({
             fontSize: 10.5,
             fontWeight: 600,
             color: theme.muted,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
+            letterSpacing: isAr ? "normal" : "0.12em",
+            textTransform: isAr ? "none" : "uppercase",
             marginBottom: 10,
           }}
         >
-          {book.lastReadAt ? "Continue reading" : "Start reading"}
+          {book.lastReadAt ? tr("library.continueReading") : tr("library.startReading")}
         </div>
         <h1
-          title={book.title}
+          title={displayTitle}
           style={{
             // Arabic / mixed titles use the Readex Pro stack so digits and
             // Latin punctuation interleaved in the title don't fall through
             // to Fraunces and stand out as a different typeface.
-            fontFamily: titleFontFor(book.title),
+            fontFamily: titleFontFor(displayTitle),
             // Italic only makes sense on Fraunces — suppress it for the
             // Readex Pro path to avoid synthetic italic on Arabic.
-            fontStyle: isArabicTitle(book.title) ? "normal" : "italic",
+            fontStyle: isArabicTitle(displayTitle) ? "normal" : "italic",
             fontWeight: 400,
             fontSize: 44,
             // Even more vertical room than 1.3 — the previous tweak still
@@ -2029,10 +2113,13 @@ function HeroContinueCard({
             textOverflow: "ellipsis",
           }}
         >
-          {book.title}
+          {displayTitle}
         </h1>
         <div style={{ fontSize: 13, color: theme.muted, marginBottom: 22 }}>
-          by {book.author} · {book.chapterCount} chapters
+          {tr("library.byAuthorChapters", {
+            author: book.author || tr("common.unknownAuthor"),
+            n: book.chapterCount,
+          })}
         </div>
         <div
           style={{
@@ -2076,7 +2163,7 @@ function HeroContinueCard({
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              {Math.round(book.progress * 100)}% · {relTime(book.lastReadAt ?? book.addedAt)}
+              {Math.round(book.progress * 100)}% · {relTime(book.lastReadAt ?? book.addedAt, tr)}
             </div>
           </div>
           <div
@@ -2088,10 +2175,10 @@ function HeroContinueCard({
             }}
           >
             <Button theme={theme} variant="primary" size="md" onClick={onOpen}>
-              {book.lastReadAt ? "Resume reading →" : "Start reading →"}
+              {book.lastReadAt ? tr("library.resumeReadingCta") : tr("library.startReadingCta")}
             </Button>
             <Button theme={theme} variant="ghost" size="md" onClick={onEdit}>
-              Edit details
+              {tr("library.editDetails")}
             </Button>
             <Button
               theme={theme}
@@ -2099,7 +2186,7 @@ function HeroContinueCard({
               size="md"
               onClick={onDelete}
             >
-              Remove from library
+              {tr("library.removeFromLibrary")}
             </Button>
           </div>
         </div>
@@ -2121,6 +2208,12 @@ function LibraryCard({
   onOpen: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the tooltip, font-family pick, and rendered text all
+  // agree on what's actually on screen.
+  const displayTitle = book.title || tr("common.untitled");
   return (
     <div
       // Pin the whole card to the cover width so the title row's
@@ -2145,11 +2238,11 @@ function LibraryCard({
           />
           {book.progress === 0 && (
             <span
-              aria-label="New — not started yet"
+              aria-label={tr("library.newBadgeAriaLabel")}
               style={{
                 position: "absolute",
                 top: 8,
-                left: 8,
+                insetInlineStart: 8,
                 padding: "3px 7px",
                 borderRadius: 4,
                 // Dark blurred pill reads on any cover art without
@@ -2159,24 +2252,24 @@ function LibraryCard({
                 color: "#fff",
                 fontSize: 9.5,
                 fontWeight: 700,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
+                letterSpacing: isAr ? "normal" : "0.1em",
+                textTransform: isAr ? "none" : "uppercase",
                 fontFamily: FONT_STACKS.sans,
                 backdropFilter: "blur(6px)",
                 pointerEvents: "none",
               }}
             >
-              New
+              {tr("library.newBadge")}
             </span>
           )}
         </div>
         <div
-          title={book.title}
+          title={displayTitle}
           style={{
             marginTop: 12,
-            fontFamily: titleFontFor(book.title),
+            fontFamily: titleFontFor(displayTitle),
             fontSize: 14,
-            lineHeight: isArabicTitle(book.title) ? 1.4 : 1.25,
+            lineHeight: isArabicTitle(displayTitle) ? 1.4 : 1.25,
             color: theme.ink,
             letterSpacing: "-0.005em",
             fontWeight: 500,
@@ -2185,10 +2278,10 @@ function LibraryCard({
             textOverflow: "ellipsis",
           }}
         >
-          {book.title}
+          {displayTitle}
         </div>
         <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
-          {book.author}
+          {book.author || tr("common.unknownAuthor")}
         </div>
         <div
           style={{
@@ -2205,14 +2298,14 @@ function LibraryCard({
                 fontSize: 10,
                 color: theme.muted,
                 fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
+                letterSpacing: isAr ? "normal" : "0.06em",
+                textTransform: isAr ? "none" : "uppercase",
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
               }}
             >
-              <Icon name="check" size={11} /> Finished
+              <Icon name="check" size={11} /> {tr("sidebar.finished")}
             </span>
           ) : book.progress > 0 ? (
             <>
@@ -2259,6 +2352,7 @@ function EmptyState({
   onImport: () => void;
   importing: boolean;
 }) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -2281,7 +2375,7 @@ function EmptyState({
           marginBottom: 8,
         }}
       >
-        Your shelf is empty
+        {tr("library.emptyTitle")}
       </div>
       <div
         style={{
@@ -2291,8 +2385,7 @@ function EmptyState({
           marginBottom: 22,
         }}
       >
-        Import an EPUB to start reading. Leaflet parses it locally — no
-        uploads, no accounts.
+        {tr("library.emptyBody")}
       </div>
       <Button
         theme={theme}
@@ -2302,20 +2395,20 @@ function EmptyState({
         disabled={importing}
         leadingIcon={<Icon name="plus" size={14} />}
       >
-        {importing ? "Importing…" : "Import your first EPUB"}
+        {importing ? tr("sidebar.importing") : tr("library.emptyCta")}
       </Button>
     </div>
   );
 }
 
-function shelfHeadingFor(tab: LibraryTab): string {
+function shelfHeadingFor(tab: LibraryTab, tr: Tr): string {
   // "all" and "store" are handled by the caller before they get here —
   // we keep them in the union so the call site doesn't need a separate
   // narrowing helper.
-  if (tab === "reading") return "Currently reading";
-  if (tab === "finished") return "Finished";
-  if (tab === "wishlist") return "Wishlist";
-  return "Shelf";
+  if (tab === "reading") return tr("library.currentlyReading");
+  if (tab === "finished") return tr("sidebar.finished");
+  if (tab === "wishlist") return tr("sidebar.wishlist");
+  return tr("library.shelf");
 }
 
 function FilteredEmptyState({
@@ -2325,14 +2418,15 @@ function FilteredEmptyState({
   theme: Theme;
   tab: LibraryTab;
 }) {
+  const { tr } = useI18n();
   const message =
     tab === "reading"
-      ? "No books marked as reading yet."
+      ? tr("library.emptyReading")
       : tab === "finished"
-      ? "No finished books yet."
+      ? tr("library.emptyFinished")
       : tab === "wishlist"
-      ? "Nothing on your wishlist yet."
-      : "Nothing here.";
+      ? tr("library.emptyWishlist")
+      : tr("library.emptyGeneric");
   return (
     <div
       style={{
@@ -2347,7 +2441,7 @@ function FilteredEmptyState({
     >
       {message}
       <div style={{ marginTop: 8, fontSize: 12 }}>
-        Right-click a book to set its status.
+        {tr("library.setStatusHint")}
       </div>
     </div>
   );
@@ -2360,6 +2454,7 @@ function ErrorBanner({
   theme: Theme;
   message: string;
 }) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -2372,96 +2467,30 @@ function ErrorBanner({
         marginBottom: 20,
       }}
     >
-      <strong style={{ fontWeight: 600 }}>Import failed:</strong> {message}
+      <strong style={{ fontWeight: 600 }}>{tr("library.importFailedPrefix")}</strong> {message}
     </div>
   );
 }
 
-function relTime(ts: number): string {
+function relTime(ts: number, tr: Tr): string {
   const diff = Date.now() - ts;
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return tr("library.justNow");
+  if (m < 60) return tr("library.minAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return tr("library.hourAgo", { n: h });
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return tr("library.dayAgo", { n: d });
   const w = Math.floor(d / 7);
-  if (w < 5) return `${w}w ago`;
+  if (w < 5) return tr("library.weekAgo", { n: w });
   const mo = Math.floor(d / 30);
-  return `${mo}mo ago`;
+  return tr("library.monthAgo", { n: mo });
 }
 
 // ── queue icon button (header) ─────────────────────────────────────────────
 //
 // Subscribes to the download queue so the badge reflects in-flight
 // jobs in real time. Same visual shape in desktop + mobile headers.
-
-function QueueIconButton({
-  theme,
-  onClick,
-}: {
-  theme: Theme;
-  onClick: () => void;
-}) {
-  // Active = queued or running. We don't include terminal jobs in the
-  // badge since the user has already seen them.
-  const [active, setActive] = useState(() => activeJobCount(getQueueState()));
-  useEffect(() => {
-    const off = subscribeToQueue((s) => setActive(activeJobCount(s)));
-    return off;
-  }, []);
-  return (
-    <button
-      onClick={onClick}
-      aria-label={
-        active === 0
-          ? "Open downloads"
-          : `Open downloads — ${active} active`
-      }
-      title="Downloads"
-      style={{
-        position: "relative",
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        border: `0.5px solid ${theme.rule}`,
-        background: "transparent",
-        color: theme.ink,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 8,
-      }}
-    >
-      <Icon name="download" size={16} />
-      {active > 0 && (
-        <span
-          style={{
-            position: "absolute",
-            top: -3,
-            right: -3,
-            minWidth: 16,
-            height: 16,
-            padding: "0 4px",
-            borderRadius: 8,
-            background: theme.ink,
-            color: theme.bg,
-            fontSize: 10,
-            fontWeight: 700,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            lineHeight: 1,
-          }}
-        >
-          {active > 99 ? "99+" : active}
-        </span>
-      )}
-    </button>
-  );
-}
 
 /** Badge count = work the user might want to address. That includes
  *  jobs that were interrupted by the app dying mid-flight — the

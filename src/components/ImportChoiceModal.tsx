@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -24,6 +25,7 @@ export function ImportChoiceModal({
   onManage,
   onCancel,
 }: Props) {
+  const { tr } = useI18n();
   // Focus the primary action by default — Enter imports straight, which
   // matches "I just clicked Import .docx and want it to keep working like
   // it always has".
@@ -67,7 +69,7 @@ export function ImportChoiceModal({
               marginBottom: 6,
             }}
           >
-            Import a Word document
+            {tr("import.choice.title")}
           </div>
           <div
             style={{
@@ -76,7 +78,7 @@ export function ImportChoiceModal({
               lineHeight: 1.5,
             }}
           >
-            How would you like to handle this document?
+            {tr("import.choice.subtitle")}
           </div>
         </div>
 
@@ -91,16 +93,16 @@ export function ImportChoiceModal({
           <ChoiceCard
             theme={theme}
             buttonRef={directRef}
-            title="Add directly to library"
-            description="Convert and import as-is. The first image becomes the cover."
+            title={tr("import.choice.directTitle")}
+            description={tr("import.choice.directDesc")}
             icon={<Icon name="download" size={16} />}
             onClick={onDirect}
             primary
           />
           <ChoiceCard
             theme={theme}
-            title="Manage before importing"
-            description="Pick the cover, trim pages, and review images before adding."
+            title={tr("import.choice.manageTitle")}
+            description={tr("import.choice.manageDesc")}
             icon={<Icon name="pencil" size={16} />}
             onClick={onManage}
           />
@@ -115,7 +117,7 @@ export function ImportChoiceModal({
           }}
         >
           <Button theme={theme} variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {tr("common.cancel")}
           </Button>
         </div>
     </div>
@@ -146,7 +148,7 @@ function ChoiceCard({
       ref={buttonRef}
       onClick={onClick}
       style={{
-        textAlign: "left",
+        textAlign: "start",
         display: "flex",
         alignItems: "flex-start",
         gap: 12,

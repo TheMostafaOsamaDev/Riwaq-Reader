@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "../components/Icon";
 import type { EpubChapter } from "../epub/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 import { PanelShell } from "./PanelShell";
 
 interface Props {
@@ -25,6 +26,8 @@ export function TOCPanel({
   width,
   side = "left",
 }: Props) {
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const filtered = useMemo(() => {
@@ -36,8 +39,9 @@ export function TOCPanel({
   return (
     <PanelShell
       theme={theme}
-      title="Contents"
-      subtitle={bookTitle}
+      title={tr("reader.toc")}
+      // Display-time fallback for a blank `Book.title` (see common.untitled).
+      subtitle={bookTitle || tr("common.untitled")}
       onClose={onClose}
       icon={<Icon name="list" size={15} />}
       width={width}
@@ -66,12 +70,7 @@ export function TOCPanel({
               lineHeight: 1.5,
             }}
           >
-            No chapters match
-            <span style={{ color: theme.ink, fontWeight: 500 }}>
-              {" "}
-              "{trimmed}"
-            </span>
-            .
+            {tr("toc.noMatches", { term: trimmed })}
           </div>
         )}
         {filtered.map((c) => {
@@ -83,7 +82,7 @@ export function TOCPanel({
               onClick={() => onJump?.(c.order)}
               style={{
                 width: "100%",
-                textAlign: "left",
+                textAlign: "start",
                 border: "none",
                 background: active ? theme.hover : "transparent",
                 padding: "11px 14px",
@@ -129,11 +128,11 @@ export function TOCPanel({
                     fontSize: 9,
                     color: theme.muted,
                     fontWeight: 600,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
+                    letterSpacing: isAr ? "normal" : "0.06em",
+                    textTransform: isAr ? "none" : "uppercase",
                   }}
                 >
-                  Now
+                  {tr("toc.now")}
                 </span>
               )}
             </button>
@@ -155,6 +154,7 @@ function SearchBar({
   onChange: (next: string) => void;
   onSubmit: () => void;
 }) {
+  const { tr } = useI18n();
   return (
     // Sticks to the top of the scroll container so the search field
     // stays reachable while scanning a long table of contents. zIndex 1
@@ -205,11 +205,11 @@ function SearchBar({
               onSubmit();
             }
           }}
-          placeholder="Search chapters"
+          placeholder={tr("toc.searchChapters")}
           // dir=auto so Arabic / RTL queries lay out from the inline
           // start — the placeholder stays LTR because it's pure English.
           dir="auto"
-          aria-label="Search chapters"
+          aria-label={tr("toc.searchChapters")}
           style={{
             flex: 1,
             minWidth: 0,
@@ -219,15 +219,17 @@ function SearchBar({
             color: theme.ink,
             fontFamily: FONT_STACKS.sans,
             fontSize: 13,
-            padding: "8px 8px 8px 0",
+            paddingBlock: 8,
+            paddingInlineStart: 0,
+            paddingInlineEnd: 8,
             WebkitAppearance: "none",
           }}
         />
         {query.length > 0 && (
           <button
             onClick={() => onChange("")}
-            aria-label="Clear search"
-            title="Clear search"
+            aria-label={tr("toc.clearSearch")}
+            title={tr("toc.clearSearch")}
             style={{
               display: "flex",
               alignItems: "center",

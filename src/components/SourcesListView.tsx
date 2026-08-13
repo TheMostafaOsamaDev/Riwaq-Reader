@@ -5,6 +5,7 @@
 // would slot in here the same way.
 
 import { useMemo } from "react";
+import { useI18n } from "../i18n/useI18n";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function SourcesListView({ theme, onOpenSource }: Props) {
+  const { tr } = useI18n();
   const sources = useMemo(() => listSources(), []);
 
   return (
@@ -38,7 +40,7 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
           letterSpacing: "-0.01em",
         }}
       >
-        Sources
+        {tr("store.title")}
       </h2>
       <p
         style={{
@@ -48,8 +50,7 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
           lineHeight: 1.5,
         }}
       >
-        Browse novels from supported websites, then add them to your library
-        or stream them inline.
+        {tr("store.subtitle")}
       </p>
 
       {sources.length === 0 ? (
@@ -61,7 +62,7 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
             fontSize: 13,
           }}
         >
-          No sources installed yet.
+          {tr("store.noSources")}
         </div>
       ) : (
         <div
@@ -92,11 +93,19 @@ interface SourceCardProps {
 }
 
 function SourceCard({ theme, source, onClick }: SourceCardProps) {
+  const { tr } = useI18n();
+  // Bundled sources set `descriptionKey` so this copy translates with the
+  // UI language; `description` is a plain-text fallback for future
+  // sideloaded/third-party sources that ship their own text directly.
+  const description = source.descriptionKey
+    ? tr(source.descriptionKey)
+    : source.description;
+
   return (
     <button
       onClick={onClick}
       style={{
-        textAlign: "left",
+        textAlign: "start",
         display: "flex",
         flexDirection: "column",
         padding: 18,
@@ -161,10 +170,11 @@ function SourceCard({ theme, source, onClick }: SourceCardProps) {
         <Icon
           name="chevronR"
           size={16}
+          className="rtl-flip-x"
           style={{ color: theme.muted, flexShrink: 0 }}
         />
       </div>
-      {source.description && (
+      {description && (
         <div
           style={{
             fontSize: 12.5,
@@ -172,7 +182,7 @@ function SourceCard({ theme, source, onClick }: SourceCardProps) {
             lineHeight: 1.5,
           }}
         >
-          {source.description}
+          {description}
         </div>
       )}
       <div

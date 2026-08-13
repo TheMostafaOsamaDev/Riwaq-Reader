@@ -33,8 +33,7 @@ const BUILTINS: RegistryEntry[] = [
       name: "Cenele",
       baseUrl: "https://cenele.com",
       language: "ar",
-      description:
-        "Arabic translations of Asian web novels from cenele.com (فضاء الروايات).",
+      descriptionKey: "source.cenele.description",
       version: "0.1.0",
     },
     factory: (host) => createCeneleSource(host),
@@ -45,7 +44,7 @@ const BUILTINS: RegistryEntry[] = [
       name: "KolNovel",
       baseUrl: "https://free.kolnovel.com",
       language: "ar",
-      description: "Arabic translations of Asian novels from free.kolnovel.com.",
+      descriptionKey: "source.kolnovel.description",
       version: "0.1.0",
     },
     factory: (host) => createKolNovelSource(host),
@@ -56,8 +55,7 @@ const BUILTINS: RegistryEntry[] = [
       name: "KolNovel Pro",
       baseUrl: "https://kolnovel.com",
       language: "ar",
-      description:
-        "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
+      descriptionKey: "source.kolnovelPro.description",
       version: "0.1.0",
     },
     factory: (host) => createKolNovelProSource(host),

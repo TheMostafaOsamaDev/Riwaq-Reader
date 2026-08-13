@@ -18,6 +18,8 @@ import {
   type Step,
 } from "../store/importProgress";
 import { ACCENT, FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
+import { errorLabel, phaseLabel } from "../i18n/statusLabels";
 
 interface Props {
   theme: Theme;
@@ -57,6 +59,7 @@ export function ImportProgress({ theme }: Props) {
 // ── Modal ─────────────────────────────────────────────────────────────────
 
 function Modal({ theme }: { theme: Theme }) {
+  const { tr } = useI18n();
   const state = useImportProgress();
   const onMinimize = () => setMinimized(true);
   const onDismiss = () => dismiss();
@@ -75,10 +78,10 @@ function Modal({ theme }: { theme: Theme }) {
   const finished = state.finishedAt !== null;
   const errored = state.error !== null;
   const titleText = errored
-    ? "Import failed"
+    ? tr("import.progress.titleFailed")
     : finished
-      ? "Import complete"
-      : "Importing document";
+      ? tr("import.progress.titleComplete")
+      : tr("import.progress.titleImporting");
 
   return (
     <div
@@ -136,8 +139,8 @@ function Modal({ theme }: { theme: Theme }) {
           </div>
           <button
             onClick={finished ? onDismiss : onMinimize}
-            aria-label={finished ? "Close" : "Continue in background"}
-            title={finished ? "Close" : "Continue in background"}
+            aria-label={finished ? tr("common.close") : tr("import.progress.continueInBackground")}
+            title={finished ? tr("common.close") : tr("import.progress.continueInBackground")}
             style={{
               border: "none",
               background: "transparent",
@@ -193,27 +196,27 @@ function Modal({ theme }: { theme: Theme }) {
           {errored ? (
             <>
               <div style={{ flex: 1, color: "#c04a3a", lineHeight: 1.4 }}>
-                {state.error}
+                {errorLabel(state.error ?? "", tr)}
               </div>
               <button
                 onClick={onDismiss}
                 style={pillButton(theme)}
               >
-                Dismiss
+                {tr("import.progress.dismiss")}
               </button>
             </>
           ) : finished ? (
             <>
-              <div style={{ flex: 1 }}>Added to your library.</div>
+              <div style={{ flex: 1 }}>{tr("import.progress.addedToLibrary")}</div>
               <button onClick={onDismiss} style={pillButton(theme)}>
-                Close
+                {tr("common.close")}
               </button>
             </>
           ) : (
             <>
-              <div style={{ flex: 1 }}>Stays running if you close this.</div>
+              <div style={{ flex: 1 }}>{tr("import.progress.staysRunning")}</div>
               <button onClick={onMinimize} style={pillButton(theme)}>
-                Continue in background
+                {tr("import.progress.continueInBackground")}
               </button>
             </>
           )}
@@ -280,6 +283,7 @@ function ProgressBar({
 // ── Step row ──────────────────────────────────────────────────────────────
 
 function StepRow({ theme, step }: { theme: Theme; step: Step }) {
+  const { tr } = useI18n();
   const isActive = step.status === "active";
   const isDone = step.status === "done";
   const isError = step.status === "error";
@@ -313,7 +317,7 @@ function StepRow({ theme, step }: { theme: Theme; step: Step }) {
           transition: "font-weight 200ms ease",
         }}
       >
-        {step.label}
+        {phaseLabel(step.label, tr)}
       </div>
     </div>
   );
@@ -412,6 +416,7 @@ function StepIcon({
 // ── Dock (minimized) ──────────────────────────────────────────────────────
 
 function Dock({ theme }: { theme: Theme }) {
+  const { tr } = useI18n();
   const state = useImportProgress();
   const onExpand = () => setMinimized(false);
 
@@ -431,15 +436,15 @@ function Dock({ theme }: { theme: Theme }) {
   return (
     <button
       onClick={onExpand}
-      aria-label="Open import progress"
+      aria-label={tr("import.progress.dockAriaLabel")}
       title={
-        errored ? "Import failed — click to view"
-          : finished ? "Import complete"
-            : "Importing — click to view"
+        errored ? tr("import.progress.dockFailedHint")
+          : finished ? tr("import.progress.titleComplete")
+            : tr("import.progress.dockImportingHint")
       }
       style={{
         position: "fixed",
-        right: 24,
+        insetInlineEnd: 24,
         bottom: 24,
         zIndex: 9800,
         width: 64,

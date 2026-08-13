@@ -8,11 +8,15 @@ export interface IconProps {
   stroke?: number;
   fill?: string;
   style?: CSSProperties;
+  className?: string;
 }
 
 export const ICONS = {
   menu: "M3 6h18M3 12h18M3 18h18",
   list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  book: "M12 6.5C10.5 5 7.5 4.5 4 5v13c3.5-.5 6.5 0 8 1.5 1.5-1.5 4.5-2 8-1.5V5c-3.5-.5-6.5 0-8 1.5zM12 6.5V20",
+  layers: "M12 2 2 7l10 5 10-5-10-5zM2 12l10 5 10-5M2 17l10 5 10-5",
   highlight: "M4 19h16M5 15l5-5 7 7-5 5H5v-7zM13 5l5 5",
   search: "M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35",
   arrowL: "M15 18l-6-6 6-6",
@@ -48,6 +52,7 @@ export function Icon({
   stroke = 1.5,
   fill = "none",
   style,
+  className,
 }: IconProps) {
   return (
     <svg
@@ -60,6 +65,7 @@ export function Icon({
       strokeLinecap="round"
       strokeLinejoin="round"
       style={style}
+      className={className}
     >
       <path d={ICONS[name]} />
     </svg>

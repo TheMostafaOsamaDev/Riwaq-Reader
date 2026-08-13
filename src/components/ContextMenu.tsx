@@ -11,6 +11,8 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { BookStatus } from "../store/library";
 import { EASE, MOTION } from "../styles/motion";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
+import type { Tr } from "../i18n";
 
 export interface ContextMenuProps {
   theme: Theme;
@@ -34,11 +36,17 @@ export interface ContextMenuProps {
   onClose: () => void;
 }
 
-const STATUS_OPTIONS: { value: BookStatus; label: string }[] = [
-  { value: "reading", label: "Reading" },
-  { value: "finished", label: "Finished" },
-  { value: "wishlist", label: "Wishlist" },
-];
+/** Status submenu entries. Labels reuse the sidebar's already-translated
+ *  Reading/Finished/Wishlist strings rather than a separate copy. Computed
+ *  from `tr` on every render (a 3-item array) instead of module-level so
+ *  the labels track the active UI locale. */
+function getStatusOptions(tr: Tr): { value: BookStatus; label: string }[] {
+  return [
+    { value: "reading", label: tr("sidebar.reading") },
+    { value: "finished", label: tr("sidebar.finished") },
+    { value: "wishlist", label: tr("sidebar.wishlist") },
+  ];
+}
 
 // Motion timings pulled from the app-wide motion tokens so every
 // menu/sheet/panel shares the same enter/exit feel.
@@ -80,6 +88,8 @@ export function ContextMenu({
   onDelete,
   onClose,
 }: ContextMenuProps) {
+  const { tr, dir } = useI18n();
+  const STATUS_OPTIONS = getStatusOptions(tr);
   // `(hover: none)` alone misses Android Chrome configs that report
   // `hover: hover`, so OR with `(pointer: coarse)` (the rest of the app's
   // mobile signal) and fall back to navigator.maxTouchPoints.
@@ -253,6 +263,11 @@ export function ContextMenu({
       }
       const inSubmenu = subFocus >= 0;
       const n = STATUS_OPTIONS.length;
+      // Under RTL the submenu flyout opens toward the inline-start (visually
+      // left), so the enter/exit arrows swap: ArrowLeft opens, ArrowRight
+      // closes. Mirrors the reader's forward/back arrow swap (DesktopReader).
+      const enterSubmenuKey = dir === "rtl" ? "ArrowLeft" : "ArrowRight";
+      const exitSubmenuKey = dir === "rtl" ? "ArrowRight" : "ArrowLeft";
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -270,7 +285,7 @@ export function ContextMenu({
             setMainFocus((p) => (p < 0 ? 2 : (p - 1 + 3) % 3));
           }
           break;
-        case "ArrowRight":
+        case enterSubmenuKey:
           // From the Status row, enter the submenu and focus the first
           // option (or the current status, if one is already set).
           e.preventDefault();
@@ -282,7 +297,7 @@ export function ContextMenu({
             setSubFocus(initial >= 0 ? initial : 0);
           }
           break;
-        case "ArrowLeft":
+        case exitSubmenuKey:
           // Exits the submenu back to the Status row.
           e.preventDefault();
           if (inSubmenu) {
@@ -388,16 +403,18 @@ export function ContextMenu({
                 fontSize: 13,
               }}
             >
-              {status ? labelFor(status) : "None"}
-              <Icon name="chevronR" size={15} />
+              {status ? labelFor(status, tr) : tr("contextMenu.statusNone")}
+              <Icon name="chevronR" size={15} className="rtl-flip-x" />
             </span>
           ) : (
-            <Icon name="chevronR" size={14} />
+            <Icon name="chevronR" size={14} className="rtl-flip-x" />
           )
         }
         compact={!isTouch}
       >
-        {isTouch ? "Status" : `Status${status ? ` · ${labelFor(status)}` : ""}`}
+        {isTouch
+          ? tr("contextMenu.status")
+          : `${tr("contextMenu.status")}${status ? ` · ${labelFor(status, tr)}` : ""}`}
         {!isTouch && submenuMounted && (
           <div
             ref={submenuRef}
@@ -447,7 +464,7 @@ export function ContextMenu({
         icon={isTouch ? "pencil" : undefined}
         compact={!isTouch}
       >
-        Edit book info
+        {tr("contextMenu.editBookInfo")}
       </SheetRow>
       <SheetDivider theme={theme} inset={isTouch ? 56 : 0} />
       <SheetRow
@@ -458,7 +475,7 @@ export function ContextMenu({
         icon={isTouch ? "trash" : undefined}
         compact={!isTouch}
       >
-        Remove book
+        {tr("contextMenu.removeBook")}
       </SheetRow>
     </>
   );
@@ -474,9 +491,10 @@ export function ContextMenu({
           setStatusOpen(false);
         }}
         icon="arrowL"
+        iconClassName="rtl-flip-x"
         muted
       >
-        Back
+        {tr("common.back")}
       </SheetRow>
       <SheetDivider theme={theme} inset={56} />
       {STATUS_OPTIONS.map((o, i) => (
@@ -545,38 +563,42 @@ export function ContextMenu({
             flex: 1,
           }}
         >
-          {title && (
-            <div
-              style={{
-                fontSize: 12.5,
-                fontWeight: 600,
-                color: theme.ink,
-                lineHeight: 1.25,
-                // Two-line clamp so long titles don't push the menu absurdly
-                // tall — the rest stays visible in the Edit modal anyway.
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {title}
-            </div>
-          )}
-          {author && (
-            <div
-              style={{
-                fontSize: 11,
-                color: theme.muted,
-                lineHeight: 1.3,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {author}
-            </div>
-          )}
+          {/* Always shown (once the header itself renders — gated above by
+              `title || author`): a blank `title` now falls back to a
+              localized "Untitled" rather than hiding the row entirely,
+              same as BookCover / the Library shelf cards. */}
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: theme.ink,
+              lineHeight: 1.25,
+              // Two-line clamp so long titles don't push the menu absurdly
+              // tall — the rest stays visible in the Edit modal anyway.
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {title || tr("common.untitled")}
+          </div>
+          {/* Always shown (once the header itself renders — gated above by
+              `title || author`): a blank `author` now falls back to a
+              localized "Unknown author" rather than hiding the row, same
+              as BookCover / the Library shelf cards. */}
+          <div
+            style={{
+              fontSize: 11,
+              color: theme.muted,
+              lineHeight: 1.3,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {author || tr("common.unknownAuthor")}
+          </div>
         </div>
       </div>
     ) : null;
@@ -621,12 +643,12 @@ export function ContextMenu({
               fontSize: 12,
             }}
           >
-            {status ? labelFor(status) : null}
-            <Icon name="chevronR" size={13} />
+            {status ? labelFor(status, tr) : null}
+            <Icon name="chevronR" size={13} className="rtl-flip-x" />
           </span>
         }
       >
-        Status
+        {tr("contextMenu.status")}
         {submenuMounted && (
           <div
             ref={submenuRef}
@@ -681,7 +703,7 @@ export function ContextMenu({
         onMouseEnter={() => setMainFocus(1)}
         onClick={handleEdit}
       >
-        Edit book info
+        {tr("contextMenu.editBookInfo")}
       </SheetRow>
       <SheetDivider theme={theme} />
       <SheetRow
@@ -693,7 +715,7 @@ export function ContextMenu({
         onMouseEnter={() => setMainFocus(2)}
         onClick={handleDelete}
       >
-        Remove book
+        {tr("contextMenu.removeBook")}
       </SheetRow>
     </>
   );
@@ -730,8 +752,8 @@ export function ContextMenu({
         <div
           style={{
             position: "fixed",
-            left: 0,
-            right: 0,
+            insetInlineStart: 0,
+            insetInlineEnd: 0,
             bottom: 0,
             zIndex: 9500,
             padding: 10,
@@ -760,34 +782,33 @@ export function ContextMenu({
                     gap: 2,
                   }}
                 >
-                  {title && (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: theme.ink,
-                        lineHeight: 1.3,
-                        // Two-line clamp keeps the header compact for long titles.
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {title}
-                    </div>
-                  )}
-                  {author && (
-                    <div
-                      style={{
-                        fontSize: 11.5,
-                        color: theme.muted,
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      {author}
-                    </div>
-                  )}
+                  {/* Blank `title` falls back to a localized "Untitled"
+                      rather than hiding the row — same rationale as the
+                      desktop header above. */}
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: theme.ink,
+                      lineHeight: 1.3,
+                      // Two-line clamp keeps the header compact for long titles.
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {title || tr("common.untitled")}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: theme.muted,
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {author || tr("common.unknownAuthor")}
+                  </div>
                 </div>
                 <SheetDivider theme={theme} />
               </>
@@ -845,7 +866,7 @@ export function ContextMenu({
               centered
               bold
             >
-              Cancel
+              {tr("common.cancel")}
             </SheetRow>
           </SheetCard>
         </div>
@@ -893,8 +914,12 @@ export function ContextMenu({
   );
 }
 
-function labelFor(s: BookStatus): string {
-  return s === "reading" ? "Reading" : s === "finished" ? "Finished" : "Wishlist";
+function labelFor(s: BookStatus, tr: Tr): string {
+  return s === "reading"
+    ? tr("sidebar.reading")
+    : s === "finished"
+      ? tr("sidebar.finished")
+      : tr("sidebar.wishlist");
 }
 
 function SheetCard({
@@ -930,7 +955,10 @@ function SheetDivider({ theme, inset = 0 }: { theme: Theme; inset?: number }) {
       style={{
         height: 0.5,
         background: theme.rule,
-        marginLeft: inset,
+        // Logical (not `marginLeft`): the inset aligns the divider under the
+        // row's text, which sits at the reading-direction START past the
+        // icon column — that's the right edge in RTL, not always the left.
+        marginInlineStart: inset,
       }}
     />
   );
@@ -943,6 +971,9 @@ interface SheetRowProps {
   onMouseLeave?: () => void;
   icon?: Parameters<typeof Icon>[0]["name"];
   iconMuted?: boolean;
+  /** Extra className passed to the icon — used for `rtl-flip-x` on
+   *  directional glyphs (e.g. the "Back" row's arrowL). */
+  iconClassName?: string;
   trailing?: ReactNode;
   destructive?: boolean;
   centered?: boolean;
@@ -969,6 +1000,7 @@ function SheetRow({
   onMouseLeave,
   icon,
   iconMuted,
+  iconClassName,
   trailing,
   destructive,
   centered,
@@ -1058,7 +1090,7 @@ function SheetRow({
               flexShrink: 0,
             }}
           >
-            <Icon name={icon} size={18} stroke={1.7} />
+            <Icon name={icon} size={18} stroke={1.7} className={iconClassName} />
           </span>
         )}
         <span style={{ minWidth: 0 }}>{children}</span>

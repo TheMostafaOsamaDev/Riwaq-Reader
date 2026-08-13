@@ -9,6 +9,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 import { PanelShell } from "./PanelShell";
 
 interface Props {
@@ -70,13 +71,21 @@ export function HighlightsPanel({
   width,
   side = "left",
 }: Props) {
+  const { tr } = useI18n();
   const groups = groupHighlights(highlights);
   return (
     <PanelShell
       theme={theme}
-      title="Highlights & Notes"
+      title={tr("highlights.title")}
       subtitle={
-        groups.length === 0 ? "None yet" : `${groups.length} in this book`
+        groups.length === 0
+          ? tr("highlights.subtitleNone")
+          : tr(
+              groups.length === 1
+                ? "highlights.subtitleCountOne"
+                : "highlights.subtitleCountOther",
+              { n: groups.length },
+            )
       }
       onClose={onClose}
       icon={<Icon name="highlight" size={14} />}
@@ -123,6 +132,7 @@ function HighlightRow({
   // on the first segment (matching creation), delete is group-aware in
   // App.removeHighlight, and jump lands on the first paragraph of the
   // selection.
+  const { tr } = useI18n();
   const h = group.representative;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(h.note ?? "");
@@ -151,7 +161,7 @@ function HighlightRow({
         padding: "12px 14px",
         borderRadius: 10,
         marginBottom: 4,
-        borderLeft: `3px solid ${HIGHLIGHT_COLORS[h.color].dot}`,
+        borderInlineStart: `3px solid ${HIGHLIGHT_COLORS[h.color].dot}`,
         background: hlBg(h.color, themeKey),
         cursor: editing ? "default" : onJump ? "pointer" : "default",
         position: "relative",
@@ -208,7 +218,7 @@ function HighlightRow({
                 save();
               }
             }}
-            placeholder="Note…"
+            placeholder={tr("highlights.notePlaceholder")}
             rows={3}
             style={{
               width: "100%",
@@ -233,10 +243,10 @@ function HighlightRow({
             }}
           >
             <button onClick={cancel} style={ghostBtn(theme)}>
-              Cancel
+              {tr("common.cancel")}
             </button>
             <button onClick={save} style={primaryBtn(theme)}>
-              Save
+              {tr("common.save")}
             </button>
           </div>
         </div>
@@ -276,15 +286,19 @@ function HighlightRow({
             fontFamily: FONT_STACKS.sans,
           }}
         >
-          Chapter {h.chapter + 1}
+          {tr("highlights.chapterLabel", { n: h.chapter + 1 })}
         </div>
         {!editing && (
-          <div style={{ display: "flex", gap: 2 }}>
+          <div
+            role="group"
+            aria-label={tr("highlights.actions")}
+            style={{ display: "flex", gap: 2 }}
+          >
             {onUpdateNote && (
               <button
                 onClick={startEdit}
-                aria-label={h.note ? "Edit note" : "Add note"}
-                title={h.note ? "Edit note" : "Add note"}
+                aria-label={h.note ? tr("highlights.editNote") : tr("highlights.addNote")}
+                title={h.note ? tr("highlights.editNote") : tr("highlights.addNote")}
                 style={iconBtn(theme)}
               >
                 <Icon name="pencil" size={12} />
@@ -296,8 +310,8 @@ function HighlightRow({
                   e.stopPropagation();
                   onDelete(h.id);
                 }}
-                aria-label="Delete highlight"
-                title="Delete highlight"
+                aria-label={tr("highlights.delete")}
+                title={tr("highlights.delete")}
                 style={iconBtn(theme)}
               >
                 <Icon name="close" size={12} />
@@ -311,6 +325,7 @@ function HighlightRow({
 }
 
 function Empty({ theme }: { theme: Theme }) {
+  const { tr } = useI18n();
   return (
     <div style={{ padding: "40px 24px", textAlign: "center" }}>
       <div
@@ -322,7 +337,7 @@ function Empty({ theme }: { theme: Theme }) {
           marginBottom: 6,
         }}
       >
-        No highlights yet
+        {tr("highlights.emptyTitle")}
       </div>
       <div
         style={{
@@ -333,8 +348,7 @@ function Empty({ theme }: { theme: Theme }) {
           margin: "0 auto",
         }}
       >
-        Select text while reading to highlight it, then add a note to remember
-        why it mattered.
+        {tr("highlights.emptyBody")}
       </div>
     </div>
   );

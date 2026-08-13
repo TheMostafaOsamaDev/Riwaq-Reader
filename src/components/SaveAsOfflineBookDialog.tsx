@@ -21,6 +21,7 @@ import {
   readSnapshot,
   type SourceSnapshot,
 } from "../store/sourceLibrary";
+import { useI18n } from "../i18n/useI18n";
 
 type ConvertMode = "single" | "per-volume";
 
@@ -44,6 +45,7 @@ export function SaveAsOfflineBookDialog({
   onCancel,
   onEnqueued,
 }: Props) {
+  const { tr } = useI18n();
   const isMobile = layout === "mobile";
   const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -149,7 +151,7 @@ export function SaveAsOfflineBookDialog({
         >
           <button
             onClick={onCancel}
-            aria-label="Back"
+            aria-label={tr("common.back")}
             style={{
               width: 34,
               height: 34,
@@ -164,7 +166,7 @@ export function SaveAsOfflineBookDialog({
               flexShrink: 0,
             }}
           >
-            <Icon name="arrowL" size={16} />
+            <Icon name="arrowL" size={16} className="rtl-flip-x" />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2
@@ -178,7 +180,7 @@ export function SaveAsOfflineBookDialog({
                 letterSpacing: "-0.01em",
               }}
             >
-              Save as offline book
+              {tr("downloads.saveOffline.title")}
             </h2>
             <div
               style={{
@@ -218,7 +220,7 @@ export function SaveAsOfflineBookDialog({
                 fontSize: 13,
               }}
             >
-              Loading volume listing…
+              {tr("downloads.saveOffline.loading")}
             </div>
           ) : !snapshot ? (
             <div
@@ -231,8 +233,7 @@ export function SaveAsOfflineBookDialog({
                 lineHeight: 1.5,
               }}
             >
-              Couldn't read this novel's snapshot. Try reopening it
-              from the library and try again.
+              {tr("downloads.saveOffline.readError")}
             </div>
           ) : (
             <>
@@ -244,32 +245,32 @@ export function SaveAsOfflineBookDialog({
                   color: theme.muted,
                 }}
               >
-                Bakes the novel into a standalone EPUB that lives in your
-                library alongside imported books. Chapters that aren't
-                downloaded yet will be fetched on the fly during
-                conversion. The original entry in your library stays put.
+                {tr("downloads.saveOffline.description")}
               </p>
 
               <ModeOption
                 theme={theme}
-                title="Save as one book"
-                detail="Volumes become sections inside a single EPUB. Best when you read on a tablet or e-reader and prefer one big file."
+                title={tr("downloads.saveOffline.singleTitle")}
+                detail={tr("downloads.saveOffline.singleDetail")}
                 selected={mode === "single"}
                 onSelect={() => setMode("single")}
                 disabled={snapshot.volumes.length === 0}
               />
               <ModeOption
                 theme={theme}
-                title="Save each volume as its own book"
-                detail={`Creates ${stats.volumes} separate EPUB${
-                  stats.volumes === 1 ? "" : "s"
-                } in your library, one per volume. Better for novels with many volumes; you can read one at a time and finish it cleanly.`}
+                title={tr("downloads.saveOffline.perVolumeTitle")}
+                detail={tr(
+                  stats.volumes === 1
+                    ? "downloads.saveOffline.perVolumeDetailOne"
+                    : "downloads.saveOffline.perVolumeDetailOther",
+                  { n: stats.volumes },
+                )}
                 selected={mode === "per-volume"}
                 onSelect={() => setMode("per-volume")}
                 disabled={snapshot.volumes.length <= 1}
                 disabledReason={
                   snapshot.volumes.length <= 1
-                    ? "This novel only has one volume."
+                    ? tr("downloads.saveOffline.onlyOneVolume")
                     : undefined
                 }
               />
@@ -289,7 +290,7 @@ export function SaveAsOfflineBookDialog({
           }}
         >
           <Button theme={theme} variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {tr("common.cancel")}
           </Button>
           <Button
             theme={theme}
@@ -298,7 +299,7 @@ export function SaveAsOfflineBookDialog({
             disabled={loading || !snapshot}
             onClick={onSave}
           >
-            Save
+            {tr("common.save")}
           </Button>
         </div>
       </div>
@@ -332,7 +333,7 @@ function ModeOption({
       aria-pressed={selected}
       disabled={disabled}
       style={{
-        textAlign: "left",
+        textAlign: "start",
         display: "flex",
         gap: 12,
         padding: "14px 16px",
@@ -404,6 +405,7 @@ interface StatsRowProps {
 }
 
 function StatsRow({ theme, stats }: StatsRowProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -415,21 +417,38 @@ function StatsRow({ theme, stats }: StatsRowProps) {
     >
       <Stat
         theme={theme}
-        label={`${stats.volumes} volume${stats.volumes === 1 ? "" : "s"}`}
+        label={tr(
+          stats.volumes === 1
+            ? "downloads.saveOffline.volumesCountOne"
+            : "downloads.saveOffline.volumesCountOther",
+          { n: stats.volumes },
+        )}
       />
       <Stat
         theme={theme}
-        label={`${stats.chapters} chapter${stats.chapters === 1 ? "" : "s"}`}
+        label={tr(
+          stats.chapters === 1
+            ? "downloads.saveOffline.chaptersCountOne"
+            : "downloads.saveOffline.chaptersCountOther",
+          { n: stats.chapters },
+        )}
       />
       <Stat
         theme={theme}
-        label={`${stats.downloaded} already downloaded`}
+        label={tr("downloads.saveOffline.alreadyDownloaded", {
+          n: stats.downloaded,
+        })}
       />
       {stats.unloaded > 0 && (
         <Stat
           theme={theme}
           tone="warn"
-          label={`${stats.unloaded} volume${stats.unloaded === 1 ? "" : "s"} not loaded — open the detail view first`}
+          label={tr(
+            stats.unloaded === 1
+              ? "downloads.saveOffline.volumesNotLoadedOne"
+              : "downloads.saveOffline.volumesNotLoadedOther",
+            { n: stats.unloaded },
+          )}
         />
       )}
     </div>

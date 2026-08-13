@@ -42,6 +42,20 @@ import {
   getState as getImportProgressState,
   startImport,
 } from "./importProgress";
+import { makeTr, type Locale } from "../i18n";
+
+/** Best-effort current UI locale. This module runs outside the component
+ *  tree (plain store functions, no React context available), so it reads
+ *  `document.documentElement.lang` instead of `useI18n()` — App.tsx keeps
+ *  that attribute in sync with the user's UI-language preference. Same
+ *  pattern as `currentUiLocale()` in kolnovel-theme.ts / cenele.ts /
+ *  downloadNotifier.ts. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 const BASE = BaseDirectory.AppData;
 const ROOT = "leaflet";
@@ -275,7 +289,12 @@ export async function pickAndImportDocx(): Promise<BookIndexEntry | null> {
   const picked = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "Word document", extensions: ["docx"] }],
+    filters: [
+      {
+        name: makeTr(currentUiLocale())("sidebar.wordDoc"),
+        extensions: ["docx"],
+      },
+    ],
   });
   if (!picked) return null;
 
@@ -353,7 +372,12 @@ export async function pickAndStageDocx(): Promise<StagedDocx | null> {
   const picked = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "Word document", extensions: ["docx"] }],
+    filters: [
+      {
+        name: makeTr(currentUiLocale())("sidebar.wordDoc"),
+        extensions: ["docx"],
+      },
+    ],
   });
   if (!picked) return null;
 
@@ -448,12 +472,17 @@ export async function commitStagedDocx(
 
 /** Pull a reasonable display title out of a file path: drop the directory
  *  portion and the .docx extension, then collapse underscores/dashes to
- *  spaces. Used when the doc has no leading heading we can borrow. */
+ *  spaces. Used when the doc has no leading heading we can borrow. Empty
+ *  (not "Untitled") when the stem strips to nothing — a blank title
+ *  persists as "" so the display-time fallback (`common.untitled`)
+ *  localizes it wherever the book is rendered, instead of freezing an
+ *  English (or whatever-locale-was-active) literal into the book's own
+ *  stored title. */
 function filenameTitle(path: string): string {
   const base = path.split(/[\\/]/).pop() ?? path;
   const stem = base.replace(/\.docx$/i, "");
   const cleaned = stem.replace(/[_-]+/g, " ").trim();
-  return cleaned.length > 0 ? cleaned : "Untitled";
+  return cleaned;
 }
 
 export async function importEpubBytes(
@@ -748,7 +777,10 @@ export async function setCoverFromFile(
     multiple: false,
     directory: false,
     filters: [
-      { name: "Image", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
+      {
+        name: makeTr(currentUiLocale())("picker.filterImage"),
+        extensions: ["jpg", "jpeg", "png", "gif", "webp"],
+      },
     ],
   });
   if (!picked) return null;

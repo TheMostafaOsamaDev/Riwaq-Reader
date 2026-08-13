@@ -35,6 +35,7 @@
 // `isDecoyElement` for the detection heuristics.
 
 import { absolutizeUrl, parseHtmlDocument } from "../host";
+import { makeTr, type Locale } from "../../i18n";
 import type {
   NovelCard,
   Source,
@@ -45,6 +46,20 @@ import type {
   SourceSection,
   SourceVolume,
 } from "../types";
+
+/** Best-effort current UI locale for the rare case a volume has no
+ *  scraped label and we fall back to a fixed "Volume N" name. This
+ *  module runs outside the component tree (plain DOM parsing, no React
+ *  context available), so it reads `document.documentElement.lang`
+ *  instead of `useI18n()` — App.tsx keeps that attribute in sync with
+ *  the user's UI-language preference. Mirrors kolnovel-theme.ts's
+ *  identically-named helper. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 const SOURCE_ID = "cenele";
 const BASE_URL = "https://cenele.com";
@@ -110,8 +125,7 @@ export function createCeneleSource(host: SourceHost): Source {
       name: "Cenele",
       baseUrl: BASE_URL,
       language: "ar",
-      description:
-        "Arabic translations of Asian web novels from cenele.com (فضاء الروايات).",
+      descriptionKey: "source.cenele.description",
       version: "0.1.0",
     },
     // Cenele loads chapter lists per volume via AJAX. Most novels have
@@ -201,7 +215,11 @@ export function createCeneleSource(host: SourceHost): Source {
         nextId += count;
         return {
           id: ourId,
-          title: shell.label || `Volume ${shell.num}`,
+          title:
+            shell.label ||
+            makeTr(currentUiLocale())("novel.volumeFallback", {
+              n: shell.num,
+            }),
           chapters: [],
           chapterCount: count,
           key: String(shell.num),
@@ -683,9 +701,12 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     );
   }
 
-  const title =
-    sanitizeText(doc.querySelector(".manga-title h2")?.textContent) ||
-    "Unknown title";
+  // Empty (not "Untitled") when the scrape can't find a title — a blank
+  // title persists as "" so the display-time fallback (`common.untitled`)
+  // localizes it wherever the novel is rendered, instead of freezing a
+  // locale-frozen literal into the novel's own stored title (same
+  // rationale as the author-blank fix elsewhere in this file).
+  const title = sanitizeText(doc.querySelector(".manga-title h2")?.textContent);
   const originalTitle =
     sanitizeText(
       doc.querySelector(".manga-alt-title .manga-alt-label")?.textContent,
@@ -707,9 +728,13 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
   // Definition-list metadata. The Madara theme uses two parallel
   // structures: `.manga-data .nhv-meta-label/.nhv-meta-value` pairs
   // (chapter count, status, views, type) AND `.row-2`'s author/translator
-  // rows. Walk them all and emit a SourceNovelMeta row each.
+  // rows. Walk them all and emit a SourceNovelMeta row each. `author`
+  // starts empty (not "Unknown author") — same rationale as the epub/docx
+  // author fix: a blank `Book.author` lets the display-time fallback
+  // (`common.unknownAuthor`) localize it, instead of freezing an English
+  // literal into the novel's persisted data.
   const meta: SourceNovelMeta[] = [];
-  let author = "Unknown author";
+  let author = "";
   const metaRows = doc.querySelectorAll(
     ".manga-data > div, .manga-author, .manga-artists, .manga-type, .released-chapters, .manga-status, .manga-views",
   );
@@ -734,7 +759,7 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     // Heuristic: the author row is labeled "المؤلف" in Arabic
     // ("Author"). Capture the first value we see under that label so
     // the EPUB's dc:creator gets a meaningful name.
-    if (/مؤلف|كاتب|author|writer/i.test(label) && author === "Unknown author") {
+    if (/مؤلف|كاتب|author|writer/i.test(label) && !author) {
       author = value;
     }
   }
@@ -1055,7 +1080,15 @@ function sanitizeChapterTitle(raw: string, fallbackId: number): string {
   const collapsed = sanitizeText(raw);
   const safe = collapsed.replace(/[\\/:*?"<>|]+/g, "").trim();
   const truncated = safe.length > 120 ? safe.slice(0, 120).trim() : safe;
-  return truncated || `${fallbackId} - No Title`;
+  // Rare technical fallback (a scraped chapter with no usable title text) —
+  // same pattern as the volume-title fallback elsewhere in this file:
+  // synthesized directly via `makeTr(currentUiLocale())` since this becomes
+  // the persisted chapter title (data), not something translated at a
+  // single display site.
+  return (
+    truncated ||
+    makeTr(currentUiLocale())("novel.chapterNoTitleFallback", { n: fallbackId })
+  );
 }
 
 function pickImageSrc(img: HTMLImageElement | null): string | undefined {

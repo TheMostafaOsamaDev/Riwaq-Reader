@@ -46,7 +46,7 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
         background: theme.chrome,
         color: theme.ink,
         border: `0.5px solid ${theme.rule}`,
-        borderLeft: `3px solid ${accent}`,
+        borderInlineStart: `3px solid ${accent}`,
         borderRadius: 8,
         padding: "12px 18px",
         fontFamily: FONT_STACKS.sans,

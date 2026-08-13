@@ -4,6 +4,7 @@ import type { Tweaks } from "../types/reader";
 const STORAGE_KEY = "leaflet:tweaks:v1";
 
 export const DEFAULT_TWEAKS: Tweaks = {
+  uiLang: "system",
   theme: "sepia",
   fontFamily: "serif",
   fontSize: 17,

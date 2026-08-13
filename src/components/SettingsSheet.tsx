@@ -12,6 +12,7 @@
 
 import { Icon } from "./Icon";
 import { BrandMark } from "./BrandMark";
+import { SystemThemeGlyph } from "./SystemThemeGlyph";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -20,12 +21,17 @@ import {
   type ThemePref,
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
+import { useI18n } from "../i18n/useI18n";
+import type { MsgKey, UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
   themeKey: ThemeKey;
   /** Raw preference (may be "system"). Falls back to themeKey if omitted. */
   themePref?: ThemePref;
+  /** Raw UI-language preference (may be "system"), so the sheet can
+   *  highlight "Auto" rather than the resolved concrete locale. */
+  uiLang: UiLangPref;
   setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onClose: () => void;
@@ -33,26 +39,82 @@ interface Props {
 
 const THEME_SWATCHES: ReadonlyArray<{
   key: ThemeKey;
-  label: string;
   bg: string;
   ink: string;
 }> = [
-  { key: "light", label: "Light", bg: "#ffffff", ink: "#1f1a14" },
-  { key: "sepia", label: "Sepia", bg: "#f4ecd8", ink: "#3a2f1f" },
-  { key: "dark", label: "Dark", bg: "#1a1614", ink: "#d8cbb0" },
-  { key: "oled", label: "OLED", bg: "#000000", ink: "#b8ad94" },
+  { key: "light", bg: "#ffffff", ink: "#1f1a14" },
+  { key: "sepia", bg: "#f4ecd8", ink: "#3a2f1f" },
+  { key: "dark", bg: "#1a1614", ink: "#d8cbb0" },
+  { key: "oled", bg: "#000000", ink: "#b8ad94" },
 ];
+
+function LangSegRow({
+  theme,
+  value,
+  onChange,
+  options,
+}: {
+  theme: Theme;
+  value: UiLangPref;
+  onChange: (next: UiLangPref) => void;
+  options: { value: UiLangPref; label: string }[];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        background: theme.chrome,
+        borderRadius: 10,
+        padding: 4,
+      }}
+    >
+      {options.map((o) => {
+        const selected = value === o.value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            aria-pressed={selected}
+            style={{
+              flex: 1,
+              border: "none",
+              background: selected ? theme.bg : "transparent",
+              color: theme.ink,
+              padding: "9px 4px",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 12.5,
+              fontWeight: 500,
+              boxShadow: selected ? `0 1px 2px ${theme.rule}` : "none",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function SettingsSheet({
   theme,
   themeKey,
   themePref,
+  uiLang,
   setTweak,
   layout,
   onClose,
 }: Props) {
+  const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
   const pref = themePref ?? themeKey;
+  // "Aa" reads fine in Latin UIs, but is meaningless (and Fraunces has no
+  // Arabic glyphs to fall back on) when the UI is Arabic — swap to an
+  // Arabic-capable font + glyph pair so the preview never shows tofu.
+  const previewGlyph = locale === "ar" ? "أب" : "Aa";
+  const previewFontFamily = locale === "ar" ? FONT_STACKS.sans : FONT_SERIF_DISPLAY;
 
   return (
     // The scrim, centering, and enter/exit animation live in
@@ -98,7 +160,20 @@ export function SettingsSheet({
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
             <BrandMark themeKey={themeKey} size={76} />
           </div>
-          <SectionLabel theme={theme} label="Theme" />
+          <SectionLabel theme={theme} label={tr("settings.language")} />
+          <div style={{ marginTop: 8, marginBottom: 20 }}>
+            <LangSegRow
+              theme={theme}
+              value={uiLang}
+              onChange={(v) => setTweak("uiLang", v)}
+              options={[
+                { value: "system", label: tr("settings.language.auto") },
+                { value: "en", label: "English" },
+                { value: "ar", label: "العربية" },
+              ]}
+            />
+          </div>
+          <SectionLabel theme={theme} label={tr("settings.theme")} />
           <div
             style={{
               display: "grid",
@@ -133,13 +208,13 @@ export function SettingsSheet({
                 >
                   <span
                     style={{
-                      fontFamily: FONT_SERIF_DISPLAY,
+                      fontFamily: previewFontFamily,
                       fontSize: 28,
-                      fontStyle: "italic",
+                      fontStyle: locale === "ar" ? "normal" : "italic",
                       lineHeight: 1,
                     }}
                   >
-                    Aa
+                    {previewGlyph}
                   </span>
                   <span
                     style={{
@@ -148,7 +223,7 @@ export function SettingsSheet({
                       opacity: 0.85,
                     }}
                   >
-                    {s.label}
+                    {tr(`settings.theme.${s.key}` as MsgKey)}
                   </span>
                 </button>
               );
@@ -173,25 +248,16 @@ export function SettingsSheet({
                   : `1px solid ${theme.rule}`,
               cursor: "pointer",
               fontFamily: "inherit",
-              textAlign: "left",
+              textAlign: "start",
             }}
           >
-            <span
-              aria-hidden
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 13,
-                flexShrink: 0,
-                background:
-                  "linear-gradient(135deg, #f4ecd8 0 50%, #1a1614 50% 100%)",
-                border: `1px solid ${theme.rule}`,
-              }}
-            />
+            <SystemThemeGlyph size={26} />
             <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>System</span>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                {tr("settings.theme.system")}
+              </span>
               <span style={{ fontSize: 11, color: theme.muted }}>
-                Follows your device's light / dark setting
+                {tr("settings.theme.systemHintDevice")}
               </span>
             </span>
           </button>
@@ -203,8 +269,7 @@ export function SettingsSheet({
               lineHeight: 1.55,
             }}
           >
-            More reading options (font, size, line height) live inside
-            the reader's Settings panel.
+            {tr("settings.moreOptionsHint")}
           </p>
         </div>
     </div>
@@ -212,6 +277,13 @@ export function SettingsSheet({
 }
 
 function Header({ theme, onClose }: { theme: Theme; onClose: () => void }) {
+  const { tr, locale } = useI18n();
+  // Fraunces (the display serif) has no Arabic glyphs, so an Arabic heading
+  // forces the browser to synthesize a fake-oblique slant on a fallback
+  // font — the same tofu-adjacent problem the preview glyph had. Match the
+  // fix there: swap to the Arabic-capable sans, upright, for `ar`.
+  const headingFontFamily = locale === "ar" ? FONT_STACKS.sans : FONT_SERIF_DISPLAY;
+  const headingFontStyle = locale === "ar" ? "normal" : "italic";
   return (
     <div
       style={{
@@ -224,7 +296,7 @@ function Header({ theme, onClose }: { theme: Theme; onClose: () => void }) {
     >
       <button
         onClick={onClose}
-        aria-label="Back"
+        aria-label={tr("common.back")}
         style={{
           width: 34,
           height: 34,
@@ -239,33 +311,38 @@ function Header({ theme, onClose }: { theme: Theme; onClose: () => void }) {
           flexShrink: 0,
         }}
       >
-        <Icon name="arrowL" size={16} />
+        <Icon name="arrowL" size={16} className="rtl-flip-x" />
       </button>
       <h2
         id="settings-sheet-heading"
         style={{
-          fontFamily: FONT_SERIF_DISPLAY,
-          fontStyle: "italic",
+          fontFamily: headingFontFamily,
+          fontStyle: headingFontStyle,
           fontWeight: 400,
           fontSize: 22,
           margin: 0,
           letterSpacing: "-0.01em",
         }}
       >
-        Settings
+        {tr("sidebar.settings")}
       </h2>
     </div>
   );
 }
 
 function SectionLabel({ theme, label }: { theme: Theme; label: string }) {
+  // Tracking + uppercasing are a Latin-typography convention: extra
+  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
+  // no-op on Arabic anyway. Skip both when the UI is Arabic.
+  const { locale } = useI18n();
+  const isAr = locale === "ar";
   return (
     <div
       style={{
         fontSize: 11,
         fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
+        textTransform: isAr ? "none" : "uppercase",
+        letterSpacing: isAr ? "normal" : "0.08em",
         color: theme.muted,
       }}
     >
