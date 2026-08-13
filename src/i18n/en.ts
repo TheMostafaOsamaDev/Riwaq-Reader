@@ -365,6 +365,13 @@ export const en = {
   "novel.downloadingClickCancel": "Downloading ({pct}%) — click to cancel",
   "novel.downloadChapter": "Download chapter",
   "novel.volumeFallback": "Volume {n}",
+  // Rare technical fallback (deferred from Task 10): a scraped chapter with
+  // no usable title text after sanitization. Same rationale + pattern as
+  // volumeFallback above — synthesized directly in the (non-React) source
+  // parser via `makeTr(currentUiLocale())`, since it's a fallback DATA value
+  // that gets persisted, not something rendered through a single display
+  // site later.
+  "novel.chapterNoTitleFallback": "{n} - No Title",
 
   // streaming reader (SourceStreamReader.tsx) — status/error chrome unique
   // to the source-backed streaming reader (novel load, chapter fetch). The
@@ -438,4 +445,98 @@ export const en = {
   "docx.blockTypeList": "LIST",
   "docx.blockTypeQuote": "QUOTE",
   "docx.blockTypeTable": "TABLE",
+
+  // ── Task 13: user-facing error / status message sweep ──────────────────
+  // Library.tsx toast bodies (dynamic parts — book/doc titles, counts, and
+  // caught-error `.message` text — travel as interpolation params; see the
+  // BOUNDARY note in the task brief).
+  "status.importedDocOne": "Imported “{title}” — {n} chapter.",
+  "status.importedDocOther": "Imported “{title}” — {n} chapters.",
+  "status.importFailed": "Import failed: {error}",
+  "status.docReadError": "Couldn't read document: {error}",
+  "status.addToLibraryError": "Couldn't add to library: {error}",
+  "status.emptyFolderImport":
+    "That folder has no EPUB files at its top level — can't import an empty folder.",
+  "status.importedFolderSkippedOne":
+    "Imported {n} book, skipped {skipped} that couldn't be parsed.",
+  "status.importedFolderSkippedOther":
+    "Imported {n} books, skipped {skipped} that couldn't be parsed.",
+  "status.importedFolderOne": "Imported {n} book.",
+  "status.importedFolderOther": "Imported {n} books.",
+  "status.coverNotFoundInEpub":
+    "Couldn't find a cover in the original EPUB. Try “Set cover…” to pick an image yourself.",
+
+  // Progress-phase labels. `job.phase` (download queue conversions) and
+  // import `Step.label` (source + docx importers) are free-form English
+  // strings set deep in non-React modules with no `tr` access — translated
+  // at the DISPLAY site via `src/i18n/statusLabels.ts`'s `phaseLabel()`,
+  // which maps the raw string to one of these keys (falling back to the
+  // raw text for anything unrecognized). The producing modules keep
+  // emitting the same fixed English text; treat it as a stable code.
+  "status.phase.queued": "Queued",
+  "status.phase.loadingSnapshot": "Loading snapshot",
+  "status.phase.buildingEpub": "Building EPUB",
+  "status.phase.savingToLibrary": "Saving to library",
+  "status.phase.addingToLibrary": "Adding to library",
+  "status.phase.readingFile": "Reading file",
+  "status.phase.detectingLanguage": "Detecting language",
+  "status.phase.convertingDocument": "Converting document",
+  "status.phase.detectingChapters": "Detecting chapters",
+  "status.phase.preparingPages": "Preparing pages",
+  "status.phase.fetchingCover": "Fetching cover",
+  "status.phase.fetchingChapters": "Fetching chapters",
+  "status.phase.downloadingInlineImages": "Downloading inline images",
+  "status.phase.loadingSourcePage": "Loading {source} page",
+  "status.phase.fetchingChapterProgress": "Fetching chapter {n} / {total}",
+  "status.phase.downloadingInlineImagesProgress":
+    "Downloading inline images ({n}/{total})",
+  "status.phase.loadingVolume": "Loading volume {n} / {total}: {title}",
+  "status.phase.readingChapterProgress": "Reading chapter {n} / {total}",
+  "status.phase.fetchingImageProgress": "Fetching image {n} / {total}",
+  "status.phase.savedTitled": "Saved “{title}”",
+  "status.phase.resumingVolume": "Resuming at volume {n} / {total}",
+  "status.phase.buildingVolume": "Building volume {n} / {total}",
+  "status.phase.savingVolume": "Saving volume {n}",
+  "status.percentOnly": "{pct}%",
+  "status.phaseWithPercent": "{phase} · {pct}%",
+
+  // Stable, app-authored `Error.message` strings recognized by
+  // `errorLabel()` (same file) at the display site (Library.tsx toasts,
+  // DownloadQueueView's job.error, ImportProgress's state.error). Anything
+  // NOT one of these stays raw — see BOUNDARY note.
+  "error.anotherImportRunning": "Another import is already running",
+  "error.anotherImportInProgress": "Another import is still in progress.",
+  "error.novelNoChaptersToConvert": "This novel has no chapters to convert.",
+  "error.sourceNotInstalledBuild":
+    "Source “{sourceId}” isn't installed in this build.",
+  "error.sourceNotInstalledDownload":
+    "Source “{sourceId}” isn't installed — can't download this chapter.",
+
+  // System (OS-level) download notifications — src/store/downloadNotifier.ts
+  // runs outside the component tree, so it resolves the UI locale the same
+  // way kolnovel-theme.ts / cenele.ts already do (`document.documentElement.lang`)
+  // and calls `makeTr()` directly rather than using `useI18n()`.
+  "status.notif.convertingTitle": "Converting {novel}",
+  "status.notif.percentDone": "{pct}% done",
+  "status.notif.preparingOfflineBook": "Preparing offline book",
+  "status.notif.jobsDoneOf": "{done} of {total} jobs done",
+  "status.notif.downloadingChapterTitle": "Downloading {novel} — Ch. {n}",
+  "status.notif.chapterOfTotal": "Chapter {n} of {total}{suffix}",
+  "status.notif.novelsSuffix": " ({n} novels)",
+  "status.notif.downloadingChaptersTitle": "Downloading chapters",
+  "status.notif.chaptersOfTotal": "{done} of {total} chapters",
+  "status.notif.backgroundWorkFinished": "Background work finished",
+  "status.notif.completedCount": "{n} completed",
+  "status.notif.failedCount": "{n} failed",
+  "status.notif.cancelledCount": "{n} cancelled",
+  "status.notif.allDone": "All done",
+  "status.notif.jobsCompleteOne": "1 job complete",
+  "status.notif.jobsCompleteOther": "{n} jobs complete",
+
+  // ContextMenu.tsx — status submenu labels reuse sidebar.reading/finished/
+  // wishlist; these cover the menu's own remaining chrome.
+  "contextMenu.status": "Status",
+  "contextMenu.statusNone": "None",
+  "contextMenu.editBookInfo": "Edit book info",
+  "contextMenu.removeBook": "Remove book",
 } as const;

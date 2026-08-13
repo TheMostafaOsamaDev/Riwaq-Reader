@@ -48,6 +48,20 @@ import {
   DOWNLOAD_NOTIFICATION_ID,
   pushDownloadNotification,
 } from "./downloadNotifier/transport";
+import { makeTr, type Locale } from "../i18n";
+import { phaseLabel } from "../i18n/statusLabels";
+
+/** Best-effort current UI locale. This module runs outside the component
+ *  tree (a plain background subscriber to the download queue), so it reads
+ *  `document.documentElement.lang` instead of `useI18n()` — App.tsx keeps
+ *  that attribute in sync with the user's UI-language preference. Same
+ *  pattern as `currentUiLocale()` in kolnovel-theme.ts / cenele.ts. */
+function currentUiLocale(): Locale {
+  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+    return "ar";
+  }
+  return "en";
+}
 
 /** Stable id so subsequent sends replace the previous notification on
  *  Android instead of stacking. Reuses the canonical constant from
@@ -271,6 +285,11 @@ interface Composed {
 }
 
 function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
+  // This module runs outside the component tree (a plain background
+  // subscriber, no React context available), so it resolves the current
+  // UI locale + translator the same way kolnovel-theme.ts / cenele.ts do —
+  // see `currentUiLocale()` below — rather than using `useI18n()`.
+  const tr = makeTr(currentUiLocale());
   if (snap.active > 0) {
     summaryShown = false;
     // Conversion in flight: T1-style title with "Converting <Novel>".
@@ -280,8 +299,10 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
         const pct = Math.round(runningConversion.progress * 100);
         const novel = runningConversion.novelTitle;
         return {
-          title: `Converting ${novel}`,
-          body: runningConversion.phase || `${pct}% done`,
+          title: tr("status.notif.convertingTitle", { novel }),
+          body: runningConversion.phase
+            ? phaseLabel(runningConversion.phase, tr)
+            : tr("status.notif.percentDone", { pct }),
           progress: pct,
           max: 100,
           indeterminate: false,
@@ -292,8 +313,11 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
       // Conversion is queued but not yet started — fall through to
       // a generic ongoing notification while we wait for it to begin.
       return {
-        title: "Preparing offline book",
-        body: `${completedThisBurst} of ${burstTotal} jobs done`,
+        title: tr("status.notif.preparingOfflineBook"),
+        body: tr("status.notif.jobsDoneOf", {
+          done: completedThisBurst,
+          total: burstTotal,
+        }),
         progress: completedThisBurst,
         max: Math.max(burstTotal, 1),
         indeterminate: false,
@@ -308,15 +332,28 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
     let title: string;
     let body: string;
     if (running) {
-      title = `Downloading ${running.novelTitle} — Ch. ${running.chapterId}`;
-      const suffix = novelCount > 1 ? ` (${novelCount} novels)` : "";
-      body = `Chapter ${completedThisBurst} of ${burstTotal}${suffix}`;
+      title = tr("status.notif.downloadingChapterTitle", {
+        novel: running.novelTitle,
+        n: running.chapterId,
+      });
+      const suffix =
+        novelCount > 1
+          ? tr("status.notif.novelsSuffix", { n: novelCount })
+          : "";
+      body = tr("status.notif.chapterOfTotal", {
+        n: completedThisBurst,
+        total: burstTotal,
+        suffix,
+      });
     } else {
       // Active count > 0 but no `running` job (all queued, none
       // started yet). Use a generic title; the next emission once
       // a worker picks one up will fill in the novel + chapter.
-      title = "Downloading chapters";
-      body = `${completedThisBurst} of ${burstTotal} chapters`;
+      title = tr("status.notif.downloadingChaptersTitle");
+      body = tr("status.notif.chaptersOfTotal", {
+        done: completedThisBurst,
+        total: burstTotal,
+      });
     }
     return {
       title,
@@ -338,11 +375,12 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   }
   if (snap.error > 0 || snap.cancelled > 0) {
     const bits: string[] = [];
-    if (snap.done > 0) bits.push(`${snap.done} completed`);
-    if (snap.error > 0) bits.push(`${snap.error} failed`);
-    if (snap.cancelled > 0) bits.push(`${snap.cancelled} cancelled`);
+    if (snap.done > 0) bits.push(tr("status.notif.completedCount", { n: snap.done }));
+    if (snap.error > 0) bits.push(tr("status.notif.failedCount", { n: snap.error }));
+    if (snap.cancelled > 0)
+      bits.push(tr("status.notif.cancelledCount", { n: snap.cancelled }));
     return {
-      title: "Background work finished",
+      title: tr("status.notif.backgroundWorkFinished"),
       body: bits.join(" · "),
       progress: 100,
       max: 100,
@@ -352,8 +390,13 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
     };
   }
   return {
-    title: "All done",
-    body: snap.done === 1 ? "1 job complete" : `${snap.done} jobs complete`,
+    title: tr("status.notif.allDone"),
+    body: tr(
+      snap.done === 1
+        ? "status.notif.jobsCompleteOne"
+        : "status.notif.jobsCompleteOther",
+      { n: snap.done },
+    ),
     progress: 100,
     max: 100,
     indeterminate: false,

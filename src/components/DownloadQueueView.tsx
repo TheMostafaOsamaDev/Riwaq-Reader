@@ -28,6 +28,7 @@ import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
+import { errorLabel, phaseLabel } from "../i18n/statusLabels";
 import type { Tr } from "../i18n";
 
 interface Props {
@@ -546,13 +547,17 @@ function describe(job: DownloadJob, tr: Tr): string {
       // Conversion jobs carry a free-form `phase` label that's more
       // useful than a bare percentage ("Building EPUB" / "Saving to
       // library" / "Fetching chapter 47 / 213"). That label is produced
-      // deep in the conversion pipeline (store/storeConversion.ts) and
-      // isn't yet localized — tracked separately from this surface's
-      // own strings. For chapter jobs we just show the percent.
+      // deep in the conversion pipeline (store/storeConversion.ts) as a
+      // stable English string with no `tr` access there — `phaseLabel`
+      // maps it to a localized string here, at the point it's rendered.
+      // For chapter jobs we just show the percent.
       if (job.kind === "conversion") {
-        return `${job.phase} · ${Math.round(job.progress * 100)}%`;
+        return tr("status.phaseWithPercent", {
+          phase: phaseLabel(job.phase, tr),
+          pct: Math.round(job.progress * 100),
+        });
       }
-      return `${Math.round(job.progress * 100)}%`;
+      return tr("status.percentOnly", { pct: Math.round(job.progress * 100) });
     case "done":
       if (job.kind === "conversion") {
         const n = job.producedEntryIds.length;
@@ -564,7 +569,9 @@ function describe(job: DownloadJob, tr: Tr): string {
       return tr("downloads.statusDownloaded");
     case "error":
       return tr("downloads.statusFailed", {
-        error: job.error ?? tr("downloads.unknownError"),
+        error: job.error
+          ? errorLabel(job.error, tr)
+          : tr("downloads.unknownError"),
       });
     case "cancelled":
       return tr("downloads.statusCancelled");

@@ -291,9 +291,13 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
 
   // serl rows — each is one labeled metadata field. We capture them all so
   // the UI can render a complete definition list, but also pluck the
-  // author out for the EPUB metadata.
+  // author out for the EPUB metadata. Empty (not "Unknown author") when
+  // no author row is found — same rationale as the epub/docx author fix:
+  // a blank `Book.author` lets the display-time fallback
+  // (`common.unknownAuthor`) localize it, instead of freezing an English
+  // literal into the novel's persisted data.
   const meta: SourceNovelMeta[] = [];
-  let author = "Unknown author";
+  let author = "";
   for (const row of Array.from(sertobig.querySelectorAll(".serl"))) {
     const label = cleanTitle(row.querySelector(".sername")?.textContent);
     const valEl = row.querySelector(".serval");
@@ -312,10 +316,7 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
     // Heuristic: the author row is labeled with "الكاتب" (Arabic for
     // "Writer/Author") on this theme. Fall back to first matching English
     // label too in case the theme switches language.
-    if (
-      /كاتب|writer|author/i.test(label) &&
-      author === "Unknown author"
-    ) {
+    if (/كاتب|writer|author/i.test(label) && !author) {
       author = value;
     }
   }
@@ -412,7 +413,14 @@ function sanitizeTitle(raw: string, fallbackId: number): string {
   const collapsed = cleanTitle(raw);
   const safe = collapsed.replace(/[\\/:*?"<>|]+/g, "").trim();
   const truncated = safe.length > 100 ? safe.slice(0, 100).trim() : safe;
-  return truncated || `${fallbackId} - No Title`;
+  // Rare technical fallback (a scraped chapter with no usable title text) —
+  // same pattern as the volume-title fallback above: synthesized directly
+  // here via `makeTr(currentUiLocale())` since this becomes the persisted
+  // chapter title (data), not something translated at a single display site.
+  return (
+    truncated ||
+    makeTr(currentUiLocale())("novel.chapterNoTitleFallback", { n: fallbackId })
+  );
 }
 
 function pickImageSrc(img: HTMLImageElement | null, baseUrl: string): string | undefined {

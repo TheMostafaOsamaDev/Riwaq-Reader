@@ -47,7 +47,11 @@ export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
   const basePath = dirname(opfPath);
 
   const title = firstText(opf, DC_NS, "title") ?? "Untitled";
-  const author = firstText(opf, DC_NS, "creator") ?? "Unknown author";
+  // Empty (not "Unknown author") — matches the docx import fix: a blank
+  // author persists as "" so the Task-12 display-time fallback
+  // (`common.unknownAuthor`) localizes it wherever the book is rendered,
+  // instead of freezing an English literal into the book's stored data.
+  const author = firstText(opf, DC_NS, "creator") ?? "";
   const language = firstText(opf, DC_NS, "language") ?? "en";
 
   const manifest = buildManifest(opf);

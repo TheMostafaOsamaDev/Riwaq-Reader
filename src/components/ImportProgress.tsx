@@ -19,6 +19,7 @@ import {
 } from "../store/importProgress";
 import { ACCENT, FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
+import { errorLabel, phaseLabel } from "../i18n/statusLabels";
 
 interface Props {
   theme: Theme;
@@ -195,7 +196,7 @@ function Modal({ theme }: { theme: Theme }) {
           {errored ? (
             <>
               <div style={{ flex: 1, color: "#c04a3a", lineHeight: 1.4 }}>
-                {state.error}
+                {errorLabel(state.error ?? "", tr)}
               </div>
               <button
                 onClick={onDismiss}
@@ -282,6 +283,7 @@ function ProgressBar({
 // ── Step row ──────────────────────────────────────────────────────────────
 
 function StepRow({ theme, step }: { theme: Theme; step: Step }) {
+  const { tr } = useI18n();
   const isActive = step.status === "active";
   const isDone = step.status === "done";
   const isError = step.status === "error";
@@ -315,7 +317,7 @@ function StepRow({ theme, step }: { theme: Theme; step: Step }) {
           transition: "font-weight 200ms ease",
         }}
       >
-        {step.label}
+        {phaseLabel(step.label, tr)}
       </div>
     </div>
   );

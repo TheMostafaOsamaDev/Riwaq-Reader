@@ -87,7 +87,11 @@ export async function docxToEpubBytes(
     return await buildEpubFromStaging(
       staged,
       defaultEdits(staged),
-      { title: staged.fallbackTitle, author: "Unknown author" },
+      // Empty (not "Unknown author") — the display-time fallback
+      // (`common.unknownAuthor`) localizes a blank author when the book
+      // is rendered; baking the English literal into the EPUB's own
+      // dc:creator would freeze it in English forever, in every locale.
+      { title: staged.fallbackTitle, author: "" },
       { epub: hooks.epub },
     );
   } finally {

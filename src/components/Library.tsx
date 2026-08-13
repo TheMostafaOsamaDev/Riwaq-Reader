@@ -55,6 +55,7 @@ import {
   type ThemePref,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
+import { errorLabel } from "../i18n/statusLabels";
 import type { MsgKey, Tr, UiLangPref } from "../i18n";
 
 interface Props {
@@ -237,7 +238,12 @@ export function Library({
         // a fast import looked like nothing happened.
         showToast(
           "info",
-          `Imported “${entry.title}” — ${entry.chapterCount} chapter${entry.chapterCount === 1 ? "" : "s"}.`,
+          tr(
+            entry.chapterCount === 1
+              ? "status.importedDocOne"
+              : "status.importedDocOther",
+            { title: entry.title, n: entry.chapterCount },
+          ),
         );
       }
     } catch (e) {
@@ -247,7 +253,7 @@ export function Library({
       // if it's been minimized to the dock.
       console.error("docx import failed:", e);
       setError(message);
-      showToast("error", `Import failed: ${message}`);
+      showToast("error", tr("status.importFailed", { error: errorLabel(message, tr) }));
     } finally {
       setImporting(false);
     }
@@ -265,7 +271,7 @@ export function Library({
       const message = e instanceof Error ? e.message : String(e);
       console.error("docx staging failed:", e);
       setError(message);
-      showToast("error", `Couldn't read document: ${message}`);
+      showToast("error", tr("status.docReadError", { error: errorLabel(message, tr) }));
     } finally {
       setImporting(false);
     }
@@ -292,18 +298,26 @@ export function Library({
         await refresh();
         showToast(
           "info",
-          `Imported “${entry.title}” — ${entry.chapterCount} chapter${entry.chapterCount === 1 ? "" : "s"}.`,
+          tr(
+            entry.chapterCount === 1
+              ? "status.importedDocOne"
+              : "status.importedDocOther",
+            { title: entry.title, n: entry.chapterCount },
+          ),
         );
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error("docx commit failed:", e);
-        showToast("error", `Couldn't add to library: ${message}`);
+        showToast(
+          "error",
+          tr("status.addToLibraryError", { error: errorLabel(message, tr) }),
+        );
         // Re-throw so the manage view can render its inline error and
         // re-enable the Add button.
         throw e;
       }
     },
-    [refresh, showToast, stagedDocx],
+    [refresh, showToast, stagedDocx, tr],
   );
 
   // Last-ditch cleanup if the component unmounts while a staging session
@@ -322,10 +336,7 @@ export function Library({
       const result = await pickAndImportFolder();
       if (!result) return;
       if (result.empty) {
-        showToast(
-          "warn",
-          "That folder has no EPUB files at its top level — can't import an empty folder.",
-        );
+        showToast("warn", tr("status.emptyFolderImport"));
         return;
       }
       await refresh();
@@ -334,12 +345,19 @@ export function Library({
       if (skipped > 0) {
         showToast(
           "warn",
-          `Imported ${n} book${n === 1 ? "" : "s"}, skipped ${skipped} that couldn't be parsed.`,
+          tr(
+            n === 1
+              ? "status.importedFolderSkippedOne"
+              : "status.importedFolderSkippedOther",
+            { n, skipped },
+          ),
         );
       } else {
         showToast(
           "info",
-          `Imported ${n} book${n === 1 ? "" : "s"}.`,
+          tr(n === 1 ? "status.importedFolderOne" : "status.importedFolderOther", {
+            n,
+          }),
         );
       }
     } catch (e) {
@@ -358,9 +376,7 @@ export function Library({
     try {
       const updated = await rescanCover(id);
       if (!updated) {
-        setError(
-          "Couldn't find a cover in the original EPUB. Try \u201CSet cover\u2026\u201D to pick an image yourself.",
-        );
+        setError(tr("status.coverNotFoundInEpub"));
       }
       await refresh();
     } catch (e) {

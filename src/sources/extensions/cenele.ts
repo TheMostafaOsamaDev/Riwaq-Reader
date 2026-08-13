@@ -725,9 +725,13 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
   // Definition-list metadata. The Madara theme uses two parallel
   // structures: `.manga-data .nhv-meta-label/.nhv-meta-value` pairs
   // (chapter count, status, views, type) AND `.row-2`'s author/translator
-  // rows. Walk them all and emit a SourceNovelMeta row each.
+  // rows. Walk them all and emit a SourceNovelMeta row each. `author`
+  // starts empty (not "Unknown author") — same rationale as the epub/docx
+  // author fix: a blank `Book.author` lets the display-time fallback
+  // (`common.unknownAuthor`) localize it, instead of freezing an English
+  // literal into the novel's persisted data.
   const meta: SourceNovelMeta[] = [];
-  let author = "Unknown author";
+  let author = "";
   const metaRows = doc.querySelectorAll(
     ".manga-data > div, .manga-author, .manga-artists, .manga-type, .released-chapters, .manga-status, .manga-views",
   );
@@ -752,7 +756,7 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     // Heuristic: the author row is labeled "المؤلف" in Arabic
     // ("Author"). Capture the first value we see under that label so
     // the EPUB's dc:creator gets a meaningful name.
-    if (/مؤلف|كاتب|author|writer/i.test(label) && author === "Unknown author") {
+    if (/مؤلف|كاتب|author|writer/i.test(label) && !author) {
       author = value;
     }
   }
@@ -1073,7 +1077,15 @@ function sanitizeChapterTitle(raw: string, fallbackId: number): string {
   const collapsed = sanitizeText(raw);
   const safe = collapsed.replace(/[\\/:*?"<>|]+/g, "").trim();
   const truncated = safe.length > 120 ? safe.slice(0, 120).trim() : safe;
-  return truncated || `${fallbackId} - No Title`;
+  // Rare technical fallback (a scraped chapter with no usable title text) —
+  // same pattern as the volume-title fallback elsewhere in this file:
+  // synthesized directly via `makeTr(currentUiLocale())` since this becomes
+  // the persisted chapter title (data), not something translated at a
+  // single display site.
+  return (
+    truncated ||
+    makeTr(currentUiLocale())("novel.chapterNoTitleFallback", { n: fallbackId })
+  );
 }
 
 function pickImageSrc(img: HTMLImageElement | null): string | undefined {
