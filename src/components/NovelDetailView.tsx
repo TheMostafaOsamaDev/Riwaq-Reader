@@ -507,7 +507,7 @@ function NovelHeader({
               direction: novel.direction,
             }}
           >
-            {novel.title}
+            {novel.title || tr("common.untitled")}
           </h1>
           {novel.status && (
             <span

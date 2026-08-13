@@ -245,7 +245,7 @@ export function Library({
             entry.chapterCount === 1
               ? "status.importedDocOne"
               : "status.importedDocOther",
-            { title: entry.title, n: entry.chapterCount },
+            { title: entry.title || tr("common.untitled"), n: entry.chapterCount },
           ),
         );
       }
@@ -305,7 +305,7 @@ export function Library({
             entry.chapterCount === 1
               ? "status.importedDocOne"
               : "status.importedDocOther",
-            { title: entry.title, n: entry.chapterCount },
+            { title: entry.title || tr("common.untitled"), n: entry.chapterCount },
           ),
         );
       } catch (e) {
@@ -626,7 +626,7 @@ export function Library({
             message={
               <>
                 <strong style={{ color: theme.ink }}>
-                  “{pendingDelete.title}”
+                  “{pendingDelete.title || tr("common.untitled")}”
                 </strong>{" "}
                 {tr("library.removeConfirmSuffix")}
               </>
@@ -1104,6 +1104,10 @@ function MobileLibrary({
       ? visible.find((b) => b.lastReadAt !== undefined)
       : undefined;
   const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the font-family/line-height pick and the rendered
+  // text agree on what's actually on screen.
+  const heroDisplayTitle = hero ? hero.title || tr("common.untitled") : "";
 
   // Hero is at most one card per render — a single hook instance covers it.
   // Shelf cards each need their own long-press state, so they live in a
@@ -1298,16 +1302,16 @@ function MobileLibrary({
                   </div>
                   <div
                     style={{
-                      fontFamily: titleFontFor(hero.title),
-                      fontStyle: isArabicTitle(hero.title) ? "normal" : "italic",
+                      fontFamily: titleFontFor(heroDisplayTitle),
+                      fontStyle: isArabicTitle(heroDisplayTitle) ? "normal" : "italic",
                       fontSize: 18,
-                      lineHeight: isArabicTitle(hero.title) ? 1.4 : 1.15,
+                      lineHeight: isArabicTitle(heroDisplayTitle) ? 1.4 : 1.15,
                       color: theme.ink,
                       letterSpacing: "-0.01em",
                       marginBottom: 4,
                     }}
                   >
-                    {hero.title}
+                    {heroDisplayTitle}
                   </div>
                   <div
                     style={{
@@ -1510,7 +1514,8 @@ interface MobileTabRowProps {
  *  Store tab from the desktop TABS list is intentionally skipped —
  *  Store toggling lives in the bottom nav (`globe` icon). */
 function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
-  const { tr } = useI18n();
+  const { tr, dir } = useI18n();
+  const rtl = dir === "rtl";
   const items = useMemo<typeof TABS>(
     () => TABS.filter((t) => t.key !== "store"),
     [],
@@ -1525,12 +1530,21 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
 
   // Recompute the scroll-edge state. Called on scroll, mount, and on
   // active-pill change (in case the pill widths drove a layout shift).
+  // Same RTL normalization as SectionCarousel.tsx's `recompute()`: in an
+  // RTL container, scrollLeft is 0 at the right edge and goes negative as
+  // the user scrolls toward the left content (older WebKit grows positive
+  // instead) — normalize to "distance from visual start" so the math reads
+  // the same in both directions.
   const updateEdges = useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 1);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  }, []);
+    const max = el.scrollWidth - el.clientWidth;
+    const sl = el.scrollLeft;
+    const distFromStart = rtl ? Math.abs(sl) : sl;
+    const distFromEnd = max - distFromStart;
+    setCanScrollLeft(distFromStart > 1);
+    setCanScrollRight(distFromEnd > 1);
+  }, [rtl]);
 
   useEffect(() => {
     updateEdges();
@@ -1581,15 +1595,20 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
     }
   }, [tab]);
 
-  const scrollBy = useCallback((direction: "left" | "right") => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const step = Math.max(el.clientWidth * 0.7, 120);
-    el.scrollBy({
-      left: direction === "left" ? -step : step,
-      behavior: "smooth",
-    });
-  }, []);
+  const scrollBy = useCallback(
+    (direction: "left" | "right") => {
+      const el = scrollerRef.current;
+      if (!el) return;
+      const step = Math.max(el.clientWidth * 0.7, 120);
+      // Same RTL sign-flip as SectionCarousel.tsx's `scrollByDir()` — in an
+      // RTL container the "left"/"right" arrow's *visual* meaning stays
+      // fixed (previous/next), but the underlying scrollLeft axis it needs
+      // to move along is mirrored.
+      const signed = (direction === "left" ? -1 : 1) * step * (rtl ? -1 : 1);
+      el.scrollBy({ left: signed, behavior: "smooth" });
+    },
+    [rtl],
+  );
 
   return (
     <div
@@ -1936,6 +1955,10 @@ function MobileShelfCard({
 }) {
   const { tr } = useI18n();
   const longPress = useLongPress(onContextMenu);
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the font-family/line-height pick and the rendered
+  // text agree on what's actually on screen.
+  const displayTitle = book.title || tr("common.untitled");
   return (
     <div
       onClick={() => {
@@ -1966,7 +1989,7 @@ function MobileShelfCard({
       />
       <div
         style={{
-          fontFamily: titleFontFor(book.title),
+          fontFamily: titleFontFor(displayTitle),
           fontSize: 12,
           fontWeight: 500,
           marginTop: 8,
@@ -1983,7 +2006,7 @@ function MobileShelfCard({
           wordBreak: "break-word",
         }}
       >
-        {book.title}
+        {displayTitle}
       </div>
       <div style={{ fontSize: 9.5, color: theme.muted, marginTop: 2 }}>
         {book.author || tr("common.unknownAuthor")}
@@ -2029,6 +2052,10 @@ function HeroContinueCard({
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
   const palette = paletteForId(book.id);
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the tooltip, font-family pick, and rendered text all
+  // agree on what's actually on screen.
+  const displayTitle = book.title || tr("common.untitled");
   return (
     <div
       style={{
@@ -2063,15 +2090,15 @@ function HeroContinueCard({
           {book.lastReadAt ? tr("library.continueReading") : tr("library.startReading")}
         </div>
         <h1
-          title={book.title}
+          title={displayTitle}
           style={{
             // Arabic / mixed titles use the Readex Pro stack so digits and
             // Latin punctuation interleaved in the title don't fall through
             // to Fraunces and stand out as a different typeface.
-            fontFamily: titleFontFor(book.title),
+            fontFamily: titleFontFor(displayTitle),
             // Italic only makes sense on Fraunces — suppress it for the
             // Readex Pro path to avoid synthetic italic on Arabic.
-            fontStyle: isArabicTitle(book.title) ? "normal" : "italic",
+            fontStyle: isArabicTitle(displayTitle) ? "normal" : "italic",
             fontWeight: 400,
             fontSize: 44,
             // Even more vertical room than 1.3 — the previous tweak still
@@ -2086,7 +2113,7 @@ function HeroContinueCard({
             textOverflow: "ellipsis",
           }}
         >
-          {book.title}
+          {displayTitle}
         </h1>
         <div style={{ fontSize: 13, color: theme.muted, marginBottom: 22 }}>
           {tr("library.byAuthorChapters", {
@@ -2183,6 +2210,10 @@ function LibraryCard({
 }) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
+  // Display-time fallback for a blank `Book.title` (see common.untitled) —
+  // computed once so the tooltip, font-family pick, and rendered text all
+  // agree on what's actually on screen.
+  const displayTitle = book.title || tr("common.untitled");
   return (
     <div
       // Pin the whole card to the cover width so the title row's
@@ -2233,12 +2264,12 @@ function LibraryCard({
           )}
         </div>
         <div
-          title={book.title}
+          title={displayTitle}
           style={{
             marginTop: 12,
-            fontFamily: titleFontFor(book.title),
+            fontFamily: titleFontFor(displayTitle),
             fontSize: 14,
-            lineHeight: isArabicTitle(book.title) ? 1.4 : 1.25,
+            lineHeight: isArabicTitle(displayTitle) ? 1.4 : 1.25,
             color: theme.ink,
             letterSpacing: "-0.005em",
             fontWeight: 500,
@@ -2247,7 +2278,7 @@ function LibraryCard({
             textOverflow: "ellipsis",
           }}
         >
-          {book.title}
+          {displayTitle}
         </div>
         <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
           {book.author || tr("common.unknownAuthor")}

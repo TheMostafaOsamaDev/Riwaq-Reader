@@ -701,9 +701,12 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     );
   }
 
-  const title =
-    sanitizeText(doc.querySelector(".manga-title h2")?.textContent) ||
-    makeTr(currentUiLocale())("common.untitled");
+  // Empty (not "Untitled") when the scrape can't find a title — a blank
+  // title persists as "" so the display-time fallback (`common.untitled`)
+  // localizes it wherever the novel is rendered, instead of freezing a
+  // locale-frozen literal into the novel's own stored title (same
+  // rationale as the author-blank fix elsewhere in this file).
+  const title = sanitizeText(doc.querySelector(".manga-title h2")?.textContent);
   const originalTitle =
     sanitizeText(
       doc.querySelector(".manga-alt-title .manga-alt-label")?.textContent,

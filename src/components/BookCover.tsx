@@ -40,6 +40,11 @@ export function BookCover({
   const [p1, p2, p3] = palette;
   const [failed, setFailed] = useState(false);
   const showImage = !!src && !failed;
+  // Display-time fallback for a blank `Book.title` — a book/novel with no
+  // detected title persists as "" (see common.untitled's own doc comment)
+  // so this leaf renders the localized placeholder instead of an empty
+  // spine.
+  const displayTitle = title || tr("common.untitled");
 
   const shellStyle = {
     ...(fluid
@@ -57,7 +62,7 @@ export function BookCover({
       <div style={{ ...shellStyle, background: p1 }}>
         <img
           src={src!}
-          alt={`${title} — cover`}
+          alt={`${displayTitle} — cover`}
           loading="lazy"
           decoding="async"
           onError={() => setFailed(true)}
@@ -142,7 +147,7 @@ export function BookCover({
             overflow: "hidden",
           }}
         >
-          {title}
+          {displayTitle}
         </div>
         <div
           style={{

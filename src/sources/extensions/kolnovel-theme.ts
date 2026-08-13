@@ -272,10 +272,14 @@ export function parseSearchResults(
 export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string): SourceNovel {
   const sertobig = doc.querySelector(".sertobig") ?? doc;
 
+  // Empty (not "Untitled") when neither selector yields a title — a blank
+  // title persists as "" so the display-time fallback (`common.untitled`)
+  // localizes it wherever the novel is rendered, instead of freezing a
+  // locale-frozen literal into the novel's own stored title (same
+  // rationale as the author-blank fix elsewhere in this file).
   const title =
     cleanTitle(sertobig.querySelector("h1.entry-title")?.textContent) ||
-    cleanTitle(doc.querySelector("h1.entry-title")?.textContent) ||
-    makeTr(currentUiLocale())("common.untitled");
+    cleanTitle(doc.querySelector("h1.entry-title")?.textContent);
 
   const originalTitle =
     cleanTitle(sertobig.querySelector(".alter")?.textContent) || undefined;

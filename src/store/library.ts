@@ -472,14 +472,17 @@ export async function commitStagedDocx(
 
 /** Pull a reasonable display title out of a file path: drop the directory
  *  portion and the .docx extension, then collapse underscores/dashes to
- *  spaces. Used when the doc has no leading heading we can borrow. */
+ *  spaces. Used when the doc has no leading heading we can borrow. Empty
+ *  (not "Untitled") when the stem strips to nothing — a blank title
+ *  persists as "" so the display-time fallback (`common.untitled`)
+ *  localizes it wherever the book is rendered, instead of freezing an
+ *  English (or whatever-locale-was-active) literal into the book's own
+ *  stored title. */
 function filenameTitle(path: string): string {
   const base = path.split(/[\\/]/).pop() ?? path;
   const stem = base.replace(/\.docx$/i, "");
   const cleaned = stem.replace(/[_-]+/g, " ").trim();
-  return cleaned.length > 0
-    ? cleaned
-    : makeTr(currentUiLocale())("common.untitled");
+  return cleaned;
 }
 
 export async function importEpubBytes(

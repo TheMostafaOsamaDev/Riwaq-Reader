@@ -890,7 +890,7 @@ export function MobileReader({
                 maxWidth: "100%",
               }}
             >
-              {book.title}
+              {book.title || tr("common.untitled")}
             </div>
             <div style={{ fontSize: 10, color: theme.muted }}>
               {tr("reader.chapterOfTotal", { n: currentChapter + 1, total: chapterCount })}

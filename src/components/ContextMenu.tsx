@@ -558,24 +558,26 @@ export function ContextMenu({
             flex: 1,
           }}
         >
-          {title && (
-            <div
-              style={{
-                fontSize: 12.5,
-                fontWeight: 600,
-                color: theme.ink,
-                lineHeight: 1.25,
-                // Two-line clamp so long titles don't push the menu absurdly
-                // tall — the rest stays visible in the Edit modal anyway.
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {title}
-            </div>
-          )}
+          {/* Always shown (once the header itself renders — gated above by
+              `title || author`): a blank `title` now falls back to a
+              localized "Untitled" rather than hiding the row entirely,
+              same as BookCover / the Library shelf cards. */}
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: theme.ink,
+              lineHeight: 1.25,
+              // Two-line clamp so long titles don't push the menu absurdly
+              // tall — the rest stays visible in the Edit modal anyway.
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {title || tr("common.untitled")}
+          </div>
           {/* Always shown (once the header itself renders — gated above by
               `title || author`): a blank `author` now falls back to a
               localized "Unknown author" rather than hiding the row, same
@@ -775,23 +777,24 @@ export function ContextMenu({
                     gap: 2,
                   }}
                 >
-                  {title && (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: theme.ink,
-                        lineHeight: 1.3,
-                        // Two-line clamp keeps the header compact for long titles.
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {title}
-                    </div>
-                  )}
+                  {/* Blank `title` falls back to a localized "Untitled"
+                      rather than hiding the row — same rationale as the
+                      desktop header above. */}
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: theme.ink,
+                      lineHeight: 1.3,
+                      // Two-line clamp keeps the header compact for long titles.
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {title || tr("common.untitled")}
+                  </div>
                   <div
                     style={{
                       fontSize: 11.5,

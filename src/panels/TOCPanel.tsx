@@ -40,7 +40,8 @@ export function TOCPanel({
     <PanelShell
       theme={theme}
       title={tr("reader.toc")}
-      subtitle={bookTitle}
+      // Display-time fallback for a blank `Book.title` (see common.untitled).
+      subtitle={bookTitle || tr("common.untitled")}
       onClose={onClose}
       icon={<Icon name="list" size={15} />}
       width={width}
