@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
+  const { tr } = useI18n();
   const [name, setName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -48,16 +50,16 @@ export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
           boxShadow: "0 24px 60px rgba(0,0,0,0.35)", animation: "riwaqPop 150ms ease",
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>New shelf</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{tr("shelves.newShelf")}</div>
         <div style={{ fontSize: 12.5, color: theme.muted, marginBottom: 16 }}>
-          Name a collection. You can add books to it later.
+          {tr("shelves.dialogHint")}
         </div>
         <input
           ref={inputRef}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") create(); }}
-          placeholder="e.g. Favorites, Summer reads…"
+          placeholder={tr("shelves.namePlaceholder")}
           style={{
             width: "100%", boxSizing: "border-box", border: `1px solid ${dupe ? "#c0503a" : theme.rule}`,
             background: theme.bg, color: theme.ink, borderRadius: 10, padding: "11px 13px",
@@ -65,21 +67,21 @@ export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
           }}
         />
         <div style={{ minHeight: 16, marginTop: 6, fontSize: 11.5, color: "#c0503a" }}>
-          {dupe ? "A shelf with that name already exists." : ""}
+          {dupe ? tr("shelves.duplicateName") : ""}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
           <button
             onClick={onClose}
             style={{ border: `1px solid ${theme.rule}`, background: "transparent", color: theme.ink, borderRadius: 10, padding: "9px 16px", font: "inherit", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
           >
-            Cancel
+            {tr("common.cancel")}
           </button>
           <button
             onClick={create}
             disabled={!valid}
             style={{ border: 0, background: theme.ink, color: theme.paper, borderRadius: 10, padding: "9px 18px", font: "inherit", fontSize: 13, fontWeight: 600, cursor: valid ? "pointer" : "default", opacity: valid ? 1 : 0.5 }}
           >
-            Create shelf
+            {tr("shelves.create")}
           </button>
         </div>
       </div>

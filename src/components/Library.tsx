@@ -54,7 +54,8 @@ import {
   type ThemeKey,
   type ThemePref,
 } from "../styles/tokens";
-import type { UiLangPref } from "../i18n";
+import { useI18n } from "../i18n/useI18n";
+import type { MsgKey, Tr, UiLangPref } from "../i18n";
 
 interface Props {
   theme: Theme;
@@ -131,6 +132,7 @@ export function Library({
   onStreamRead,
   streamActive,
 }: Props) {
+  const { tr } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -596,18 +598,17 @@ export function Library({
         {pendingDelete && (
           <ConfirmDialog
             theme={theme}
-            title="Remove from library?"
+            title={tr("library.removeConfirmTitle")}
             message={
               <>
                 <strong style={{ color: theme.ink }}>
                   “{pendingDelete.title}”
                 </strong>{" "}
-                will be removed from your library, including its reading
-                progress. This can't be undone.
+                {tr("library.removeConfirmSuffix")}
               </>
             }
-            confirmLabel="Remove"
-            cancelLabel="Cancel"
+            confirmLabel={tr("library.remove")}
+            cancelLabel={tr("common.cancel")}
             confirmVariant="destructive"
             onConfirm={performDelete}
             onCancel={cancelDelete}
@@ -736,12 +737,12 @@ interface LayoutProps {
  *  is set to "store" the body swaps out the shelf for the source browser. */
 export type LibraryTab = "all" | BookStatus | "store";
 
-const TABS: { key: LibraryTab; label: string }[] = [
-  { key: "all", label: "Library" },
-  { key: "reading", label: "Reading" },
-  { key: "finished", label: "Finished" },
-  { key: "wishlist", label: "Wishlist" },
-  { key: "store", label: "Store" },
+const TABS: { key: LibraryTab; msgKey: MsgKey }[] = [
+  { key: "all", msgKey: "sidebar.library" },
+  { key: "reading", msgKey: "sidebar.reading" },
+  { key: "finished", msgKey: "sidebar.finished" },
+  { key: "wishlist", msgKey: "sidebar.wishlist" },
+  { key: "store", msgKey: "sidebar.store" },
 ];
 
 // "Reading" is partly derived: a book the user has actually started but not
@@ -790,6 +791,7 @@ function DesktopLibrary({
   onEdit,
   onCardContextMenu,
 }: LayoutProps) {
+  const { tr } = useI18n();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [shelvesView, setShelvesView] = useState(false);
@@ -931,7 +933,7 @@ function DesktopLibrary({
 
         {loading && books.length === 0 ? (
           <div style={{ color: theme.muted, padding: 40, textAlign: "center" }}>
-            Loading your library…
+            {tr("library.loading")}
           </div>
         ) : books.length === 0 ? (
           <EmptyState theme={theme} onImport={onImport} importing={importing} />
@@ -969,12 +971,12 @@ function DesktopLibrary({
                     letterSpacing: "-0.01em",
                   }}
                 >
-                  {tab === "all" ? "Your shelf" : shelfHeadingFor(tab)}
+                  {tab === "all" ? tr("library.yourShelf") : shelfHeadingFor(tab, tr)}
                 </h2>
                 <div
                   style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}
                 >
-                  {others.length} {others.length === 1 ? "book" : "books"} · sorted by recent
+                  {tr(others.length === 1 ? "library.bookCountOne" : "library.bookCountOther", { n: others.length })}
                 </div>
               </div>
             </div>
@@ -1058,6 +1060,7 @@ function MobileLibrary({
   onOpenSettings,
   onCardContextMenu,
 }: LayoutProps) {
+  const { tr } = useI18n();
   // Filter to the selected status tab. "store" is handled separately
   // (a body swap, not a filter); the tab pills exclude it on mobile
   // because Store toggling lives in the bottom nav.
@@ -1092,6 +1095,12 @@ function MobileLibrary({
         // Android status bar / iOS notch: enableEdgeToEdge() lays the
         // WebView under the system bars, so without these insets the
         // Library title collides with the clock and signal icons.
+        // Left/Right (not Inline Start/End) deliberately — these mirror
+        // physical hardware insets (notch, rounded corners), which stay
+        // pinned to the device's physical edges regardless of UI language.
+        // There's no logical `env(safe-area-inset-inline-*)` counterpart,
+        // so flipping the property name here would silently swap which
+        // physical edge gets which inset in RTL.
         paddingTop: "env(safe-area-inset-top, 0px)",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
         paddingLeft: "env(safe-area-inset-left, 0px)",
@@ -1124,7 +1133,7 @@ function MobileLibrary({
               color: theme.ink,
             }}
           >
-            Library
+            {tr("sidebar.library")}
           </h1>
           <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
         </div>
@@ -1187,7 +1196,7 @@ function MobileLibrary({
         >
           <BackHeader
             theme={theme}
-            title="Store"
+            title={tr("sidebar.store")}
             onBack={() => setTab("all")}
           />
           <Store
@@ -1203,7 +1212,7 @@ function MobileLibrary({
 
         {loading && books.length === 0 ? (
           <div style={{ color: theme.muted, padding: 30, textAlign: "center" }}>
-            Loading…
+            {tr("library.loadingShort")}
           </div>
         ) : books.length === 0 ? (
           <EmptyState theme={theme} onImport={onImport} importing={importing} />
@@ -1254,7 +1263,7 @@ function MobileLibrary({
                       marginBottom: 4,
                     }}
                   >
-                    {hero.lastReadAt ? "Continue" : "Start reading"}
+                    {hero.lastReadAt ? tr("library.continue") : tr("library.startReading")}
                   </div>
                   <div
                     style={{
@@ -1276,7 +1285,10 @@ function MobileLibrary({
                       marginBottom: 10,
                     }}
                   >
-                    {hero.chapterCount} chapters · {relTime(hero.lastReadAt ?? hero.addedAt)}
+                    {tr("library.chaptersAgo", {
+                      n: hero.chapterCount,
+                      rel: relTime(hero.lastReadAt ?? hero.addedAt, tr),
+                    })}
                   </div>
                   <div
                     style={{
@@ -1309,7 +1321,7 @@ function MobileLibrary({
                 marginBottom: 14,
               }}
             >
-              Your shelf
+              {tr("library.yourShelf")}
             </div>
             <div
               style={{
@@ -1398,6 +1410,7 @@ interface BackHeaderProps {
  *  border-bottom keeps the row visually separated from the body
  *  underneath. */
 function BackHeader({ theme, title, onBack }: BackHeaderProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -1411,7 +1424,7 @@ function BackHeader({ theme, title, onBack }: BackHeaderProps) {
     >
       <button
         onClick={onBack}
-        aria-label="Back to library"
+        aria-label={tr("library.backToLibrary")}
         style={{
           width: 34,
           height: 34,
@@ -1427,7 +1440,7 @@ function BackHeader({ theme, title, onBack }: BackHeaderProps) {
           fontFamily: "inherit",
         }}
       >
-        <Icon name="arrowL" size={16} />
+        <Icon name="arrowL" size={16} className="rtl-flip-x" />
       </button>
       <div
         style={{
@@ -1466,6 +1479,7 @@ interface MobileTabRowProps {
  *  Store tab from the desktop TABS list is intentionally skipped —
  *  Store toggling lives in the bottom nav (`globe` icon). */
 function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
+  const { tr } = useI18n();
   const items = useMemo<typeof TABS>(
     () => TABS.filter((t) => t.key !== "store"),
     [],
@@ -1593,7 +1607,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
             zIndex: 0,
           }}
         />
-        {items.map(({ key, label }) => {
+        {items.map(({ key, msgKey }) => {
           const active = key === tab;
           return (
             <button
@@ -1619,7 +1633,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
                 transition: "color 200ms ease",
               }}
             >
-              {label}
+              {tr(msgKey)}
             </button>
           );
         })}
@@ -1659,12 +1673,13 @@ function PillScrollArrow({
   visible,
   onClick,
 }: PillScrollArrowProps) {
+  const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
-      aria-label={side === "left" ? "Scroll tabs left" : "Scroll tabs right"}
+      aria-label={tr(side === "left" ? "library.scrollTabsLeft" : "library.scrollTabsRight")}
       style={{
         position: "absolute",
         top: "50%",
@@ -1702,6 +1717,7 @@ function MobileBottomNav({
   onImportDocx,
   onOpenSettings,
 }: MobileBottomNavProps) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -1725,14 +1741,14 @@ function MobileBottomNav({
       <NavIconButton
         theme={theme}
         icon="globe"
-        ariaLabel={tab === "store" ? "Back to library" : "Open store"}
+        ariaLabel={tab === "store" ? tr("library.backToLibrary") : tr("library.openStore")}
         active={tab === "store"}
         onClick={onSetStore}
       />
       <NavIconButton
         theme={theme}
         icon="download"
-        ariaLabel="Open downloads"
+        ariaLabel={tr("library.openDownloads")}
         onClick={onOpenQueue}
         showQueueBadge
       />
@@ -1744,14 +1760,14 @@ function MobileBottomNav({
       <NavIconButton
         theme={theme}
         icon="doc"
-        ariaLabel="Import Word document"
+        ariaLabel={tr("library.importWordDoc")}
         onClick={onImportDocx}
         disabled={importing}
       />
       <NavIconButton
         theme={theme}
         icon="settings"
-        ariaLabel="Settings"
+        ariaLabel={tr("sidebar.settings")}
         onClick={onOpenSettings}
       />
     </div>
@@ -1813,7 +1829,7 @@ function NavIconButton({
           style={{
             position: "absolute",
             top: -2,
-            right: -2,
+            insetInlineEnd: -2,
             minWidth: 18,
             height: 18,
             padding: "0 5px",
@@ -1846,12 +1862,13 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
   // The focal action — filled + slightly larger than the outlined siblings
   // (50px vs 38px) + a soft drop shadow so it reads as the primary
   // affordance. Sits flush with the bar rather than protruding above it.
+  const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
       disabled={importing}
-      aria-label="Import EPUB"
-      title={importing ? "Importing…" : "Import EPUB"}
+      aria-label={tr("library.importEpub")}
+      title={importing ? tr("sidebar.importing") : tr("library.importEpub")}
       style={{
         width: 50,
         height: 50,
@@ -1977,6 +1994,7 @@ function HeroContinueCard({
   onDelete: () => void;
   onEdit: () => void;
 }) {
+  const { tr } = useI18n();
   const palette = paletteForId(book.id);
   return (
     <div
@@ -2009,7 +2027,7 @@ function HeroContinueCard({
             marginBottom: 10,
           }}
         >
-          {book.lastReadAt ? "Continue reading" : "Start reading"}
+          {book.lastReadAt ? tr("library.continueReading") : tr("library.startReading")}
         </div>
         <h1
           title={book.title}
@@ -2038,7 +2056,7 @@ function HeroContinueCard({
           {book.title}
         </h1>
         <div style={{ fontSize: 13, color: theme.muted, marginBottom: 22 }}>
-          by {book.author} · {book.chapterCount} chapters
+          {tr("library.byAuthorChapters", { author: book.author, n: book.chapterCount })}
         </div>
         <div
           style={{
@@ -2082,7 +2100,7 @@ function HeroContinueCard({
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              {Math.round(book.progress * 100)}% · {relTime(book.lastReadAt ?? book.addedAt)}
+              {Math.round(book.progress * 100)}% · {relTime(book.lastReadAt ?? book.addedAt, tr)}
             </div>
           </div>
           <div
@@ -2094,10 +2112,10 @@ function HeroContinueCard({
             }}
           >
             <Button theme={theme} variant="primary" size="md" onClick={onOpen}>
-              {book.lastReadAt ? "Resume reading →" : "Start reading →"}
+              {book.lastReadAt ? tr("library.resumeReadingCta") : tr("library.startReadingCta")}
             </Button>
             <Button theme={theme} variant="ghost" size="md" onClick={onEdit}>
-              Edit details
+              {tr("library.editDetails")}
             </Button>
             <Button
               theme={theme}
@@ -2105,7 +2123,7 @@ function HeroContinueCard({
               size="md"
               onClick={onDelete}
             >
-              Remove from library
+              {tr("library.removeFromLibrary")}
             </Button>
           </div>
         </div>
@@ -2127,6 +2145,7 @@ function LibraryCard({
   onOpen: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
+  const { tr } = useI18n();
   return (
     <div
       // Pin the whole card to the cover width so the title row's
@@ -2151,11 +2170,11 @@ function LibraryCard({
           />
           {book.progress === 0 && (
             <span
-              aria-label="New — not started yet"
+              aria-label={tr("library.newBadgeAriaLabel")}
               style={{
                 position: "absolute",
                 top: 8,
-                left: 8,
+                insetInlineStart: 8,
                 padding: "3px 7px",
                 borderRadius: 4,
                 // Dark blurred pill reads on any cover art without
@@ -2172,7 +2191,7 @@ function LibraryCard({
                 pointerEvents: "none",
               }}
             >
-              New
+              {tr("library.newBadge")}
             </span>
           )}
         </div>
@@ -2218,7 +2237,7 @@ function LibraryCard({
                 gap: 4,
               }}
             >
-              <Icon name="check" size={11} /> Finished
+              <Icon name="check" size={11} /> {tr("sidebar.finished")}
             </span>
           ) : book.progress > 0 ? (
             <>
@@ -2265,6 +2284,7 @@ function EmptyState({
   onImport: () => void;
   importing: boolean;
 }) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -2287,7 +2307,7 @@ function EmptyState({
           marginBottom: 8,
         }}
       >
-        Your shelf is empty
+        {tr("library.emptyTitle")}
       </div>
       <div
         style={{
@@ -2297,8 +2317,7 @@ function EmptyState({
           marginBottom: 22,
         }}
       >
-        Import an EPUB to start reading. Riwaq parses it locally — no
-        uploads, no accounts.
+        {tr("library.emptyBody")}
       </div>
       <Button
         theme={theme}
@@ -2308,20 +2327,20 @@ function EmptyState({
         disabled={importing}
         leadingIcon={<Icon name="plus" size={14} />}
       >
-        {importing ? "Importing…" : "Import your first EPUB"}
+        {importing ? tr("sidebar.importing") : tr("library.emptyCta")}
       </Button>
     </div>
   );
 }
 
-function shelfHeadingFor(tab: LibraryTab): string {
+function shelfHeadingFor(tab: LibraryTab, tr: Tr): string {
   // "all" and "store" are handled by the caller before they get here —
   // we keep them in the union so the call site doesn't need a separate
   // narrowing helper.
-  if (tab === "reading") return "Currently reading";
-  if (tab === "finished") return "Finished";
-  if (tab === "wishlist") return "Wishlist";
-  return "Shelf";
+  if (tab === "reading") return tr("library.currentlyReading");
+  if (tab === "finished") return tr("sidebar.finished");
+  if (tab === "wishlist") return tr("sidebar.wishlist");
+  return tr("library.shelf");
 }
 
 function FilteredEmptyState({
@@ -2331,14 +2350,15 @@ function FilteredEmptyState({
   theme: Theme;
   tab: LibraryTab;
 }) {
+  const { tr } = useI18n();
   const message =
     tab === "reading"
-      ? "No books marked as reading yet."
+      ? tr("library.emptyReading")
       : tab === "finished"
-      ? "No finished books yet."
+      ? tr("library.emptyFinished")
       : tab === "wishlist"
-      ? "Nothing on your wishlist yet."
-      : "Nothing here.";
+      ? tr("library.emptyWishlist")
+      : tr("library.emptyGeneric");
   return (
     <div
       style={{
@@ -2353,7 +2373,7 @@ function FilteredEmptyState({
     >
       {message}
       <div style={{ marginTop: 8, fontSize: 12 }}>
-        Right-click a book to set its status.
+        {tr("library.setStatusHint")}
       </div>
     </div>
   );
@@ -2366,6 +2386,7 @@ function ErrorBanner({
   theme: Theme;
   message: string;
 }) {
+  const { tr } = useI18n();
   return (
     <div
       style={{
@@ -2378,24 +2399,24 @@ function ErrorBanner({
         marginBottom: 20,
       }}
     >
-      <strong style={{ fontWeight: 600 }}>Import failed:</strong> {message}
+      <strong style={{ fontWeight: 600 }}>{tr("library.importFailedPrefix")}</strong> {message}
     </div>
   );
 }
 
-function relTime(ts: number): string {
+function relTime(ts: number, tr: Tr): string {
   const diff = Date.now() - ts;
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return tr("library.justNow");
+  if (m < 60) return tr("library.minAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return tr("library.hourAgo", { n: h });
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return tr("library.dayAgo", { n: d });
   const w = Math.floor(d / 7);
-  if (w < 5) return `${w}w ago`;
+  if (w < 5) return tr("library.weekAgo", { n: w });
   const mo = Math.floor(d / 30);
-  return `${mo}mo ago`;
+  return tr("library.monthAgo", { n: mo });
 }
 
 // ── queue icon button (header) ─────────────────────────────────────────────

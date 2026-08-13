@@ -5,6 +5,7 @@
 
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Icon } from "./Icon";
+import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
@@ -13,30 +14,31 @@ interface Props {
 }
 
 export function ShelvesPage({ theme, shelves, onNewShelf }: Props) {
+  const { tr } = useI18n();
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px 48px", fontFamily: FONT_STACKS.sans }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
           <h1 style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontWeight: 400, fontSize: 30, margin: 0, letterSpacing: "-0.01em", color: theme.ink }}>
-            Shelves
+            {tr("shelves.title")}
           </h1>
           <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
-            {shelves.length} {shelves.length === 1 ? "shelf" : "shelves"} · your collections
+            {tr(shelves.length === 1 ? "shelves.countOne" : "shelves.countOther", { n: shelves.length })}
           </div>
         </div>
         <button
           onClick={onNewShelf}
           style={{ display: "inline-flex", alignItems: "center", gap: 8, border: 0, background: theme.ink, color: theme.paper, borderRadius: 10, padding: "10px 16px", font: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
         >
-          <Icon name="plus" size={15} /> New shelf
+          <Icon name="plus" size={15} /> {tr("shelves.newShelf")}
         </button>
       </div>
 
       {shelves.length === 0 ? (
         <div style={{ maxWidth: 440, margin: "56px auto", padding: 32, borderRadius: 14, background: theme.chrome, border: `0.5px solid ${theme.rule}`, textAlign: "center" }}>
-          <div style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontSize: 24, color: theme.ink, marginBottom: 8 }}>No shelves yet</div>
-          <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.55 }}>Create a shelf to group books your way.</div>
+          <div style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontSize: 24, color: theme.ink, marginBottom: 8 }}>{tr("shelves.empty")}</div>
+          <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.55 }}>{tr("shelves.emptyHint")}</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
@@ -45,10 +47,10 @@ export function ShelvesPage({ theme, shelves, onNewShelf }: Props) {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
                 <span style={{ color: theme.muted, display: "flex", alignSelf: "center" }}><Icon name="layers" size={16} /></span>
                 <h2 style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontWeight: 400, fontSize: 20, margin: 0, color: theme.ink }}>{s}</h2>
-                <span style={{ fontSize: 12, color: theme.muted }}>0 books</span>
+                <span style={{ fontSize: 12, color: theme.muted }}>{tr("shelves.zeroBooks")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 110, border: `1px dashed ${theme.rule}`, borderRadius: 12, color: theme.muted, fontSize: 13 }}>
-                No books in this shelf yet.
+                {tr("shelves.sectionEmpty")}
               </div>
             </section>
           ))}
