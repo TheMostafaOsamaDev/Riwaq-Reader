@@ -122,6 +122,16 @@ function App() {
   useEffect(() => {
     document.body.style.background = theme.bg;
     document.body.style.color = theme.ink;
+    // Publish the theme-aware values that CSS pseudo-elements need (they
+    // can't read the inline `theme` object). global.css consumes these for
+    // `::placeholder` and the scrollbar so every input/scroll area themes in
+    // lock-step instead of relying on browser defaults (which render the
+    // placeholder as a bright tint of `ink` in dark mode — like pre-filled
+    // text — and leave a sepia-tinted scrollbar thumb on dark backgrounds).
+    const root = document.documentElement.style;
+    root.setProperty("--ph", theme.muted);
+    root.setProperty("--sb-thumb", theme.ruleStrong);
+    root.setProperty("--sb-thumb-hover", theme.muted);
     const meta = document.querySelector<HTMLMetaElement>(
       'meta[name="theme-color"]',
     );
@@ -133,7 +143,7 @@ function App() {
     // throw off Android — invoke just rejects and we ignore it.
     const darkIcons = themeKey === "light" || themeKey === "sepia";
     void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
-  }, [theme.bg, theme.ink, themeKey]);
+  }, [theme.bg, theme.ink, theme.muted, theme.ruleStrong, themeKey]);
 
   // Bridge the download queue to the system notification tray.
   // Idempotent — subsequent calls are no-ops, so React 18 dev

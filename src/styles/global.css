@@ -61,6 +61,16 @@
   box-sizing: border-box;
 }
 
+/* Theme-aware values that CSS pseudo-elements can't read from the JS `theme`
+   object. App.tsx re-sets these on <html> whenever the theme changes; the
+   fallbacks below are the default (sepia) theme so there's no flash before
+   that effect runs. See tokens.ts / the App theme effect. */
+:root {
+  --ph: #6f5a3d; /* placeholder text = theme.muted */
+  --sb-thumb: rgba(58, 47, 31, 0.22); /* scrollbar thumb = theme.ruleStrong */
+  --sb-thumb-hover: #6f5a3d; /* scrollbar thumb hover = theme.muted */
+}
+
 html,
 body,
 #root {
@@ -95,7 +105,26 @@ select {
   color: inherit;
 }
 
-/* Custom scrollbar kept subtle so it doesn't break the sepia feel */
+/* Placeholder text is dimmed to `theme.muted` in every theme. Without this,
+   the browser default renders it as a translucent tint of the input's `color`
+   (theme.ink) — which in dark themes is a light tan, so an empty field looks
+   like it already has text typed in. `opacity: 1` overrides the reduced
+   opacity Firefox applies to placeholders. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--ph, #6f5a3d);
+  opacity: 1;
+}
+
+/* Text selection uses a translucent warm-accent tint so it's consistent with
+   the brand (not the browser's default blue) and keeps the selected text
+   legible in both light and dark themes. */
+::selection {
+  background: rgba(201, 100, 66, 0.28);
+}
+
+/* Custom scrollbar — theme-aware via the vars set in App.tsx so the thumb
+   stays visible on dark/oled backgrounds instead of a fixed sepia tint. */
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -104,11 +133,11 @@ select {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(58, 47, 31, 0.18);
+  background: var(--sb-thumb, rgba(58, 47, 31, 0.22));
   border-radius: 4px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(58, 47, 31, 0.32);
+  background: var(--sb-thumb-hover, #6f5a3d);
 }
 
 /* Hide scrollbars in reading surfaces */

@@ -26,7 +26,16 @@ export interface Theme {
   ruleStrong: string;
   chrome: string;
   chromeInk: string;
+  /** Translucent overlay tint for hover/press on surfaces whose base
+   *  background is TRANSPARENT (e.g. list rows). Do NOT use it to replace an
+   *  opaque `chrome` fill — the element would lose its fill and wash out
+   *  against a backdrop. For chrome-filled controls use `chromeHover`. */
   hover: string;
+  /** Opaque hover/press fill for controls whose base background is `chrome`
+   *  (pills, chips, chrome buttons). A slightly darker (light themes) or
+   *  lighter (dark themes) sibling of `chrome`, so the control keeps a solid
+   *  fill and the state change stays legible on any background. */
+  chromeHover: string;
 }
 
 export const THEMES: Record<ThemeKey, Theme> = {
@@ -34,45 +43,56 @@ export const THEMES: Record<ThemeKey, Theme> = {
     bg: "#f4ecd8",
     paper: "#f4ecd8",
     ink: "#3a2f1f",
-    muted: "#8b7355",
+    // Darkened from #8b7355 to clear WCAG AA (4.5:1) for secondary text on
+    // paper/bg/chrome (was ~3.4:1). Same warm hue, lower lightness.
+    muted: "#6f5a3d",
     rule: "rgba(58,47,31,0.14)",
     ruleStrong: "rgba(58,47,31,0.22)",
     chrome: "#ebe0c5",
     chromeInk: "#5a4a2e",
     hover: "rgba(58,47,31,0.06)",
+    chromeHover: "#e0d3b2",
   },
   light: {
     bg: "#faf8f3",
     paper: "#ffffff",
     ink: "#1f1a14",
-    muted: "#8b7e6a",
+    // Darkened from #8b7e6a to clear WCAG AA (4.5:1) on paper/bg/chrome.
+    muted: "#6e6250",
     rule: "rgba(31,26,20,0.10)",
     ruleStrong: "rgba(31,26,20,0.18)",
     chrome: "#f0ece2",
     chromeInk: "#3a332a",
     hover: "rgba(31,26,20,0.05)",
+    chromeHover: "#e5ded0",
   },
   dark: {
     bg: "#1a1614",
     paper: "#1a1614",
     ink: "#d8cbb0",
-    muted: "#887a60",
+    // Lightened from #887a60 to clear WCAG AA (4.5:1) for secondary text on
+    // the dark surfaces (was ~3.9:1). Same warm hue, higher lightness.
+    muted: "#9c8e70",
     rule: "rgba(216,203,176,0.14)",
     ruleStrong: "rgba(216,203,176,0.22)",
     chrome: "#24201c",
     chromeInk: "#c4b89c",
     hover: "rgba(216,203,176,0.06)",
+    chromeHover: "#322d27",
   },
   oled: {
     bg: "#000000",
     paper: "#000000",
     ink: "#b8ad94",
-    muted: "#6a6148",
+    // Lightened from #6a6148 to clear WCAG AA (4.5:1) on the near-black
+    // surfaces (was ~3.2:1).
+    muted: "#8a7f61",
     rule: "rgba(184,173,148,0.10)",
     ruleStrong: "rgba(184,173,148,0.18)",
     chrome: "#0c0a08",
     chromeInk: "#a89d84",
     hover: "rgba(184,173,148,0.05)",
+    chromeHover: "#211d17",
   },
 };
 
