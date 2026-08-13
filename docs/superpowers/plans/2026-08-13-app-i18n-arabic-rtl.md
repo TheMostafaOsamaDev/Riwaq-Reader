@@ -636,13 +636,15 @@ git commit -m "feat(i18n): translate + RTL reader chrome (content dir unchanged)
 
 ---
 
-### Task 7: Reader panels — TOC, Highlights, Progress overlay
+### Task 7: Reader panels — TOC, Highlights, Progress overlay + dir-aware panel slide/side (fixes Task 6 finding)
 
 **Files:**
-- Modify: `src/panels/TOCPanel.tsx`, `src/panels/HighlightsPanel.tsx`, `src/panels/ProgressOverlay.tsx`, `src/i18n/en.ts`, `src/i18n/ar.ts`
+- Modify: `src/panels/TOCPanel.tsx`, `src/panels/HighlightsPanel.tsx`, `src/panels/ProgressOverlay.tsx`, `src/components/AnimatedPanel.tsx`, `src/components/DesktopReader.tsx`, `src/styles/global.css`, `src/i18n/en.ts`, `src/i18n/ar.ts`
 
 **Interfaces:**
 - Consumes: `useI18n`; `PanelShell` (already dir-aware from Task 2).
+
+**Carry-in finding from Task 6 (parked, ruling: fix here).** When Task 6 rewired the desktop reader-chrome root to `dir={dir}`, the side-panels' `flex-direction:row` container mirrors under RTL: `side="left"` panels (TOC/Highlights) now render on the physical **right**, `side="right"` panels (Settings/Progress) on the physical **left**. Mirroring is DESIRED, but two things don't follow the flip: (1) `AnimatedPanel`'s slide keyframes (`leaflet-panel-enter-left`/`-right` in `global.css`) use physical `translateX(±100%)` keyed to the static `side` string, so a panel now resting on the left still animates from the right — sweeping across the reading column; (2) `DesktopReader.tsx` (~diff lines 320-328) left the Progress panel's `borderLeft` physical with an incorrect comment ("always sits on the physical right"). Fix both in this task.
 
 - [ ] **Step 1: Add panel keys.** Extract per file. Known: `"Table of contents"` (reuse `reader.toc`), `"Highlights"`, `"Add note"`, `"Edit note"`, `"Delete highlight"` / `"Remove highlight"`, `"Highlight actions"` / `"Highlight options"`, `"Jump to"`, `"Progress"`, `"Hide progress bar"`, `"Chapter progress"`, plus any empty-state copy. Example:
 
@@ -669,19 +671,23 @@ git commit -m "feat(i18n): translate + RTL reader chrome (content dir unchanged)
   "progress.title": "التقدّم",
 ```
 
-- [ ] **Step 2: Consume `tr`** and replace literals (titles, aria-labels, empty states). Pass translated `title`/`side` to `PanelShell` (side stays `"left"`/`"right"`; PanelShell now mirrors it via logical borders).
+- [ ] **Step 2: Consume `tr`** and replace literals (titles, aria-labels, empty states). Pass translated `title`/`side` to `PanelShell` (side stays `"left"`/`"right"`; PanelShell mirrors it via logical borders).
 
 - [ ] **Step 3: Convert physical CSS → logical** in each panel (1 spot each per the earlier count, plus any list-indent/`textAlign`).
 
-- [ ] **Step 4: Verify — tsc** → PASS.
+- [ ] **Step 4: Make `AnimatedPanel` slide dir-aware (fixes Task 6 finding #1).** `AnimatedPanel` currently picks `leaflet-panel-enter-left`/`-right` from the static `side` prop. Read `dir` from `useI18n()` and select the keyframe by the **effective physical side** = under RTL, swap (`side==="left"` → behaves as physical right, and vice-versa): `const physicalSide = dir === "rtl" ? (side === "left" ? "right" : "left") : side;` then use `leaflet-panel-enter-${physicalSide}`. So a panel that renders on the physical left (because the flex row mirrored) also slides in from the left, not across the reading column. Keep the `global.css` keyframes as-is (they're physical by design); if the exit animation is also side-keyed, apply the same `physicalSide` mapping there.
 
-- [ ] **Step 5: Verify — behavior.** UI=العربية: open TOC / Highlights / Progress — panels slide in from the mirrored side, titles + actions Arabic, list rows right-aligned, note/delete affordances mirrored. English reverts.
+- [ ] **Step 5: Fix the Progress-panel border (fixes Task 6 finding #2).** In `DesktopReader.tsx` (~lines 320-328) convert the Progress panel's physical `borderLeft` to the logical/dir-aware equivalent (or route it through `PanelShell`'s already-logical `side` border so it faces the reading column in both directions), and DELETE the incorrect "always sits on the physical right" comment. While here, rename the shadowing local `dir` in the `onWheel` overscroll handler (~`DesktopReader.tsx:429`) to `overscrollDir` (Task 6 Minor) so it no longer shadows the `useI18n()` `dir`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Verify — tsc** → PASS.
+
+- [ ] **Step 7: Verify — behavior (incl. the Task 6 ⚠️ manual check).** UI=العربية: open TOC / Highlights / Settings / Progress in the desktop reader. Confirm: (a) each panel renders on the correctly mirrored edge; (b) each panel's divider border faces the reading column (not the outer window edge); (c) open/close animations slide in from off-screen, NOT across the reading column; (d) titles + actions Arabic, list rows right-aligned, note/delete mirrored. English reverts. If the Tauri `invoke()` limitation blocks opening a book in the browser dev server, verify the panel-mount paths statically AND state clearly that a Tauri-app manual pass is still required for (a)–(c).
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/panels/TOCPanel.tsx src/panels/HighlightsPanel.tsx src/panels/ProgressOverlay.tsx src/i18n/en.ts src/i18n/ar.ts
-git commit -m "feat(i18n): translate + RTL reader panels (toc, highlights, progress)"
+git add src/panels/TOCPanel.tsx src/panels/HighlightsPanel.tsx src/panels/ProgressOverlay.tsx src/components/AnimatedPanel.tsx src/components/DesktopReader.tsx src/styles/global.css src/i18n/en.ts src/i18n/ar.ts
+git commit -m "feat(i18n): translate + RTL reader panels + dir-aware panel slide/side"
 ```
 
 ---
@@ -840,6 +846,22 @@ Convert any remaining direction-sensitive value to its logical equivalent (symme
   3. **Decoupling matrix:** {Arabic UI + English/scraped content} → chrome RTL, content LTR; {English UI + Arabic content} → chrome LTR, content RTL. Content direction never follows the UI.
   4. Themes (light/sepia/dark/oled/system) still switch correctly under both directions.
 - [ ] **Step 5: Commit** — `git add -A`; message: `feat(i18n): final full-app RTL audit + build gate`.
+
+### Task 15: Settings refinements — finish sheet translation, system-theme icon, locale-aware preview glyph
+
+User-requested follow-up to Task 2. Three parts, all in the two Settings surfaces.
+
+**Files:** Modify `src/components/SettingsSheet.tsx`, `src/panels/SettingsPanel.tsx`, `src/i18n/en.ts`, `src/i18n/ar.ts`.
+
+**Interfaces:** Consumes `useI18n()` → `{ locale, tr }`.
+
+- [ ] **Step 1 — Finish translating `SettingsSheet.tsx`.** Task 2 only added the language control there; the rest is still English. Add keys to BOTH catalogs and route these through `tr`: the section label `"Theme"` (`SettingsSheet.tsx:171` → `tr("settings.theme")`, key exists), the System button `"System"` (`:262` → `tr("settings.theme.system")`, exists) + its hint `"Follows your device's light / dark setting"` (`:264` → new key `settings.theme.systemHintDevice`), the footer `<p>` "More reading options (font, size, line height) live inside the reader's Settings panel." (`:276` → new `settings.moreOptionsHint`), the Header `aria-label="Back"` (`:297` → `tr("common.back")`, exists), and the `<h2>Settings</h2>` heading (`:325` → `tr("sidebar.settings")`, exists). Also the `THEME_SWATCHES` labels `"Light"/"Sepia"/"Dark"/"OLED"` (`:45-48`).
+- [ ] **Step 2 — Add theme-name keys (shared by both surfaces).** Add to `en.ts`: `"settings.theme.light":"Light"`, `"settings.theme.sepia":"Sepia"`, `"settings.theme.dark":"Dark"`, `"settings.theme.oled":"OLED"`. `ar.ts`: `"فاتح"`, `"سيبيا"`, `"داكن"`, `"OLED"` (OLED is a tech term — keep Latin). In `SettingsSheet.tsx` render `tr(\`settings.theme.${s.key}\` as MsgKey)` for the swatch label; in `SettingsPanel.tsx` the swatch currently renders the raw key `{k}` (capitalized) at ~`:203` — change it to `tr(\`settings.theme.${k}\` as MsgKey)` so desktop theme names translate too.
+- [ ] **Step 3 — Improve the System-theme icon (both surfaces).** Replace the flat 2-stop diagonal gradient half-circle (`SettingsPanel.tsx:~240`, `SettingsSheet.tsx:256-259` — `linear-gradient(135deg,#f4ecd8 0 50%,#1a1614 50% 100%)`) with a polished, recognizable "auto/system appearance" mark that reads clearly in ALL four themes (light/sepia/dark/oled) and both directions. **Invoke `ui-ux-pro-max` for the icon design.** Suggested direction: a circle cleanly split light/dark with a small sun motif on the light half and a moon/crescent on the dark half (the existing `Icon` set has `sun` and `moon` paths to compose from), or a crisper split-disc with a proper ring — theme-token colored, not hardcoded hex, so it doesn't clash on sepia/oled. Keep it the same in both surfaces (extract a tiny shared `SystemThemeSwatch` component if that avoids divergence). No behavior change — still triggers `setTweak("theme","system")`.
+- [ ] **Step 4 — Locale-aware theme-preview glyph.** The theme swatches show the preview letters `"Aa"` (`SettingsPanel.tsx:~196`, `SettingsSheet.tsx:212`). Make them depend on the UI language: `const { locale } = useI18n()` → show `"Aa"` for `en`, an Arabic glyph (e.g. `"أ"` or `"أب"`) for `ar`. For the Arabic glyph use an Arabic-capable font (the Fraunces display stack lacks Arabic — fall back to `FONT_STACKS.sans`/Readex Pro or an Arabic reading font via the existing `titleFontFor`/`FONT_STACKS`), so it renders properly rather than tofu. Apply in BOTH surfaces.
+- [ ] **Step 5 — Verify — tsc.** `npx tsc --noEmit` PASS.
+- [ ] **Step 6 — Verify — behavior.** Drive the app: open the library Settings sheet (mobile-style) AND the reader Settings panel. UI=العربية → every label (theme names, System + hint, footer, heading, Back) is Arabic; the theme swatches show the Arabic preview glyph in an Arabic font; the System icon looks polished in light/sepia/dark/oled. UI=English → "Aa" + English labels. Both revert cleanly.
+- [ ] **Step 7 — Commit** — `git add` the two components + catalogs; message: `feat(i18n): finish settings translation, polish system-theme icon & locale-aware preview`.
 
 ---
 
