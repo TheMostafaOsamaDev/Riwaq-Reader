@@ -242,7 +242,7 @@ function Header({
           flexShrink: 0,
         }}
       >
-        <Icon name="arrowL" size={16} />
+        <Icon name="arrowL" size={16} className="rtl-flip-x" />
       </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <h2

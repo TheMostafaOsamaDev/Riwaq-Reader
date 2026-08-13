@@ -248,7 +248,7 @@ export function SettingsSheet({
                   : `1px solid ${theme.rule}`,
               cursor: "pointer",
               fontFamily: "inherit",
-              textAlign: "left",
+              textAlign: "start",
             }}
           >
             <SystemThemeGlyph size={26} />
@@ -277,7 +277,13 @@ export function SettingsSheet({
 }
 
 function Header({ theme, onClose }: { theme: Theme; onClose: () => void }) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
+  // Fraunces (the display serif) has no Arabic glyphs, so an Arabic heading
+  // forces the browser to synthesize a fake-oblique slant on a fallback
+  // font — the same tofu-adjacent problem the preview glyph had. Match the
+  // fix there: swap to the Arabic-capable sans, upright, for `ar`.
+  const headingFontFamily = locale === "ar" ? FONT_STACKS.sans : FONT_SERIF_DISPLAY;
+  const headingFontStyle = locale === "ar" ? "normal" : "italic";
   return (
     <div
       style={{
@@ -305,13 +311,13 @@ function Header({ theme, onClose }: { theme: Theme; onClose: () => void }) {
           flexShrink: 0,
         }}
       >
-        <Icon name="arrowL" size={16} />
+        <Icon name="arrowL" size={16} className="rtl-flip-x" />
       </button>
       <h2
         id="settings-sheet-heading"
         style={{
-          fontFamily: FONT_SERIF_DISPLAY,
-          fontStyle: "italic",
+          fontFamily: headingFontFamily,
+          fontStyle: headingFontStyle,
           fontWeight: 400,
           fontSize: 22,
           margin: 0,

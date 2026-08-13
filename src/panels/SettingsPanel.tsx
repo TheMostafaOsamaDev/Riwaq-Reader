@@ -248,7 +248,7 @@ export function SettingsPanel({
                 : `1px solid ${theme.rule}`,
             cursor: "pointer",
             fontFamily: FONT_STACKS.sans,
-            textAlign: "left",
+            textAlign: "start",
           }}
         >
           <SystemThemeGlyph size={22} />
