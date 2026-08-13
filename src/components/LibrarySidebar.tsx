@@ -128,18 +128,18 @@ export function LibrarySidebar({
         <span style={{ fontSize: 10.5, color: theme.muted, border: `1px solid ${theme.rule}`, borderRadius: 5, padding: "2px 6px", fontWeight: 600, lineHeight: 1 }}>⌘K</span>
       </button>
 
-      {/* Scrollable nav. The vertical scrollbar's reserved gutter sits on the
+      {/* Scrollable nav. A reserved-space scrollbar's gutter sits on the
           container's inline-end edge — physically right in LTR, physically
-          left in RTL — so without a buffer it lands flush against the
-          collapsible rows' disclosure-chevron column, and its rounded thumb
-          end reads as a stray sliver right beside the row's own rounded
-          corner (worst under the OLED theme, where the low-opacity thumb
-          gets the most contrast against near-black). `paddingInlineEnd`
-          gives the gutter breathing room on whichever side it lands, and
-          `scrollbarGutter: "stable"` keeps that space reserved consistently
-          so nothing reflows if the list ever becomes short enough to stop
-          scrolling. */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingInlineEnd: 8, scrollbarGutter: "stable" }}>
+          left in RTL — so it would land flush against the collapsible rows'
+          disclosure-chevron column, and its rounded thumb end would read as
+          a stray sliver right beside the row's own rounded corner (worst
+          under the OLED theme). Reserving a gutter (padding/scrollbar-gutter)
+          to fix that insets the nav's content, which then no longer lines up
+          with the full-width Search button above and Import button below —
+          so instead we hide the scrollbar chrome entirely via
+          `leaflet-scroll-hidden` (wheel/trackpad scrolling still works) and
+          keep the container full-width. */}
+      <div className="leaflet-scroll-hidden" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         <SectionLabel theme={theme}>{tr("sidebar.main")}</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 5, padding: "0 4px" }}>
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}

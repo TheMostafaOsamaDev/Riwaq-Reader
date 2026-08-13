@@ -119,6 +119,19 @@ select {
   display: none;
 }
 
+/* Hide the scrollbar chrome on compact scroll areas (e.g. the sidebar nav) so
+   a reserved-space scrollbar never shows as a stray sliver when the layout
+   flips under dir="rtl" (its gutter would otherwise land flush against
+   adjacent rounded chrome). Scrolling still works via wheel/trackpad; unlike
+   reserving a gutter, this keeps the container's content full width. */
+.leaflet-scroll-hidden {
+  scrollbar-width: none;
+}
+.leaflet-scroll-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 /* Mobile pill row uses inline-style scrollbar hide; webkit needs the
  * pseudo-element rule, which only attaches via a class selector. */
 .leaflet-pill-row::-webkit-scrollbar {
