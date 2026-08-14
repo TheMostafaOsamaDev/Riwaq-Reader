@@ -9,6 +9,8 @@ import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { SourceStreamReader } from "./components/SourceStreamReader";
 import { SettingsPage } from "./components/SettingsPage";
+import { FixedPageReader } from "./reader/fixed/FixedPageReader";
+import { createPdfPageSource } from "./reader/fixed/PdfPageSource";
 import { startDownloadNotifier } from "./store/downloadNotifier";
 import {
   loadPersistedQueue,
@@ -22,14 +24,19 @@ import { useWakeLock } from "./hooks/useWakeLock";
 import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
   deleteHighlights,
+  getEntry,
   listBooks,
   loadBook,
+  loadFixedBook,
   markBookOpened,
   saveHighlight,
   updateHighlightNote,
+  updatePagePosition,
+  updatePageProgress,
   updateParagraphPosition,
   updateReadingPosition,
   type BookState,
+  type FixedBook,
   type Highlight,
 } from "./store/library";
 import { MOTION, setReduceMotionOverride, useReducedMotion } from "./styles/motion";
@@ -74,6 +81,13 @@ interface Loaded {
   jumpNonce: number;
 }
 
+/** State for an open fixed-layout (PDF/DOCX) book. Kept separate from `Loaded`
+ *  (the reflowable path) so the EPUB reader's handlers stay untouched. */
+interface LoadedFixed {
+  book: FixedBook;
+  state: BookState;
+}
+
 interface StreamingSession {
   sourceId: string;
   novelUrl: string;
@@ -90,6 +104,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [loadedFixed, setLoadedFixed] = useState<LoadedFixed | null>(null);
   const lightbox = useLightbox();
   // Streaming reader — opened from the Store when the user clicks "Read"
   // on a novel detail page. Non-null = full-viewport reader overlays
@@ -234,21 +249,27 @@ function App() {
       setLoading(true);
       setError(null);
       try {
-        const { book, state } = await loadBook(id);
-        // Stamp `lastReadAt` on open so the Library's "Continue reading"
-        // hero picks the book the user just opened, even when they exit
-        // before a chapter change has triggered `updateReadingPosition`.
-        // Awaited so the write commits before the Library remounts on
-        // back-out and re-fetches the index.
+        // Route fixed-layout books (PDF/DOCX) to their own reader; everything
+        // else stays on the reflowable EPUB path. Stamp `lastReadAt` on open so
+        // the Library's "Continue reading" hero picks the just-opened book.
+        const entry = await getEntry(id);
         await markBookOpened(id);
-        setLoaded({
-          book,
-          state,
-          currentChapter: state.currentChapter,
-          resumeParagraph: state.paragraphIndex,
-          resumeOffset: state.paragraphOffset ?? 0,
-          jumpNonce: 0,
-        });
+        if (entry && (entry.kind === "pdf" || entry.kind === "docx")) {
+          const { book, state } = await loadFixedBook(id);
+          setLoaded(null);
+          setLoadedFixed({ book, state });
+        } else {
+          const { book, state } = await loadBook(id);
+          setLoadedFixed(null);
+          setLoaded({
+            book,
+            state,
+            currentChapter: state.currentChapter,
+            resumeParagraph: state.paragraphIndex,
+            resumeOffset: state.paragraphOffset ?? 0,
+            jumpNonce: 0,
+          });
+        }
         setActivePanel(null);
         // Keep the spinner up over the AnimatedSwap crossfade so the
         // user doesn't catch the Library through the reader's fade-in.
@@ -296,6 +317,7 @@ function App() {
 
   const closeBook = useCallback(() => {
     setLoaded(null);
+    setLoadedFixed(null);
     setActivePanel(null);
     setError(null);
   }, []);
@@ -358,6 +380,25 @@ function App() {
     return () => {
       if (paragraphSaveTimer.current)
         clearTimeout(paragraphSaveTimer.current);
+    };
+  }, []);
+
+  // Debounced persistence of fixed-page (PDF/DOCX) reading position + progress.
+  const pageSaveTimer = useRef<number | null>(null);
+  const savePagePosition = useCallback(
+    (bookId: string, pageCount: number, page: number, pageOffset: number) => {
+      if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
+      pageSaveTimer.current = window.setTimeout(() => {
+        pageSaveTimer.current = null;
+        void updatePagePosition(bookId, page, pageOffset);
+        void updatePageProgress(bookId, page, pageCount);
+      }, 600);
+    },
+    [],
+  );
+  useEffect(() => {
+    return () => {
+      if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
     };
   }, []);
 
@@ -480,7 +521,7 @@ function App() {
     [loaded],
   );
 
-  const inReader = loaded !== null;
+  const inReader = loaded !== null || loadedFixed !== null;
 
   return (
     <I18nProvider locale={uiLocale}>
@@ -582,6 +623,34 @@ function App() {
               streamActive={streaming !== null}
               onOpenSettings={openSettings}
               confirmDelete={t.confirmDelete}
+            />
+          ) : loadedFixed ? (
+            <FixedPageReader
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              book={loadedFixed.book}
+              state={loadedFixed.state}
+              layout={isMobile ? "mobile" : "desktop"}
+              uiDir={uiDir}
+              createSource={() => {
+                const b = loadedFixed.book;
+                if (b.kind === "pdf") return createPdfPageSource(b);
+                return Promise.reject(
+                  new Error("DOCX reader not yet available"),
+                );
+              }}
+              onLocationChange={(page, off) =>
+                savePagePosition(
+                  loadedFixed.book.id,
+                  loadedFixed.book.kind === "pdf" ? loadedFixed.book.pageCount : 0,
+                  page,
+                  off,
+                )
+              }
+              onOpenFullSettings={openSettings}
+              onBack={closeBook}
             />
           ) : isMobile ? (
             <MobileReader
