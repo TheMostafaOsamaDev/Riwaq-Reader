@@ -53,6 +53,13 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
   const outline = await buildOutline(doc);
   const hasTextLayer = await probeTextLayer(doc);
 
+  // pdf.js forbids concurrent render() on the same canvas — cancel a canvas's
+  // in-flight render before starting a new one (e.g. on fast scroll / rescale).
+  const renderTasks = new WeakMap<
+    HTMLCanvasElement,
+    { cancel(): void; promise: Promise<void> }
+  >();
+
   return {
     pageCount: doc.numPages,
     meta,
@@ -64,6 +71,14 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
       return { width: vp.width, height: vp.height };
     },
     async renderPage(i, canvas, scale) {
+      const prev = renderTasks.get(canvas);
+      if (prev) {
+        try {
+          prev.cancel();
+        } catch {
+          // already settled
+        }
+      }
       const page = await doc.getPage(i + 1);
       const vp = page.getViewport({ scale });
       const ctx = canvas.getContext("2d");
@@ -74,12 +89,20 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
       canvas.height = Math.floor(vp.height * outputScale);
       canvas.style.width = `${Math.floor(vp.width)}px`;
       canvas.style.height = `${Math.floor(vp.height)}px`;
-      await page.render({
+      const task = page.render({
         canvasContext: ctx,
         viewport: vp,
         transform:
           outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
-      }).promise;
+      });
+      renderTasks.set(canvas, task);
+      try {
+        await task.promise;
+      } catch {
+        // cancelled / superseded by a newer render — ignore
+      } finally {
+        if (renderTasks.get(canvas) === task) renderTasks.delete(canvas);
+      }
     },
     destroy() {
       void doc.destroy();

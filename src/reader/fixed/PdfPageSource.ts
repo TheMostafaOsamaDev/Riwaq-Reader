@@ -8,12 +8,20 @@ import { bookDir, type PdfBook } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
 
 const BASE = BaseDirectory.AppData;
-const MAX_MOUNTED = 12; // rendered canvases kept alive at once
+const MAX_MOUNTED = 8; // rendered canvases kept alive at once (bounds memory)
 
 export async function createPdfPageSource(
   book: PdfBook,
 ): Promise<FixedPageSource> {
   const bytes = await readFile(`${bookDir(book.id)}/book.pdf`, { baseDir: BASE });
+  return createPdfPageSourceFromBytes(bytes);
+}
+
+/** Build a page source directly from PDF bytes — used by the dev harness and by
+ *  createPdfPageSource after it reads the file off disk. */
+export async function createPdfPageSourceFromBytes(
+  bytes: Uint8Array,
+): Promise<FixedPageSource> {
   const doc = await openPdfDocument(bytes);
   const sizeCache = new Map<number, { w: number; h: number }>();
   // Insertion-ordered so the first key is the oldest — cheap LRU.
