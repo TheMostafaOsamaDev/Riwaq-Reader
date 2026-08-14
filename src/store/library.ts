@@ -87,12 +87,16 @@ export interface BookIndexEntry {
       via the right-click menu on a shelf card. Undefined for older books
       that predate this field. */
   status?: BookStatus;
-  /** What kind of library entry this is. Older entries (and any EPUB /
-   *  DOCX import) don't carry the field — they're treated as "epub" by
-   *  callers. "source" entries are lightweight bookmarks: no book.json,
-   *  no book.epub on disk; the chapter list and content live on the
-   *  source website and are fetched on demand. */
-  kind?: "epub" | "source";
+  /** What kind of library entry this is. Older entries (and any EPUB
+   *  import) don't carry the field — they're treated as "epub" by callers.
+   *  "source" entries are lightweight bookmarks: no book.json, no book.epub
+   *  on disk; the chapter list and content live on the source website and are
+   *  fetched on demand. "pdf" / "docx" are fixed-layout books read as rendered
+   *  pages — page-based progress/resume, not chapters. */
+  kind?: "epub" | "source" | "pdf" | "docx";
+  /** Total fixed pages. Present only on kind "pdf" | "docx"; drives page-based
+   *  progress and the page counter. */
+  pageCount?: number;
   /** Source extension id (e.g. "kolnovel"). Present only on
    *  kind === "source" entries. */
   sourceId?: string;
@@ -111,6 +115,13 @@ export interface BookState {
       so resume lands at the exact scroll position, not just the paragraph top.
       Absent on older saves and on paginated captures → treated as 0. */
   paragraphOffset?: number;
+  /** Fixed-page (PDF/DOCX) resume: current page (0-based). Absent on reflow. */
+  currentPage?: number;
+  /** 0..1 scroll offset within `currentPage` (scroll flow only). */
+  pageOffset?: number;
+  /** DOCX only — a reflow-stable content anchor (nearest block id + intra-block
+      fraction) so resume survives re-pagination when the page box changes. */
+  fixedAnchor?: { blockId: string; frac: number };
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -212,6 +223,17 @@ async function readState(id: string): Promise<BookState> {
       paragraphOffset: typeof parsed.paragraphOffset === "number"
         ? parsed.paragraphOffset
         : 0,
+      currentPage:
+        typeof parsed.currentPage === "number" ? parsed.currentPage : undefined,
+      pageOffset:
+        typeof parsed.pageOffset === "number" ? parsed.pageOffset : undefined,
+      fixedAnchor:
+        parsed.fixedAnchor && typeof parsed.fixedAnchor.blockId === "string"
+          ? {
+              blockId: parsed.fixedAnchor.blockId,
+              frac: Number(parsed.fixedAnchor.frac) || 0,
+            }
+          : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
   } catch {
@@ -1008,6 +1030,42 @@ export async function updateParagraphPosition(
   state.paragraphIndex = paragraphIndex;
   state.paragraphOffset = paragraphOffset ?? 0;
   await writeState(state);
+}
+
+/**
+ * Persist fixed-page (PDF/DOCX) resume position. Called as the user scrolls /
+ * flips pages (debounced by the caller). Doesn't touch the library index —
+ * page-level progress goes through updatePageProgress.
+ */
+export async function updatePagePosition(
+  id: string,
+  currentPage: number,
+  pageOffset?: number,
+  fixedAnchor?: { blockId: string; frac: number },
+): Promise<void> {
+  const state = await readState(id);
+  state.currentPage = currentPage;
+  state.pageOffset = pageOffset ?? 0;
+  if (fixedAnchor) state.fixedAnchor = fixedAnchor;
+  await writeState(state);
+}
+
+/**
+ * Stamp page-based progress + lastReadAt on a fixed book's index entry — the
+ * page-based analogue of updateReadingPosition. `currentPage` is 0-based.
+ */
+export async function updatePageProgress(
+  id: string,
+  currentPage: number,
+  pageCount: number,
+): Promise<void> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return;
+  entry.progress =
+    pageCount > 0 ? Math.min(1, (currentPage + 1) / pageCount) : 0;
+  entry.lastReadAt = Date.now();
+  await writeIndex(idx);
 }
 
 export async function saveHighlight(
