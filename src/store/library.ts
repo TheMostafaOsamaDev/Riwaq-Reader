@@ -27,6 +27,7 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { parseEpub } from "../epub/parser";
 import type { EpubBook } from "../epub/types";
+import type { TocEntry } from "../types/reader";
 import {
   buildEpubFromStaging,
   convertDocxToStaging,
@@ -160,7 +161,7 @@ interface LibraryFile {
 
 // ── low-level fs helpers ──────────────────────────────────────────────────
 
-async function ensureRoot() {
+export async function ensureRoot() {
   for (const dir of [ROOT, BOOKS]) {
     if (!(await exists(dir, { baseDir: BASE }))) {
       await mkdir(dir, { baseDir: BASE, recursive: true });
@@ -189,7 +190,7 @@ async function writeIndex(idx: LibraryFile) {
   await writeTextFile(INDEX, JSON.stringify(idx, null, 2), { baseDir: BASE });
 }
 
-function bookDir(id: string) {
+export function bookDir(id: string) {
   return `${BOOKS}/${id}`;
 }
 
@@ -500,11 +501,70 @@ export async function commitStagedDocx(
  *  localizes it wherever the book is rendered, instead of freezing an
  *  English (or whatever-locale-was-active) literal into the book's own
  *  stored title. */
-function filenameTitle(path: string): string {
+export function filenameTitle(path: string): string {
   const base = path.split(/[\\/]/).pop() ?? path;
-  const stem = base.replace(/\.docx$/i, "");
+  const stem = base.replace(/\.(docx|pdf|epub)$/i, "");
   const cleaned = stem.replace(/[_-]+/g, " ").trim();
   return cleaned;
+}
+
+/** Write the default (empty) reading state for a freshly imported book. */
+export async function writeInitialState(id: string): Promise<void> {
+  await writeState({
+    bookId: id,
+    currentChapter: 0,
+    paragraphIndex: 0,
+    highlights: [],
+  });
+}
+
+/** Append an entry to the library index and return it. Shared by every importer. */
+export async function appendIndexEntry(
+  entry: BookIndexEntry,
+): Promise<BookIndexEntry> {
+  const idx = await readIndex();
+  idx.books.push(entry);
+  await writeIndex(idx);
+  return entry;
+}
+
+/** Read a single index entry (used for open-time routing on `kind`). */
+export async function getEntry(id: string): Promise<BookIndexEntry | null> {
+  const idx = await readIndex();
+  return idx.books.find((b) => b.id === id) ?? null;
+}
+
+// ── fixed-layout books (PDF / DOCX) ─────────────────────────────────────────
+
+export interface PdfBook {
+  id: string;
+  kind: "pdf";
+  title: string;
+  author: string;
+  pageCount: number;
+  outline: TocEntry[];
+}
+
+export interface DocxBook {
+  id: string;
+  kind: "docx";
+  title: string;
+  author: string;
+  dir: "ltr" | "rtl";
+  outline: TocEntry[];
+}
+
+export type FixedBook = PdfBook | DocxBook;
+
+/** Load a fixed-layout book descriptor + its reading state — the page-based
+ *  analogue of loadBook. The descriptor is a PdfBook/DocxBook, not an EpubBook. */
+export async function loadFixedBook(
+  id: string,
+): Promise<{ book: FixedBook; state: BookState }> {
+  const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
+  const book = JSON.parse(raw) as FixedBook;
+  const state = await readState(id);
+  return { book, state };
 }
 
 export async function importEpubBytes(
@@ -522,12 +582,7 @@ export async function importEpubBytes(
   // but lets us re-extract the cover later when the parser improves —
   // without re-asking the user for the file.
   await writeFile(`${dir}/book.epub`, bytes, { baseDir: BASE });
-  await writeState({
-    bookId: book.id,
-    currentChapter: 0,
-    paragraphIndex: 0,
-    highlights: [],
-  });
+  await writeInitialState(book.id);
 
   // Drop in-flow images on disk under books/<id>/<href> so chapter image
   // items resolve to a real file. Each href is `images/img-NNN.ext`, so
@@ -556,10 +611,7 @@ export async function importEpubBytes(
     ...(coverFile ? { coverFile } : {}),
   };
 
-  const idx = await readIndex();
-  idx.books.push(entry);
-  await writeIndex(idx);
-  return entry;
+  return appendIndexEntry(entry);
 }
 
 /**
