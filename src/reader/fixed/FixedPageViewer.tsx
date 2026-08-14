@@ -103,6 +103,7 @@ export const FixedPageViewer = forwardRef<
   const [container, setContainer] = useState({ w: 0, h: 0 });
   const [current, setCurrent] = useState(resume?.page ?? 0);
   const [win, setWin] = useState({ start: 0, end: Math.min(pageCount - 1, 2) });
+  const [rendered, setRendered] = useState<Set<number>>(() => new Set());
 
   useEffect(() => ensureShimmerStyle(), []);
 
@@ -277,7 +278,10 @@ export const FixedPageViewer = forwardRef<
         const want = Math.round(sc * 1000) / 1000;
         if (renderedScale.current.get(i) !== want) {
           renderedScale.current.set(i, want);
-          void source.renderPage(i, host, sc);
+          const pi = i;
+          void source.renderPage(pi, host, sc).then(() => {
+            setRendered((prev) => (prev.has(pi) ? prev : new Set(prev).add(pi)));
+          });
         }
       }
       if (!cancelled && measured.length) {
@@ -316,7 +320,10 @@ export const FixedPageViewer = forwardRef<
         });
       }
       const sc = layout.displayW[current] / s.w;
-      void source.renderPage(current, host, sc);
+      const cur = current;
+      void source.renderPage(cur, host, sc).then(() => {
+        setRendered((prev) => (prev.has(cur) ? prev : new Set(prev).add(cur)));
+      });
       emit(current);
     })();
     return () => {
@@ -379,7 +386,11 @@ export const FixedPageViewer = forwardRef<
     return cb;
   }, []);
 
-  const skeletonStyle = (w: number, h: number): React.CSSProperties => ({
+  const skeletonStyle = (
+    w: number,
+    h: number,
+    animate: boolean,
+  ): React.CSSProperties => ({
     width: w,
     height: h,
     borderRadius: 4,
@@ -388,7 +399,7 @@ export const FixedPageViewer = forwardRef<
     backgroundColor: theme.chrome,
     backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
     backgroundSize: "200% 100%",
-    animation: reducedMotion ? "none" : "fx-shimmer 1.3s linear infinite",
+    animation: animate && !reducedMotion ? "fx-shimmer 1.3s linear infinite" : "none",
   });
 
   const visible: number[] = [];
@@ -418,7 +429,7 @@ export const FixedPageViewer = forwardRef<
                 top: layout.top[i],
                 left: `calc(50% - ${layout.displayW[i] / 2}px)`,
                 filter: tintFilter(tint),
-                ...skeletonStyle(layout.displayW[i], layout.displayH[i]),
+                ...skeletonStyle(layout.displayW[i], layout.displayH[i], !rendered.has(i)),
               }}
             />
           ))}
@@ -441,6 +452,7 @@ export const FixedPageViewer = forwardRef<
               ...skeletonStyle(
                 layout.displayW[current] || 0,
                 layout.displayH[current] || 0,
+                !rendered.has(current),
               ),
             }}
           />
