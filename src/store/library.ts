@@ -288,12 +288,18 @@ export async function pickAndImportEpub(): Promise<BookIndexEntry | null> {
   const picked = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "EPUB", extensions: ["epub"] }],
+    filters: [{ name: "Books", extensions: ["epub", "pdf"] }],
   });
   if (!picked) return null;
   // The dialog selection itself grants per-path read permission on Tauri v2,
   // so we don't need $HOME / $DOCUMENT in the fs scope.
   const bytes = await readFile(picked);
+  if (/\.pdf$/i.test(picked)) {
+    // Dynamic import avoids a static library ↔ fixedImport cycle (fixedImport
+    // imports storage helpers from here).
+    const { importPdfBytes } = await import("./fixedImport");
+    return importPdfBytes(bytes, filenameTitle(picked));
+  }
   return importEpubBytes(bytes);
 }
 
@@ -767,7 +773,8 @@ export async function importFromSourceUrl(
 export interface ImportFolderResult {
   imported: BookIndexEntry[];
   errors: { file: string; message: string }[];
-  /** True when the folder contained no .epub files at its top level. */
+  /** True when the folder contained no importable (.epub/.pdf) files at its
+   *  top level. */
   empty: boolean;
 }
 
@@ -781,21 +788,27 @@ export async function pickAndImportFolder(): Promise<ImportFolderResult | null> 
   if (!picked) return null;
 
   const entries = await readDir(picked);
-  const epubs = entries.filter(
-    (e) => e.isFile && /\.epub$/i.test(e.name),
+  const files = entries.filter(
+    (e) => e.isFile && /\.(epub|pdf)$/i.test(e.name),
   );
 
-  if (epubs.length === 0) {
+  if (files.length === 0) {
     return { imported: [], errors: [], empty: true };
   }
 
   const imported: BookIndexEntry[] = [];
   const errors: { file: string; message: string }[] = [];
-  for (const e of epubs) {
+  for (const e of files) {
     try {
       const path = await join(picked, e.name);
       const bytes = await readFile(path);
-      const entry = await importEpubBytes(bytes);
+      let entry: BookIndexEntry;
+      if (/\.pdf$/i.test(e.name)) {
+        const { importPdfBytes } = await import("./fixedImport");
+        entry = await importPdfBytes(bytes, filenameTitle(e.name));
+      } else {
+        entry = await importEpubBytes(bytes);
+      }
       imported.push(entry);
     } catch (err) {
       errors.push({

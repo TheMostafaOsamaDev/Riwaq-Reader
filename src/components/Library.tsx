@@ -1963,6 +1963,7 @@ function MobileShelfCard({
         palette={paletteForId(book.id)}
         size="sm"
         src={coverSrc}
+        badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
         // Stretch the cover to the (constrained) cell width — the fixed
         // 110px `sm` size would overflow a 3-column grid on narrow phones.
         fluid
@@ -2215,6 +2216,7 @@ function LibraryCard({
             palette={paletteForId(book.id)}
             size="md"
             src={coverSrc}
+            badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
           />
           {book.progress === 0 && (
             <span
