@@ -8,14 +8,21 @@ import { Library } from "./components/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { SourceStreamReader } from "./components/SourceStreamReader";
+import { SettingsPage } from "./components/SettingsPage";
 import { startDownloadNotifier } from "./store/downloadNotifier";
-import { loadPersistedQueue } from "./store/downloadQueue";
+import {
+  loadPersistedQueue,
+  setDownloadConcurrency,
+  setWifiOnlyDownloads,
+} from "./store/downloadQueue";
 import type { EpubBook } from "./epub/types";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useTweaks } from "./hooks/useTweaks";
+import { useWakeLock } from "./hooks/useWakeLock";
 import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
   deleteHighlights,
+  listBooks,
   loadBook,
   markBookOpened,
   saveHighlight,
@@ -25,9 +32,16 @@ import {
   type BookState,
   type Highlight,
 } from "./store/library";
-import { MOTION, useReducedMotion } from "./styles/motion";
+import { MOTION, setReduceMotionOverride, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, THEMES, resolveTheme } from "./styles/tokens";
+import {
+  FONT_READING_SANS,
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  THEMES,
+  UI_FONT_STACKS,
+  resolveTheme,
+} from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
@@ -71,7 +85,7 @@ function App() {
   // routing to the download queue). Has to live above the Library so
   // any emitted intents reach the Library's subscriber.
   useLaunchIntent();
-  const [t, setTweak] = useTweaks();
+  const [t, setTweak, applyTweaks] = useTweaks();
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +104,13 @@ function App() {
     [],
   );
   const closeStream = useCallback(() => setStreaming(null), []);
+
+  // Settings promoted to a top-level view (peer of Library/Reader). Opened from
+  // the Library nav and the reader's quick-panel; Back re-derives the viewKey
+  // back to whichever view is still mounted underneath.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
@@ -145,6 +166,34 @@ function App() {
     void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
   }, [theme.bg, theme.ink, theme.muted, theme.ruleStrong, themeKey]);
 
+  // Apply the selectable UI (chrome) font through a CSS variable that
+  // FONT_STACKS.sans falls back through. Set on documentElement so any
+  // portalled overlays inherit it too. Unset → defaults to Readex Pro.
+  useEffect(() => {
+    // Fallback guards a corrupt/unknown uiFont (e.g. from imported settings):
+    // an undefined lookup would set the var to the string "undefined" and break
+    // the entire chrome font.
+    document.documentElement.style.setProperty(
+      "--ui-font",
+      UI_FONT_STACKS[t.uiFont] ?? FONT_READING_SANS,
+    );
+  }, [t.uiFont]);
+
+  // App-level reduce-motion override ("auto" = follow the OS). Composes on
+  // top of the OS preference inside useReducedMotion via a tiny pub-sub, so
+  // every call site (AnimatedSwap, panels, readers) picks it up.
+  useEffect(() => {
+    setReduceMotionOverride(t.reduceMotion);
+  }, [t.reduceMotion]);
+
+  // Push download-queue runtime config from the tweaks.
+  useEffect(() => {
+    setDownloadConcurrency(t.maxConcurrentDownloads);
+  }, [t.maxConcurrentDownloads]);
+  useEffect(() => {
+    setWifiOnlyDownloads(t.wifiOnlyDownloads);
+  }, [t.wifiOnlyDownloads]);
+
   // Bridge the download queue to the system notification tray.
   // Idempotent — subsequent calls are no-ops, so React 18 dev
   // re-mount doesn't double-subscribe.
@@ -161,6 +210,10 @@ function App() {
   }, []);
 
   const reduced = useReducedMotion();
+  // Hold a screen wake lock while actively reading (a book is open or a
+  // stream is playing) and the user enabled it. Best-effort; no-ops where
+  // the Wake Lock API is unavailable.
+  useWakeLock(t.keepScreenAwake && (loaded !== null || streaming !== null));
   // Holds the deferred setLoading(false) so a rapid re-open of a different
   // book can clear it before it fires for the previous load.
   const loadingTimeoutRef = useRef<number | null>(null);
@@ -217,6 +270,29 @@ function App() {
     },
     [reduced],
   );
+
+  // First-run startup routing. When "Resume last book" is chosen, open the
+  // most-recently-read local book once on mount (listBooks is sorted newest
+  // first). Guarded so React's dev double-invoke doesn't fire it twice.
+  const didStartupRef = useRef(false);
+  useEffect(() => {
+    if (didStartupRef.current) return;
+    didStartupRef.current = true;
+    if (t.startupView !== "resume") return;
+    // No cancellation guard: didStartupRef already dedupes, and the App root
+    // never unmounts mid-startup. A `cancelled` flag here would be flipped by
+    // StrictMode's dev cleanup and suppress the one legitimate run.
+    void (async () => {
+      try {
+        const books = await listBooks();
+        const newest = books.find((b) => b.kind !== "source");
+        if (newest) void openBook(newest.id);
+      } catch {
+        // ignore — fall back to the Library
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const closeBook = useCallback(() => {
     setLoaded(null);
@@ -477,20 +553,35 @@ function App() {
             on mobile-landscape) ALSO crossfades cleanly. */}
         <AnimatedSwap
           viewKey={
-            inReader ? (isMobile ? "reader-mobile" : "reader-desktop") : "library"
+            settingsOpen
+              ? "settings"
+              : inReader
+                ? isMobile
+                  ? "reader-mobile"
+                  : "reader-desktop"
+                : "library"
           }
         >
-          {!inReader ? (
+          {settingsOpen ? (
+            <SettingsPage
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              applyTweaks={applyTweaks}
+              layout={isMobile ? "mobile" : "desktop"}
+              onClose={closeSettings}
+            />
+          ) : !inReader ? (
             <Library
               theme={theme}
               themeKey={themeKey}
-              themePref={themePref}
-              uiLang={t.uiLang}
-              setTweak={setTweak}
               layout={isMobile ? "mobile" : "desktop"}
               onOpen={openBook}
               onStreamRead={openStream}
               streamActive={streaming !== null}
+              onOpenSettings={openSettings}
+              confirmDelete={t.confirmDelete}
             />
           ) : isMobile ? (
             <MobileReader
@@ -510,6 +601,7 @@ function App() {
               onDeleteHighlight={removeHighlight}
               onUpdateHighlightNote={editHighlightNote}
               onJumpToHighlight={jumpToHighlight}
+              onOpenFullSettings={openSettings}
               onBack={closeBook}
             />
           ) : (
@@ -532,6 +624,7 @@ function App() {
               onJumpToHighlight={jumpToHighlight}
               activePanel={activePanel}
               setActivePanel={setActivePanel}
+              onOpenFullSettings={openSettings}
               onBack={closeBook}
             />
           )}

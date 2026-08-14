@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, isArabicTitle } from "../styles/tokens";
+import { FONT_SERIF_DISPLAY, FONT_READING_SANS, isArabicTitle } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -166,7 +166,7 @@ export function BookCover({
             textTransform: isArabicTitle(author || tr("common.unknownAuthor"))
               ? "none"
               : "uppercase",
-            fontFamily: FONT_STACKS.sans,
+            fontFamily: FONT_READING_SANS,
             fontWeight: 600,
             opacity: 0.7,
             whiteSpace: "nowrap",

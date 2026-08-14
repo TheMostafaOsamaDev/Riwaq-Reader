@@ -206,6 +206,8 @@ interface Props {
   onDeleteHighlight: (id: string) => void;
   onUpdateHighlightNote: (id: string, note: string) => void;
   onJumpToHighlight: (h: Highlight) => void;
+  /** Navigate to the top-level Settings page (from the quick-panel link). */
+  onOpenFullSettings?: () => void;
   onBack: () => void;
 }
 
@@ -241,6 +243,7 @@ export function MobileReader({
   onDeleteHighlight,
   onUpdateHighlightNote,
   onJumpToHighlight,
+  onOpenFullSettings,
   onBack,
 }: Props) {
   const { tr, dir } = useI18n();
@@ -960,6 +963,9 @@ export function MobileReader({
           // page width) — the screen is narrow enough that paginated columns
           // or >360px page width would just overflow.
           rtl={isRtlLanguage(book.language)}
+          paragraphSpacing={t.paragraphSpacing}
+          hyphenation={t.hyphenation}
+          language={book.language}
           widthPercent={t.contentWidth}
           selectable={false}
         />
@@ -1263,6 +1269,14 @@ export function MobileReader({
                 width="100%"
                 side={undefined}
                 mobile
+                onOpenFullSettings={
+                  onOpenFullSettings
+                    ? () => {
+                        setSheet(null);
+                        onOpenFullSettings();
+                      }
+                    : undefined
+                }
               />
             )}
             {sheet === "progress" && (

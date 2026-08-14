@@ -12,7 +12,6 @@ import { DocxManageView } from "./DocxManageView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
-import { SettingsSheet } from "./SettingsSheet";
 import { LibrarySidebar } from "./LibrarySidebar";
 import { SearchOverlay } from "./SearchOverlay";
 import { ShelvesPage } from "./ShelvesPage";
@@ -21,7 +20,6 @@ import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
 import { onOpenDownloadQueue } from "../store/uiIntents";
-import type { Tweaks } from "../types/reader";
 import {
   getState as getQueueState,
   subscribe as subscribeToQueue,
@@ -52,27 +50,16 @@ import {
   titleFontFor,
   type Theme,
   type ThemeKey,
-  type ThemePref,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel } from "../i18n/statusLabels";
-import type { MsgKey, Tr, UiLangPref } from "../i18n";
+import type { MsgKey, Tr } from "../i18n";
 
 interface Props {
   theme: Theme;
-  /** Selected theme id (one of the THEME_SWATCHES). Threaded through
-   *  so the mobile Settings sheet can show which swatch is currently
-   *  active and dispatch theme changes without forcing the user
-   *  into the reader to find the picker. */
+  /** Selected theme id — threaded so cards / sidebar can reflect the active
+   *  theme. */
   themeKey: ThemeKey;
-  /** Raw stored preference (may be "system"), so the Settings sheet can
-   *  highlight the System option rather than the resolved concrete theme. */
-  themePref: ThemePref;
-  /** Raw UI-language preference (may be "system"), threaded through so
-   *  the mobile Settings sheet's Language control can highlight "Auto"
-   *  rather than the resolved concrete locale. */
-  uiLang: UiLangPref;
-  setTweak: <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => void;
   layout: "desktop" | "mobile";
   onOpen: (bookId: string) => void;
   /** Open the Source streaming reader at a specific novel + chapter. The
@@ -83,6 +70,10 @@ interface Props {
    *  stays mounted underneath, so we watch this to re-read the shelf when a
    *  reading session ends (a source novel's lastReadAt/progress changed). */
   streamActive: boolean;
+  /** Navigate to the top-level Settings page (owned by App). */
+  onOpenSettings: () => void;
+  /** When off, deleting a book skips the confirm dialog and deletes at once. */
+  confirmDelete: boolean;
 }
 
 function useBooks() {
@@ -127,13 +118,12 @@ function useBooks() {
 export function Library({
   theme,
   themeKey,
-  themePref,
-  uiLang,
-  setTweak,
   layout,
   onOpen,
   onStreamRead,
   streamActive,
+  onOpenSettings,
+  confirmDelete,
 }: Props) {
   const { tr } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
@@ -454,7 +444,16 @@ export function Library({
     bookId: string,
     title: string,
     opts?: { closeEditAfter?: boolean },
-  ) => setPendingDelete({ bookId, title, ...opts });
+  ) => {
+    // When the confirm-before-delete setting is off, delete immediately
+    // (still honoring closeEditAfter) instead of popping the dialog.
+    if (!confirmDelete) {
+      if (opts?.closeEditAfter) setEditingId(null);
+      void onDelete(bookId);
+      return;
+    }
+    setPendingDelete({ bookId, title, ...opts });
+  };
   const cancelDelete = () => setPendingDelete(null);
   const performDelete = async () => {
     if (!pendingDelete) return;
@@ -490,7 +489,6 @@ export function Library({
   // arrives with `leaflet.open=queue`, the pub/sub fires and we open
   // the queue overlay.
   useEffect(() => onOpenDownloadQueue(() => setQueueOpen(true)), []);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // When a "Save as offline book" conversion finishes, one or more
   // brand-new library entries have just landed via importEpubBytes —
@@ -554,7 +552,7 @@ export function Library({
       if (sourceDetailView) setSourceDetailRangeDialog(sourceDetailView);
     },
     onOpenQueue: () => setQueueOpen(true),
-    onOpenSettings: () => setSettingsOpen(true),
+    onOpenSettings,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);
@@ -681,24 +679,6 @@ export function Library({
             theme={theme}
             layout={layout}
             onClose={() => setQueueOpen(false)}
-          />
-        )}
-      </AnimatedFullScreen>
-      <AnimatedFullScreen
-        open={settingsOpen}
-        layout={layout}
-        onScrimClick={() => setSettingsOpen(false)}
-        zIndex={200}
-      >
-        {settingsOpen && (
-          <SettingsSheet
-            theme={theme}
-            themeKey={themeKey}
-            themePref={themePref}
-            uiLang={uiLang}
-            setTweak={setTweak}
-            layout={layout}
-            onClose={() => setSettingsOpen(false)}
           />
         )}
       </AnimatedFullScreen>

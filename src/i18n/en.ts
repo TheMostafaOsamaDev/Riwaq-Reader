@@ -44,6 +44,9 @@ export const en = {
   "settings.contentWidth": "Content width · {n}%",
   "settings.alignment": "Alignment",
   "settings.align.auto": "Auto",
+  "settings.align.left": "Left",
+  "settings.align.justify": "Justify",
+  "settings.align.right": "Right",
   "settings.readingMode": "Reading mode",
   "settings.mode.paginated2": "Two pages",
   "settings.mode.paginated1": "Single page",
@@ -53,8 +56,61 @@ export const en = {
   "settings.off": "Off",
   "settings.tapZoneWidth": "Tap zone width · {n}%",
   "settings.tapStride": "Tap scroll length · {n}%",
-  "settings.moreOptionsHint":
-    "More reading options (font, size, line height) live inside the reader's Settings panel.",
+
+  // reader quick-panel → full settings page
+  "settings.openFull": "All settings",
+  "settings.openFull.hint": "Language, downloads, data & more",
+
+  // settings page — section titles
+  "settings.section.appearance": "Appearance",
+  "settings.section.reading": "Reading",
+  "settings.section.behavior": "Behavior",
+  "settings.section.downloads": "Downloads",
+  "settings.section.data": "Data",
+  "settings.section.about": "About",
+
+  // appearance
+  "settings.uiFont": "Interface font",
+
+  // reading (new)
+  "settings.paragraphSpacing": "Paragraph spacing · {n}",
+  "settings.hyphenation": "Hyphenation",
+  "settings.pageTurnAnimation": "Page-turn animation",
+  "settings.keepScreenAwake": "Keep screen awake",
+  "settings.keepScreenAwake.hint": "Best-effort — may not work on every device.",
+
+  // behavior
+  "settings.startupView": "On startup",
+  "settings.startup.library": "Library",
+  "settings.startup.resume": "Resume last book",
+  "settings.confirmDelete": "Confirm before deleting",
+  "settings.reduceMotion": "Reduce motion",
+  "settings.reduceMotion.auto": "Auto",
+
+  // downloads
+  "settings.maxConcurrentDownloads": "Simultaneous downloads · {n}",
+  "settings.wifiOnly": "Wi-Fi-only downloads",
+  "settings.wifiOnly.hint":
+    "Best-effort — only enforced where the system reports the connection type.",
+
+  // data
+  "settings.exportSettings": "Export settings",
+  "settings.importSettings": "Import settings",
+  "settings.resetSettings": "Reset to defaults",
+  "settings.reset.confirmTitle": "Reset all settings?",
+  "settings.reset.confirmBody":
+    "Every setting returns to its default. Your books and reading progress are not affected.",
+  "settings.reset.confirmCta": "Reset",
+  "settings.exportError": "Couldn't save settings",
+  "settings.exportDone": "Settings exported",
+  "settings.importDone": "Settings imported",
+  "settings.importError": "Couldn't read that settings file",
+
+  // about
+  "settings.about.tagline": "A calm, offline-first reader.",
+  "settings.about.version": "Version {n}",
+  "settings.about.sourceCode": "Source code",
+  "settings.about.license": "License",
 
   // app-root
   "app.loadingBook": "Loading book…",

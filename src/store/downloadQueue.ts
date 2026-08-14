@@ -125,8 +125,9 @@ type Listener = (state: QueueState) => void;
 /** Number of chapter downloads that may run concurrently. Two strikes
  *  a balance: faster than serial, and on the typical "scrape a hundred
  *  chapters" path the bottleneck is each chapter's per-page fetch +
- *  image download, not the local I/O. */
-const CONCURRENCY = 2;
+ *  image download, not the local I/O. Runtime-adjustable via
+ *  setDownloadConcurrency (clamped 1-5); defaults to 2. */
+let concurrency = 2;
 
 /** Cap on how many "terminal" (done / error / cancelled) jobs we keep
  *  around for the queue UI. New terminals push older terminals off. */
@@ -137,6 +138,25 @@ const listeners = new Set<Listener>();
 const cancelled = new Set<string>();
 let runningCount = 0;
 let nextId = 1;
+
+/** When true, hold downloads while the link looks metered (cellular /
+ *  Data Saver). Toggled at runtime via setWifiOnlyDownloads. */
+let wifiOnly = false;
+
+/** Should the pump hold rather than start new jobs right now? Off
+ *  entirely unless the user opted into wifi-only. When on, we sniff
+ *  navigator.connection defensively: hold on Data Saver or a cellular
+ *  link; otherwise proceed. If the API is absent we fail open (don't
+ *  hold) — better to download than to strand the queue on a browser
+ *  that doesn't expose connection info. */
+function meteredHold(): boolean {
+  if (!wifiOnly) return false;
+  const conn = (navigator as any).connection;
+  if (!conn) return false; // fail open — no connection info to gate on
+  if (conn.saveData === true) return true;
+  if (conn.type === "cellular") return true;
+  return false;
+}
 
 /** Debounce window for disk writes. Each emit() queues a save; if
  *  another emit lands within this window, the previous save is
@@ -442,10 +462,34 @@ export function activeChapterSet(
 
 // ── worker pump ────────────────────────────────────────────────────────────
 
+/** Set how many chapter downloads may run at once. Clamped to 1-5 and
+ *  floored to an int. Pumps immediately so a bump takes effect without
+ *  waiting for the next enqueue. No-op if unchanged. */
+export function setDownloadConcurrency(n: number): void {
+  // Guard against a non-finite value (e.g. NaN from a corrupt imported
+  // setting): Math.floor(NaN) is NaN, which would make the pump's
+  // `runningCount < concurrency` always false and stall every download.
+  if (!Number.isFinite(n)) return;
+  const next = Math.max(1, Math.min(5, Math.floor(n)));
+  if (next === concurrency) return;
+  concurrency = next;
+  pump();
+}
+
+/** Toggle the wifi-only download gate. Turning it off pumps so any
+ *  jobs that were held on a metered link resume right away. */
+export function setWifiOnlyDownloads(on: boolean): void {
+  wifiOnly = on;
+  if (!on) pump();
+}
+
 function pump() {
-  while (runningCount < CONCURRENCY) {
+  while (runningCount < concurrency) {
     const job = state.jobs.find((j) => j.status === "queued");
     if (!job) return;
+    // Hold on a metered link when wifi-only is on. Return (not
+    // continue) so the while loop doesn't spin on the same queued job.
+    if (meteredHold()) return;
     runningCount++;
     setStatus(job, "running", { progress: 0.02 });
     runJob(job)
@@ -703,4 +747,16 @@ export function enqueueRange(
     }
   }
   return ids;
+}
+
+// Auto-resume when the link changes back to Wi-Fi (or any non-metered
+// state). Defensive: navigator.connection isn't universal, so guard
+// with optional chaining + try/catch so a missing API can't throw at
+// module init.
+try {
+  (navigator as any).connection?.addEventListener?.("change", () => pump());
+} catch {
+  // No connection API — nothing to listen on. Wifi-only jobs simply
+  // won't auto-resume; a manual retry or setWifiOnlyDownloads(false)
+  // still pumps.
 }
