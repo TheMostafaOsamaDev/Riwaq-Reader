@@ -26,6 +26,9 @@ export const DEFAULT_TWEAKS: Tweaks = {
   reduceMotion: "auto",
   maxConcurrentDownloads: 2,
   wifiOnlyDownloads: false,
+  fixedFlow: "scroll",
+  fixedFit: "width",
+  fixedPageTint: "none",
 };
 
 function load(): Tweaks {
