@@ -16,6 +16,16 @@ export const DEFAULT_TWEAKS: Tweaks = {
   mobileTapNav: true,
   mobileTapZoneWidth: 33,
   mobileTapStride: 90,
+  uiFont: "readex",
+  paragraphSpacing: 1.1,
+  hyphenation: false,
+  pageTurnAnimation: true,
+  keepScreenAwake: false,
+  startupView: "library",
+  confirmDelete: true,
+  reduceMotion: "auto",
+  maxConcurrentDownloads: 2,
+  wifiOnlyDownloads: false,
 };
 
 function load(): Tweaks {
@@ -67,5 +77,28 @@ export function useTweaks() {
     [],
   );
 
-  return [t, setTweak] as const;
+  const applyTweaks = useCallback((partial: Partial<Tweaks>) => {
+    setT((prev) => {
+      const next: Tweaks = { ...prev };
+      for (const k of Object.keys(partial) as (keyof Tweaks)[]) {
+        const v = partial[k];
+        // Only accept a known key whose value matches the default's type (and,
+        // for numbers, is finite). Guards Import Settings against corrupt or
+        // foreign JSON — e.g. a string where a number is expected, or NaN,
+        // which would otherwise poison a downstream effect (chrome font,
+        // download concurrency).
+        if (
+          k in DEFAULT_TWEAKS &&
+          v !== undefined &&
+          typeof v === typeof DEFAULT_TWEAKS[k] &&
+          !(typeof v === "number" && !Number.isFinite(v))
+        ) {
+          (next as unknown as Record<string, unknown>)[k] = v;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  return [t, setTweak, applyTweaks] as const;
 }

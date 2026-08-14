@@ -14,6 +14,12 @@ export interface IconProps {
 export const ICONS = {
   menu: "M3 6h18M3 12h18M3 18h18",
   list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  // Text-alignment icons. Physical (left = lines flush left), so they read
+  // correctly in both LTR and RTL — do NOT add `rtl-flip-x` to these.
+  alignLeft: "M21 6H3M15 12H3M17 18H3",
+  alignCenter: "M21 6H3M17 12H7M19 18H5",
+  alignRight: "M21 6H3M21 12H9M21 18H7",
+  alignJustify: "M3 6h18M3 12h18M3 18h18",
   grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
   book: "M12 6.5C10.5 5 7.5 4.5 4 5v13c3.5-.5 6.5 0 8 1.5 1.5-1.5 4.5-2 8-1.5V5c-3.5-.5-6.5 0-8 1.5zM12 6.5V20",
   layers: "M12 2 2 7l10 5 10-5-10-5zM2 12l10 5 10-5M2 17l10 5 10-5",

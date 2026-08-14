@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { paginatedFraction } from "./readerProgress";
+import { useReducedMotion } from "../styles/motion";
 
 /**
  * Paginated layout for the reader. Lays the chapter content into CSS
@@ -44,6 +45,9 @@ interface Props {
   /** RTL books flow columns right-to-left. Derived from the book's
       language tag in the parent. */
   rtl?: boolean;
+  /** When false (or reduced-motion is on), page flips jump instantly
+      instead of sliding. */
+  pageTurnAnimation?: boolean;
   /** Paragraph index to land on when this view first mounts (or after the
       `children` content changes — typically chapter switch). */
   initialParagraph: number;
@@ -63,6 +67,7 @@ export function PaginatedView({
   columnsPerPage,
   columnGap = 56,
   rtl = false,
+  pageTurnAnimation = true,
   initialParagraph,
   onParagraphChange,
   onApi,
@@ -71,6 +76,11 @@ export function PaginatedView({
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+
+  // Page-slide is enabled only when the tweak is on AND the user/OS isn't
+  // asking to reduce motion.
+  const reduced = useReducedMotion();
+  const animate = pageTurnAnimation && !reduced;
 
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [page, setPage] = useState(0);
@@ -284,8 +294,8 @@ export function PaginatedView({
           // the inner element rightward to reveal its leftmost (later)
           // columns; LTR is the mirror.
           transform: `translateX(${(rtl ? 1 : -1) * page * pageStride}px)`,
-          transition: "transform 220ms ease",
-          willChange: "transform",
+          transition: animate ? "transform 220ms ease" : "none",
+          willChange: animate ? "transform" : "auto",
         }}
       >
         {children}

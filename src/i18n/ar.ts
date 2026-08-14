@@ -32,6 +32,9 @@ export const ar: Messages = {
   "settings.contentWidth": "عرض المحتوى · {n}٪",
   "settings.alignment": "المحاذاة",
   "settings.align.auto": "تلقائي",
+  "settings.align.left": "يسار",
+  "settings.align.justify": "ضبط",
+  "settings.align.right": "يمين",
   "settings.readingMode": "وضع القراءة",
   "settings.mode.paginated2": "صفحتان",
   "settings.mode.paginated1": "صفحة واحدة",
@@ -41,8 +44,53 @@ export const ar: Messages = {
   "settings.off": "إيقاف",
   "settings.tapZoneWidth": "عرض منطقة النقر · {n}٪",
   "settings.tapStride": "مسافة تمرير النقرة · {n}٪",
-  "settings.moreOptionsHint":
-    "خيارات قراءة إضافية (الخط، الحجم، ارتفاع السطر) متاحة داخل لوحة إعدادات القارئ.",
+
+  "settings.openFull": "كل الإعدادات",
+  "settings.openFull.hint": "اللغة والتنزيلات والبيانات والمزيد",
+
+  "settings.section.appearance": "المظهر",
+  "settings.section.reading": "القراءة",
+  "settings.section.behavior": "السلوك",
+  "settings.section.downloads": "التنزيلات",
+  "settings.section.data": "البيانات",
+  "settings.section.about": "حول",
+
+  "settings.uiFont": "خط الواجهة",
+
+  "settings.paragraphSpacing": "تباعد الفقرات · {n}",
+  "settings.hyphenation": "فصل الكلمات",
+  "settings.pageTurnAnimation": "حركة تقليب الصفحات",
+  "settings.keepScreenAwake": "إبقاء الشاشة مضاءة",
+  "settings.keepScreenAwake.hint": "قدر الإمكان — قد لا يعمل على كل جهاز.",
+
+  "settings.startupView": "عند بدء التشغيل",
+  "settings.startup.library": "المكتبة",
+  "settings.startup.resume": "متابعة آخر كتاب",
+  "settings.confirmDelete": "التأكيد قبل الحذف",
+  "settings.reduceMotion": "تقليل الحركة",
+  "settings.reduceMotion.auto": "تلقائي",
+
+  "settings.maxConcurrentDownloads": "التنزيلات المتزامنة · {n}",
+  "settings.wifiOnly": "التنزيل عبر الواي فاي فقط",
+  "settings.wifiOnly.hint":
+    "قدر الإمكان — يُطبَّق فقط عندما يُبلِّغ النظام عن نوع الاتصال.",
+
+  "settings.exportSettings": "تصدير الإعدادات",
+  "settings.importSettings": "استيراد الإعدادات",
+  "settings.resetSettings": "إعادة التعيين إلى الافتراضي",
+  "settings.reset.confirmTitle": "إعادة تعيين كل الإعدادات؟",
+  "settings.reset.confirmBody":
+    "تعود كل الإعدادات إلى وضعها الافتراضي. لن تتأثر كتبك ولا تقدُّم قراءتك.",
+  "settings.reset.confirmCta": "إعادة تعيين",
+  "settings.exportError": "تعذّر حفظ الإعدادات",
+  "settings.exportDone": "تم تصدير الإعدادات",
+  "settings.importDone": "تم استيراد الإعدادات",
+  "settings.importError": "تعذّر قراءة ملف الإعدادات",
+
+  "settings.about.tagline": "قارئ هادئ يعمل دون اتصال.",
+  "settings.about.version": "الإصدار {n}",
+  "settings.about.sourceCode": "الشيفرة المصدرية",
+  "settings.about.license": "الترخيص",
 
   "app.loadingBook": "جارٍ تحميل الكتاب…",
   "panel.close": "إغلاق اللوحة",

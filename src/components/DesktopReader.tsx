@@ -71,6 +71,8 @@ interface Props {
   onJumpToHighlight: (h: Highlight) => void;
   activePanel: ActivePanel;
   setActivePanel: (next: ActivePanel) => void;
+  /** Navigate to the top-level Settings page (from the quick-panel link). */
+  onOpenFullSettings?: () => void;
   onBack: () => void;
 }
 
@@ -108,6 +110,7 @@ export function DesktopReader({
   onJumpToHighlight,
   activePanel,
   setActivePanel,
+  onOpenFullSettings,
   onBack,
 }: Props) {
   const { tr, dir } = useI18n();
@@ -849,6 +852,7 @@ export function DesktopReader({
                 onParagraphChange={handleParagraphChange}
                 onApi={onPaginatedApi}
                 onChapterProgress={onPaginatedProgress}
+                pageTurnAnimation={t.pageTurnAnimation}
               >
                 <div key={chapter.id} className="leaflet-chapter-enter">
                   <BookBody
@@ -863,6 +867,9 @@ export function DesktopReader({
                     letterSpacing={t.letterSpacing}
                     textAlign={t.textAlign}
                     rtl={rtl}
+                    paragraphSpacing={t.paragraphSpacing}
+                    hyphenation={t.hyphenation}
+                    language={book.language}
                     highlights={state.highlights}
                   />
                 </div>
@@ -896,6 +903,9 @@ export function DesktopReader({
                   letterSpacing={t.letterSpacing}
                   textAlign={t.textAlign}
                   rtl={rtl}
+                  paragraphSpacing={t.paragraphSpacing}
+                  hyphenation={t.hyphenation}
+                  language={book.language}
                   widthPercent={t.contentWidth}
                   highlights={state.highlights}
                 />
@@ -1047,6 +1057,17 @@ export function DesktopReader({
             t={t}
             setTweak={setTweak}
             onClose={() => setActivePanel(null)}
+            onOpenFullSettings={
+              onOpenFullSettings
+                ? () => {
+                    // Close the quick-panel first — activePanel is App-level
+                    // state that survives the swap to the Settings page, so
+                    // without this, Back would return with the panel still open.
+                    setActivePanel(null);
+                    onOpenFullSettings();
+                  }
+                : undefined
+            }
           />
         </AnimatedPanel>
         <AnimatedPanel open={activePanel === "progress"} side="right">

@@ -3,6 +3,7 @@ import { isImageItem, type ChapterItem, type EpubChapter } from "../epub/types";
 import { chapterImageSrcFor, type Highlight } from "../store/library";
 import { open as openLightbox } from "../store/lightbox";
 import {
+  FONT_READING_SANS,
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   hlBg,
@@ -22,6 +23,9 @@ interface Props {
   fontSize: number;
   lineHeight: number;
   letterSpacing: number;
+  paragraphSpacing?: number;
+  hyphenation?: boolean;
+  language?: string;
   /** "auto" lets BookBody pick a sensible default from the script
       direction — justify for LTR, right for RTL. The user's explicit
       choices ("left" / "justify" / "right") always win. */
@@ -88,6 +92,9 @@ export function BookBody({
   fontSize,
   lineHeight,
   letterSpacing,
+  paragraphSpacing = 1.1,
+  hyphenation = false,
+  language,
   textAlign,
   rtl,
   widthPercent = 100,
@@ -115,7 +122,8 @@ export function BookBody({
   // Latin-first stacks; Cairo/Lateef/Tajawal are Arabic-primary), so the
   // old `FONT_ARABIC` force-override is no longer needed and was silently
   // ignoring the user's selection in RTL mode.
-  const bodyFont = FONT_STACKS[fontFamily];
+  const bodyFont =
+    fontFamily === "sans" ? FONT_READING_SANS : FONT_STACKS[fontFamily];
 
   const imageUrls = useChapterImageUrls(bookId, chapter.paragraphs);
 
@@ -147,6 +155,7 @@ export function BookBody({
   return (
     <div
       dir={rtl ? "rtl" : "ltr"}
+      {...(language ? { lang: language } : null)}
       data-book-body
       style={{
         ...common,
@@ -171,7 +180,9 @@ export function BookBody({
       <div style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}>
         <div
           style={{
-            fontFamily: FONT_STACKS.sans,
+            // Reading-surface meta label: stays on the fixed reading sans, not
+            // the selectable chrome font (var(--ui-font)).
+            fontFamily: FONT_READING_SANS,
             fontSize: 10,
             fontWeight: 600,
             letterSpacing: "0.14em",
@@ -234,7 +245,12 @@ export function BookBody({
           <p
             key={originalIndex}
             data-p-index={originalIndex}
-            style={{ margin: "0 0 1.1em" }}
+            style={{
+              margin: `0 0 ${paragraphSpacing}em`,
+              ...(hyphenation
+                ? { hyphens: "auto", WebkitHyphens: "auto" as const }
+                : null),
+            }}
           >
             {renderParagraph(
               p.text,

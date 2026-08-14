@@ -1,4 +1,4 @@
-import type { ThemePref } from "../styles/tokens";
+import type { ThemePref, UiFontKey } from "../styles/tokens";
 import type { UiLangPref } from "../i18n";
 
 export type ActivePanel =
@@ -57,4 +57,27 @@ export interface Tweaks {
       reader's visible height (30–100). Only consulted when
       `mobileTapNav` is on. */
   mobileTapStride: number;
+  /** Selectable UI font for the app chrome. Resolved to a concrete font
+      stack via UI_FONT_STACKS and applied through the `--ui-font` CSS var. */
+  uiFont: UiFontKey;
+  /** Extra vertical spacing between paragraphs, in em. Default 1.1
+      preserves the previously hardcoded spacing. */
+  paragraphSpacing: number;
+  /** Enable automatic hyphenation of book text at line breaks. */
+  hyphenation: boolean;
+  /** Animate page turns in paginated modes. When off, pages flip instantly. */
+  pageTurnAnimation: boolean;
+  /** Request a wake lock while reading to keep the screen from sleeping. */
+  keepScreenAwake: boolean;
+  /** What the app shows on launch: the library, or resume the last book. */
+  startupView: "library" | "resume";
+  /** Ask for confirmation before deleting a book. */
+  confirmDelete: boolean;
+  /** Reduced-motion preference. "auto" follows the OS setting; "on"/"off"
+      force it regardless of the OS media query. */
+  reduceMotion: "auto" | "on" | "off";
+  /** Maximum number of downloads to run at once (1–5). */
+  maxConcurrentDownloads: number;
+  /** Only download over Wi-Fi / non-metered connections. */
+  wifiOnlyDownloads: boolean;
 }

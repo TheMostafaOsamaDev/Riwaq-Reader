@@ -126,10 +126,19 @@ export type FontFamilyKey =
 // /public/fonts/reading/. Each lists an Amiri/Readex/system sans fallback
 // so Latin glyphs interleaved in the text render in a compatible family
 // instead of the browser default.
+/** The literal Readex-Pro sans stack. Used by BOOK CONTENT — the reader's
+ *  "Sans" reading option and the generated cover's author line — so it stays
+ *  fixed regardless of the chosen UI/chrome font. `FONT_STACKS.sans`, by
+ *  contrast, resolves to the user-selectable chrome font via `--ui-font`. */
+export const FONT_READING_SANS =
+  '"Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+
 export const FONT_STACKS: Record<FontFamilyKey, string> = {
   serif:
     '"Literata", "Iowan Old Style", "Source Serif Pro", "Readex Pro", Georgia, serif',
-  sans: '"Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
+  // Chrome/UI sans — resolves to the selectable UI font via the `--ui-font`
+  // variable, defaulting to Readex Pro when unset (see App + UI_FONT_STACKS).
+  sans: 'var(--ui-font, "Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif)',
   dyslexic:
     '"Atkinson Hyperlegible", "Lexend", "Readex Pro", system-ui, sans-serif',
   cairo: '"Cairo", "Readex Pro", system-ui, sans-serif',
@@ -146,8 +155,45 @@ export const FONT_FAMILY_LABELS: Record<FontFamilyKey, string> = {
   tajawal: "Tajawal",
 };
 
+/** Selectable UI (app-chrome) font — distinct from the per-book reading
+ *  `FontFamilyKey`. Applied through the `--ui-font` CSS variable that
+ *  `FONT_STACKS.sans` falls back through. All families are Latin+Arabic. */
+export type UiFontKey =
+  | "readex"
+  | "alexandria"
+  | "almarai"
+  | "cairo"
+  | "ibmplex"
+  | "tajawal"
+  | "vazirmatn"
+  | "thmanyah";
+
+export const UI_FONT_STACKS: Record<UiFontKey, string> = {
+  readex: FONT_READING_SANS,
+  alexandria: '"Alexandria", "Readex Pro", system-ui, sans-serif',
+  almarai: '"Almarai", "Readex Pro", system-ui, sans-serif',
+  cairo: '"Cairo", "Readex Pro", system-ui, sans-serif',
+  ibmplex: '"IBM Plex Sans Arabic", "Readex Pro", system-ui, sans-serif',
+  tajawal: '"Tajawal", "Readex Pro", system-ui, sans-serif',
+  vazirmatn: '"Vazirmatn", "Readex Pro", system-ui, sans-serif',
+  // A serif *display* face — an unusual but deliberate chrome choice; falls
+  // back to Fraunces for any Latin glyphs it lacks, then Readex Pro.
+  thmanyah: '"Thmanyah Serif Display", "Fraunces", "Readex Pro", Georgia, serif',
+};
+
+export const UI_FONT_LABELS: Record<UiFontKey, string> = {
+  readex: "Readex Pro",
+  alexandria: "Alexandria",
+  almarai: "Almarai",
+  cairo: "Cairo",
+  ibmplex: "IBM Plex Sans Arabic",
+  tajawal: "Tajawal",
+  vazirmatn: "Vazirmatn",
+  thmanyah: "Thmanyah",
+};
+
 export const FONT_SERIF_DISPLAY =
-  '"Fraunces", "Literata", "Readex Pro", Georgia, serif';
+  '"Fraunces", "Thmanyah Serif Display", "Literata", "Readex Pro", Georgia, serif';
 
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,
 // presentation forms A & B). Used to decide whether to render a book title
@@ -160,12 +206,13 @@ export function isArabicTitle(title: string): boolean {
   return ARABIC_RANGE.test(title);
 }
 
-/** Pick the right title font stack for a book whose title may be Arabic.
- *  - Arabic / mixed: FONT_STACKS.sans (Readex Pro), so digits and Latin
- *    punctuation interleaved with Arabic don't fall through to Fraunces.
- *  - Pure Latin: FONT_SERIF_DISPLAY (Fraunces), the editorial display feel. */
-export function titleFontFor(title: string): string {
-  return isArabicTitle(title) ? FONT_STACKS.sans : FONT_SERIF_DISPLAY;
+/** Book-title display stack. Both Latin and Arabic titles now use the
+ *  editorial display serif: FONT_SERIF_DISPLAY lists Fraunces then Thmanyah
+ *  Serif Display, so per-glyph fallback renders Latin in Fraunces and Arabic
+ *  in Thmanyah — Arabic titles no longer fall back to the sans. `isArabicTitle`
+ *  stays exported for callers that still tune fontStyle (italic vs upright). */
+export function titleFontFor(_title: string): string {
+  return FONT_SERIF_DISPLAY;
 }
 
 // BCP-47 language subtags whose script is right-to-left. We only check the
