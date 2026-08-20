@@ -206,6 +206,9 @@ export function Library({
   }, []);
   const reloadShelves = useCallback(() => listShelves().then(setShelves), []);
   const [newShelfOpen, setNewShelfOpen] = useState(false);
+  // Rename dialog is the same NewShelfDialog, prefilled + relabeled — see
+  // Task 7. Holds the shelf being renamed (null when closed).
+  const [renaming, setRenaming] = useState<Shelf | null>(null);
 
   const onCreateShelf = useCallback(
     async (name: string) => {
@@ -634,6 +637,7 @@ export function Library({
     onNewShelf: () => setNewShelfOpen(true),
     onCreateShelf,
     onRenameShelf,
+    onRequestRenameShelf: (shelf: Shelf) => setRenaming(shelf),
     onDeleteShelf,
     onAddBooksToShelf,
     onOpenShelf: (id: string) => goShelf(id),
@@ -778,6 +782,21 @@ export function Library({
           onClose={() => setNewShelfOpen(false)}
         />
       )}
+      {/* Rename dialog — same NewShelfDialog, prefilled with the current
+          name and relabeled. Rendered separately from the "new shelf"
+          dialog above since the two are mutually exclusive but driven by
+          different state (a shelf reference vs a boolean). */}
+      {renaming && (
+        <NewShelfDialog
+          theme={theme}
+          existing={shelves.map((s) => s.name)}
+          initialName={renaming.name}
+          title={tr("shelves.renameTitle")}
+          confirmLabel={tr("shelves.renameConfirm")}
+          onCreate={(name) => onRenameShelf(renaming.id, name)}
+          onClose={() => setRenaming(null)}
+        />
+      )}
     </>
   );
 }
@@ -829,6 +848,9 @@ interface LayoutProps {
   onNewShelf: () => void;
   onCreateShelf: (name: string) => Promise<void>;
   onRenameShelf: (id: string, name: string) => Promise<void>;
+  /** Open the rename dialog (rendered by the parent) for a given shelf.
+   *  Consumed by the overview/single-shelf headers (later tasks). */
+  onRequestRenameShelf: (shelf: Shelf) => void;
   onDeleteShelf: (id: string) => Promise<void>;
   onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
   /** Navigate to a specific shelf's detail view (wired in Task 9). */
