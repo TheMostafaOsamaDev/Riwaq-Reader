@@ -6,11 +6,19 @@
 // so this component is agnostic to disk-vs-bytes loading (App passes a disk
 // source; the dev harness passes an in-memory one).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
+  titleFontFor,
   type Theme,
   type ThemeKey,
 } from "../../styles/tokens";
@@ -21,6 +29,9 @@ import type { FixedPageSource } from "./FixedPageSource";
 import { FixedPageViewer, type FixedPageViewerHandle } from "./FixedPageViewer";
 import { PanelShell } from "../../panels/PanelShell";
 import { SideSheet } from "../../components/SideSheet";
+import { ReaderTopBar } from "../chrome/ReaderTopBar";
+import { ReaderScrubBar } from "../chrome/ReaderScrubBar";
+import { ReaderIconButton } from "../chrome/ReaderIconButton";
 import { Field, SegRow, ThemeField } from "../../components/SettingsSection";
 import { useI18n } from "../../i18n/useI18n";
 
@@ -51,40 +62,21 @@ function toArabicDigits(s: string): string {
   return s.replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 }
 
-const ICON = {
-  back: "M15 18l-6-6 6-6",
-  list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
-  bookmark: "M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z",
-  search: "M21 21l-4.3-4.3",
-  sliders: "M4 8h10M18 8h2M4 16h2M10 16h10",
-  minus: "M5 12h14",
-  plus: "M12 5v14M5 12h14",
-  fit: "M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4",
-} as const;
-
-function Svg({ d, size = 21 }: { d: string; size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {/* search glyph needs a circle in addition to the handle path */}
-      {d === ICON.search && <circle cx="11" cy="11" r="7" />}
-      {(d === ICON.sliders && (
-        <>
-          <path d={d} />
-          <circle cx="16" cy="8" r="2.4" />
-          <circle cx="8" cy="16" r="2.4" />
-        </>
-      )) || <path d={d} />}
-    </svg>
-  );
+/** Bordered +/- stepper button used by the settings Zoom row. */
+function zoomStepStyle(theme: Theme): CSSProperties {
+  return {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    border: `1px solid ${theme.rule}`,
+    background: theme.hover,
+    color: theme.ink,
+    cursor: "pointer",
+    fontSize: 18,
+    lineHeight: 1,
+    display: "grid",
+    placeItems: "center",
+  };
 }
 
 export function FixedPageReader(props: FixedPageReaderProps) {
@@ -260,6 +252,36 @@ export function FixedPageReader(props: FixedPageReaderProps) {
                 ]}
               />
             </Field>
+            {/* Zoom lives here (fixed-page only) — the reflow reader has no zoom. */}
+            <Field label={locale === "ar" ? "التكبير" : "Zoom"} theme={theme}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}
+                  aria-label={locale === "ar" ? "تصغير" : "Zoom out"}
+                  style={zoomStepStyle(theme)}
+                >
+                  −
+                </button>
+                <span
+                  style={{
+                    minWidth: 52,
+                    textAlign: "center",
+                    fontVariantNumeric: "tabular-nums",
+                    color: theme.ink,
+                    fontSize: 13,
+                  }}
+                >
+                  {fmt(Math.round(zoom * 100))}%
+                </span>
+                <button
+                  onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.1).toFixed(2)))}
+                  aria-label={locale === "ar" ? "تكبير" : "Zoom in"}
+                  style={zoomStepStyle(theme)}
+                >
+                  +
+                </button>
+              </div>
+            </Field>
             {onOpenFullSettings && (
               <div style={{ padding: 12 }}>
                 <button
@@ -298,47 +320,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             ? tr("settings.title")
             : undefined;
 
-  const iconBtn = (
-    key: string,
-    d: string,
-    label: string,
-    onClick: () => void,
-    active = false,
-  ) => (
-    <button
-      key={key}
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={active}
-      style={{
-        width: isMobile ? 44 : 40,
-        height: isMobile ? 44 : 40,
-        borderRadius: 10,
-        border: "none",
-        background: active ? theme.hover : "transparent",
-        color: active ? ACCENT : theme.chromeInk,
-        cursor: "pointer",
-        display: "grid",
-        placeItems: "center",
-        flexShrink: 0,
-      }}
-    >
-      <Svg d={d} />
-    </button>
-  );
-
-  // Chrome bars are in-flow flex items (not overlays), so the viewer sits in the
-  // clear space between them and page content never hides behind the bars —
-  // matching the reflow DesktopReader shell.
-  const barBase: React.CSSProperties = {
-    flexShrink: 0,
-    background: theme.chrome,
-    display: "flex",
-    alignItems: "center",
-  };
-
   const title = book.title || tr("common.untitled");
-  const formatLabel = book.kind === "pdf" ? "PDF" : "DOCX";
+  const total = sourcePageCount(source);
+  const pageCounter =
+    locale === "ar"
+      ? `صفحة ${fmt(progress.page + 1)} من ${fmt(total)}`
+      : `Page ${progress.page + 1} of ${total}`;
 
   return (
     <div
@@ -352,43 +339,53 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         flexDirection: "column",
       }}
     >
-      {/* top chrome */}
-      <div
-        style={{
-          ...barBase,
-          height: isMobile ? 56 : 54,
-          padding: "0 6px",
-          gap: 2,
-          borderBottom: `0.5px solid ${theme.rule}`,
-        }}
-      >
-        {iconBtn(
-          "back",
-          ICON.back,
-          tr("common.back"),
-          onBack,
-        )}
-        <div style={{ flex: 1, minWidth: 0, padding: "0 6px" }}>
-          <div
-            style={{
-              fontFamily: FONT_STACKS.sans,
-              fontWeight: 600,
-              fontSize: 14.5,
-              color: theme.ink,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {title}
-          </div>
-          <div style={{ fontSize: 11.5, color: theme.muted }}>{formatLabel}</div>
-        </div>
-        {iconBtn("toc", ICON.list, tr("reader.toc"), () => openPanel("toc"), panel === "toc")}
-        {iconBtn("bm", ICON.bookmark, tr("reader.highlights"), () => openPanel("bookmarks"), panel === "bookmarks")}
-        {!isMobile && iconBtn("search", ICON.search, tr("toc.searchChapters"), () => openPanel("toc"))}
-        {iconBtn("set", ICON.sliders, tr("settings.title"), () => openPanel("settings"), panel === "settings")}
-      </div>
+      {/* top chrome — shared with the reflow reader */}
+      <ReaderTopBar
+        theme={theme}
+        onBack={onBack}
+        backLabel={tr("common.back")}
+        title={title}
+        subtitle={pageCounter}
+        titleStyle={{ fontFamily: titleFontFor(title) }}
+        progressFraction={progress.fraction}
+        fillRtl={contentDir === "rtl"}
+        navButtons={
+          <>
+            <ReaderIconButton
+              theme={theme}
+              icon="list"
+              label={tr("reader.toc")}
+              onClick={() => openPanel("toc")}
+              active={panel === "toc"}
+            />
+            <ReaderIconButton
+              theme={theme}
+              icon="bookmark"
+              label={tr("reader.highlights")}
+              onClick={() => openPanel("bookmarks")}
+              active={panel === "bookmarks"}
+            />
+          </>
+        }
+        trailing={
+          <>
+            <ReaderIconButton
+              theme={theme}
+              icon="clock"
+              label={tr("reader.readingProgress")}
+              onClick={() => openPanel("progress")}
+              active={panel === "progress"}
+            />
+            <ReaderIconButton
+              theme={theme}
+              icon="type"
+              label={tr("settings.title")}
+              onClick={() => openPanel("settings")}
+              active={panel === "settings"}
+            />
+          </>
+        }
+      />
 
       {/* center viewer — flex:1 fills the gap between the bars (positioned
           context for the viewer's absolute-inset scroll layer). */}
@@ -446,64 +443,31 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         )}
       </div>
 
-      {/* bottom chrome */}
-      <div
-        style={{
-          ...barBase,
-          minHeight: 60,
-          padding: "8px 12px",
-          gap: 12,
-          borderTop: `0.5px solid ${theme.rule}`,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {iconBtn("zo", ICON.minus, "Zoom out", () => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2))))}
-          <span
-            style={{ fontSize: 11, color: theme.muted, minWidth: 42, textAlign: "center", fontVariantNumeric: "tabular-nums" }}
-          >
-            {fmt(Math.round(zoom * 100))}%
-          </span>
-          {iconBtn("zi", ICON.plus, "Zoom in", () => setZoom((z) => Math.min(2.5, +(z + 0.1).toFixed(2))))}
-        </div>
-        <div style={{ width: 1, height: 24, background: theme.rule }} />
-        <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            onClick={() => openPanel("progress")}
-            aria-label={tr("reader.readingProgress")}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              color: theme.ink,
-              fontWeight: 600,
-              fontSize: 13,
-              fontVariantNumeric: "tabular-nums",
-              fontFamily: FONT_STACKS.sans,
-              minWidth: 92,
-              textAlign: "center",
-            }}
-          >
-            {progress.label || formatCounter(resume.page + 1, sourcePageCount(source))}
-          </button>
-          <input
-            type="range"
-            min={1}
-            max={Math.max(1, sourcePageCount(source))}
-            value={progress.page + 1}
-            onChange={(e) => jumpToPageNoClose(+e.target.value - 1)}
-            aria-label={tr("reader.readingProgress")}
-            style={{ flex: 1, accentColor: ACCENT }}
-          />
-        </div>
-        {iconBtn(
-          "fit",
-          ICON.fit,
-          "Fit",
-          () => setTweak("fixedFit", t.fixedFit === "width" ? "page" : "width"),
-          t.fixedFit === "page",
-        )}
-      </div>
+      {/* bottom scrubber — shared with the reflow reader (seeks pages) */}
+      <ReaderScrubBar
+        theme={theme}
+        rtl={uiDir === "rtl"}
+        fraction={progress.fraction}
+        pctLabel={`${Math.round(progress.fraction * 100)}%`}
+        label={title}
+        prevLabel={locale === "ar" ? "الصفحة السابقة" : "Previous page"}
+        nextLabel={locale === "ar" ? "الصفحة التالية" : "Next page"}
+        onPrev={() => viewerRef.current?.goToPage(Math.max(0, progress.page - 1))}
+        onNext={() =>
+          viewerRef.current?.goToPage(Math.min(total - 1, progress.page + 1))
+        }
+        prevDisabled={progress.page <= 0}
+        nextDisabled={progress.page >= total - 1}
+        onSeek={(f) =>
+          viewerRef.current?.goToPage(Math.round(f * Math.max(0, total - 1)))
+        }
+        ariaLabel={tr("reader.readingProgress")}
+        valueMin={1}
+        valueMax={Math.max(1, total)}
+        valueNow={progress.page + 1}
+        valueText={progress.label || pageCounter}
+        padding={isMobile ? "10px 14px 14px" : "14px 80px 22px"}
+      />
 
       {/* Mobile panels: bottom-anchored overlay + scrim. Desktop uses the
           SideSheet mounted inside the viewer above. */}
@@ -535,10 +499,6 @@ export function FixedPageReader(props: FixedPageReaderProps) {
       )}
     </div>
   );
-
-  function jumpToPageNoClose(page: number) {
-    viewerRef.current?.goToPage(page);
-  }
 }
 
 function sourcePageCount(source: FixedPageSource | null): number {
