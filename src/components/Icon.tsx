@@ -36,6 +36,13 @@ export const ICONS = {
   chevronR: "M9 18l6-6-6-6",
   chevronD: "M6 9l6 6 6-6",
   type: "M4 7V5h16v2M9 20h6M12 5v15",
+  // Solid-fillable triangle — pass fill="currentColor" for the hero's primary
+  // Read action; renders as an outline under the set's default fill="none".
+  play: "M8 5v14l11-7z",
+  // Box with an arrow leaving it — marks a link that opens an external site
+  // (the source-badge chip + the Library cards' source marker).
+  externalLink:
+    "M15 3h6v6M10 14L21 3M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6",
   download: "M12 3v12M7 10l5 5 5-5M4 21h16",
   moon: "M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z",
   sun: "M12 3v2M12 19v2M5.64 5.64l1.42 1.42M16.95 16.95l1.41 1.41M3 12h2M19 12h2M5.64 18.36l1.42-1.42M16.95 7.05l1.41-1.41M12 7a5 5 0 100 10 5 5 0 000-10z",

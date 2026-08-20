@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ACCENT, FONT_SERIF_DISPLAY, FONT_READING_SANS, isArabicTitle } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
@@ -21,6 +21,11 @@ interface Props {
   fluid?: boolean;
   /** Small corner pill (e.g. "PDF", "DOCX") marking the book's format. */
   badge?: string | null;
+  /** Optional marker pinned to the top-end corner — used by the Library grid
+   *  to flag source-backed books with the source's favicon. Top-end keeps it
+   *  clear of the top-start "NEW" badge and the bottom-start format pill. Kept
+   *  as a generic slot so BookCover stays decoupled from the sources system. */
+  cornerMarker?: ReactNode;
 }
 
 export const BOOK_COVER_DIMS = {
@@ -37,8 +42,23 @@ export function BookCover({
   src,
   fluid = false,
   badge,
+  cornerMarker,
 }: Props) {
   const { tr } = useI18n();
+  const cornerMarkerEl = cornerMarker ? (
+    <span
+      style={{
+        position: "absolute",
+        top: 6,
+        insetInlineEnd: 6,
+        display: "inline-flex",
+        pointerEvents: "none",
+        zIndex: 1,
+      }}
+    >
+      {cornerMarker}
+    </span>
+  ) : null;
   const badgeEl = badge ? (
     <span
       style={{
@@ -110,6 +130,7 @@ export function BookCover({
             pointerEvents: "none",
           }}
         />
+        {cornerMarkerEl}
         {badgeEl}
       </div>
     );
@@ -162,7 +183,6 @@ export function BookCover({
           style={{
             fontSize: titleSize,
             fontWeight: 500,
-            fontStyle: "italic",
             lineHeight: 1.1,
             letterSpacing: "-0.01em",
             textWrap: "balance",
@@ -215,6 +235,7 @@ export function BookCover({
         />
         <div style={{ width: 14, height: 1, background: p3, opacity: 0.5 }} />
       </div>
+      {cornerMarkerEl}
       {badgeEl}
     </div>
   );

@@ -275,7 +275,6 @@ export function DownloadRangeDialog({
           <div
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontSize: 22,
               marginBottom: 6,
               letterSpacing: "-0.01em",

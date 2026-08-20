@@ -66,7 +66,6 @@ export function ConfirmDialog({
             id="confirm-dialog-title"
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontSize: 20,
               color: theme.ink,
               marginBottom: 8,

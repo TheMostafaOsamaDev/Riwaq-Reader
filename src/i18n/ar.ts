@@ -25,7 +25,6 @@ export const ar: Messages = {
   "settings.theme.sepia": "سيبيا",
   "settings.theme.dark": "داكن",
   "settings.theme.oled": "OLED",
-  "settings.font": "الخط",
   "settings.fontSize": "حجم الخط · {n}ب",
   "settings.lineHeight": "ارتفاع السطر · {n}",
   "settings.letterSpacing": "تباعد الأحرف · {n}م",
@@ -58,7 +57,6 @@ export const ar: Messages = {
   "settings.search": "بحث في الإعدادات",
   "settings.searchNoResults": "لا إعدادات مطابقة",
 
-  "settings.uiFont": "خط الواجهة",
 
   "settings.paragraphSpacing": "تباعد الفقرات · {n}",
   "settings.hyphenation": "فصل الكلمات",
@@ -109,6 +107,8 @@ export const ar: Messages = {
   "sidebar.newShelf": "رف جديد",
   "sidebar.downloads": "التنزيلات",
   "sidebar.settings": "الإعدادات",
+  "nav.back": "رجوع",
+  "nav.forward": "للأمام",
   "sidebar.importBook": "استيراد كتاب",
   "sidebar.importing": "جارٍ الاستيراد…",
   "sidebar.moreImport": "خيارات استيراد أخرى",
@@ -366,12 +366,6 @@ export const ar: Messages = {
   "carousel.scrollLeft": "التمرير لليسار",
   "carousel.scrollRight": "التمرير لليمين",
 
-  "source.cenele.description":
-    "ترجمات عربية لروايات الويب الآسيوية من cenele.com (فضاء الروايات).",
-  "source.kolnovel.description":
-    "ترجمات عربية للروايات الآسيوية من free.kolnovel.com.",
-  "source.kolnovelPro.description":
-    "روايات عربية من kolnovel.com تُقدَّم كفصول PDF مع الرسوم التوضيحية الرسمية.",
   "source.section.trendingFallback": "الرائج",
   "source.section.hotUpdatesFallback": "تحديثات رائجة",
 
@@ -380,6 +374,7 @@ export const ar: Messages = {
   "novel.noCover": "لا يوجد غلاف",
   "novel.descMore": "المزيد",
   "novel.descLess": "أقل",
+  "novel.fromSource": "من {source}",
   "novel.read": "قراءة",
   "novel.addToLibrary": "إضافة إلى المكتبة",
   "novel.adding": "جارٍ الإضافة…",

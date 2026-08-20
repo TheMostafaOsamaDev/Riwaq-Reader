@@ -113,7 +113,7 @@ export function TOCPanel({
                   fontFamily: FONT_SERIF_DISPLAY,
                   fontSize: 14.5,
                   fontWeight: active ? 500 : 400,
-                  fontStyle: active ? "italic" : "normal",
+                  fontStyle: "normal",
                   color: read ? theme.muted : theme.ink,
                   flex: 1,
                   lineHeight: 1.3,

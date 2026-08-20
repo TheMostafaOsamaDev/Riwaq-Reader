@@ -204,7 +204,7 @@ export function BookBody({
             fontFamily: rtl ? bodyFont : FONT_SERIF_DISPLAY,
             fontSize: fontSize * 1.7,
             fontWeight: 500,
-            fontStyle: rtl ? "normal" : "italic",
+            fontStyle: "normal",
             margin: 0,
             color: theme.ink,
             letterSpacing: "-0.01em",

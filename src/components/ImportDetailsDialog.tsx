@@ -166,7 +166,6 @@ export function ImportDetailsDialog({
             <div
               style={{
                 fontFamily: FONT_SERIF_DISPLAY,
-                fontStyle: "italic",
                 fontSize: 18,
                 color: theme.ink,
               }}

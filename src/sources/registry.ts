@@ -16,6 +16,10 @@ import { createCeneleSource } from "./extensions/cenele";
 import { createKolNovelSource } from "./extensions/kolnovel";
 import { createKolNovelProSource } from "./extensions/kolnovel-pro";
 import type { Source, SourceHost, SourceMetadata } from "./types";
+// Bundled source icons (the sites' own favicons). KolNovel and its free
+// mirror share the same brand mark, so they point at the one asset.
+import ceneleIcon from "../assets/source-icons/cenele.png";
+import kolnovelIcon from "../assets/source-icons/kolnovel.png";
 
 type SourceFactory = (host: SourceHost) => Source;
 
@@ -30,10 +34,14 @@ const BUILTINS: RegistryEntry[] = [
   {
     meta: {
       id: "cenele",
-      name: "Cenele",
+      // Title and description are the site's own metadata (og:site_name /
+      // meta description), kept verbatim rather than translated.
+      name: "فضاء الروايات",
       baseUrl: "https://cenele.com",
       language: "ar",
-      descriptionKey: "source.cenele.description",
+      description:
+        "موقع فضاء الروايات riwyat يوفر روايات الصينية الكورية باللغة العربية. بديل موقع نادي روايات و شمس روايات و ملوك روايات",
+      iconUrl: ceneleIcon,
       version: "0.1.0",
     },
     factory: (host) => createCeneleSource(host),
@@ -41,10 +49,12 @@ const BUILTINS: RegistryEntry[] = [
   {
     meta: {
       id: "kolnovel",
-      name: "KolNovel",
+      // Site's own title; the site publishes no description meta, so we
+      // leave `description` unset (the card renders none).
+      name: "ملوك الروايات",
       baseUrl: "https://free.kolnovel.com",
       language: "ar",
-      descriptionKey: "source.kolnovel.description",
+      iconUrl: kolnovelIcon,
       version: "0.1.0",
     },
     factory: (host) => createKolNovelSource(host),
@@ -52,10 +62,12 @@ const BUILTINS: RegistryEntry[] = [
   {
     meta: {
       id: "kolnovel-pro",
-      name: "KolNovel Pro",
+      // Same site title as the free mirror; marked "· Pro" so the two cards
+      // aren't identical. No description meta on the site → none shown.
+      name: "ملوك الروايات · Pro",
       baseUrl: "https://kolnovel.com",
       language: "ar",
-      descriptionKey: "source.kolnovelPro.description",
+      iconUrl: kolnovelIcon,
       version: "0.1.0",
     },
     factory: (host) => createKolNovelProSource(host),
@@ -71,6 +83,15 @@ const instances = new Map<string, Source>();
  *  enumerating doesn't pay for the construction cost of every extension. */
 export function listSources(): SourceMetadata[] {
   return BUILTINS.map((b) => b.meta);
+}
+
+/** Catalog metadata for a single source by id, or null when unregistered.
+ *  Store-facing display metadata (e.g. `iconUrl`) lives on the registry
+ *  entry, so views should resolve it through here rather than off a
+ *  constructed Source instance — the instance carries the extension's own
+ *  `meta`, which doesn't include catalog-level fields. */
+export function getSourceMeta(id: string): SourceMetadata | null {
+  return BUILTINS.find((b) => b.meta.id === id)?.meta ?? null;
 }
 
 /** Lazily construct (and cache) a Source instance by id. Returns null when

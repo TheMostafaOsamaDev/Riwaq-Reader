@@ -712,7 +712,6 @@ function FullPaneLoading({ theme, label }: { theme: Theme; label: string }) {
         alignItems: "center",
         justifyContent: "center",
         fontFamily: FONT_SERIF_DISPLAY,
-        fontStyle: "italic",
         fontSize: 20,
       }}
     >
@@ -805,7 +804,6 @@ function ChapterLoadingOverlay({ theme }: { theme: Theme }) {
         alignItems: "center",
         justifyContent: "center",
         fontFamily: FONT_SERIF_DISPLAY,
-        fontStyle: "italic",
         fontSize: 18,
         color: theme.muted,
         pointerEvents: "none",

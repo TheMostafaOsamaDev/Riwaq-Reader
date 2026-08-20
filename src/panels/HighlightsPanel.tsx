@@ -263,7 +263,6 @@ function HighlightRow({
             marginTop: 8,
             paddingInlineStart: 10,
             borderInlineStart: `1.5px solid ${theme.rule}`,
-            fontStyle: "italic",
             lineHeight: 1.4,
           }}
         >
@@ -331,7 +330,6 @@ function Empty({ theme }: { theme: Theme }) {
       <div
         style={{
           fontFamily: FONT_SERIF_DISPLAY,
-          fontStyle: "italic",
           fontSize: 16,
           color: theme.ink,
           marginBottom: 6,

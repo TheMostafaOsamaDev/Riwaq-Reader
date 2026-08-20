@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { AnimatedPanel } from "./AnimatedPanel";
+import { SideSheet } from "./SideSheet";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { PaginatedView, type PaginatedAPI } from "./PaginatedView";
@@ -22,7 +22,6 @@ import {
 } from "../lib/selectionAnchor";
 import {
   FONT_STACKS,
-  isArabicTitle,
   isRtlLanguage,
   titleFontFor,
   type Theme,
@@ -752,7 +751,7 @@ export function DesktopReader({
               // `overflow: hidden` (needed for the ellipsis) clips the
               // ascenders/descenders.
               lineHeight: 1.55,
-              fontStyle: isArabicTitle(chapter.title) ? "normal" : "italic",
+              fontStyle: "normal",
               fontWeight: 500,
               color: theme.ink,
               letterSpacing: "-0.01em",
@@ -796,35 +795,9 @@ export function DesktopReader({
         </button>
       </div>
 
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <AnimatedPanel open={activePanel === "toc"} side="left">
-          <TOCPanel
-            theme={theme}
-            onClose={() => setActivePanel(null)}
-            bookTitle={book.title}
-            chapters={book.chapters}
-            currentChapter={currentChapter}
-            onJump={(order) => {
-              onChapterChange(order);
-              setActivePanel(null);
-            }}
-          />
-        </AnimatedPanel>
-        <AnimatedPanel open={activePanel === "highlights"} side="left">
-          <HighlightsPanel
-            theme={theme}
-            themeKey={themeKey}
-            onClose={() => setActivePanel(null)}
-            highlights={state.highlights}
-            onJump={(h) => {
-              onJumpToHighlight(h);
-              setActivePanel(null);
-            }}
-            onDelete={onDeleteHighlight}
-            onUpdateNote={onUpdateHighlightNote}
-          />
-        </AnimatedPanel>
-
+      {/* Content region is the positioning context for the overlay SideSheet:
+          the reading column stays full-width and the panel floats over it. */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
         <div
           style={{
             flex: 1,
@@ -1050,53 +1023,101 @@ export function DesktopReader({
           </div>
         </div>
 
-        <AnimatedPanel open={activePanel === "settings"} side="right">
-          <SettingsPanel
-            theme={theme}
-            themeKey={themeKey}
-            t={t}
-            setTweak={setTweak}
-            onClose={() => setActivePanel(null)}
-            onOpenFullSettings={
-              onOpenFullSettings
-                ? () => {
-                    // Close the quick-panel first — activePanel is App-level
-                    // state that survives the swap to the Settings page, so
-                    // without this, Back would return with the panel still open.
-                    setActivePanel(null);
-                    onOpenFullSettings();
-                  }
-                : undefined
-            }
-          />
-        </AnimatedPanel>
-        <AnimatedPanel open={activePanel === "progress"} side="right">
-          <div
-            style={{
-              width: 380,
-              // Logical, not physical: under RTL the chrome's flex row
-              // mirrors (Task 6), so this side="right" panel can land on
-              // the physical left. borderInlineStart always faces the
-              // reading column — physical right in LTR, physical left in
-              // RTL — matching PanelShell's own side-border logic.
-              borderInlineStart: `0.5px solid ${theme.rule}`,
-              background: theme.bg,
-              padding: 24,
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <ProgressOverlay
+        <SideSheet
+          open={activePanel !== null}
+          onClose={() => setActivePanel(null)}
+          // Navigation panels rest on the leading edge; tool panels (settings,
+          // progress) on the trailing edge. SideSheet flips these under RTL.
+          side={
+            activePanel === "settings" || activePanel === "progress"
+              ? "right"
+              : "left"
+          }
+          label={
+            activePanel === "toc"
+              ? tr("reader.toc")
+              : activePanel === "highlights"
+                ? tr("reader.highlights")
+                : activePanel === "settings"
+                  ? tr("reader.settings")
+                  : activePanel === "progress"
+                    ? tr("reader.progress")
+                    : undefined
+          }
+        >
+          {activePanel === "toc" && (
+            <TOCPanel
+              theme={theme}
+              onClose={() => setActivePanel(null)}
+              bookTitle={book.title}
+              chapters={book.chapters}
+              currentChapter={currentChapter}
+              onJump={(order) => {
+                onChapterChange(order);
+                setActivePanel(null);
+              }}
+            />
+          )}
+          {activePanel === "highlights" && (
+            <HighlightsPanel
               theme={theme}
               themeKey={themeKey}
-              currentChapter={currentChapter}
-              chapterCount={chapterCount}
-              chapterTitle={chapter.title}
+              onClose={() => setActivePanel(null)}
+              highlights={state.highlights}
+              onJump={(h) => {
+                onJumpToHighlight(h);
+                setActivePanel(null);
+              }}
+              onDelete={onDeleteHighlight}
+              onUpdateNote={onUpdateHighlightNote}
             />
-          </div>
-        </AnimatedPanel>
+          )}
+          {activePanel === "settings" && (
+            <SettingsPanel
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              onClose={() => setActivePanel(null)}
+              onOpenFullSettings={
+                onOpenFullSettings
+                  ? () => {
+                      // Close the quick-panel first — activePanel is App-level
+                      // state that survives the swap to the Settings page, so
+                      // without this, Back would return with the panel still open.
+                      setActivePanel(null);
+                      onOpenFullSettings();
+                    }
+                  : undefined
+              }
+            />
+          )}
+          {activePanel === "progress" && (
+            <div
+              style={{
+                width: 380,
+                // Logical, not physical: borderInlineStart always faces the
+                // reading column — physical right in LTR, physical left in
+                // RTL — matching PanelShell's own side-border logic.
+                borderInlineStart: `0.5px solid ${theme.rule}`,
+                background: theme.bg,
+                padding: 24,
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <ProgressOverlay
+                theme={theme}
+                themeKey={themeKey}
+                currentChapter={currentChapter}
+                chapterCount={chapterCount}
+                chapterTitle={chapter.title}
+              />
+            </div>
+          )}
+        </SideSheet>
       </div>
       {selAnchor && (
         <SelectionPopover
@@ -1186,7 +1207,7 @@ function ChapterToast({
         style={{
           fontFamily: titleFontFor(info.title),
           fontSize: 18,
-          fontStyle: isArabicTitle(info.title) ? "normal" : "italic",
+          fontStyle: "normal",
           fontWeight: 500,
           letterSpacing: "-0.01em",
           lineHeight: 1.3,

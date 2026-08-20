@@ -106,7 +106,6 @@ export function ProgressOverlay({
         <span
           style={{
             fontFamily: FONT_SERIF_DISPLAY,
-            fontStyle: "italic",
             color: theme.ink,
           }}
         >
