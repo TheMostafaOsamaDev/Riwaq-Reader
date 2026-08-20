@@ -287,6 +287,9 @@ export const ar: Messages = {
     "يتطلب تنزيل هذا النطاق أن تكون الرواية في مكتبتك أولًا.",
   "downloads.range.from": "من",
   "downloads.range.to": "إلى",
+  "downloads.range.selectChapter": "اختر فصلًا",
+  "downloads.range.searchPlaceholder": "ابحث عن فصل…",
+  "downloads.range.noMatches": "لا فصول مطابقة",
   "downloads.range.queueCountOne": "سيتم إضافة {n} فصل إلى قائمة التنزيل{extra}.",
   "downloads.range.queueCountOther":
     "سيتم إضافة {n} فصول إلى قائمة التنزيل{extra}.",
@@ -392,6 +395,9 @@ export const ar: Messages = {
   "novel.queuedClickCancel": "في قائمة الانتظار — اضغط للإلغاء",
   "novel.downloadingClickCancel": "جارٍ التنزيل ({pct}٪) — اضغط للإلغاء",
   "novel.downloadChapter": "تنزيل الفصل",
+  "novel.downloadVolume": "تنزيل المجلد",
+  "novel.downloadingVolume": "جارٍ إضافة المجلد…",
+  "novel.volumeAllDownloaded": "تم تنزيل كل الفصول",
   "novel.volumeFallback": "المجلد {n}",
   "novel.chapterNoTitleFallback": "{n} - بلا عنوان",
 
