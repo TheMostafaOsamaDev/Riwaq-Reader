@@ -290,6 +290,16 @@ async function publish(snap: Snapshot) {
   lastSentAt = Date.now();
   if (isTerminalSummary) summaryShown = true;
 
+  // Drive the dock/taskbar indicator regardless of OS-notification
+  // permission — `setProgressBar` is unrelated to that permission, and
+  // `ensurePermission()` below can permanently cache "denied" for the
+  // session, which must not kill the dock progress bar too.
+  if (!isTerminalSummary) {
+    void setDockProgress(overallFraction(snap));
+  } else {
+    void setDockProgress(null);
+  }
+
   await ensurePermission();
   if (permissionState !== "granted") return;
 
@@ -303,12 +313,6 @@ async function publish(snap: Snapshot) {
     ongoing: composed.ongoing,
     tapsToQueue: composed.tapsToQueue,
   });
-
-  if (!isTerminalSummary) {
-    void setDockProgress(overallFraction(snap));
-  } else {
-    void setDockProgress(null);
-  }
 }
 
 /** Smooth 0..1 progress across all live work in the current burst.

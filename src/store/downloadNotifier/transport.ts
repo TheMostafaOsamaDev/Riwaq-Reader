@@ -107,10 +107,14 @@ export async function pushDownloadNotification(
 }
 
 /** Reflect aggregate progress on the desktop taskbar/dock icon.
- *  fraction: 0..1 while working; null clears the indicator. No-op on
- *  mobile (guarded by the caller). Best-effort — never throws. */
+ *  fraction: 0..1 while working; null clears the indicator. Self-guards
+ *  on mobile (Android/iOS have no taskbar/dock; Android already shows
+ *  progress via its own notification widget) — no-op there. Best-effort
+ *  — never throws. */
 export async function setDockProgress(fraction: number | null): Promise<void> {
   try {
+    const plat = await getPlatform();
+    if (plat === "android" || plat === "ios") return;
     const w = getCurrentWindow();
     if (fraction === null) {
       await w.setProgressBar({ status: ProgressBarStatus.None });
