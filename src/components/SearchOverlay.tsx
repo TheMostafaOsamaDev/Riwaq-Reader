@@ -9,6 +9,8 @@ import type { IconProps } from "./Icon";
 import { FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import type { BookIndexEntry } from "../store/library";
 import type { LibraryTab } from "./Library";
+import { listSources } from "../sources/registry";
+import { SourceIcon } from "./SourceIcon";
 import { useI18n } from "../i18n/useI18n";
 import type { MsgKey } from "../i18n";
 
@@ -40,6 +42,8 @@ interface Props {
   setQuery: (q: string) => void;
   onOpenSettings: () => void;
   onOpenQueue: () => void;
+  /** Open a source's page in the Store (from the Websites results). */
+  onOpenStoreSource: (sourceId: string) => void;
   onClose: () => void;
 }
 
@@ -63,6 +67,7 @@ export function SearchOverlay({
   setQuery,
   onOpenSettings,
   onOpenQueue,
+  onOpenStoreSource,
   onClose,
 }: Props) {
   const { tr } = useI18n();
@@ -93,6 +98,22 @@ export function SearchOverlay({
             .slice(0, 8)
         : [],
     [q, books],
+  );
+
+  // Source websites matching the term — selecting one jumps into the Store
+  // at that site. Registry lookup is synchronous, so no loading state.
+  const sourceResults = useMemo(
+    () =>
+      q
+        ? listSources()
+            .filter(
+              (s) =>
+                s.name.toLowerCase().includes(q) ||
+                s.baseUrl.toLowerCase().includes(q),
+            )
+            .slice(0, 5)
+        : [],
+    [q],
   );
 
   const remember = (t: string) => {
@@ -203,10 +224,12 @@ export function SearchOverlay({
         {/* Body */}
         <div style={{ marginTop: 18, padding: "0 4px" }}>
           {q ? (
-            results.length ? (
+            results.length || sourceResults.length ? (
               <>
-                <OverlayLabel theme={theme} icon="search">{tr("search.results")}</OverlayLabel>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {results.length > 0 && (
+                  <>
+                    <OverlayLabel theme={theme} icon="search">{tr("search.results")}</OverlayLabel>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {results.map((b) => (
                     <button
                       key={b.id}
@@ -245,7 +268,43 @@ export function SearchOverlay({
                       </span>
                     </button>
                   ))}
-                </div>
+                    </div>
+                  </>
+                )}
+                {sourceResults.length > 0 && (
+                  <div style={{ marginTop: results.length ? 22 : 0 }}>
+                    <OverlayLabel theme={theme} icon="globe">{tr("search.websites")}</OverlayLabel>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {sourceResults.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => { remember(term); onOpenStoreSource(s.id); onClose(); }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 13,
+                            padding: "8px 10px",
+                            border: 0,
+                            borderRadius: 10,
+                            background: "transparent",
+                            cursor: "pointer",
+                            textAlign: "start",
+                            font: "inherit",
+                            transition: "background-color 120ms ease",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          <SourceIcon theme={theme} iconUrl={s.iconUrl} size={30} radius={7} glyphSize={16} />
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", fontSize: 14, color: theme.ink, fontWeight: 500 }}>{s.name}</span>
+                            <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{s.baseUrl.replace(/^https?:\/\//, "")}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <button
