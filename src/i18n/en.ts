@@ -131,7 +131,7 @@ export const en = {
   "sidebar.importBook": "Import book",
   "sidebar.importing": "Importing…",
   "sidebar.moreImport": "More import options",
-  "sidebar.folderOfEpubs": "Folder of EPUBs",
+  "sidebar.folderOfBooks": "Folder of books",
   "sidebar.wordDoc": "Word document",
   "sidebar.expand": "Expand {name}",
   "sidebar.collapse": "Collapse {name}",

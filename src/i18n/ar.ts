@@ -109,7 +109,7 @@ export const ar: Messages = {
   "sidebar.importBook": "استيراد كتاب",
   "sidebar.importing": "جارٍ الاستيراد…",
   "sidebar.moreImport": "خيارات استيراد أخرى",
-  "sidebar.folderOfEpubs": "مجلد ملفات EPUB",
+  "sidebar.folderOfBooks": "مجلد كتب",
   "sidebar.wordDoc": "مستند Word",
   "sidebar.expand": "توسيع {name}",
   "sidebar.collapse": "طي {name}",

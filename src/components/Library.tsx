@@ -199,7 +199,6 @@ export function Library({
   // DOCX now imports as a fixed-page document through the unified importer
   // (pickAndImportEpub routes .docx → importDocxBytes); the old
   // choice-modal + manage-view + docx→epub conversion flow was removed.
-  const onImportDocx = onImport;
 
   const onImportFolder = async () => {
     if (importing) return;
@@ -422,7 +421,6 @@ export function Library({
     setTab: onTabChange,
     onOpen: handleOpen,
     onImport,
-    onImportDocx,
     onImportFolder,
     onStreamRead,
     onSourceImportComplete,
@@ -566,7 +564,6 @@ interface LayoutProps {
   setTab: (t: LibraryTab) => void;
   onOpen: (id: string) => void;
   onImport: () => void;
-  onImportDocx: () => void;
   onImportFolder: () => void;
   /** Open a novel from a source in the streaming reader. */
   onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
@@ -639,7 +636,6 @@ function DesktopLibrary({
   setTab,
   onOpen,
   onImport,
-  onImportDocx,
   onImportFolder,
   onStreamRead,
   onSourceImportComplete,
@@ -712,7 +708,6 @@ function DesktopLibrary({
         setTab={(t) => { setShelvesView(false); setTab(t); }}
         importing={importing}
         onImport={onImport}
-        onImportDocx={onImportDocx}
         onImportFolder={onImportFolder}
         onOpenQueue={onOpenQueue}
         onOpenSettings={onOpenSettings}
@@ -913,7 +908,6 @@ function MobileLibrary({
   setTab,
   onOpen,
   onImport,
-  onImportDocx,
   // Folder import is desktop-only — the button was removed from this
   // layout. Keep the prop in the destructure (underscored) so the
   // LayoutProps shape doesn't fork.
@@ -1235,7 +1229,6 @@ function MobileLibrary({
           onSetStore={() => setTab(tab === "store" ? "all" : "store")}
           onOpenQueue={onOpenQueue}
           onImport={onImport}
-          onImportDocx={onImportDocx}
           onOpenSettings={onOpenSettings}
         />
       )}
@@ -1250,7 +1243,6 @@ interface MobileBottomNavProps {
   onSetStore: () => void;
   onOpenQueue: () => void;
   onImport: () => void;
-  onImportDocx: () => void;
   onOpenSettings: () => void;
 }
 
@@ -1601,7 +1593,6 @@ function MobileBottomNav({
   onSetStore,
   onOpenQueue,
   onImport,
-  onImportDocx,
   onOpenSettings,
 }: MobileBottomNavProps) {
   const { tr } = useI18n();
@@ -1643,13 +1634,6 @@ function MobileBottomNav({
         theme={theme}
         importing={importing}
         onClick={onImport}
-      />
-      <NavIconButton
-        theme={theme}
-        icon="doc"
-        ariaLabel={tr("library.importWordDoc")}
-        onClick={onImportDocx}
-        disabled={importing}
       />
       <NavIconButton
         theme={theme}
