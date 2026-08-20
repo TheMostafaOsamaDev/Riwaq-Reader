@@ -22,6 +22,11 @@ export const DOWNLOAD_CHANNEL_ID = "leaflet-downloads";
  *  rather than stacking. */
 export const DOWNLOAD_NOTIFICATION_ID = 1001;
 
+/** Separate id for the terminal "all done / failed" summary so it can
+ *  co-exist with (and outlive) the foreground-service progress
+ *  notification (id 1001), which the service removes on stop. */
+export const DOWNLOAD_SUMMARY_ID = 1002;
+
 export interface NotificationPayload {
   /** Stable id. Defaults to DOWNLOAD_NOTIFICATION_ID. */
   id?: number;

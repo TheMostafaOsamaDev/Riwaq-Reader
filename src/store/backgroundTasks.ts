@@ -11,6 +11,11 @@ import {
   getState as getQueueState,
   type DownloadJob,
 } from "./downloadQueue";
+import {
+  subscribe as subscribeImport,
+  getState as getImportState,
+  isImportActive,
+} from "./importProgress";
 
 /** Count queue jobs that represent live work (queued or running).
  *  Terminal + interrupted jobs are not "active". */
@@ -22,10 +27,13 @@ export function activeQueueCount(jobs: DownloadJob[]): number {
   return n;
 }
 
-/** Total active background work across every source. Task 4 adds
- *  imports here. Exported so the notifier and tests share one rule. */
+/** Total active background work across every source: queue jobs plus
+ *  any in-flight import. Exported so the notifier and tests share one
+ *  rule. */
 export function activeBackgroundCount(): number {
-  return activeQueueCount(getQueueState().jobs);
+  const queue = activeQueueCount(getQueueState().jobs);
+  const imports = isImportActive(getImportState()) ? 1 : 0;
+  return queue + imports;
 }
 
 let cachedIsAndroid: boolean | null = null;
@@ -80,7 +88,11 @@ export function startBackgroundTaskCoordinator(): () => void {
   const unsubQueue = subscribeQueue(() => {
     scheduleSync();
   });
+  const unsubImport = subscribeImport(() => {
+    scheduleSync();
+  });
   return () => {
     unsubQueue();
+    unsubImport();
   };
 }

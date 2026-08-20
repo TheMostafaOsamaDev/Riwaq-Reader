@@ -46,8 +46,14 @@ import {
 } from "./downloadQueue";
 import {
   DOWNLOAD_NOTIFICATION_ID,
+  DOWNLOAD_SUMMARY_ID,
   pushDownloadNotification,
 } from "./downloadNotifier/transport";
+import {
+  subscribe as subscribeImport,
+  getState as getImportState,
+  isImportActive,
+} from "./importProgress";
 import { makeTr, type Locale } from "../i18n";
 import { phaseLabel } from "../i18n/statusLabels";
 
@@ -108,6 +114,12 @@ interface Snapshot {
    *  chapter download (whole-novel scope, lands new library entries)
    *  so the user gets a clearer label when one is in flight. */
   activeConversions: number;
+  /** True while a doc/Sources import is in flight (see
+   *  `importProgress.ts`). Folded into `active`/`total` so a lone
+   *  import keeps the notification (and foreground service) alive. */
+  importActive: boolean;
+  /** 0..100 progress of the active import, for the widget. */
+  importPct: number;
   done: number;
   error: number;
   cancelled: number;
@@ -153,9 +165,20 @@ export function startDownloadNotifier(): () => void {
   // Fire on every queue emission. The state object is mutated in
   // place but the listener fires after each transition, so summarize
   // fresh each time.
-  return subscribe((state) => {
+  const unsubQueue = subscribe((state) => {
     void publish(summarize(state.jobs));
   });
+  // Imports don't live in the download queue, so give the notifier its
+  // own subscription — re-summarize off the current queue state on
+  // every import transition so a lone import (no queue jobs) still
+  // drives a notification.
+  const unsubImport = subscribeImport(() => {
+    void publish(summarize(getState().jobs));
+  });
+  return () => {
+    unsubQueue();
+    unsubImport();
+  };
 }
 
 function summarize(jobs: DownloadJob[]): Snapshot {
@@ -184,13 +207,18 @@ function summarize(jobs: DownloadJob[]): Snapshot {
       }
     }
   }
+  const imp = getImportState();
+  const importActive = isImportActive(imp);
+  const importPct = Math.round(imp.overall * 100);
   return {
-    active,
+    active: active + (importActive ? 1 : 0),
     activeConversions,
+    importActive,
+    importPct,
     done,
     error,
     cancelled,
-    total: jobs.length,
+    total: jobs.length + (importActive ? 1 : 0),
     lastTerminal,
   };
 }
@@ -264,7 +292,7 @@ async function publish(snap: Snapshot) {
   if (permissionState !== "granted") return;
 
   await pushDownloadNotification({
-    id: NOTIFICATION_ID,
+    id: isTerminalSummary ? DOWNLOAD_SUMMARY_ID : NOTIFICATION_ID,
     title: composed.title,
     body: composed.body,
     progress: composed.progress,
