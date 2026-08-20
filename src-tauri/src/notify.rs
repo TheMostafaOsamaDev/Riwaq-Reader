@@ -78,6 +78,37 @@ pub async fn set_status_bar_style(app: AppHandle, dark_icons: bool) -> Result<()
     }
 }
 
+/// Start the Android foreground TaskService (keeps the process/webview
+/// alive while background work runs). No-op on non-Android.
+#[tauri::command]
+pub async fn start_task_service(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        android_task_service("start").map_err(|e| format!("start service failed: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+/// Stop the Android foreground TaskService. No-op on non-Android.
+#[tauri::command]
+pub async fn stop_task_service(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        android_task_service("stop").map_err(|e| format!("stop service failed: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
 /// Drain the pending launch-intent extra. Returns `Some(extra)` once,
 /// then `None` until the next intent arrives. Used by the frontend
 /// `useLaunchIntent` hook on mount.
@@ -161,6 +192,24 @@ fn android_call_update(
             JValue::Bool(if ongoing { JNI_TRUE } else { JNI_FALSE } as jboolean),
             JValue::Bool(if taps_to_queue { JNI_TRUE } else { JNI_FALSE } as jboolean),
         ],
+    )?;
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+fn android_task_service(op: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let mut env = vm.attach_current_thread()?;
+    let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
+
+    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.TaskService")?;
+    let method = if op == "stop" { "stop" } else { "start" };
+    env.call_static_method(
+        &class,
+        method,
+        "(Landroid/content/Context;)V",
+        &[JValue::Object(&activity)],
     )?;
     Ok(())
 }
