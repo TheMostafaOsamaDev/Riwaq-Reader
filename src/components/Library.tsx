@@ -19,6 +19,13 @@ import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
 import { onOpenDownloadQueue } from "../store/uiIntents";
 import {
+  useNav,
+  goLibrary,
+  openOverlay,
+  back,
+  type LibraryView,
+} from "../store/navigation";
+import {
   getState as getQueueState,
   subscribe as subscribeToQueue,
 } from "../store/downloadQueue";
@@ -39,6 +46,8 @@ import {
   type StagedPick,
 } from "../store/library";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
+import { SourceBadge } from "./SourceBadge";
+import { getSourceMeta } from "../sources/registry";
 import type { CoverChoice, FixedImportDraft } from "../store/fixedImportStage";
 import { paletteForId } from "../store/palette";
 import {
@@ -65,6 +74,9 @@ interface Props {
    *  theme. */
   themeKey: ThemeKey;
   layout: "desktop" | "mobile";
+  /** Current library destination, from the nav store (App passes base.view).
+   *  Drives which body shows — shelf / store / shelves / novel detail. */
+  view: LibraryView;
   onOpen: (bookId: string) => void;
   /** Open the Source streaming reader at a specific novel + chapter. The
    *  Library hands this off to App.tsx, which renders the reader at top
@@ -123,6 +135,7 @@ export function Library({
   theme,
   themeKey,
   layout,
+  view,
   onOpen,
   onStreamRead,
   streamActive,
@@ -131,6 +144,7 @@ export function Library({
 }: Props) {
   const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
+  const navState = useNav();
   const [importing, setImporting] = useState(false);
   const [importQueue, setImportQueue] = useState<FixedImportDraft[]>([]);
   const [qIndex, setQIndex] = useState(0);
@@ -141,37 +155,63 @@ export function Library({
   });
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
-  // Top-level tab — owned here so the Store can be reached from either
-  // layout (desktop or mobile) and so the choice persists across layout
-  // switches if the window is resized.
-  const [tab, setTab] = useState<LibraryTab>("all");
-  // Source-backed library entries open their NovelDetailView instead of
-  // the reader. That view replaces the shelf body until the user backs
-  // out or switches tabs. Holding the state here means the user can
-  // pop into the streaming reader (which mounts above us at App
-  // level) and come back to the same detail page intact.
-  const [sourceDetailView, setSourceDetailView] = useState<{
-    sourceId: string;
-    novelUrl: string;
-    /** Library entry id when the detail view is opened from a shelf
-     *  card; the view uses it to load offline data from source.json
-     *  and to enqueue per-chapter downloads. Undefined when opened
-     *  from the Store before the novel is in the library. */
-    libraryEntryId?: string;
-  } | null>(null);
+
+  // The book-status FILTER (all/reading/finished/wishlist) is ephemeral UI
+  // state — flipping a filter pill is not a navigation step, so it lives here
+  // and is deliberately NOT recorded in history. Which *destination* shows
+  // (shelf vs store vs shelves vs a novel detail) comes from the nav `view`.
+  const [filter, setFilter] = useState<"all" | BookStatus>("all");
+  // Recombine the two for the existing readers (matchesTab, the pill row,
+  // headings, active-state): "store" when that destination is active,
+  // otherwise the current status filter.
+  const tab: LibraryTab = view.kind === "store" ? "store" : filter;
+
+  // Source-backed library entries open their NovelDetailView instead of the
+  // reader. This destination lives in nav history now (so Back closes it) —
+  // derive it from the view rather than local state.
+  const sourceDetailView =
+    view.kind === "novel"
+      ? {
+          sourceId: view.sourceId,
+          novelUrl: view.novelUrl,
+          libraryEntryId: view.libraryEntryId,
+        }
+      : null;
+  const shelvesActive = view.kind === "shelves";
+  // Download queue is an overlay layer in nav history (Back closes it).
+  const queueOpen = navState.snapshot.overlay?.kind === "downloads";
+
   const [sourceDetailRangeDialog, setSourceDetailRangeDialog] = useState<{
     sourceId: string;
     novelUrl: string;
     libraryEntryId?: string;
   } | null>(null);
 
-  // Switching tabs leaves any open source-detail view — the tabs are
-  // the natural "exit" affordance, same way the Store tab's internal
-  // nav reverts to the sources list when the user re-enters.
-  const onTabChange = useCallback((next: LibraryTab) => {
-    setTab(next);
-    setSourceDetailView(null);
-  }, []);
+  // Shelves (custom collections) — app-authored seed names; shared by both
+  // layouts so the mobile Shelves page and the desktop sidebar agree. (This
+  // list isn't persisted yet; the real assignment feature lands separately.)
+  const [shelves, setShelves] = useState<string[]>(() => [
+    tr("shelves.defaultFavorites"),
+    tr("shelves.defaultToRead"),
+  ]);
+  const [newShelfOpen, setNewShelfOpen] = useState(false);
+
+  // A "tab" selection is either the Store destination (a history push) or a
+  // status filter. A filter change never leaves the shelf, but if the user is
+  // currently on the Store / Shelves / a novel detail, picking a filter takes
+  // them to the (filtered) shelf.
+  const onSelectTab = useCallback(
+    (next: LibraryTab) => {
+      if (next === "store") {
+        goLibrary({ kind: "store" });
+        return;
+      }
+      setFilter(next);
+      if (view.kind !== "shelf") goLibrary({ kind: "shelf" });
+    },
+    [view.kind],
+  );
+  const onOpenShelves = useCallback(() => goLibrary({ kind: "shelves" }), []);
 
   const showToast = useCallback((kind: ToastMessage["kind"], text: string) => {
     toastIdRef.current += 1;
@@ -194,7 +234,8 @@ export function Library({
     (id: string) => {
       const book = books.find((b) => b.id === id);
       if (book?.kind === "source" && book.sourceId && book.novelUrl) {
-        setSourceDetailView({
+        goLibrary({
+          kind: "novel",
           sourceId: book.sourceId,
           novelUrl: book.novelUrl,
           libraryEntryId: book.id,
@@ -472,11 +513,13 @@ export function Library({
     wasStreamingRef.current = streamActive;
   }, [streamActive, refresh]);
 
-  const [queueOpen, setQueueOpen] = useState(false);
-  // Wired by useLaunchIntent in App.tsx — when a notification tap
-  // arrives with `leaflet.open=queue`, the pub/sub fires and we open
-  // the queue overlay.
-  useEffect(() => onOpenDownloadQueue(() => setQueueOpen(true)), []);
+  // Wired by useLaunchIntent in App.tsx — when a notification tap arrives with
+  // `leaflet.open=queue`, the pub/sub fires and we push the queue overlay onto
+  // nav history (so the hardware/desktop Back closes it).
+  useEffect(
+    () => onOpenDownloadQueue(() => openOverlay({ kind: "downloads" })),
+    [],
+  );
 
   // When a "Save as offline book" conversion finishes, one or more
   // brand-new library entries have just landed via importEpubBytes —
@@ -527,19 +570,23 @@ export function Library({
     error,
     importing,
     tab,
-    setTab: onTabChange,
+    setTab: onSelectTab,
     onOpen: handleOpen,
     onImport,
     onImportFolder,
     onStreamRead,
     onSourceImportComplete,
     sourceDetailView,
-    onCloseSourceDetailView: () => setSourceDetailView(null),
+    onCloseSourceDetailView: () => back(),
     onOpenSourceDetailRangeDialog: () => {
       if (sourceDetailView) setSourceDetailRangeDialog(sourceDetailView);
     },
-    onOpenQueue: () => setQueueOpen(true),
+    onOpenQueue: () => openOverlay({ kind: "downloads" }),
     onOpenSettings,
+    shelvesActive,
+    onOpenShelves,
+    shelves,
+    onNewShelf: () => setNewShelfOpen(true),
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);
@@ -659,17 +706,28 @@ export function Library({
       <AnimatedFullScreen
         open={queueOpen}
         layout={layout}
-        onScrimClick={() => setQueueOpen(false)}
+        onScrimClick={() => back()}
         zIndex={200}
       >
         {queueOpen && (
           <DownloadQueueView
             theme={theme}
             layout={layout}
-            onClose={() => setQueueOpen(false)}
+            onClose={() => back()}
           />
         )}
       </AnimatedFullScreen>
+      {/* Shared across layouts: the "new shelf" dialog. Shelf list state lives
+          in the parent so both the desktop sidebar and the mobile Shelves page
+          add to the same list. */}
+      {newShelfOpen && (
+        <NewShelfDialog
+          theme={theme}
+          existing={shelves}
+          onCreate={(name) => setShelves((s) => [...s, name])}
+          onClose={() => setNewShelfOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -710,6 +768,14 @@ interface LayoutProps {
   onOpenQueue: () => void;
   /** Open the settings sheet (mobile theme picker for now). */
   onOpenSettings: () => void;
+  /** True when the Shelves (collections) destination is active. */
+  shelvesActive: boolean;
+  /** Navigate to the Shelves destination. */
+  onOpenShelves: () => void;
+  /** Custom-shelf names, owned by the parent so both layouts agree. */
+  shelves: string[];
+  /** Open the "new shelf" dialog (rendered by the parent). */
+  onNewShelf: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onCardContextMenu: (id: string, x: number, y: number) => void;
@@ -768,6 +834,10 @@ function DesktopLibrary({
   onOpenSourceDetailRangeDialog,
   onOpenQueue,
   onOpenSettings,
+  shelvesActive,
+  onOpenShelves,
+  shelves,
+  onNewShelf,
   onDelete,
   onEdit,
   onCardContextMenu,
@@ -775,15 +845,6 @@ function DesktopLibrary({
   const { tr } = useI18n();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [shelvesView, setShelvesView] = useState(false);
-  const [newShelfOpen, setNewShelfOpen] = useState(false);
-  // Seed shelf names — app-authored defaults for a first-run shelf list
-  // (this state isn't persisted yet), so they must come from the current
-  // UI locale rather than a frozen English literal.
-  const [shelves, setShelves] = useState<string[]>(() => [
-    tr("shelves.defaultFavorites"),
-    tr("shelves.defaultToRead"),
-  ]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -795,6 +856,11 @@ function DesktopLibrary({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const q = query.trim().toLowerCase();
+  // The shelf is the active destination only when we're not on the Store,
+  // the Shelves page, or an open novel detail. Gates the sidebar's Library
+  // row + status-filter highlight so a lingering filter doesn't stay lit
+  // after navigating to a sibling destination.
+  const shelfActive = tab !== "store" && !shelvesActive && !sourceDetailView;
   const visible = books
     .filter((b) => matchesTab(b, tab))
     .filter(
@@ -829,17 +895,18 @@ function DesktopLibrary({
         theme={theme}
         themeKey={themeKey}
         tab={tab}
-        setTab={(t) => { setShelvesView(false); setTab(t); }}
+        setTab={setTab}
         importing={importing}
         onImport={onImport}
         onImportFolder={onImportFolder}
         onOpenQueue={onOpenQueue}
         onOpenSettings={onOpenSettings}
         onOpenSearch={() => setSearchOpen(true)}
+        shelfActive={shelfActive}
         shelves={shelves}
-        shelvesActive={shelvesView}
-        onOpenShelves={() => setShelvesView(true)}
-        onNewShelf={() => setNewShelfOpen(true)}
+        shelvesActive={shelvesActive}
+        onOpenShelves={onOpenShelves}
+        onNewShelf={onNewShelf}
       />
       <div
         style={{
@@ -866,15 +933,15 @@ function DesktopLibrary({
       >
         <AnimatedSwap
           viewKey={
-            shelvesView
+            shelvesActive
               ? "shelves"
               : sourceDetailView
                 ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
                 : `tab:${tab}`
           }
         >
-      {shelvesView ? (
-        <ShelvesPage theme={theme} shelves={shelves} onNewShelf={() => setNewShelfOpen(true)} />
+      {shelvesActive ? (
+        <ShelvesPage theme={theme} shelves={shelves} onNewShelf={onNewShelf} />
       ) : sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
         // NovelDetailView the Store uses for browsing. Tabs above stay
@@ -950,7 +1017,6 @@ function DesktopLibrary({
                 <h2
                   style={{
                     fontFamily: FONT_SERIF_DISPLAY,
-                    fontStyle: "italic",
                     fontWeight: 400,
                     fontSize: 24,
                     margin: 0,
@@ -1009,14 +1075,6 @@ function DesktopLibrary({
           onClose={() => setSearchOpen(false)}
         />
       )}
-      {newShelfOpen && (
-        <NewShelfDialog
-          theme={theme}
-          existing={shelves}
-          onCreate={(name) => setShelves((s) => [...s, name])}
-          onClose={() => setNewShelfOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -1043,6 +1101,10 @@ function MobileLibrary({
   onOpenSourceDetailRangeDialog,
   onOpenQueue,
   onOpenSettings,
+  shelvesActive,
+  onOpenShelves,
+  shelves,
+  onNewShelf,
   onCardContextMenu,
 }: LayoutProps) {
   const { tr, locale } = useI18n();
@@ -1098,11 +1160,11 @@ function MobileLibrary({
       }}
     >
       {/* Top header — title + filter tabs. Only on the shelf. The
-          Store tab swaps in its own back-arrow header below. The
-          source detail view (NovelDetailView) brings its own header
-          with a back arrow. Action buttons live in the bottom nav,
-          so the right side of the title row is empty. */}
-      {!sourceDetailView && tab !== "store" && (
+          Store tab and the Shelves page swap in their own back-arrow
+          headers below. The source detail view (NovelDetailView) brings
+          its own header with a back arrow. Action buttons live in the
+          bottom nav, so the right side of the title row is empty. */}
+      {!sourceDetailView && !shelvesActive && tab !== "store" && (
         <div
           style={{
             display: "flex",
@@ -1115,7 +1177,6 @@ function MobileLibrary({
           <h1
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontWeight: 400,
               fontSize: 28,
               margin: 0,
@@ -1141,12 +1202,31 @@ function MobileLibrary({
       >
         <AnimatedSwap
           viewKey={
-            sourceDetailView
-              ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-              : `tab:${tab}`
+            shelvesActive
+              ? "shelves"
+              : sourceDetailView
+                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                : `tab:${tab}`
           }
         >
-      {sourceDetailView ? (
+      {shelvesActive ? (
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <BackHeader
+            theme={theme}
+            title={tr("shelves.title")}
+            onBack={() => back()}
+          />
+          <ShelvesPage theme={theme} shelves={shelves} onNewShelf={onNewShelf} />
+        </div>
+      ) : sourceDetailView ? (
         <div
           style={{
             flex: 1,
@@ -1258,7 +1338,7 @@ function MobileLibrary({
                   <div
                     style={{
                       fontFamily: titleFontFor(heroDisplayTitle),
-                      fontStyle: isArabicTitle(heroDisplayTitle) ? "normal" : "italic",
+                      fontStyle: "normal",
                       fontSize: 18,
                       lineHeight: isArabicTitle(heroDisplayTitle) ? 1.4 : 1.15,
                       color: theme.ink,
@@ -1350,6 +1430,8 @@ function MobileLibrary({
           theme={theme}
           importing={importing}
           tab={tab}
+          shelvesActive={shelvesActive}
+          onOpenShelves={onOpenShelves}
           onSetStore={() => setTab(tab === "store" ? "all" : "store")}
           onOpenQueue={onOpenQueue}
           onImport={onImport}
@@ -1364,6 +1446,8 @@ interface MobileBottomNavProps {
   theme: Theme;
   importing: boolean;
   tab: LibraryTab;
+  shelvesActive: boolean;
+  onOpenShelves: () => void;
   onSetStore: () => void;
   onOpenQueue: () => void;
   onImport: () => void;
@@ -1373,9 +1457,14 @@ interface MobileBottomNavProps {
 /** Bottom nav for the mobile Library shell. Five slots arranged
  *  symmetrically around the central focal "import EPUB" button:
  *
- *    [Store]  [Queue]   ( + )   [Docx]  [Settings]
+ *    [Shelves]  [Store]   ( + )   [Downloads]  [Settings]
  *
- *  The "+" button is filled and slightly larger (50px vs 38px) so the
+ *  (Left-to-right in DOM order; RTL locales mirror it, so Shelves sits
+ *  at the visual start edge.) Shelves and Store — the two library-browse
+ *  destinations — flank the "+" on one side; the queue and settings on
+ *  the other. The active destination (Shelves or Store) is filled.
+ *
+ *  The "+" button is filled and slightly larger (50px vs 44px) so the
  *  primary action is visually obvious; it sits flush with the bar
  *  rather than protruding above it. The other four are circular
  *  outlines matching the existing icon-button style.
@@ -1714,6 +1803,8 @@ function MobileBottomNav({
   theme,
   importing,
   tab,
+  shelvesActive,
+  onOpenShelves,
   onSetStore,
   onOpenQueue,
   onImport,
@@ -1742,10 +1833,22 @@ function MobileBottomNav({
     >
       <NavIconButton
         theme={theme}
+        icon="layers"
+        ariaLabel={tr("shelves.title")}
+        active={shelvesActive}
+        onClick={onOpenShelves}
+      />
+      <NavIconButton
+        theme={theme}
         icon="globe"
         ariaLabel={tab === "store" ? tr("library.backToLibrary") : tr("library.openStore")}
         active={tab === "store"}
         onClick={onSetStore}
+      />
+      <NavFabButton
+        theme={theme}
+        importing={importing}
+        onClick={onImport}
       />
       <NavIconButton
         theme={theme}
@@ -1753,11 +1856,6 @@ function MobileBottomNav({
         ariaLabel={tr("library.openDownloads")}
         onClick={onOpenQueue}
         showQueueBadge
-      />
-      <NavFabButton
-        theme={theme}
-        importing={importing}
-        onClick={onImport}
       />
       <NavIconButton
         theme={theme}
@@ -1771,7 +1869,7 @@ function MobileBottomNav({
 
 interface NavIconButtonProps {
   theme: Theme;
-  icon: "globe" | "download" | "doc" | "settings";
+  icon: "globe" | "download" | "doc" | "settings" | "layers";
   ariaLabel: string;
   active?: boolean;
   disabled?: boolean;
@@ -1885,6 +1983,22 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
   );
 }
 
+/** Top-end corner marker flagging a source-backed library card with the
+ *  source's favicon (globe fallback). Returns undefined for local books
+ *  (epub/pdf/docx) so their covers render no marker. */
+function sourceCornerMarker(theme: Theme, book: BookIndexEntry) {
+  if (book.kind !== "source" || !book.sourceId) return undefined;
+  const meta = getSourceMeta(book.sourceId);
+  return (
+    <SourceBadge
+      theme={theme}
+      variant="corner"
+      iconUrl={meta?.iconUrl}
+      label={meta?.name}
+    />
+  );
+}
+
 function MobileShelfCard({
   theme,
   book,
@@ -1929,6 +2043,7 @@ function MobileShelfCard({
         size="sm"
         src={coverSrc}
         badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
+        cornerMarker={sourceCornerMarker(theme, book)}
         // Stretch the cover to the (constrained) cell width — the fixed
         // 110px `sm` size would overflow a 3-column grid on narrow phones.
         fluid
@@ -2044,7 +2159,7 @@ function HeroContinueCard({
             fontFamily: titleFontFor(displayTitle),
             // Italic only makes sense on Fraunces — suppress it for the
             // Readex Pro path to avoid synthetic italic on Arabic.
-            fontStyle: isArabicTitle(displayTitle) ? "normal" : "italic",
+            fontStyle: "normal",
             fontWeight: 400,
             fontSize: 44,
             // Even more vertical room than 1.3 — the previous tweak still
@@ -2182,6 +2297,7 @@ function LibraryCard({
             size="md"
             src={coverSrc}
             badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
+            cornerMarker={sourceCornerMarker(theme, book)}
           />
           {book.progress === 0 && (
             <span
@@ -2315,7 +2431,6 @@ function EmptyState({
       <div
         style={{
           fontFamily: FONT_SERIF_DISPLAY,
-          fontStyle: "italic",
           fontSize: 28,
           color: theme.ink,
           letterSpacing: "-0.02em",

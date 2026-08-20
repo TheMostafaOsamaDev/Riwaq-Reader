@@ -253,7 +253,6 @@ function Header({
           id="download-queue-heading"
           style={{
             fontFamily: FONT_SERIF_DISPLAY,
-            fontStyle: "italic",
             fontWeight: 400,
             fontSize: 22,
             margin: 0,

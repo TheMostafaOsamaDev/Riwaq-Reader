@@ -13,6 +13,7 @@ import { Icon } from "./Icon";
 import type { IconProps } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
+import { useNav, back, forward } from "../store/navigation";
 import type { LibraryTab } from "./Library";
 import { useI18n } from "../i18n/useI18n";
 import type { Dir, MsgKey, Tr } from "../i18n";
@@ -28,6 +29,11 @@ interface Props {
   onOpenQueue: () => void;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
+  /** True only when the shelf itself is the active destination (not the
+   *  Store, the Shelves page, or an open novel detail). Gates the Library
+   *  row + its status-filter tree so a lingering filter selection doesn't
+   *  stay highlighted after navigating away to a sibling destination. */
+  shelfActive: boolean;
   shelves: string[];
   shelvesActive: boolean;
   onOpenShelves: () => void;
@@ -62,6 +68,7 @@ export function LibrarySidebar({
   onOpenQueue,
   onOpenSettings,
   onOpenSearch,
+  shelfActive,
   shelves,
   shelvesActive,
   onOpenShelves,
@@ -104,10 +111,13 @@ export function LibrarySidebar({
         boxSizing: "border-box",
       }}
     >
-      {/* Head */}
+      {/* Head — brand mark + wordmark, with the history back/forward pair
+          pinned to the inline-end (the desktop equivalent of the Android
+          hardware back). */}
       <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "4px 8px 16px" }}>
         <img src={markSrc} alt="" width={34} height={34} draggable={false} style={{ width: 34, height: 34, objectFit: "contain", flexShrink: 0 }} />
-        <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: 21, color: theme.ink, lineHeight: 1.1, letterSpacing: "-0.01em" }}>Riwaq</span>
+        <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontWeight: 500, fontSize: 21, color: theme.ink, lineHeight: 1.1, letterSpacing: dir === "rtl" ? "normal" : "-0.01em" }}>{dir === "rtl" ? "رواق" : "Riwaq"}</span>
+        <NavArrows theme={theme} />
       </div>
 
       {/* Search — opens the full-screen search */}
@@ -142,17 +152,15 @@ export function LibrarySidebar({
         <nav style={{ display: "flex", flexDirection: "column", gap: 5, padding: "0 4px" }}>
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}
           <div>
-            <CollapsibleRow theme={theme} dark={dark} icon="grid" label={tr("sidebar.library")} active={tab === "all" && !shelvesActive} open={openLib} onActivate={() => setTab("all")} setOpen={setOpenLib} dir={dir} tr={tr} />
+            <CollapsibleRow theme={theme} dark={dark} icon="grid" label={tr("sidebar.library")} active={shelfActive && tab === "all"} open={openLib} onActivate={() => setTab("all")} setOpen={setOpenLib} dir={dir} tr={tr} />
             <Collapse open={openLib}>
               <Tree theme={theme}>
                 {TREE_KEYS.map((t) => (
-                  <TreeButton key={t.key} theme={theme} label={tr(t.k)} active={tab === t.key} onClick={() => setTab(t.key)} />
+                  <TreeButton key={t.key} theme={theme} label={tr(t.k)} active={shelfActive && tab === t.key} onClick={() => setTab(t.key)} />
                 ))}
               </Tree>
             </Collapse>
           </div>
-
-          <NavRow theme={theme} icon="globe" label={tr("sidebar.store")} active={tab === "store" && !shelvesActive} onClick={() => setTab("store")} />
 
           {/* Shelves (collapsible) — row + tree grouped so the nav gap stays uniform */}
           <div>
@@ -173,6 +181,8 @@ export function LibrarySidebar({
               </Tree>
             </Collapse>
           </div>
+
+          <NavRow theme={theme} icon="globe" label={tr("sidebar.store")} active={tab === "store"} onClick={() => setTab("store")} />
 
           {/* Downloads — constant height, progress fills inside */}
           <button
@@ -387,6 +397,60 @@ function NavRow({ theme, icon, label, active, onClick }: { theme: Theme; icon: I
       <span style={{ color: active ? theme.paper : theme.muted, display: "flex", transition: TRANSITION }}><Icon name={icon} size={18} /></span>
       {label}
     </button>
+  );
+}
+
+/** History back/forward pair for the desktop chrome. Buttons disable when
+ *  there's nowhere to go in that direction; the arrows mirror in RTL so
+ *  "back" always points toward the reading-start edge. Keyboard (Alt+←/→)
+ *  and mouse side-buttons drive the same nav store from anywhere. */
+function NavArrows({ theme }: { theme: Theme }) {
+  const { tr } = useI18n();
+  const { canBack, canForward } = useNav();
+  const arrow = (
+    kind: "back" | "forward",
+    enabled: boolean,
+    onClick: () => void,
+  ) => (
+    <button
+      onClick={enabled ? onClick : undefined}
+      disabled={!enabled}
+      aria-label={tr(kind === "back" ? "nav.back" : "nav.forward")}
+      title={tr(kind === "back" ? "nav.back" : "nav.forward")}
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        flexShrink: 0,
+        border: `1px solid ${theme.rule}`,
+        background: "transparent",
+        color: theme.ink,
+        cursor: enabled ? "pointer" : "default",
+        opacity: enabled ? 1 : 0.38,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: TRANSITION,
+      }}
+      onMouseEnter={(e) => {
+        if (enabled) e.currentTarget.style.background = theme.hover;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+      }}
+    >
+      <Icon
+        name={kind === "back" ? "arrowL" : "arrowR"}
+        size={15}
+        className="rtl-flip-x"
+      />
+    </button>
+  );
+  return (
+    <div style={{ display: "flex", gap: 5, marginInlineStart: "auto" }}>
+      {arrow("back", canBack, back)}
+      {arrow("forward", canForward, forward)}
+    </div>
   );
 }
 

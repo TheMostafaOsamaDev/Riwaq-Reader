@@ -20,7 +20,7 @@ export function ShelvesPage({ theme, shelves, onNewShelf }: Props) {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontWeight: 400, fontSize: 30, margin: 0, letterSpacing: "-0.01em", color: theme.ink }}>
+          <h1 style={{ fontFamily: FONT_SERIF_DISPLAY, fontWeight: 400, fontSize: 30, margin: 0, letterSpacing: "-0.01em", color: theme.ink }}>
             {tr("shelves.title")}
           </h1>
           <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
@@ -37,7 +37,7 @@ export function ShelvesPage({ theme, shelves, onNewShelf }: Props) {
 
       {shelves.length === 0 ? (
         <div style={{ maxWidth: 440, margin: "56px auto", padding: 32, borderRadius: 14, background: theme.chrome, border: `0.5px solid ${theme.rule}`, textAlign: "center" }}>
-          <div style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontSize: 24, color: theme.ink, marginBottom: 8 }}>{tr("shelves.empty")}</div>
+          <div style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 24, color: theme.ink, marginBottom: 8 }}>{tr("shelves.empty")}</div>
           <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.55 }}>{tr("shelves.emptyHint")}</div>
         </div>
       ) : (
@@ -46,7 +46,7 @@ export function ShelvesPage({ theme, shelves, onNewShelf }: Props) {
             <section key={s}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
                 <span style={{ color: theme.muted, display: "flex", alignSelf: "center" }}><Icon name="layers" size={16} /></span>
-                <h2 style={{ fontFamily: FONT_SERIF_DISPLAY, fontStyle: "italic", fontWeight: 400, fontSize: 20, margin: 0, color: theme.ink }}>{s}</h2>
+                <h2 style={{ fontFamily: FONT_SERIF_DISPLAY, fontWeight: 400, fontSize: 20, margin: 0, color: theme.ink }}>{s}</h2>
                 <span style={{ fontSize: 12, color: theme.muted }}>{tr("shelves.zeroBooks")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 110, border: `1px dashed ${theme.rule}`, borderRadius: 12, color: theme.muted, fontSize: 13 }}>

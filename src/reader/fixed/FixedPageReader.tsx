@@ -20,6 +20,7 @@ import type { BookState, FixedBook } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
 import { FixedPageViewer, type FixedPageViewerHandle } from "./FixedPageViewer";
 import { PanelShell } from "../../panels/PanelShell";
+import { SideSheet } from "../../components/SideSheet";
 import { Field, SegRow, ThemeField } from "../../components/SettingsSection";
 import { useI18n } from "../../i18n/useI18n";
 
@@ -157,6 +158,146 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     closePanel();
   };
 
+  // Logical edge for a panel. Desktop follows the shared convention
+  // (navigation panels lead, tool panels trail); mobile keeps its single
+  // leading-edge overlay. SideSheet / PanelShell handle the RTL flip.
+  const panelSide = (p: Panel): "left" | "right" =>
+    isMobile
+      ? uiDir === "rtl"
+        ? "right"
+        : "left"
+      : p === "settings" || p === "progress"
+        ? "right"
+        : "left";
+
+  // Body for the currently-open panel, reused by the desktop SideSheet and the
+  // mobile overlay so the panel content lives in exactly one place.
+  const renderPanelBody = () => {
+    const side = panelSide(panel);
+    switch (panel) {
+      case "toc":
+        return (
+          <OutlinePanel
+            theme={theme}
+            outline={source ? source.outline : []}
+            title={book.title}
+            current={progress.page}
+            onJump={jumpToPage}
+            onClose={closePanel}
+            side={side}
+          />
+        );
+      case "bookmarks":
+        return (
+          <PanelShell
+            theme={theme}
+            title={tr("reader.highlights")}
+            onClose={closePanel}
+            side={side}
+          >
+            <div style={{ padding: "32px 18px", textAlign: "center", color: theme.muted, fontSize: 13, lineHeight: 1.5 }}>
+              {locale === "ar" ? "لا توجد علامات بعد." : "No bookmarks yet."}
+            </div>
+          </PanelShell>
+        );
+      case "progress":
+        return (
+          <PanelShell
+            theme={theme}
+            title={tr("reader.readingProgress")}
+            onClose={closePanel}
+            side={side}
+          >
+            <PageProgressBody
+              theme={theme}
+              page={progress.page}
+              total={sourcePageCount(source)}
+              fmt={fmt}
+              isAr={locale === "ar"}
+            />
+          </PanelShell>
+        );
+      case "settings":
+        return (
+          <PanelShell
+            theme={theme}
+            title={tr("settings.title")}
+            onClose={closePanel}
+            side={side}
+          >
+            <ThemeField theme={theme} pref={t.theme} onChange={(p) => setTweak("theme", p)} />
+            <Field label={locale === "ar" ? "طريقة العرض" : "Flow"} theme={theme}>
+              <SegRow<Tweaks["fixedFlow"]>
+                theme={theme}
+                value={t.fixedFlow}
+                onChange={(v) => setTweak("fixedFlow", v)}
+                options={[
+                  { value: "scroll", label: locale === "ar" ? "تمرير" : "Scroll" },
+                  { value: "paged", label: locale === "ar" ? "صفحة" : "Page" },
+                ]}
+              />
+            </Field>
+            <Field label={locale === "ar" ? "الملاءمة" : "Fit"} theme={theme}>
+              <SegRow<Tweaks["fixedFit"]>
+                theme={theme}
+                value={t.fixedFit}
+                onChange={(v) => setTweak("fixedFit", v)}
+                options={[
+                  { value: "width", label: locale === "ar" ? "العرض" : "Width" },
+                  { value: "page", label: locale === "ar" ? "الصفحة" : "Page" },
+                ]}
+              />
+            </Field>
+            <Field label={locale === "ar" ? "تدرّج الصفحة" : "Page tint"} theme={theme}>
+              <SegRow<Tweaks["fixedPageTint"]>
+                theme={theme}
+                value={t.fixedPageTint}
+                onChange={(v) => setTweak("fixedPageTint", v)}
+                options={[
+                  { value: "none", label: locale === "ar" ? "بلا" : "None" },
+                  { value: "dim", label: locale === "ar" ? "تعتيم" : "Dim" },
+                  { value: "invert", label: locale === "ar" ? "عكس" : "Invert" },
+                ]}
+              />
+            </Field>
+            {onOpenFullSettings && (
+              <div style={{ padding: 12 }}>
+                <button
+                  onClick={onOpenFullSettings}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: 10,
+                    border: `1px solid ${theme.rule}`,
+                    background: theme.hover,
+                    color: theme.ink,
+                    cursor: "pointer",
+                    fontFamily: FONT_STACKS.sans,
+                    fontSize: 13,
+                  }}
+                >
+                  {tr("settings.title")}
+                </button>
+              </div>
+            )}
+          </PanelShell>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const panelLabel =
+    panel === "toc"
+      ? tr("reader.toc")
+      : panel === "bookmarks"
+        ? tr("reader.highlights")
+        : panel === "progress"
+          ? tr("reader.readingProgress")
+          : panel === "settings"
+            ? tr("settings.title")
+            : undefined;
+
   const iconBtn = (
     key: string,
     d: string,
@@ -284,12 +425,24 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               placeItems: "center",
               color: theme.muted,
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontSize: 18,
             }}
           >
             {tr("app.loadingBook")}
           </div>
+        )}
+
+        {/* Desktop: panels slide in over the viewer as an overlay sheet.
+            Mobile keeps its own bottom-anchored overlay below. */}
+        {!isMobile && (
+          <SideSheet
+            open={panel !== null}
+            onClose={closePanel}
+            side={panel === "settings" || panel === "progress" ? "right" : "left"}
+            label={panelLabel}
+          >
+            {renderPanelBody()}
+          </SideSheet>
         )}
       </div>
 
@@ -352,8 +505,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         )}
       </div>
 
-      {/* panels */}
-      {panel && (
+      {/* Mobile panels: bottom-anchored overlay + scrim. Desktop uses the
+          SideSheet mounted inside the viewer above. */}
+      {isMobile && panel && (
         <>
           <div
             onClick={closePanel}
@@ -368,116 +522,14 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             style={{
               position: "absolute",
               zIndex: 9,
-              top: isMobile ? "38%" : 54,
+              top: "38%",
               bottom: 0,
-              insetInlineStart: isMobile ? 0 : 0,
-              insetInlineEnd: isMobile ? 0 : "auto",
-              width: isMobile ? "100%" : 340,
+              insetInlineStart: 0,
+              insetInlineEnd: 0,
+              width: "100%",
             }}
           >
-            {panel === "toc" && (
-              <OutlinePanel
-                theme={theme}
-                outline={source ? source.outline : []}
-                title={book.title}
-                current={progress.page}
-                onJump={jumpToPage}
-                onClose={closePanel}
-                side={uiDir === "rtl" ? "right" : "left"}
-              />
-            )}
-            {panel === "bookmarks" && (
-              <PanelShell
-                theme={theme}
-                title={tr("reader.highlights")}
-                onClose={closePanel}
-                side={uiDir === "rtl" ? "right" : "left"}
-              >
-                <div style={{ padding: "32px 18px", textAlign: "center", color: theme.muted, fontSize: 13, lineHeight: 1.5 }}>
-                  {locale === "ar" ? "لا توجد علامات بعد." : "No bookmarks yet."}
-                </div>
-              </PanelShell>
-            )}
-            {panel === "progress" && (
-              <PanelShell
-                theme={theme}
-                title={tr("reader.readingProgress")}
-                onClose={closePanel}
-                side={uiDir === "rtl" ? "right" : "left"}
-              >
-                <PageProgressBody
-                  theme={theme}
-                  page={progress.page}
-                  total={sourcePageCount(source)}
-                  fmt={fmt}
-                  isAr={locale === "ar"}
-                />
-              </PanelShell>
-            )}
-            {panel === "settings" && (
-              <PanelShell
-                theme={theme}
-                title={tr("settings.title")}
-                onClose={closePanel}
-                side={uiDir === "rtl" ? "right" : "left"}
-              >
-                <ThemeField theme={theme} pref={t.theme} onChange={(p) => setTweak("theme", p)} />
-                <Field label={locale === "ar" ? "طريقة العرض" : "Flow"} theme={theme}>
-                  <SegRow<Tweaks["fixedFlow"]>
-                    theme={theme}
-                    value={t.fixedFlow}
-                    onChange={(v) => setTweak("fixedFlow", v)}
-                    options={[
-                      { value: "scroll", label: locale === "ar" ? "تمرير" : "Scroll" },
-                      { value: "paged", label: locale === "ar" ? "صفحة" : "Page" },
-                    ]}
-                  />
-                </Field>
-                <Field label={locale === "ar" ? "الملاءمة" : "Fit"} theme={theme}>
-                  <SegRow<Tweaks["fixedFit"]>
-                    theme={theme}
-                    value={t.fixedFit}
-                    onChange={(v) => setTweak("fixedFit", v)}
-                    options={[
-                      { value: "width", label: locale === "ar" ? "العرض" : "Width" },
-                      { value: "page", label: locale === "ar" ? "الصفحة" : "Page" },
-                    ]}
-                  />
-                </Field>
-                <Field label={locale === "ar" ? "تدرّج الصفحة" : "Page tint"} theme={theme}>
-                  <SegRow<Tweaks["fixedPageTint"]>
-                    theme={theme}
-                    value={t.fixedPageTint}
-                    onChange={(v) => setTweak("fixedPageTint", v)}
-                    options={[
-                      { value: "none", label: locale === "ar" ? "بلا" : "None" },
-                      { value: "dim", label: locale === "ar" ? "تعتيم" : "Dim" },
-                      { value: "invert", label: locale === "ar" ? "عكس" : "Invert" },
-                    ]}
-                  />
-                </Field>
-                {onOpenFullSettings && (
-                  <div style={{ padding: 12 }}>
-                    <button
-                      onClick={onOpenFullSettings}
-                      style={{
-                        width: "100%",
-                        padding: "12px",
-                        borderRadius: 10,
-                        border: `1px solid ${theme.rule}`,
-                        background: theme.hover,
-                        color: theme.ink,
-                        cursor: "pointer",
-                        fontFamily: FONT_STACKS.sans,
-                        fontSize: 13,
-                      }}
-                    >
-                      {tr("settings.title")}
-                    </button>
-                  </div>
-                )}
-              </PanelShell>
-            )}
+            {renderPanelBody()}
           </div>
         </>
       )}
@@ -545,7 +597,7 @@ function OutlinePanel({
                 style={{
                   fontFamily: FONT_SERIF_DISPLAY,
                   fontSize: 14.5,
-                  fontStyle: active ? "italic" : "normal",
+                  fontStyle: "normal",
                   fontWeight: active ? 500 : 400,
                   color: theme.ink,
                   flex: 1,

@@ -122,10 +122,9 @@ export function createCeneleSource(host: SourceHost): Source {
   return {
     meta: {
       id: SOURCE_ID,
-      name: "Cenele",
+      name: "فضاء الروايات",
       baseUrl: BASE_URL,
       language: "ar",
-      descriptionKey: "source.cenele.description",
       version: "0.1.0",
     },
     // Cenele loads chapter lists per volume via AJAX. Most novels have

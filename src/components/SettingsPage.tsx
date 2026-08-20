@@ -26,7 +26,6 @@ import {
   SectionHeader,
   SegRow,
   ThemeField,
-  UiFontField,
   readingItems,
   renderEntries,
   type CategoryKey,
@@ -38,7 +37,6 @@ import {
   FONT_STACKS,
   type Theme,
   type ThemeKey,
-  type UiFontKey,
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
@@ -154,17 +152,6 @@ export function SettingsPage({
             theme={theme}
             value={t.uiLang}
             onChange={(v: UiLangPref) => setTweak("uiLang", v)}
-          />
-        ),
-      },
-      {
-        id: "uiFont",
-        label: tr("settings.uiFont"),
-        node: (
-          <UiFontField
-            theme={theme}
-            value={t.uiFont}
-            onChange={(v: UiFontKey) => setTweak("uiFont", v)}
           />
         ),
       },

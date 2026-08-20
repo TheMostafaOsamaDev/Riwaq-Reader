@@ -37,7 +37,6 @@ export const en = {
   "settings.theme.sepia": "Sepia",
   "settings.theme.dark": "Dark",
   "settings.theme.oled": "OLED",
-  "settings.font": "Font",
   "settings.fontSize": "Font size · {n}px",
   "settings.lineHeight": "Line height · {n}",
   "settings.letterSpacing": "Letter spacing · {n}em",
@@ -74,7 +73,6 @@ export const en = {
   "settings.searchNoResults": "No matching settings",
 
   // appearance
-  "settings.uiFont": "Interface font",
 
   // reading (new)
   "settings.paragraphSpacing": "Paragraph spacing · {n}",
@@ -132,6 +130,8 @@ export const en = {
   "sidebar.newShelf": "New shelf",
   "sidebar.downloads": "Downloads",
   "sidebar.settings": "Settings",
+  "nav.back": "Back",
+  "nav.forward": "Forward",
   "sidebar.importBook": "Import book",
   "sidebar.importing": "Importing…",
   "sidebar.moreImport": "More import options",
@@ -423,16 +423,9 @@ export const en = {
   "carousel.scrollRight": "Scroll right",
 
   // source — app-authored copy shipped with the bundled source extensions.
-  // Brand names/ids (KolNovel, Cenele, …) and anything scraped from a
-  // source's own site are NOT here — only the app's own English sentences:
-  // the sources-list card descriptions, and the fallback section headings
-  // used on the rare occasion a source's homepage doesn't yield one.
-  "source.cenele.description":
-    "Arabic translations of Asian web novels from cenele.com (فضاء الروايات).",
-  "source.kolnovel.description":
-    "Arabic translations of Asian novels from free.kolnovel.com.",
-  "source.kolnovelPro.description":
-    "Arabic novels from kolnovel.com delivered as PDF chapters with the official illustrations.",
+  // Card titles/descriptions now come from each site's own metadata (see
+  // registry.ts), so only the fallback section headings live here — used on
+  // the rare occasion a source's homepage doesn't yield one.
   "source.section.trendingFallback": "Trending",
   "source.section.hotUpdatesFallback": "Hot updates",
 
@@ -448,6 +441,7 @@ export const en = {
   "novel.noCover": "No cover",
   "novel.descMore": "more",
   "novel.descLess": "less",
+  "novel.fromSource": "From {source}",
   "novel.read": "Read",
   "novel.addToLibrary": "Add to library",
   "novel.adding": "Adding…",

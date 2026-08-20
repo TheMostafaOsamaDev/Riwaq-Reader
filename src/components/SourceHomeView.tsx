@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { getSource } from "../sources/registry";
+import { getSource, getSourceMeta } from "../sources/registry";
 import type {
   NovelCard as NovelCardData,
   Source,
@@ -23,6 +23,7 @@ import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelCard } from "./NovelCard";
 import { SectionCarousel } from "./SectionCarousel";
+import { SourceIcon } from "./SourceIcon";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
 
 interface Props {
@@ -325,6 +326,9 @@ function HomeHeader({
   const { tr } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const isMobile = layout === "mobile";
+  // Icons are catalog metadata, so resolve from the registry rather than the
+  // constructed instance's `meta` (which omits store-facing fields).
+  const iconUrl = getSourceMeta(source.meta.id)?.iconUrl;
 
   // Mobile lays out as two rows (title row + search row below) so the
   // source name has the full width it needs to display without
@@ -369,11 +373,17 @@ function HomeHeader({
         >
           <Icon name="arrowL" size={16} className="rtl-flip-x" />
         </button>
+        <SourceIcon
+          theme={theme}
+          iconUrl={iconUrl}
+          size={34}
+          radius={9}
+          glyphSize={18}
+        />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontSize: isMobile ? 20 : 22,
               letterSpacing: "-0.01em",
               whiteSpace: "nowrap",

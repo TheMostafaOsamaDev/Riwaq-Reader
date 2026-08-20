@@ -33,10 +33,9 @@ export function createKolNovelProSource(host: SourceHost): Source {
   return {
     meta: {
       id: "kolnovel-pro",
-      name: "KolNovel Pro",
+      name: "ملوك الروايات · Pro",
       baseUrl: BASE_URL,
       language: "ar",
-      descriptionKey: "source.kolnovelPro.description",
       version: "0.1.0",
     },
 

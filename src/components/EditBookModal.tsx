@@ -178,7 +178,6 @@ export function EditBookModal({
             <div
               style={{
                 fontFamily: FONT_SERIF_DISPLAY,
-                fontStyle: "italic",
                 fontSize: 18,
                 color: theme.ink,
               }}
@@ -450,7 +449,6 @@ function MobileEditPage({
           <div
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontSize: 17,
               color: theme.ink,
               textAlign: "center",

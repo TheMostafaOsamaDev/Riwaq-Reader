@@ -24,6 +24,14 @@ import { useTweaks } from "./hooks/useTweaks";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { close as closeLightbox, useLightbox } from "./store/lightbox";
 import {
+  useNav,
+  goReader,
+  goSettings,
+  openOverlay,
+  back,
+  forward,
+} from "./store/navigation";
+import {
   deleteHighlights,
   getEntry,
   listBooks,
@@ -90,12 +98,6 @@ interface LoadedFixed {
   state: BookState;
 }
 
-interface StreamingSession {
-  sourceId: string;
-  novelUrl: string;
-  startChapterId?: number;
-}
-
 function App() {
   // Listen for Android launch-intent extras (e.g., notification taps
   // routing to the download queue). Has to live above the Library so
@@ -108,26 +110,30 @@ function App() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadedFixed, setLoadedFixed] = useState<LoadedFixed | null>(null);
   const lightbox = useLightbox();
-  // Streaming reader — opened from the Store when the user clicks "Read"
-  // on a novel detail page. Non-null = full-viewport reader overlays
-  // everything else (Library + Store). Closing returns to the Store at
-  // the same novel.
-  const [streaming, setStreaming] = useState<StreamingSession | null>(null);
 
+  // Navigation is the single source of truth for which destination is shown.
+  // `base` drives App's top-level view swap (Library / Reader / Settings);
+  // `overlay` layers the streaming reader (and, inside Library, the download
+  // queue) on top without unmounting the base underneath.
+  const nav = useNav();
+  const base = nav.snapshot.base;
+  const overlay = nav.snapshot.overlay;
+  const streaming = overlay?.kind === "stream" ? overlay : null;
+
+  // Streaming reader — opened from the Store when the user clicks "Read" on a
+  // novel detail page. Rendered as an overlay so the Library (with the open
+  // novel detail) stays mounted underneath; Back closes it and returns there.
   const openStream = useCallback(
-    (sourceId: string, novelUrl: string, chapterId?: number) => {
-      setStreaming({ sourceId, novelUrl, startChapterId: chapterId });
-    },
+    (sourceId: string, novelUrl: string, chapterId?: number) =>
+      openOverlay({ kind: "stream", sourceId, novelUrl, chapterId }),
     [],
   );
-  const closeStream = useCallback(() => setStreaming(null), []);
+  const closeStream = useCallback(() => back(), []);
 
-  // Settings promoted to a top-level view (peer of Library/Reader). Opened from
-  // the Library nav and the reader's quick-panel; Back re-derives the viewKey
-  // back to whichever view is still mounted underneath.
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  // Settings is a top-level base destination (peer of Library/Reader). Opening
+  // it pushes a history entry; Back pops to whatever was showing before.
+  const openSettings = useCallback(() => goSettings(), []);
+  const closeSettings = useCallback(() => back(), []);
 
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
@@ -210,6 +216,29 @@ function App() {
     setReduceMotionOverride(t.reduceMotion);
   }, [t.reduceMotion]);
 
+  // Desktop back/forward, routed through nav history. Alt+←/→ and (on macOS)
+  // ⌘[ / ⌘] mirror the browser convention (Alt+Left = back in every locale,
+  // independent of text direction). Mouse side-buttons are left to the
+  // webview, which emits `popstate` — already handled by the nav store.
+  // preventDefault stops any native key mapping so each press navigates once.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isBack =
+        (e.altKey && e.key === "ArrowLeft") || (e.metaKey && e.key === "[");
+      const isForward =
+        (e.altKey && e.key === "ArrowRight") || (e.metaKey && e.key === "]");
+      if (isBack) {
+        e.preventDefault();
+        back();
+      } else if (isForward) {
+        e.preventDefault();
+        forward();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Push download-queue runtime config from the tweaks.
   useEffect(() => {
     setDownloadConcurrency(t.maxConcurrentDownloads);
@@ -280,6 +309,10 @@ function App() {
           });
         }
         setActivePanel(null);
+        // Data is ready — now flip the base to the reader so the crossfade
+        // lands on a fully-loaded view (no blank frame). A no-op push when
+        // we're already on this reader entry (the restore path below).
+        goReader(id);
         // Keep the spinner up over the AnimatedSwap crossfade so the
         // user doesn't catch the Library through the reader's fade-in.
         // The delay matches the .leaflet-view-enter keyframe (MOTION.med
@@ -300,6 +333,29 @@ function App() {
     },
     [reduced],
   );
+
+  // Reader data is keyed to the nav location. The common path (openBook) loads
+  // first, then navigates — so this effect no-ops there. It's the safety net
+  // for the other direction: landing on a reader entry WITHOUT its data (a
+  // browser-forward back into a book, or a dev reload) loads it; leaving the
+  // reader drops the data so a later re-open starts fresh.
+  const readerBookId = base.screen === "reader" ? base.bookId : null;
+  useEffect(() => {
+    if (readerBookId == null) {
+      setLoaded(null);
+      setLoadedFixed(null);
+      setActivePanel(null);
+      setError(null);
+      return;
+    }
+    if (
+      loaded?.book.id === readerBookId ||
+      loadedFixed?.book.id === readerBookId
+    )
+      return;
+    void openBook(readerBookId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readerBookId]);
 
   // First-run startup routing. When "Resume last book" is chosen, open the
   // most-recently-read local book once on mount (listBooks is sorted newest
@@ -324,12 +380,10 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const closeBook = useCallback(() => {
-    setLoaded(null);
-    setLoadedFixed(null);
-    setActivePanel(null);
-    setError(null);
-  }, []);
+  // Back out of the reader by popping history — returns to wherever the book
+  // was opened from (shelf, search, a novel detail…). The reader-location
+  // effect above clears the loaded book once the base leaves the reader.
+  const closeBook = useCallback(() => back(), []);
 
   const changeChapter = useCallback(
     (order: number) => {
@@ -530,8 +584,6 @@ function App() {
     [loaded],
   );
 
-  const inReader = loaded !== null || loadedFixed !== null;
-
   return (
     <I18nProvider locale={uiLocale}>
       <div
@@ -592,7 +644,7 @@ function App() {
                 layout={isMobile ? "mobile" : "desktop"}
                 sourceId={streaming.sourceId}
                 novelUrl={streaming.novelUrl}
-                startChapterId={streaming.startChapterId}
+                startChapterId={streaming.chapterId}
                 onClose={closeStream}
               />
             ) : null}
@@ -603,16 +655,16 @@ function App() {
             on mobile-landscape) ALSO crossfades cleanly. */}
         <AnimatedSwap
           viewKey={
-            settingsOpen
+            base.screen === "settings"
               ? "settings"
-              : inReader
+              : base.screen === "reader"
                 ? isMobile
                   ? "reader-mobile"
                   : "reader-desktop"
                 : "library"
           }
         >
-          {settingsOpen ? (
+          {base.screen === "settings" ? (
             <SettingsPage
               theme={theme}
               themeKey={themeKey}
@@ -622,18 +674,19 @@ function App() {
               layout={isMobile ? "mobile" : "desktop"}
               onClose={closeSettings}
             />
-          ) : !inReader ? (
+          ) : base.screen === "library" ? (
             <Library
               theme={theme}
               themeKey={themeKey}
               layout={isMobile ? "mobile" : "desktop"}
+              view={base.view}
               onOpen={openBook}
               onStreamRead={openStream}
               streamActive={streaming !== null}
               onOpenSettings={openSettings}
               confirmDelete={t.confirmDelete}
             />
-          ) : loadedFixed ? (
+          ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <FixedPageReader
               theme={theme}
               themeKey={themeKey}
@@ -655,50 +708,57 @@ function App() {
               onOpenFullSettings={openSettings}
               onBack={closeBook}
             />
-          ) : isMobile ? (
-            <MobileReader
-              theme={theme}
-              themeKey={themeKey}
-              t={t}
-              setTweak={setTweak}
-              book={loaded!.book}
-              state={loaded!.state}
-              currentChapter={loaded!.currentChapter}
-              resumeParagraph={loaded!.resumeParagraph}
-              resumeOffset={loaded!.resumeOffset}
-              jumpNonce={loaded!.jumpNonce}
-              onChapterChange={changeChapter}
-              onParagraphChange={onParagraphChange}
-              onCreateHighlight={createHighlight}
-              onDeleteHighlight={removeHighlight}
-              onUpdateHighlightNote={editHighlightNote}
-              onJumpToHighlight={jumpToHighlight}
-              onOpenFullSettings={openSettings}
-              onBack={closeBook}
-            />
+          ) : loaded && loaded.book.id === base.bookId ? (
+            isMobile ? (
+              <MobileReader
+                theme={theme}
+                themeKey={themeKey}
+                t={t}
+                setTweak={setTweak}
+                book={loaded.book}
+                state={loaded.state}
+                currentChapter={loaded.currentChapter}
+                resumeParagraph={loaded.resumeParagraph}
+                resumeOffset={loaded.resumeOffset}
+                jumpNonce={loaded.jumpNonce}
+                onChapterChange={changeChapter}
+                onParagraphChange={onParagraphChange}
+                onCreateHighlight={createHighlight}
+                onDeleteHighlight={removeHighlight}
+                onUpdateHighlightNote={editHighlightNote}
+                onJumpToHighlight={jumpToHighlight}
+                onOpenFullSettings={openSettings}
+                onBack={closeBook}
+              />
+            ) : (
+              <DesktopReader
+                theme={theme}
+                themeKey={themeKey}
+                t={t}
+                setTweak={setTweak}
+                book={loaded.book}
+                state={loaded.state}
+                currentChapter={loaded.currentChapter}
+                resumeParagraph={loaded.resumeParagraph}
+                resumeOffset={loaded.resumeOffset}
+                jumpNonce={loaded.jumpNonce}
+                onChapterChange={changeChapter}
+                onParagraphChange={onParagraphChange}
+                onCreateHighlight={createHighlight}
+                onDeleteHighlight={removeHighlight}
+                onUpdateHighlightNote={editHighlightNote}
+                onJumpToHighlight={jumpToHighlight}
+                activePanel={activePanel}
+                setActivePanel={setActivePanel}
+                onOpenFullSettings={openSettings}
+                onBack={closeBook}
+              />
+            )
           ) : (
-            <DesktopReader
-              theme={theme}
-              themeKey={themeKey}
-              t={t}
-              setTweak={setTweak}
-              book={loaded!.book}
-              state={loaded!.state}
-              currentChapter={loaded!.currentChapter}
-              resumeParagraph={loaded!.resumeParagraph}
-              resumeOffset={loaded!.resumeOffset}
-              jumpNonce={loaded!.jumpNonce}
-              onChapterChange={changeChapter}
-              onParagraphChange={onParagraphChange}
-              onCreateHighlight={createHighlight}
-              onDeleteHighlight={removeHighlight}
-              onUpdateHighlightNote={editHighlightNote}
-              onJumpToHighlight={jumpToHighlight}
-              activePanel={activePanel}
-              setActivePanel={setActivePanel}
-              onOpenFullSettings={openSettings}
-              onBack={closeBook}
-            />
+            // base is reader but its data isn't loaded yet (browser-forward
+            // into a book / dev reload) — the reader-location effect is
+            // loading it; the full-page spinner covers this blank frame.
+            null
           )}
         </AnimatedSwap>
         {/* Mounted at the app root so a docx import keeps showing across the
@@ -730,7 +790,6 @@ function FullPageSpinner({
         alignItems: "center",
         justifyContent: "center",
         fontFamily: FONT_SERIF_DISPLAY,
-        fontStyle: "italic",
         fontSize: 20,
         zIndex: 40,
       }}

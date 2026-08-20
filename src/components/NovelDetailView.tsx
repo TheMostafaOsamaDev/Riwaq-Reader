@@ -21,7 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { getSource } from "../sources/registry";
+import { getSource, getSourceMeta } from "../sources/registry";
 import {
   addNovelToLibrary,
   deleteBook,
@@ -33,6 +33,7 @@ import {
 } from "../sources/images";
 import type { Source, SourceChapter, SourceNovel } from "../sources/types";
 import type { SourceSnapshot } from "../store/sourceLibrary";
+import { transition } from "../styles/motion";
 
 interface ChapterFlags {
   downloadedAt?: number;
@@ -56,10 +57,12 @@ function buildFlagMap(snapshot: SourceSnapshot): Map<number, ChapterFlags> {
   }
   return out;
 }
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { ACCENT, FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
+import { Hero } from "./Hero";
+import { SourceBadge } from "./SourceBadge";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "./Skeleton";
 import { SaveAsOfflineBookDialog } from "./SaveAsOfflineBookDialog";
 
@@ -297,8 +300,7 @@ export function NovelDetailView({
           display: "flex",
           alignItems: "center",
           gap: 12,
-          padding: layout === "mobile" ? "16px 18px 10px" : "20px 40px 12px",
-          borderBottom: `0.5px solid ${theme.rule}`,
+          padding: layout === "mobile" ? "14px 18px 8px" : "18px 40px 8px",
         }}
       >
         <button
@@ -320,15 +322,6 @@ export function NovelDetailView({
         >
           <Icon name="arrowL" size={16} className="rtl-flip-x" />
         </button>
-        <div
-          style={{
-            fontSize: 12.5,
-            color: theme.muted,
-            letterSpacing: "0.02em",
-          }}
-        >
-          {source.meta.name}
-        </div>
       </div>
 
       {state.loading ? (
@@ -354,16 +347,12 @@ export function NovelDetailView({
         </div>
       ) : (
         <>
-          <NovelHeader
+          <NovelHero
             theme={theme}
             layout={layout}
             novel={state.novel}
-            showFullDesc={showFullDesc}
-            setShowFullDesc={setShowFullDesc}
-          />
-          <ActionRow
-            theme={theme}
-            layout={layout}
+            sourceName={source.meta.name}
+            sourceIconUrl={getSourceMeta(source.meta.id)?.iconUrl}
             working={working}
             chapterCount={state.novel.volumes.reduce(
               (a, v) => a + v.chapters.length,
@@ -376,10 +365,15 @@ export function NovelDetailView({
             onRemoveFromLibrary={onRemoveFromLibrary}
             onOpenRangeDialog={onOpenRangeDialog}
             onOpenSaveOffline={
-              libraryEntryId
-                ? () => setSaveOfflineOpen(true)
-                : undefined
+              libraryEntryId ? () => setSaveOfflineOpen(true) : undefined
             }
+          />
+          <NovelAbout
+            theme={theme}
+            layout={layout}
+            novel={state.novel}
+            showFullDesc={showFullDesc}
+            setShowFullDesc={setShowFullDesc}
           />
           {saveOfflineOpen && libraryEntryId && state.novel && (
             <SaveAsOfflineBookDialog
@@ -427,9 +421,316 @@ export function NovelDetailView({
   );
 }
 
-// ── header (cover + meta) ──────────────────────────────────────────────────
+// ── hero (cinematic header) ──────────────────────────────────────────────────
 
-interface NovelHeaderProps {
+interface NovelHeroProps {
+  theme: Theme;
+  layout: "desktop" | "mobile";
+  novel: SourceNovel;
+  sourceName: string;
+  sourceIconUrl?: string;
+  working: boolean;
+  chapterCount: number;
+  /** True when the novel is already a library entry — swaps Add for Remove. */
+  inLibrary: boolean;
+  /** False while the library lookup is in flight — Add/Remove stays disabled
+   *  so a fast click can't double-add before we know which to render. */
+  libraryCheckDone: boolean;
+  onRead: () => void;
+  onAddToLibrary: () => void;
+  onRemoveFromLibrary: () => void;
+  onOpenRangeDialog: () => void;
+  /** Only present for in-library, source-backed entries. */
+  onOpenSaveOffline?: () => void;
+}
+
+/** The cinematic top of the detail page: the cover blurred into a backdrop,
+ *  with the sharp cover, source chip, title, key metadata, a description
+ *  teaser, and the primary action cluster overlaid on a dark scrim. Actions
+ *  use Button's `surface="onImage"` treatment so they read on the imagery in
+ *  any app theme. */
+function NovelHero({
+  theme,
+  layout,
+  novel,
+  sourceName,
+  sourceIconUrl,
+  working,
+  chapterCount,
+  inLibrary,
+  libraryCheckDone,
+  onRead,
+  onAddToLibrary,
+  onRemoveFromLibrary,
+  onOpenRangeDialog,
+  onOpenSaveOffline,
+}: NovelHeroProps) {
+  const { tr } = useI18n();
+  const isMobile = layout === "mobile";
+  const coverW = isMobile ? 116 : 152;
+  const desc = novel.description ?? "";
+
+  // Compact, dot-separated metadata line. Lead with the chapter count (the
+  // most useful "how big is this" signal), then the source's own label/value
+  // pairs; fall back to the detected author when the source surfaced no meta.
+  const metaItems: string[] = [];
+  if (chapterCount > 0) {
+    metaItems.push(tr("novel.chapterCountShort", { n: chapterCount }));
+  }
+  if (novel.meta.length > 0) {
+    for (const m of novel.meta.slice(0, 4)) {
+      const value = m.value?.trim();
+      if (!value) continue;
+      const label = m.label?.trim();
+      metaItems.push(label ? `${label}: ${value}` : value);
+    }
+  } else if (novel.author && novel.author !== tr("common.unknownAuthor")) {
+    metaItems.push(novel.author);
+  }
+
+  return (
+    <Hero layout={layout} backdropUrl={novel.coverUrl}>
+      <div
+        style={{
+          display: "flex",
+          gap: isMobile ? 16 : 26,
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "flex-end",
+        }}
+      >
+        <div
+          style={{
+            width: coverW,
+            flexShrink: 0,
+            alignSelf: isMobile ? "flex-start" : "flex-end",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              aspectRatio: "2 / 3",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "rgba(255,255,255,0.06)",
+              border: "0.5px solid rgba(255,255,255,0.16)",
+              boxShadow: "0 10px 34px rgba(0,0,0,0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {novel.coverUrl ? (
+              <NovelCoverImage
+                coverUrl={novel.coverUrl}
+                size={isMobile ? 400 : 600}
+                theme={theme}
+              />
+            ) : (
+              <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                {tr("novel.noCover")}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ marginBottom: 12 }}>
+            <SourceBadge
+              theme={theme}
+              variant="chip"
+              iconUrl={sourceIconUrl}
+              name={sourceName}
+              label={tr("novel.fromSource", { source: sourceName })}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <h1
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontWeight: 400,
+                fontSize: isMobile ? 27 : 36,
+                margin: 0,
+                letterSpacing: "-0.015em",
+                lineHeight: 1.08,
+                color: "#ffffff",
+                direction: novel.direction,
+                textShadow: "0 1px 24px rgba(0,0,0,0.45)",
+              }}
+            >
+              {novel.title || tr("common.untitled")}
+            </h1>
+            {novel.status && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  background: "rgba(255,255,255,0.16)",
+                  border: "0.5px solid rgba(255,255,255,0.28)",
+                  color: "#ffffff",
+                  padding: "3px 9px",
+                  borderRadius: 999,
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                }}
+              >
+                {novel.status}
+              </span>
+            )}
+          </div>
+
+          {novel.originalTitle && (
+            <div
+              style={{
+                fontSize: 13.5,
+                color: "rgba(255,255,255,0.72)",
+                marginTop: 5,
+                direction: novel.direction,
+              }}
+            >
+              {novel.originalTitle}
+            </div>
+          )}
+
+          {metaItems.length > 0 && (
+            <div
+              style={{
+                marginTop: 12,
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                fontSize: 12.5,
+                color: "rgba(255,255,255,0.82)",
+                direction: novel.direction,
+              }}
+            >
+              {metaItems.map((it, i) => (
+                <Fragment key={i}>
+                  {i > 0 && (
+                    <span aria-hidden style={{ margin: "0 9px", opacity: 0.5 }}>
+                      ·
+                    </span>
+                  )}
+                  <span>{it}</span>
+                </Fragment>
+              ))}
+            </div>
+          )}
+
+          {desc.length > 0 && (
+            <p
+              style={{
+                margin: "14px 0 0 0",
+                fontSize: 13.5,
+                lineHeight: 1.6,
+                color: "rgba(255,255,255,0.86)",
+                direction: novel.direction,
+                textAlign: "start",
+                maxWidth: 640,
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical" as const,
+                WebkitLineClamp: isMobile ? 3 : 2,
+                overflow: "hidden",
+              }}
+            >
+              {desc}
+            </p>
+          )}
+
+          <div
+            style={{
+              marginTop: 20,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <Button
+              theme={theme}
+              surface="onImage"
+              variant="primary"
+              shape="pill"
+              size="lg"
+              onClick={onRead}
+              leadingIcon={
+                <Icon name="play" size={13} fill="currentColor" stroke={0} />
+              }
+            >
+              {tr("novel.read")}
+            </Button>
+            {inLibrary ? (
+              <Button
+                theme={theme}
+                surface="onImage"
+                variant="outline"
+                shape="pill"
+                size="lg"
+                onClick={onRemoveFromLibrary}
+                disabled={working || !libraryCheckDone}
+                leadingIcon={<Icon name="trash" size={14} />}
+              >
+                {working ? tr("novel.removing") : tr("library.removeFromLibrary")}
+              </Button>
+            ) : (
+              <Button
+                theme={theme}
+                surface="onImage"
+                variant="outline"
+                shape="pill"
+                size="lg"
+                onClick={onAddToLibrary}
+                disabled={working || !libraryCheckDone}
+                leadingIcon={<Icon name="bookmark" size={14} />}
+              >
+                {working ? tr("novel.adding") : tr("novel.addToLibrary")}
+              </Button>
+            )}
+            <Button
+              theme={theme}
+              surface="onImage"
+              variant="outline"
+              shape="pill"
+              size="lg"
+              onClick={onOpenRangeDialog}
+              disabled={working || chapterCount === 0}
+              leadingIcon={<Icon name="slider" size={14} />}
+            >
+              {tr("novel.downloadRange")}
+            </Button>
+            {onOpenSaveOffline && (
+              <Button
+                theme={theme}
+                surface="onImage"
+                variant="outline"
+                shape="pill"
+                size="lg"
+                onClick={onOpenSaveOffline}
+                disabled={working || chapterCount === 0}
+                leadingIcon={<Icon name="download" size={14} />}
+              >
+                {tr("downloads.saveOffline.title")}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Hero>
+  );
+}
+
+// ── about (tags + full description) ──────────────────────────────────────────
+
+interface NovelAboutProps {
   theme: Theme;
   layout: "desktop" | "mobile";
   novel: SourceNovel;
@@ -437,194 +738,85 @@ interface NovelHeaderProps {
   setShowFullDesc: (b: boolean) => void;
 }
 
-function NovelHeader({
+/** The details that sit below the hero: genre/tag chips and the full
+ *  synopsis (collapsed past a threshold). The hero shows only a short teaser,
+ *  so this is where the reader gets the whole description. */
+function NovelAbout({
   theme,
   layout,
   novel,
   showFullDesc,
   setShowFullDesc,
-}: NovelHeaderProps) {
+}: NovelAboutProps) {
   const { tr } = useI18n();
   const desc = novel.description ?? "";
-  const isLongDesc = desc.length > 280;
-  const visibleDesc = showFullDesc || !isLongDesc ? desc : desc.slice(0, 280) + "…";
+  const hasDesc = desc.length > 0;
+  const hasTags = novel.tags.length > 0;
+  if (!hasDesc && !hasTags) return null;
+
+  const isLongDesc = desc.length > 300;
+  const visibleDesc =
+    showFullDesc || !isLongDesc ? desc : desc.slice(0, 300) + "…";
 
   return (
     <div
       style={{
+        padding: layout === "mobile" ? "18px 18px 4px" : "26px 40px 4px",
         display: "flex",
-        gap: layout === "mobile" ? 14 : 28,
-        padding: layout === "mobile" ? "20px 18px" : "32px 40px 24px",
-        flexDirection: layout === "mobile" ? "column" : "row",
-        alignItems: layout === "mobile" ? "flex-start" : "flex-start",
+        flexDirection: "column",
+        gap: 16,
       }}
     >
-      <div
-        style={{
-          width: layout === "mobile" ? 140 : 200,
-          flexShrink: 0,
-          alignSelf: layout === "mobile" ? "center" : "flex-start",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            aspectRatio: "2 / 3",
-            borderRadius: 12,
-            overflow: "hidden",
-            background: theme.chrome,
-            border: `0.5px solid ${theme.rule}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {novel.coverUrl ? (
-            <NovelCoverImage
-              coverUrl={novel.coverUrl}
-              size={layout === "mobile" ? 400 : 600}
-              theme={theme}
-            />
-          ) : (
-            <span style={{ color: theme.muted, fontSize: 12 }}>
-              {tr("novel.noCover")}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <h1
-            style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
-              fontWeight: 400,
-              fontSize: layout === "mobile" ? 24 : 28,
-              margin: 0,
-              letterSpacing: "-0.01em",
-              color: theme.ink,
-              direction: novel.direction,
-            }}
-          >
-            {novel.title || tr("common.untitled")}
-          </h1>
-          {novel.status && (
+      {hasTags && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {novel.tags.map((t) => (
             <span
+              key={t}
               style={{
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                background: theme.chrome,
-                border: `0.5px solid ${theme.rule}`,
-                color: theme.ink,
-                padding: "3px 8px",
+                fontSize: 11.5,
+                padding: "4px 10px",
                 borderRadius: 999,
+                border: `0.5px solid ${theme.rule}`,
+                color: theme.muted,
+                background: theme.chrome,
               }}
             >
-              {novel.status}
+              {t}
             </span>
+          ))}
+        </div>
+      )}
+      {hasDesc && (
+        <div
+          style={{
+            fontSize: 13.5,
+            lineHeight: 1.65,
+            color: theme.ink,
+            direction: novel.direction,
+            textAlign: "start",
+          }}
+        >
+          {visibleDesc}
+          {isLongDesc && (
+            <button
+              onClick={() => setShowFullDesc(!showFullDesc)}
+              style={{
+                marginInlineStart: 6,
+                background: "transparent",
+                border: "none",
+                color: theme.muted,
+                cursor: "pointer",
+                fontSize: 12.5,
+                textDecoration: "underline",
+                fontFamily: "inherit",
+                padding: 0,
+              }}
+            >
+              {showFullDesc ? tr("novel.descLess") : tr("novel.descMore")}
+            </button>
           )}
         </div>
-        {novel.originalTitle && (
-          <div
-            style={{
-              fontSize: 13,
-              color: theme.muted,
-              marginTop: 4,
-              fontStyle: "italic",
-            }}
-          >
-            {novel.originalTitle}
-          </div>
-        )}
-
-        {novel.meta.length > 0 && (
-          <dl
-            style={{
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              gap: "4px 14px",
-              margin: "16px 0 0 0",
-              fontSize: 12.5,
-            }}
-          >
-            {novel.meta.slice(0, 6).map((m, i) => (
-              <Fragment key={i}>
-                <dt style={{ color: theme.muted, whiteSpace: "nowrap" }}>
-                  {m.label}
-                </dt>
-                <dd style={{ margin: 0, color: theme.ink }}>{m.value}</dd>
-              </Fragment>
-            ))}
-          </dl>
-        )}
-
-        {novel.tags.length > 0 && (
-          <div
-            style={{
-              marginTop: 14,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 6,
-            }}
-          >
-            {novel.tags.map((t) => (
-              <span
-                key={t}
-                style={{
-                  fontSize: 11,
-                  padding: "3px 8px",
-                  borderRadius: 999,
-                  border: `0.5px solid ${theme.rule}`,
-                  color: theme.muted,
-                  background: theme.bg,
-                }}
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {desc.length > 0 && (
-          <div
-            style={{
-              marginTop: 18,
-              fontSize: 13.5,
-              lineHeight: 1.6,
-              color: theme.ink,
-              direction: novel.direction,
-              // Logical: with `direction` set on this element, "start"
-              // resolves to left for ltr content and right for rtl
-              // content — same effect as the old ternary without hand-
-              // computing the physical side.
-              textAlign: "start",
-            }}
-          >
-            {visibleDesc}
-            {isLongDesc && (
-              <button
-                onClick={() => setShowFullDesc(!showFullDesc)}
-                style={{
-                  marginInlineStart: 6,
-                  background: "transparent",
-                  border: "none",
-                  color: theme.muted,
-                  cursor: "pointer",
-                  fontSize: 12,
-                  textDecoration: "underline",
-                  fontFamily: "inherit",
-                  padding: 0,
-                }}
-              >
-                {showFullDesc ? tr("novel.descLess") : tr("novel.descMore")}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -671,113 +863,6 @@ function NovelCoverImage({
       }}
       style={{ width: "100%", height: "100%", objectFit: "cover" }}
     />
-  );
-}
-
-// ── action row ─────────────────────────────────────────────────────────────
-
-interface ActionRowProps {
-  theme: Theme;
-  layout: "desktop" | "mobile";
-  working: boolean;
-  chapterCount: number;
-  /** True when the novel is already a library entry — swaps the Add
-   *  button for Remove. */
-  inLibrary: boolean;
-  /** False while we haven't yet checked the library — the Add/Remove
-   *  button stays in a disabled state until we know which to render so
-   *  the user doesn't accidentally double-add by clicking before the
-   *  lookup resolves. */
-  libraryCheckDone: boolean;
-  onRead: () => void;
-  onAddToLibrary: () => void;
-  onRemoveFromLibrary: () => void;
-  onOpenRangeDialog: () => void;
-  /** Only present for in-library, source-backed entries — opens the
-   *  Save-as-offline-book dialog. Hidden when the entry isn't in the
-   *  library yet (the dialog needs a snapshot on disk to walk). */
-  onOpenSaveOffline?: () => void;
-}
-
-function ActionRow({
-  theme,
-  layout,
-  working,
-  chapterCount,
-  inLibrary,
-  libraryCheckDone,
-  onRead,
-  onAddToLibrary,
-  onRemoveFromLibrary,
-  onOpenRangeDialog,
-  onOpenSaveOffline,
-}: ActionRowProps) {
-  const { tr } = useI18n();
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 10,
-        padding: layout === "mobile" ? "6px 18px 18px" : "0 40px 28px",
-        alignItems: "center",
-      }}
-    >
-      <Button
-        theme={theme}
-        variant="primary"
-        size="md"
-        onClick={onRead}
-        leadingIcon={<Icon name="type" size={14} />}
-      >
-        {tr("novel.read")}
-      </Button>
-      {inLibrary ? (
-        <Button
-          theme={theme}
-          variant="outline"
-          size="md"
-          onClick={onRemoveFromLibrary}
-          disabled={working || !libraryCheckDone}
-          leadingIcon={<Icon name="trash" size={14} />}
-        >
-          {working ? tr("novel.removing") : tr("library.removeFromLibrary")}
-        </Button>
-      ) : (
-        <Button
-          theme={theme}
-          variant="outline"
-          size="md"
-          onClick={onAddToLibrary}
-          disabled={working || !libraryCheckDone}
-          leadingIcon={<Icon name="bookmark" size={14} />}
-        >
-          {working ? tr("novel.adding") : tr("novel.addToLibrary")}
-        </Button>
-      )}
-      <Button
-        theme={theme}
-        variant="outline"
-        size="md"
-        onClick={onOpenRangeDialog}
-        disabled={working || chapterCount === 0}
-        leadingIcon={<Icon name="slider" size={14} />}
-      >
-        {tr("novel.downloadRange")}
-      </Button>
-      {onOpenSaveOffline && (
-        <Button
-          theme={theme}
-          variant="outline"
-          size="md"
-          onClick={onOpenSaveOffline}
-          disabled={working || chapterCount === 0}
-          leadingIcon={<Icon name="download" size={14} />}
-        >
-          {tr("downloads.saveOffline.title")}
-        </Button>
-      )}
-    </div>
   );
 }
 
@@ -1529,25 +1614,28 @@ function VolumesAccordion({
       </h2>
       {novel.volumes.map((v) => {
         const isOpen = open.has(v.id);
+        const count = v.chapters.length > 0 ? v.chapters.length : v.chapterCount ?? 0;
         return (
           <div
             key={v.id}
             style={{
-              border: `0.5px solid ${theme.rule}`,
-              borderRadius: 10,
+              border: `0.5px solid ${isOpen ? theme.ruleStrong : theme.rule}`,
+              borderRadius: 12,
               overflow: "hidden",
-              background: theme.bg,
+              background: isOpen ? theme.chrome : theme.bg,
+              transition: transition("background", "fast", "out"),
             }}
           >
             <button
               onClick={() => toggle(v.id)}
+              aria-expanded={isOpen}
               style={{
                 width: "100%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 10,
-                padding: "12px 14px",
+                padding: "13px 14px",
                 border: "none",
                 background: "transparent",
                 color: theme.ink,
@@ -1555,13 +1643,33 @@ function VolumesAccordion({
                 fontFamily: "inherit",
                 textAlign: "start",
               }}
+              onMouseEnter={(e) => {
+                if (!isOpen) e.currentTarget.style.background = theme.hover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                <Icon
-                  name={isOpen ? "chevronD" : "chevronR"}
-                  size={14}
-                  className={isOpen ? undefined : "rtl-flip-x"}
-                />
+              <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                {/* Outer span mirrors the chevron in RTL; the inner span
+                    rotates it between closed (points toward content) and open
+                    (points down). Two layers so the rotate transform doesn't
+                    clobber the rtl-flip. Reduced motion neutralizes the
+                    rotation via the global transition-duration override. */}
+                <span
+                  className="rtl-flip-x"
+                  style={{ display: "inline-flex", flexShrink: 0, color: theme.muted }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      transition: transition("transform", "fast", "out"),
+                      transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                    }}
+                  >
+                    <Icon name="chevronR" size={14} />
+                  </span>
+                </span>
                 <span
                   style={{
                     fontSize: 13.5,
@@ -1575,13 +1683,18 @@ function VolumesAccordion({
                 </span>
               </div>
               <span
-                style={{ fontSize: 11, color: theme.muted, flexShrink: 0 }}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: theme.muted,
+                  flexShrink: 0,
+                  padding: "3px 9px",
+                  borderRadius: 999,
+                  background: theme.bg,
+                  border: `0.5px solid ${theme.rule}`,
+                }}
               >
-                {v.chapters.length > 0
-                  ? tr("novel.chapterCountShort", { n: v.chapters.length })
-                  : v.chapterCount
-                    ? tr("novel.chapterCountShort", { n: v.chapterCount })
-                    : "—"}
+                {count > 0 ? tr("novel.chapterCountShort", { n: count }) : "—"}
               </span>
             </button>
             {isOpen && (
@@ -1619,7 +1732,7 @@ function VolumesAccordion({
             )}
             {isOpen && v.chapters.length > 0 && (
               <ul
-                className="leaflet-scroll-hidden"
+                className="leaflet-scroll-hidden leaflet-collapse-enter"
                 style={{
                   listStyle: "none",
                   margin: 0,
@@ -1627,6 +1740,7 @@ function VolumesAccordion({
                   borderTop: `0.5px solid ${theme.rule}`,
                   maxHeight: 360,
                   overflowY: "auto",
+                  background: theme.bg,
                 }}
               >
                 {v.chapters.map((c) => {
@@ -1649,12 +1763,20 @@ function VolumesAccordion({
                           textAlign: "start",
                           background: "transparent",
                           border: "none",
-                          padding: "8px 14px 8px 32px",
-                          // Dim read chapters: lower opacity so the
-                          // text reads visibly "checked off" without
-                          // hiding it.
+                          // Start-edge accent bar — transparent by default,
+                          // theme.rule when read, ACCENT on hover. A fixed
+                          // 2px logical border (never toggled to 0) so the
+                          // colour change never shifts the row's layout.
+                          borderInlineStart: `2px solid ${
+                            read ? theme.rule : "transparent"
+                          }`,
+                          paddingBlock: 9,
+                          paddingInlineStart: 26,
+                          paddingInlineEnd: 14,
+                          // Dim read chapters so the list reads "checked off"
+                          // without hiding anything.
                           color: read ? theme.muted : theme.ink,
-                          opacity: read ? 0.62 : 1,
+                          opacity: read ? 0.72 : 1,
                           cursor: "pointer",
                           fontFamily: "inherit",
                           fontSize: 12.5,
@@ -1663,12 +1785,17 @@ function VolumesAccordion({
                           gap: 10,
                           alignItems: "baseline",
                           direction: novel.direction,
+                          transition: transition("border-color", "fast", "out"),
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = theme.hover;
+                          e.currentTarget.style.borderInlineStartColor = ACCENT;
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.borderInlineStartColor = read
+                            ? theme.rule
+                            : "transparent";
                         }}
                       >
                         <span
@@ -1677,11 +1804,23 @@ function VolumesAccordion({
                             color: theme.muted,
                             minWidth: 28,
                             flexShrink: 0,
+                            fontVariantNumeric: "tabular-nums",
                           }}
                         >
                           {c.id}
                         </span>
                         <span style={{ flex: 1, minWidth: 0 }}>{c.title}</span>
+                        {read && (
+                          <Icon
+                            name="check"
+                            size={13}
+                            style={{
+                              color: ACCENT,
+                              flexShrink: 0,
+                              alignSelf: "center",
+                            }}
+                          />
+                        )}
                       </button>
                       {libraryEntryId && (
                         <ChapterDownloadButton

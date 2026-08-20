@@ -15,7 +15,7 @@ export type ButtonVariant =
   | "destructive"
   | "destructiveGhost";
 
-export type ButtonSize = "sm" | "md";
+export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "ref"> {
@@ -26,6 +26,14 @@ export interface ButtonProps
   trailingIcon?: ReactNode;
   fullWidth?: boolean;
   type?: "button" | "submit" | "reset";
+  /** Corner treatment. "rounded" (default) keeps the 8px app radius;
+   *  "pill" is the fully-rounded shape used by the hero action cluster. */
+  shape?: "rounded" | "pill";
+  /** Rendering surface. "default" uses the theme palette. "onImage" swaps to
+   *  a theme-independent light-on-dark treatment (solid near-white primary,
+   *  translucent "glass" for the rest) for buttons that sit over the hero's
+   *  darkened backdrop — readable in every app theme. */
+  surface?: "default" | "onImage";
 }
 
 // Press animation feels right for action buttons but not for chrome icon
@@ -41,6 +49,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     trailingIcon,
     fullWidth,
     type = "button",
+    shape = "rounded",
+    surface = "default",
     disabled,
     style,
     children,
@@ -56,12 +66,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const [hover, setHover] = useState(false);
   const [pressed, setPressed] = useState(false);
 
-  const padding = size === "sm" ? "7px 12px" : "9px 18px";
-  const fontSize = size === "sm" ? 12 : 13;
+  const padding =
+    size === "lg" ? "12px 24px" : size === "sm" ? "7px 12px" : "9px 18px";
+  const fontSize = size === "lg" ? 14 : size === "sm" ? 12 : 13;
   const gap = size === "sm" ? 6 : 8;
 
   const interactive = !disabled;
-  const v = variantStyle(variant, theme, interactive && hover);
+  const v =
+    surface === "onImage"
+      ? onImageVariantStyle(variant, interactive && hover)
+      : variantStyle(variant, theme, interactive && hover);
 
   const composed: CSSProperties = {
     display: "inline-flex",
@@ -73,7 +87,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     fontWeight: variant === "primary" || variant === "destructive" ? 600 : 500,
     fontFamily: FONT_STACKS.sans,
     letterSpacing: "-0.005em",
-    borderRadius: 8,
+    borderRadius: shape === "pill" ? 999 : 8,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.55 : 1,
     transition:
@@ -175,6 +189,59 @@ function variantStyle(
       return {
         background: hover ? "rgba(192,74,58,0.10)" : "transparent",
         color: "#c04a3a",
+        border: "none",
+      };
+  }
+}
+
+// Theme-independent palette for buttons that sit on the hero's darkened
+// backdrop. Values are fixed (not from the Theme) because the scrim behind
+// them is always dark regardless of the app theme — so white-on-dark reads
+// consistently in light, sepia, dark, and oled. Reds are lightened from the
+// `#c04a3a` used on light surfaces so they stay legible over the scrim.
+function onImageVariantStyle(
+  variant: ButtonVariant,
+  hover: boolean,
+): CSSProperties {
+  switch (variant) {
+    case "primary":
+      // The single, unmistakable CTA — a solid near-white pill, like the
+      // reference's "Play" button.
+      return {
+        background: hover ? "#ffffff" : "rgba(255,255,255,0.94)",
+        color: "#161310",
+        border: "none",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.28)",
+      };
+    case "secondary":
+    case "outline":
+      // Frosted glass — subordinate to the white primary but clearly a
+      // control against the imagery.
+      return {
+        background: hover ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.14)",
+        color: "#ffffff",
+        border: "0.5px solid rgba(255,255,255,0.34)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+      };
+    case "ghost":
+      return {
+        background: hover ? "rgba(255,255,255,0.14)" : "transparent",
+        color: hover ? "#ffffff" : "rgba(255,255,255,0.86)",
+        border: "none",
+      };
+    case "destructive":
+      return {
+        background: hover ? "rgba(255,138,117,0.18)" : "rgba(255,255,255,0.10)",
+        color: "#ff9c86",
+        border: "0.5px solid rgba(255,156,134,0.55)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+      };
+    case "destructiveGhost":
+      return {
+        background: hover ? "rgba(255,138,117,0.16)" : "transparent",
+        color: "#ff9c86",
         border: "none",
       };
   }

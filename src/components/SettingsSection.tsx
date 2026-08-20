@@ -12,16 +12,11 @@ import { Fragment, type ReactNode } from "react";
 import { Icon, type IconProps } from "./Icon";
 import { SystemThemeGlyph } from "./SystemThemeGlyph";
 import {
-  FONT_READING_SANS,
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
-  UI_FONT_LABELS,
-  UI_FONT_STACKS,
-  type FontFamilyKey,
   type Theme,
   type ThemeKey,
   type ThemePref,
-  type UiFontKey,
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 import { useI18n } from "../i18n/useI18n";
@@ -86,36 +81,6 @@ export const THEME_SWATCHES: ReadonlyArray<{
   { key: "oled", bg: "#000000", ink: "#b8ad94" },
 ];
 
-interface FontOpt {
-  value: FontFamilyKey;
-  label: string;
-  name: string;
-  font: string;
-}
-
-// Reading "Sans" uses FONT_READING_SANS (literal Readex), NOT FONT_STACKS.sans,
-// so the book text never follows the chrome UI-font choice.
-const FONT_ROW_LATIN: ReadonlyArray<FontOpt> = [
-  { value: "serif", label: "Aa", name: "Serif", font: FONT_STACKS.serif },
-  { value: "sans", label: "Aa", name: "Sans", font: FONT_READING_SANS },
-  { value: "dyslexic", label: "Aa", name: "Dyslexic", font: FONT_STACKS.dyslexic },
-];
-
-const FONT_ROW_ARABIC: ReadonlyArray<FontOpt> = [
-  { value: "cairo", label: "أب", name: "Cairo", font: FONT_STACKS.cairo },
-  { value: "lateef", label: "أب", name: "Lateef", font: FONT_STACKS.lateef },
-  { value: "tajawal", label: "أب", name: "Tajawal", font: FONT_STACKS.tajawal },
-];
-
-const UI_FONT_KEYS: ReadonlyArray<UiFontKey> = [
-  "readex",
-  "alexandria",
-  "almarai",
-  "ibmplex",
-  "vazirmatn",
-  "thmanyah",
-];
-
 // ── shared Arabic-aware preview tokens ──────────────────────────────────────
 
 /** "Aa" reads fine in Latin UIs but is meaningless (and Fraunces has no Arabic
@@ -127,8 +92,8 @@ export function useThemePreviewGlyph() {
   return {
     isAr,
     previewGlyph: isAr ? "أب" : "Aa",
-    previewFontFamily: isAr ? FONT_STACKS.sans : FONT_SERIF_DISPLAY,
-    previewFontStyle: isAr ? ("normal" as const) : ("italic" as const),
+    previewFontFamily: FONT_STACKS.sans,
+    previewFontStyle: "normal" as const,
   };
 }
 
@@ -459,66 +424,6 @@ export function ThemeField({
   );
 }
 
-export function UiFontField({
-  theme,
-  value,
-  onChange,
-}: {
-  theme: Theme;
-  value: UiFontKey;
-  onChange: (v: UiFontKey) => void;
-}) {
-  const { tr } = useI18n();
-  return (
-    <Field label={tr("settings.uiFont")} theme={theme}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 6,
-        }}
-      >
-        {UI_FONT_KEYS.map((k) => {
-          const selected = value === k;
-          return (
-            <button
-              key={k}
-              onClick={() => onChange(k)}
-              aria-pressed={selected}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "12px 8px",
-                borderRadius: 8,
-                background: selected ? theme.paper : theme.hover,
-                color: theme.ink,
-                border: selected
-                  ? `1.5px solid ${theme.ink}`
-                  : `1px solid ${theme.rule}`,
-                cursor: "pointer",
-                fontFamily: UI_FONT_STACKS[k],
-                fontStyle: "normal",
-                fontSize: 14,
-                fontWeight: 500,
-                // Normalize the preview labels (Latin font names) to a common
-                // x-height so the picker doesn't show wildly different sizes.
-                fontSizeAdjust: 0.525,
-                boxShadow: selected ? `0 1px 2px ${theme.rule}` : "none",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {UI_FONT_LABELS[k]}
-            </button>
-          );
-        })}
-      </div>
-    </Field>
-  );
-}
-
 /** The reading typography/layout controls as individually-searchable entries,
  *  shared by the reader quick-panel and the Settings page's Reading section.
  *  `mobile` surfaces the tap-to-turn controls; `showPageTurn` surfaces the
@@ -586,42 +491,6 @@ export function readingItems(ctx: {
   });
 
   const items: SettingEntry[] = [
-    {
-      id: "font",
-      label: tr("settings.font"),
-      node: (
-        <Field label={tr("settings.font")} theme={theme}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {[FONT_ROW_LATIN, FONT_ROW_ARABIC].map((row, i) => (
-              <SegRow<FontFamilyKey>
-                key={i}
-                theme={theme}
-                value={t.fontFamily}
-                onChange={(v) => setTweak("fontFamily", v)}
-                options={row.map((o) => ({
-                  value: o.value,
-                  label: (
-                    <span
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 3,
-                      }}
-                    >
-                      <span style={{ fontFamily: o.font, fontSize: 16 }}>{o.label}</span>
-                      <span style={{ fontSize: 9.5, color: theme.muted, fontWeight: 500 }}>
-                        {o.name}
-                      </span>
-                    </span>
-                  ),
-                }))}
-              />
-            ))}
-          </div>
-        </Field>
-      ),
-    },
     {
       id: "fontSize",
       label: tr("settings.fontSize", { n: t.fontSize }),

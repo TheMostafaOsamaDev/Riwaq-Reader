@@ -129,7 +129,6 @@ function Modal({ theme }: { theme: Theme }) {
             id="import-progress-title"
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
-              fontStyle: "italic",
               fontSize: 19,
               color: theme.ink,
               letterSpacing: "-0.01em",

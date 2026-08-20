@@ -153,17 +153,16 @@ export type FontFamilyKey =
 export const FONT_READING_SANS =
   '"Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
 
+// Single-font mode: the reading- and UI-font pickers were removed, so every
+// entry resolves to the one Readex Pro stack. Kept as a map so existing call
+// sites and any persisted `fontFamily` value keep resolving unchanged.
 export const FONT_STACKS: Record<FontFamilyKey, string> = {
-  serif:
-    '"Literata", "Iowan Old Style", "Source Serif Pro", "Readex Pro", Georgia, serif',
-  // Chrome/UI sans — resolves to the selectable UI font via the `--ui-font`
-  // variable, defaulting to Readex Pro when unset (see App + UI_FONT_STACKS).
-  sans: 'var(--ui-font, "Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif)',
-  dyslexic:
-    '"Atkinson Hyperlegible", "Lexend", "Readex Pro", system-ui, sans-serif',
-  cairo: '"Cairo", "Readex Pro", system-ui, sans-serif',
-  lateef: '"Lateef", "Amiri", "Readex Pro", serif',
-  tajawal: '"Tajawal", "Readex Pro", system-ui, sans-serif',
+  serif: FONT_READING_SANS,
+  sans: FONT_READING_SANS,
+  dyslexic: FONT_READING_SANS,
+  cairo: FONT_READING_SANS,
+  lateef: FONT_READING_SANS,
+  tajawal: FONT_READING_SANS,
 };
 
 export const FONT_FAMILY_LABELS: Record<FontFamilyKey, string> = {
@@ -188,13 +187,11 @@ export type UiFontKey =
 
 export const UI_FONT_STACKS: Record<UiFontKey, string> = {
   readex: FONT_READING_SANS,
-  alexandria: '"Alexandria", "Readex Pro", system-ui, sans-serif',
-  almarai: '"Almarai", "Readex Pro", system-ui, sans-serif',
-  ibmplex: '"IBM Plex Sans Arabic", "Readex Pro", system-ui, sans-serif',
-  vazirmatn: '"Vazirmatn", "Readex Pro", system-ui, sans-serif',
-  // A serif *display* face — an unusual but deliberate chrome choice; falls
-  // back to Fraunces for any Latin glyphs it lacks, then Readex Pro.
-  thmanyah: '"Thmanyah Serif Display", "Fraunces", "Readex Pro", Georgia, serif',
+  alexandria: FONT_READING_SANS,
+  almarai: FONT_READING_SANS,
+  ibmplex: FONT_READING_SANS,
+  vazirmatn: FONT_READING_SANS,
+  thmanyah: FONT_READING_SANS,
 };
 
 export const UI_FONT_LABELS: Record<UiFontKey, string> = {
@@ -214,15 +211,15 @@ export const UI_FONT_LABELS: Record<UiFontKey, string> = {
  *  `--ui-font-adjust` variable; book content opts out (font-size-adjust:none). */
 export const UI_FONT_ADJUST: Record<UiFontKey, number> = {
   readex: 0.525,
-  alexandria: 0.48,
-  almarai: 0.5,
-  ibmplex: 0.511,
-  vazirmatn: 0.542,
-  thmanyah: 0.503,
+  alexandria: 0.525,
+  almarai: 0.525,
+  ibmplex: 0.525,
+  vazirmatn: 0.525,
+  thmanyah: 0.525,
 };
 
-export const FONT_SERIF_DISPLAY =
-  '"Fraunces", "Thmanyah Serif Display", "Literata", "Readex Pro", Georgia, serif';
+// Titles are no longer set in a serif — display text is Readex Pro too.
+export const FONT_SERIF_DISPLAY = FONT_READING_SANS;
 
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,
 // presentation forms A & B). Used to decide whether to render a book title

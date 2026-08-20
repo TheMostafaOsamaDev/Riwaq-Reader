@@ -10,6 +10,7 @@ import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Icon } from "./Icon";
+import { SourceIcon } from "./SourceIcon";
 
 interface Props {
   theme: Theme;
@@ -33,7 +34,6 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
       <h2
         style={{
           fontFamily: FONT_SERIF_DISPLAY,
-          fontStyle: "italic",
           fontWeight: 400,
           fontSize: 26,
           margin: "0 0 6px 0",
@@ -129,21 +129,13 @@ function SourceCard({ theme, source, onClick }: SourceCardProps) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            flexShrink: 0,
-            borderRadius: 10,
-            background: theme.bg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: theme.ink,
-          }}
-        >
-          <Icon name="globe" size={22} />
-        </div>
+        <SourceIcon
+          theme={theme}
+          iconUrl={source.iconUrl}
+          size={44}
+          radius={10}
+          glyphSize={22}
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
