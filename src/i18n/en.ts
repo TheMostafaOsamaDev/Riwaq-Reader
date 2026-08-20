@@ -132,7 +132,6 @@ export const en = {
   "sidebar.importing": "Importing…",
   "sidebar.moreImport": "More import options",
   "sidebar.folderOfBooks": "Folder of books",
-  "sidebar.wordDoc": "Word document",
   "sidebar.expand": "Expand {name}",
   "sidebar.collapse": "Collapse {name}",
   "sidebar.doubleClickExpand": "Double-click to expand",
@@ -180,7 +179,6 @@ export const en = {
   "library.backToLibrary": "Back to library",
   "library.openStore": "Open store",
   "library.openDownloads": "Open downloads",
-  "library.importWordDoc": "Import Word document",
   "library.importEpub": "Import EPUB",
   "library.scrollTabsLeft": "Scroll tabs left",
   "library.scrollTabsRight": "Scroll tabs right",
@@ -484,56 +482,6 @@ export const en = {
   // structure notation (same rationale as "OLED"/"px" above) and stay
   // literal Latin abbreviations in both locales; only the spelled-out
   // block-type words (LIST/QUOTE/TABLE) are localized.
-  "docx.manageImport": "Manage import",
-  "docx.sectionsKept": "{n} of {total} sections kept",
-  "docx.removedCount": "{n} removed",
-  "docx.imageCountOne": "{n} image",
-  "docx.imageCountOther": "{n} images",
-  "docx.noCoverInline": "no cover",
-  "docx.coverSelectedInline": "cover selected",
-  "docx.titleLabel": "Title",
-  "docx.authorLabel": "Author",
-  "docx.addToLibrary": "Add to library",
-  "docx.adding": "Adding…",
-  "docx.addFailedPrefix": "Couldn't add:",
-  "docx.nothingToImport":
-    "Nothing to import — restore at least one section.",
-  "docx.coverGalleryAriaLabel": "Cover gallery",
-  "docx.coverHeading": "Cover",
-  "docx.coverOneSelected": "1 image selected",
-  "docx.pickImage": "Pick an image",
-  "docx.noImages": "No images",
-  "docx.noCoverTitle": "Use no cover (auto-generated placeholder)",
-  "docx.noCoverButton": "No cover",
-  "docx.galleryEmpty": "The gallery of the doc is empty.",
-  "docx.autoCoverHint": "An auto-generated cover will be used.",
-  "docx.coverCandidatesAriaLabel": "Cover candidates",
-  "docx.thumbSelected": "Selected",
-  "docx.imageIndex": "Image {n}",
-  "docx.documentContentAriaLabel": "Document content",
-  "docx.sectionCountOne": "{n} section",
-  "docx.sectionCountOther": "{n} sections",
-  "docx.selectedCount": "{n} selected",
-  "docx.clearSelection": "Clear",
-  "docx.deleteSelectedCount": "Delete {n}",
-  "docx.selectAll": "Select all",
-  "docx.hideDeleted": "Hide deleted",
-  "docx.showDeletedCount": "Show deleted ({n})",
-  "docx.restoreAll": "Restore all",
-  "docx.emptyNoContent": "This document has no readable content.",
-  "docx.emptyAllRemoved":
-    "Every section has been removed. Restore at least one to import.",
-  "docx.documentSectionsAriaLabel": "Document sections",
-  "docx.pageNumber": "Page {n}",
-  "docx.removedTag": "removed",
-  "docx.placeholderImage": "(image)",
-  "docx.placeholderTable": "(table)",
-  "docx.placeholderEmpty": "(empty)",
-  "docx.deleteSection": "Delete this section",
-  "docx.restoreSection": "Restore this section",
-  "docx.blockTypeList": "LIST",
-  "docx.blockTypeQuote": "QUOTE",
-  "docx.blockTypeTable": "TABLE",
 
   // Native file-picker filter labels (Tauri's open() dialog — the "Files of
   // type" dropdown on Windows/Linux; the doc-import filter reuses
@@ -546,11 +494,6 @@ export const en = {
   // Library.tsx toast bodies (dynamic parts — book/doc titles, counts, and
   // caught-error `.message` text — travel as interpolation params; see the
   // BOUNDARY note in the task brief).
-  "status.importedDocOne": "Imported “{title}” — {n} chapter.",
-  "status.importedDocOther": "Imported “{title}” — {n} chapters.",
-  "status.importFailed": "Import failed: {error}",
-  "status.docReadError": "Couldn't read document: {error}",
-  "status.addToLibraryError": "Couldn't add to library: {error}",
   "status.emptyFolderImport":
     "That folder has no EPUB files at its top level — can't import an empty folder.",
   "status.importedFolderSkippedOne":
