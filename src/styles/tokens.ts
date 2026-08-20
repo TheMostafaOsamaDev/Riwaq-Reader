@@ -182,9 +182,7 @@ export type UiFontKey =
   | "readex"
   | "alexandria"
   | "almarai"
-  | "cairo"
   | "ibmplex"
-  | "tajawal"
   | "vazirmatn"
   | "thmanyah";
 
@@ -192,9 +190,7 @@ export const UI_FONT_STACKS: Record<UiFontKey, string> = {
   readex: FONT_READING_SANS,
   alexandria: '"Alexandria", "Readex Pro", system-ui, sans-serif',
   almarai: '"Almarai", "Readex Pro", system-ui, sans-serif',
-  cairo: '"Cairo", "Readex Pro", system-ui, sans-serif',
   ibmplex: '"IBM Plex Sans Arabic", "Readex Pro", system-ui, sans-serif',
-  tajawal: '"Tajawal", "Readex Pro", system-ui, sans-serif',
   vazirmatn: '"Vazirmatn", "Readex Pro", system-ui, sans-serif',
   // A serif *display* face — an unusual but deliberate chrome choice; falls
   // back to Fraunces for any Latin glyphs it lacks, then Readex Pro.
@@ -205,11 +201,23 @@ export const UI_FONT_LABELS: Record<UiFontKey, string> = {
   readex: "Readex Pro",
   alexandria: "Alexandria",
   almarai: "Almarai",
-  cairo: "Cairo",
   ibmplex: "IBM Plex Sans Arabic",
-  tajawal: "Tajawal",
   vazirmatn: "Vazirmatn",
   thmanyah: "Thmanyah",
+};
+
+/** Per-font UI scale so the whole chrome (font + spacing + gaps + heights)
+ *  stays visually proportioned when the UI font changes. Different families
+ *  render at different apparent sizes at the same px; these factors (measured
+ *  against Readex's apparent Arabic size) are applied via `zoom` on the chrome.
+ *  1 = Readex baseline. */
+export const UI_FONT_SCALE: Record<UiFontKey, number> = {
+  readex: 1,
+  alexandria: 0.9,
+  almarai: 0.97,
+  ibmplex: 0.99,
+  vazirmatn: 1.03,
+  thmanyah: 0.96,
 };
 
 export const FONT_SERIF_DISPLAY =

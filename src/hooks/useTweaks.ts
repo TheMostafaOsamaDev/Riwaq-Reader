@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Tweaks } from "../types/reader";
+import { UI_FONT_STACKS } from "../styles/tokens";
 
 const STORAGE_KEY = "leaflet:tweaks:v1";
 
@@ -56,7 +57,12 @@ function load(): Tweaks {
     if (parsed && typeof parsed === "object" && "pageWidth" in parsed) {
       delete parsed.pageWidth;
     }
-    return { ...DEFAULT_TWEAKS, ...parsed };
+    const merged = { ...DEFAULT_TWEAKS, ...parsed };
+    // Cairo/Tajawal were removed as UI (chrome) fonts — coerce a stale
+    // persisted value (or any unknown one) back to the default so the picker
+    // and the chrome font stay valid.
+    if (!(merged.uiFont in UI_FONT_STACKS)) merged.uiFont = "readex";
+    return merged;
   } catch {
     return DEFAULT_TWEAKS;
   }

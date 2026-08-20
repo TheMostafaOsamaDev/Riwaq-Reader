@@ -111,9 +111,7 @@ const UI_FONT_KEYS: ReadonlyArray<UiFontKey> = [
   "readex",
   "alexandria",
   "almarai",
-  "cairo",
   "ibmplex",
-  "tajawal",
   "vazirmatn",
   "thmanyah",
 ];
