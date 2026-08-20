@@ -16,6 +16,7 @@ import {
   ensureRoot,
   writeInitialState,
   type BookIndexEntry,
+  type DocxBook,
   type PdfBook,
 } from "./library";
 
@@ -92,4 +93,66 @@ export async function importPdfBytes(
   } finally {
     doc.destroy();
   }
+}
+
+/**
+ * Convert a DOCX into a fixed-page book: mammoth → sanitized HTML + extracted
+ * images, stored under books/<id>/, read as fixed pages by DocxPageSource.
+ * `toFixedDoc` (which pulls in mammoth/jszip) is lazy-loaded so PDF imports
+ * don't bundle the DOCX toolchain.
+ */
+export async function importDocxBytes(
+  bytes: Uint8Array,
+  fallbackTitle: string,
+): Promise<BookIndexEntry> {
+  await ensureRoot();
+  const { docxToFixedDoc } = await import("../docx/toFixedDoc");
+  const fixed = await docxToFixedDoc(bytes, fallbackTitle);
+
+  const id = newId("docx");
+  const dir = bookDir(id);
+  await mkdir(dir, { baseDir: BASE, recursive: true });
+  await writeTextFile(`${dir}/content.html`, fixed.html, { baseDir: BASE });
+
+  if (fixed.images.length > 0) {
+    await mkdir(`${dir}/images`, { baseDir: BASE, recursive: true });
+    for (const img of fixed.images) {
+      await writeFile(`${dir}/${img.href}`, img.bytes, { baseDir: BASE });
+    }
+  }
+
+  // Cover: first embedded image, else BookCover renders a generated spine.
+  let coverFile: string | undefined;
+  const firstImg = fixed.images[0];
+  if (firstImg) {
+    const ext = firstImg.href.split(".").pop() || "bin";
+    coverFile = `cover.${ext}`;
+    await writeFile(`${dir}/${coverFile}`, firstImg.bytes, { baseDir: BASE });
+  }
+
+  const book: DocxBook = {
+    id,
+    kind: "docx",
+    title: fixed.title,
+    author: fixed.author,
+    dir: fixed.dir,
+    outline: fixed.outline,
+  };
+  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
+    baseDir: BASE,
+  });
+  await writeInitialState(id);
+
+  const entry: BookIndexEntry = {
+    id,
+    title: book.title,
+    author: book.author,
+    language: "",
+    chapterCount: 0,
+    kind: "docx",
+    addedAt: Date.now(),
+    progress: 0,
+    ...(coverFile ? { coverFile } : {}),
+  };
+  return appendIndexEntry(entry);
 }

@@ -557,7 +557,9 @@ export interface DocxBook {
   title: string;
   author: string;
   dir: "ltr" | "rtl";
-  outline: TocEntry[];
+  /** Headings with injected anchor ids. Pages are viewport-dependent and don't
+   *  exist until read time, so DocxPageSource maps each anchor to a page then. */
+  outline: { title: string; level: number; anchorId: string }[];
 }
 
 export type FixedBook = PdfBook | DocxBook;

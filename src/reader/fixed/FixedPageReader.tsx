@@ -15,7 +15,7 @@ import {
   type ThemeKey,
 } from "../../styles/tokens";
 import { EASE, MOTION, useReducedMotion } from "../../styles/motion";
-import type { Tweaks } from "../../types/reader";
+import type { Tweaks, TocEntry } from "../../types/reader";
 import type { BookState, FixedBook } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
 import { FixedPageViewer, type FixedPageViewerHandle } from "./FixedPageViewer";
@@ -380,12 +380,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             {panel === "toc" && (
               <OutlinePanel
                 theme={theme}
-                book={book}
+                outline={source ? source.outline : []}
+                title={book.title}
                 current={progress.page}
                 onJump={jumpToPage}
                 onClose={closePanel}
                 side={uiDir === "rtl" ? "right" : "left"}
-                emptyText={tr("common.untitled")}
               />
             )}
             {panel === "bookmarks" && (
@@ -497,31 +497,31 @@ function sourcePageCount(source: FixedPageSource | null): number {
 
 function OutlinePanel({
   theme,
-  book,
+  outline,
+  title,
   current,
   onJump,
   onClose,
   side,
-  emptyText,
 }: {
   theme: Theme;
-  book: FixedBook;
+  outline: TocEntry[];
+  title: string;
   current: number;
   onJump: (page: number) => void;
   onClose: () => void;
   side: "left" | "right";
-  emptyText: string;
 }) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
   return (
-    <PanelShell theme={theme} title={tr("reader.toc")} subtitle={book.title || emptyText} onClose={onClose} side={side}>
+    <PanelShell theme={theme} title={tr("reader.toc")} subtitle={title || tr("common.untitled")} onClose={onClose} side={side}>
       <div style={{ padding: "8px 6px" }}>
-        {book.outline.length === 0 && (
+        {outline.length === 0 && (
           <div style={{ padding: "32px 18px", textAlign: "center", color: theme.muted, fontSize: 12.5, lineHeight: 1.5 }}>
-            {tr("toc.noMatches", { term: "" })}
+            {locale === "ar" ? "لا يحتوي هذا المستند على فهرس." : "This document has no contents."}
           </div>
         )}
-        {book.outline.map((entry, i) => {
+        {outline.map((entry, i) => {
           const page = entry.dest.fmt === "page" ? entry.dest.page : 0;
           const active = page === current;
           return (
