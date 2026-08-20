@@ -26,8 +26,9 @@ import { Store } from "./Store";
 import {
   coverSrcFor,
   listBooks,
-  pickAndImportEpub,
-  pickAndImportFolder,
+  pickBooksForImport,
+  pickFolderForImport,
+  readImageFile,
   deleteBook,
   rescanCover,
   setCoverFromFile,
@@ -35,7 +36,10 @@ import {
   updateBookStatus,
   type BookIndexEntry,
   type BookStatus,
+  type StagedPick,
 } from "../store/library";
+import { ImportDetailsDialog } from "./ImportDetailsDialog";
+import type { CoverChoice, FixedImportDraft } from "../store/fixedImportStage";
 import { paletteForId } from "../store/palette";
 import {
   FONT_SERIF_DISPLAY,
@@ -48,6 +52,12 @@ import {
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel } from "../i18n/statusLabels";
 import type { MsgKey, Tr } from "../i18n";
+
+function draftDefaultCover(d: FixedImportDraft): CoverChoice {
+  return d.defaultCoverId
+    ? { kind: "candidate", id: d.defaultCoverId }
+    : { kind: "none" };
+}
 
 interface Props {
   theme: Theme;
@@ -119,9 +129,16 @@ export function Library({
   onOpenSettings,
   confirmDelete,
 }: Props) {
-  const { tr } = useI18n();
+  const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const [importing, setImporting] = useState(false);
+  const [importQueue, setImportQueue] = useState<FixedImportDraft[]>([]);
+  const [qIndex, setQIndex] = useState(0);
+  const [qBusy, setQBusy] = useState(false);
+  const importStats = useRef<{ imported: number; errors: string[] }>({
+    imported: 0,
+    errors: [],
+  });
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
   // Top-level tab — owned here so the Store can be reached from either
@@ -161,6 +178,14 @@ export function Library({
     setToast({ id: toastIdRef.current, kind, text });
   }, []);
 
+  const fmtNum = useCallback(
+    (n: number) =>
+      locale === "ar"
+        ? String(n).replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d])
+        : String(n),
+    [locale],
+  );
+
   // Card click dispatch. Source-backed entries open their detail page
   // inside this Library; everything else flows through the parent's
   // onOpen and lands in the regular reader. Doing the routing here
@@ -181,63 +206,147 @@ export function Library({
     [books, onOpen],
   );
 
+  // EPUBs import immediately (they ship a cover); PDF/DOCX return as drafts we
+  // queue into the title/cover dialog. A folder or multi-select is a queue the
+  // user steps through — Skip imports a book with defaults, Skip-the-rest
+  // defaults the remainder.
+  const currentDraft = importQueue[qIndex] ?? null;
+
+  const summarizeImport = () => {
+    setImportQueue([]);
+    setQIndex(0);
+    const { imported, errors } = importStats.current;
+    if (imported > 0 && errors.length > 0) {
+      showToast(
+        "warn",
+        tr(
+          imported === 1
+            ? "status.importedFolderSkippedOne"
+            : "status.importedFolderSkippedOther",
+          { n: imported, skipped: errors.length },
+        ),
+      );
+    } else if (imported > 1) {
+      showToast("info", tr("status.importedFolderOther", { n: imported }));
+    } else if (imported === 0 && errors.length > 0) {
+      setError(errorLabel(errors[0], tr));
+    }
+  };
+
+  const advanceQueue = async (draft: FixedImportDraft, didImport: boolean) => {
+    if (didImport) importStats.current.imported += 1;
+    draft.dispose();
+    const next = qIndex + 1;
+    if (next >= importQueue.length) {
+      await refresh();
+      summarizeImport();
+    } else {
+      setQIndex(next);
+    }
+  };
+
+  const beginImport = async (res: StagedPick | null) => {
+    if (!res) return;
+    if (res.empty) {
+      showToast("warn", tr("status.emptyFolderImport"));
+      return;
+    }
+    importStats.current = {
+      imported: res.autoImported.length,
+      errors: res.errors.map((e) => e.message),
+    };
+    if (res.autoImported.length > 0) await refresh();
+    if (res.drafts.length > 0) {
+      setQIndex(0);
+      setImportQueue(res.drafts);
+    } else {
+      summarizeImport();
+    }
+  };
+
   const onImport = async () => {
-    if (importing) return;
+    if (importing || importQueue.length > 0) return;
     setImporting(true);
     setError(null);
     try {
-      const entry = await pickAndImportEpub();
-      if (entry) await refresh();
+      await beginImport(await pickBooksForImport());
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setError(errorLabel(message, tr));
+      setError(errorLabel(e instanceof Error ? e.message : String(e), tr));
     } finally {
       setImporting(false);
     }
   };
 
-  // DOCX now imports as a fixed-page document through the unified importer
-  // (pickAndImportEpub routes .docx → importDocxBytes); the old
-  // choice-modal + manage-view + docx→epub conversion flow was removed.
-
   const onImportFolder = async () => {
-    if (importing) return;
+    if (importing || importQueue.length > 0) return;
     setImporting(true);
     setError(null);
     try {
-      const result = await pickAndImportFolder();
-      if (!result) return;
-      if (result.empty) {
-        showToast("warn", tr("status.emptyFolderImport"));
-        return;
-      }
-      await refresh();
-      const n = result.imported.length;
-      const skipped = result.errors.length;
-      if (skipped > 0) {
-        showToast(
-          "warn",
-          tr(
-            n === 1
-              ? "status.importedFolderSkippedOne"
-              : "status.importedFolderSkippedOther",
-            { n, skipped },
-          ),
-        );
-      } else {
-        showToast(
-          "info",
-          tr(n === 1 ? "status.importedFolderOne" : "status.importedFolderOther", {
-            n,
-          }),
-        );
-      }
+      await beginImport(await pickFolderForImport());
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setError(errorLabel(message, tr));
+      setError(errorLabel(e instanceof Error ? e.message : String(e), tr));
     } finally {
       setImporting(false);
     }
+  };
+
+  const onQConfirm = async (title: string, cover: CoverChoice) => {
+    const d = importQueue[qIndex];
+    if (!d || qBusy) return;
+    setQBusy(true);
+    try {
+      await d.commit({ title, cover });
+      await advanceQueue(d, true);
+    } catch (e) {
+      importStats.current.errors.push(e instanceof Error ? e.message : String(e));
+      await advanceQueue(d, false);
+    } finally {
+      setQBusy(false);
+    }
+  };
+
+  const onQSkip = async () => {
+    const d = importQueue[qIndex];
+    if (!d || qBusy) return;
+    setQBusy(true);
+    try {
+      await d.commit({ title: d.title, cover: draftDefaultCover(d) });
+      await advanceQueue(d, true);
+    } catch (e) {
+      importStats.current.errors.push(e instanceof Error ? e.message : String(e));
+      await advanceQueue(d, false);
+    } finally {
+      setQBusy(false);
+    }
+  };
+
+  const onQSkipRest = async () => {
+    if (qBusy) return;
+    setQBusy(true);
+    try {
+      for (let i = qIndex; i < importQueue.length; i++) {
+        const d = importQueue[i];
+        try {
+          await d.commit({ title: d.title, cover: draftDefaultCover(d) });
+          importStats.current.imported += 1;
+        } catch (e) {
+          importStats.current.errors.push(
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+        d.dispose();
+      }
+      await refresh();
+      summarizeImport();
+    } finally {
+      setQBusy(false);
+    }
+  };
+
+  const onQCancel = async () => {
+    const d = importQueue[qIndex];
+    if (!d || qBusy) return;
+    await advanceQueue(d, false);
   };
 
   const onDelete = async (id: string) => {
@@ -450,6 +559,21 @@ export function Library({
     <>
       {layoutEl}
       <Toast theme={theme} toast={toast} onDismiss={() => setToast(null)} />
+      {currentDraft && (
+        <ImportDetailsDialog
+          theme={theme}
+          draft={currentDraft}
+          index={qIndex}
+          total={importQueue.length}
+          busy={qBusy}
+          onConfirm={onQConfirm}
+          onSkip={onQSkip}
+          onSkipRest={onQSkipRest}
+          onCancel={onQCancel}
+          pickCustomImage={readImageFile}
+          fmt={fmtNum}
+        />
+      )}
       {editingBook && (
         <EditBookModal
           theme={theme}

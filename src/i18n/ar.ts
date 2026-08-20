@@ -246,6 +246,16 @@ export const ar: Messages = {
   "dialog.editBook.fieldAuthor": "المؤلف",
   "dialog.editBook.fieldDescription": "الوصف",
 
+  // title + cover dialog shown on PDF/DOCX import
+  "dialog.importBook.title": "استيراد كتاب",
+  "dialog.importBook.fieldTitle": "العنوان",
+  "dialog.importBook.cover": "الغلاف",
+  "dialog.importBook.coverFromFile": "اختر صورة…",
+  "dialog.importBook.coverGenerated": "غلاف مُولّد",
+  "dialog.importBook.add": "أضِف إلى المكتبة",
+  "dialog.importBook.skip": "تخطٍّ",
+  "dialog.importBook.skipRest": "تخطّي الباقي",
+
   "import.choice.title": "استيراد مستند Word",
   "import.choice.subtitle": "كيف تريد التعامل مع هذا المستند؟",
   "import.choice.directTitle": "إضافة مباشرة إلى المكتبة",

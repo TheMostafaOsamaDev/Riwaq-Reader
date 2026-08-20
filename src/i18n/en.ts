@@ -288,6 +288,16 @@ export const en = {
   "dialog.editBook.fieldAuthor": "Author",
   "dialog.editBook.fieldDescription": "Description",
 
+  // title + cover dialog shown on PDF/DOCX import
+  "dialog.importBook.title": "Import book",
+  "dialog.importBook.fieldTitle": "Title",
+  "dialog.importBook.cover": "Cover",
+  "dialog.importBook.coverFromFile": "Choose image…",
+  "dialog.importBook.coverGenerated": "Generated",
+  "dialog.importBook.add": "Add to library",
+  "dialog.importBook.skip": "Skip",
+  "dialog.importBook.skipRest": "Skip the rest",
+
   // docx import-choice modal
   "import.choice.title": "Import a Word document",
   "import.choice.subtitle": "How would you like to handle this document?",
