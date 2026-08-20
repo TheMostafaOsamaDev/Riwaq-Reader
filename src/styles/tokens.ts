@@ -206,18 +206,19 @@ export const UI_FONT_LABELS: Record<UiFontKey, string> = {
   thmanyah: "Thmanyah",
 };
 
-/** Per-font UI scale so the whole chrome (font + spacing + gaps + heights)
- *  stays visually proportioned when the UI font changes. Different families
- *  render at different apparent sizes at the same px; these factors (measured
- *  against Readex's apparent Arabic size) are applied via `zoom` on the chrome.
- *  1 = Readex baseline. */
-export const UI_FONT_SCALE: Record<UiFontKey, number> = {
-  readex: 1,
-  alexandria: 0.9,
-  almarai: 0.97,
-  ibmplex: 0.99,
-  vazirmatn: 1.03,
-  thmanyah: 0.96,
+/** Per-font `font-size-adjust` so every UI font renders at a consistent
+ *  apparent size while the LAYOUT stays identical — font-size-adjust only
+ *  scales glyph rendering; fixed px paddings/gaps/margins/heights don't move,
+ *  so switching UI font never resizes the UI. Values are calibrated so each
+ *  font's apparent Arabic size matches Readex. Applied to the chrome via the
+ *  `--ui-font-adjust` variable; book content opts out (font-size-adjust:none). */
+export const UI_FONT_ADJUST: Record<UiFontKey, number> = {
+  readex: 0.525,
+  alexandria: 0.48,
+  almarai: 0.5,
+  ibmplex: 0.511,
+  vazirmatn: 0.542,
+  thmanyah: 0.503,
 };
 
 export const FONT_SERIF_DISPLAY =

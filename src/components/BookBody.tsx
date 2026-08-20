@@ -160,6 +160,9 @@ export function BookBody({
       style={{
         ...common,
         fontFamily: bodyFont,
+        // Reading content keeps natural glyph metrics — opt out of the chrome's
+        // per-UI-font glyph normalization.
+        fontSizeAdjust: "none",
         textAlign: resolvedAlign,
         // Native selection is suppressed when selectable=false (mobile
         // reader). MobileReader drives its own selection via custom

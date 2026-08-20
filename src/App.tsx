@@ -47,7 +47,7 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   THEMES,
-  UI_FONT_SCALE,
+  UI_FONT_ADJUST,
   UI_FONT_STACKS,
   resolveTheme,
 } from "./styles/tokens";
@@ -142,11 +142,6 @@ function App() {
   const themePref = t.theme;
   const themeKey = resolveTheme(themePref, prefersDark);
   const theme = THEMES[themeKey];
-  // Per-font UI scale: keeps the chrome (font + spacing + gaps + heights)
-  // visually proportioned across UI fonts, since families render at different
-  // apparent sizes at the same px. Applied via `zoom` to the Library + Settings
-  // views only; readers/book content keep their own size.
-  const uiScale = UI_FONT_SCALE[t.uiFont] ?? 1;
 
   const uiLocale = detectLocale(
     t.uiLang,
@@ -198,6 +193,13 @@ function App() {
     document.documentElement.style.setProperty(
       "--ui-font",
       UI_FONT_STACKS[t.uiFont] ?? FONT_READING_SANS,
+    );
+    // Per-font glyph-size normalization: keeps each UI font's apparent size
+    // consistent WITHOUT changing the layout (font-size-adjust only scales
+    // glyph rendering). Book content opts out (font-size-adjust:none).
+    document.documentElement.style.setProperty(
+      "--ui-font-adjust",
+      String(UI_FONT_ADJUST[t.uiFont] ?? 0.525),
     );
   }, [t.uiFont]);
 
@@ -611,30 +613,26 @@ function App() {
           }
         >
           {settingsOpen ? (
-            <div style={{ width: "100%", height: "100%", zoom: uiScale }}>
-              <SettingsPage
-                theme={theme}
-                themeKey={themeKey}
-                t={t}
-                setTweak={setTweak}
-                applyTweaks={applyTweaks}
-                layout={isMobile ? "mobile" : "desktop"}
-                onClose={closeSettings}
-              />
-            </div>
+            <SettingsPage
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              applyTweaks={applyTweaks}
+              layout={isMobile ? "mobile" : "desktop"}
+              onClose={closeSettings}
+            />
           ) : !inReader ? (
-            <div style={{ width: "100%", height: "100%", zoom: uiScale }}>
-              <Library
-                theme={theme}
-                themeKey={themeKey}
-                layout={isMobile ? "mobile" : "desktop"}
-                onOpen={openBook}
-                onStreamRead={openStream}
-                streamActive={streaming !== null}
-                onOpenSettings={openSettings}
-                confirmDelete={t.confirmDelete}
-              />
-            </div>
+            <Library
+              theme={theme}
+              themeKey={themeKey}
+              layout={isMobile ? "mobile" : "desktop"}
+              onOpen={openBook}
+              onStreamRead={openStream}
+              streamActive={streaming !== null}
+              onOpenSettings={openSettings}
+              confirmDelete={t.confirmDelete}
+            />
           ) : loadedFixed ? (
             <FixedPageReader
               theme={theme}
