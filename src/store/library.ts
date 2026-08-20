@@ -25,6 +25,7 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import type { FixedImportDraft } from "./fixedImportStage";
 import { parseEpub } from "../epub/parser";
 import type { EpubBook } from "../epub/types";
 import type { TocEntry } from "../types/reader";
@@ -265,31 +266,58 @@ export async function loadBook(
   return { book, state };
 }
 
+/** Result of a pick: EPUBs import immediately (they ship their own cover);
+ *  PDF/DOCX come back as drafts the caller shows the import dialog for. */
+export interface StagedPick {
+  autoImported: BookIndexEntry[];
+  drafts: FixedImportDraft[];
+  errors: { file: string; message: string }[];
+  /** True only for folder picks that found no importable files. */
+  empty?: boolean;
+}
+
+/** Read + classify a list of picked paths: EPUBs import directly, PDF/DOCX are
+ *  staged (parsed in memory, cover candidates ready) for the import dialog. */
+async function stagePaths(paths: string[]): Promise<StagedPick> {
+  const autoImported: BookIndexEntry[] = [];
+  const drafts: FixedImportDraft[] = [];
+  const errors: { file: string; message: string }[] = [];
+  for (const path of paths) {
+    try {
+      // The dialog selection itself grants per-path read permission on Tauri
+      // v2, so we don't need $HOME / $DOCUMENT in the fs scope.
+      const bytes = await readFile(path);
+      if (/\.(pdf|docx)$/i.test(path)) {
+        // Dynamic import avoids a static library ↔ staging cycle and keeps the
+        // pdf.js / mammoth toolchains out of the initial bundle.
+        const { stageFixedImport } = await import("./fixedImportStage");
+        drafts.push(await stageFixedImport(bytes, path));
+      } else {
+        autoImported.push(await importEpubBytes(bytes));
+      }
+    } catch (err) {
+      errors.push({
+        file: path.split(/[\\/]/).pop() ?? path,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { autoImported, drafts, errors };
+}
+
 /**
- * Prompt for an EPUB, parse it, and persist. Returns the index entry, or
- * null if the user cancelled the picker.
+ * Prompt for one or more books. EPUBs are imported immediately; PDF/DOCX are
+ * returned as drafts for the title/cover dialog. Null if the user cancelled.
  */
-export async function pickAndImportEpub(): Promise<BookIndexEntry | null> {
+export async function pickBooksForImport(): Promise<StagedPick | null> {
   const picked = await open({
-    multiple: false,
+    multiple: true,
     directory: false,
     filters: [{ name: "Books", extensions: ["epub", "pdf", "docx"] }],
   });
   if (!picked) return null;
-  // The dialog selection itself grants per-path read permission on Tauri v2,
-  // so we don't need $HOME / $DOCUMENT in the fs scope.
-  const bytes = await readFile(picked);
-  // Dynamic import avoids a static library ↔ fixedImport cycle (fixedImport
-  // imports storage helpers from here).
-  if (/\.pdf$/i.test(picked)) {
-    const { importPdfBytes } = await import("./fixedImport");
-    return importPdfBytes(bytes, filenameTitle(picked));
-  }
-  if (/\.docx$/i.test(picked)) {
-    const { importDocxBytes } = await import("./fixedImport");
-    return importDocxBytes(bytes, filenameTitle(picked));
-  }
-  return importEpubBytes(bytes);
+  const paths = Array.isArray(picked) ? picked : [picked];
+  return stagePaths(paths);
 }
 
 /** Pull a reasonable display title out of a file path: drop the directory
@@ -565,57 +593,56 @@ export async function importFromSourceUrl(
   >;
 }
 
-export interface ImportFolderResult {
-  imported: BookIndexEntry[];
-  errors: { file: string; message: string }[];
-  /** True when the folder contained no importable (.epub/.pdf) files at its
-   *  top level. */
-  empty: boolean;
-}
-
 /**
- * Prompt for a folder, shallow-scan for .epub files (no recursion), and
- * import each. Returns null if the user cancelled. On a folder with no
- * top-level epubs, `empty: true` — the caller should tell the user.
+ * Prompt for a folder, shallow-scan for .epub/.pdf/.docx files (no recursion).
+ * EPUBs import immediately; PDF/DOCX are staged for the dialog queue. Null if
+ * the user cancelled; `empty: true` when the folder held no importable files.
  */
-export async function pickAndImportFolder(): Promise<ImportFolderResult | null> {
+export async function pickFolderForImport(): Promise<StagedPick | null> {
   const picked = await open({ multiple: false, directory: true });
   if (!picked) return null;
+  const dir = Array.isArray(picked) ? picked[0] : picked;
 
-  const entries = await readDir(picked);
+  const entries = await readDir(dir);
   const files = entries.filter(
     (e) => e.isFile && /\.(epub|pdf|docx)$/i.test(e.name),
   );
-
   if (files.length === 0) {
-    return { imported: [], errors: [], empty: true };
+    return { autoImported: [], drafts: [], errors: [], empty: true };
   }
 
-  const imported: BookIndexEntry[] = [];
-  const errors: { file: string; message: string }[] = [];
-  for (const e of files) {
-    try {
-      const path = await join(picked, e.name);
-      const bytes = await readFile(path);
-      let entry: BookIndexEntry;
-      if (/\.pdf$/i.test(e.name)) {
-        const { importPdfBytes } = await import("./fixedImport");
-        entry = await importPdfBytes(bytes, filenameTitle(e.name));
-      } else if (/\.docx$/i.test(e.name)) {
-        const { importDocxBytes } = await import("./fixedImport");
-        entry = await importDocxBytes(bytes, filenameTitle(e.name));
-      } else {
-        entry = await importEpubBytes(bytes);
-      }
-      imported.push(entry);
-    } catch (err) {
-      errors.push({
-        file: e.name,
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  return { imported, errors, empty: false };
+  const paths: string[] = [];
+  for (const e of files) paths.push(await join(dir, e.name));
+  return { ...(await stagePaths(paths)), empty: false };
+}
+
+/** Let the user pick an image from disk and return its bytes (no write). Used
+ *  by the import dialog's "choose from device" cover option. Null if
+ *  dismissed. */
+export async function readImageFile(): Promise<{
+  bytes: Uint8Array;
+  ext: string;
+} | null> {
+  const picked = await open({
+    multiple: false,
+    directory: false,
+    filters: [
+      {
+        name: makeTr(currentUiLocale())("picker.filterImage"),
+        extensions: ["jpg", "jpeg", "png", "gif", "webp"],
+      },
+    ],
+  });
+  if (!picked) return null;
+  const path = Array.isArray(picked) ? picked[0] : picked;
+  const bytes = await readFile(path);
+  const ext = path.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? "jpg";
+  const safeExt = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
+    ? ext === "jpeg"
+      ? "jpg"
+      : ext
+    : "jpg";
+  return { bytes, ext: safeExt };
 }
 
 /**

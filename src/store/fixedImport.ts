@@ -1,7 +1,9 @@
-// Import fixed-layout books (PDF now; DOCX in a later task) into the local
-// library. Parallels importEpubBytes in library.ts: writes the original file +
-// a book.json descriptor + a cover under books/<id>/, and appends a library
-// index entry. Pages are rendered lazily at read time, never all held in memory.
+// Commit fixed-layout books (PDF / DOCX) to the local library. Parsing and
+// cover-candidate extraction live in fixedImportStage.ts; these functions do
+// the disk writes once the user has chosen a title + cover in the import
+// dialog (or accepted the defaults). Each writes the original/source under
+// books/<id>/ plus a book.json descriptor, an optional cover, and a library
+// index entry. Pages are rendered lazily at read time, never held in memory.
 
 import {
   BaseDirectory,
@@ -9,7 +11,7 @@ import {
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import { openPdfDocument } from "../pdf/pdfjs";
+import type { TocEntry } from "../types/reader";
 import {
   appendIndexEntry,
   bookDir,
@@ -22,128 +24,101 @@ import {
 
 const BASE = BaseDirectory.AppData;
 
-function newId(prefix: string): string {
+/** Resolved cover to write for a book (already at final resolution). */
+export interface ChosenCover {
+  bytes: Uint8Array;
+  /** File extension without the dot, e.g. "jpg" / "png". */
+  ext: string;
+}
+
+export function newFixedId(prefix: string): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/**
- * Convert an in-memory PDF into a library book: store the original bytes, a
- * PdfBook descriptor (title/author/outline from the doc's metadata), and a
- * page-1 cover; return the new index entry.
- */
-export async function importPdfBytes(
-  bytes: Uint8Array,
-  fallbackTitle: string,
-): Promise<BookIndexEntry> {
+/** Persist a PDF: store the original bytes, a PdfBook descriptor, the chosen
+ *  cover (if any), and append the index entry. */
+export async function commitPdfBook(opts: {
+  bytes: Uint8Array;
+  title: string;
+  author: string;
+  pageCount: number;
+  outline: TocEntry[];
+  cover?: ChosenCover;
+}): Promise<BookIndexEntry> {
   await ensureRoot();
-  const doc = await openPdfDocument(bytes);
-  try {
-    const id = newId("pdf");
-    const dir = bookDir(id);
-    await mkdir(dir, { baseDir: BASE, recursive: true });
-    // Keep the original file so pages can be re-rendered / re-scanned later.
-    await writeFile(`${dir}/book.pdf`, bytes, { baseDir: BASE });
-
-    // Cover = page 1 rendered to a JPEG via an offscreen canvas. Best-effort;
-    // the library falls back to a generated cover when this fails.
-    let coverFile: string | undefined;
-    try {
-      const canvas = document.createElement("canvas");
-      await doc.renderPage(0, canvas, 1.2);
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", 0.82),
-      );
-      if (blob) {
-        coverFile = "cover.jpg";
-        const buf = new Uint8Array(await blob.arrayBuffer());
-        await writeFile(`${dir}/${coverFile}`, buf, { baseDir: BASE });
-      }
-    } catch {
-      // no cover — non-fatal
-    }
-
-    const book: PdfBook = {
-      id,
-      kind: "pdf",
-      title: doc.meta.title || fallbackTitle,
-      author: doc.meta.author || "",
-      pageCount: doc.pageCount,
-      outline: doc.outline,
-    };
-    await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
-      baseDir: BASE,
-    });
-    await writeInitialState(id);
-
-    const entry: BookIndexEntry = {
-      id,
-      title: book.title,
-      author: book.author,
-      language: "",
-      chapterCount: 0,
-      pageCount: book.pageCount,
-      kind: "pdf",
-      addedAt: Date.now(),
-      progress: 0,
-      ...(coverFile ? { coverFile } : {}),
-    };
-    return appendIndexEntry(entry);
-  } finally {
-    doc.destroy();
-  }
-}
-
-/**
- * Convert a DOCX into a fixed-page book: mammoth → sanitized HTML + extracted
- * images, stored under books/<id>/, read as fixed pages by DocxPageSource.
- * `toFixedDoc` (which pulls in mammoth/jszip) is lazy-loaded so PDF imports
- * don't bundle the DOCX toolchain.
- */
-export async function importDocxBytes(
-  bytes: Uint8Array,
-  fallbackTitle: string,
-): Promise<BookIndexEntry> {
-  await ensureRoot();
-  const { docxToFixedDoc } = await import("../docx/toFixedDoc");
-  const fixed = await docxToFixedDoc(bytes, fallbackTitle);
-
-  const id = newId("docx");
+  const id = newFixedId("pdf");
   const dir = bookDir(id);
   await mkdir(dir, { baseDir: BASE, recursive: true });
-  await writeTextFile(`${dir}/content.html`, fixed.html, { baseDir: BASE });
+  // Keep the original file so pages can be re-rendered / re-scanned later.
+  await writeFile(`${dir}/book.pdf`, opts.bytes, { baseDir: BASE });
 
-  if (fixed.images.length > 0) {
+  const coverFile = await writeCover(dir, opts.cover);
+
+  const book: PdfBook = {
+    id,
+    kind: "pdf",
+    title: opts.title,
+    author: opts.author,
+    pageCount: opts.pageCount,
+    outline: opts.outline,
+  };
+  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), { baseDir: BASE });
+  await writeInitialState(id);
+
+  return appendIndexEntry({
+    id,
+    title: book.title,
+    author: book.author,
+    language: "",
+    chapterCount: 0,
+    pageCount: book.pageCount,
+    kind: "pdf",
+    addedAt: Date.now(),
+    progress: 0,
+    ...(coverFile ? { coverFile } : {}),
+  });
+}
+
+/** Persist a DOCX: store the sanitized HTML + extracted images, a DocxBook
+ *  descriptor, the chosen cover (if any), and append the index entry. */
+export async function commitDocxBook(opts: {
+  html: string;
+  images: { href: string; bytes: Uint8Array }[];
+  dir: "ltr" | "rtl";
+  title: string;
+  author: string;
+  outline: { title: string; level: number; anchorId: string }[];
+  cover?: ChosenCover;
+}): Promise<BookIndexEntry> {
+  await ensureRoot();
+  const id = newFixedId("docx");
+  const dir = bookDir(id);
+  await mkdir(dir, { baseDir: BASE, recursive: true });
+  await writeTextFile(`${dir}/content.html`, opts.html, { baseDir: BASE });
+
+  if (opts.images.length > 0) {
     await mkdir(`${dir}/images`, { baseDir: BASE, recursive: true });
-    for (const img of fixed.images) {
+    for (const img of opts.images) {
       await writeFile(`${dir}/${img.href}`, img.bytes, { baseDir: BASE });
     }
   }
 
-  // Cover: first embedded image, else BookCover renders a generated spine.
-  let coverFile: string | undefined;
-  const firstImg = fixed.images[0];
-  if (firstImg) {
-    const ext = firstImg.href.split(".").pop() || "bin";
-    coverFile = `cover.${ext}`;
-    await writeFile(`${dir}/${coverFile}`, firstImg.bytes, { baseDir: BASE });
-  }
+  const coverFile = await writeCover(dir, opts.cover);
 
   const book: DocxBook = {
     id,
     kind: "docx",
-    title: fixed.title,
-    author: fixed.author,
-    dir: fixed.dir,
-    outline: fixed.outline,
+    title: opts.title,
+    author: opts.author,
+    dir: opts.dir,
+    outline: opts.outline,
   };
-  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
-    baseDir: BASE,
-  });
+  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), { baseDir: BASE });
   await writeInitialState(id);
 
-  const entry: BookIndexEntry = {
+  return appendIndexEntry({
     id,
     title: book.title,
     author: book.author,
@@ -153,6 +128,15 @@ export async function importDocxBytes(
     addedAt: Date.now(),
     progress: 0,
     ...(coverFile ? { coverFile } : {}),
-  };
-  return appendIndexEntry(entry);
+  });
+}
+
+async function writeCover(
+  dir: string,
+  cover: ChosenCover | undefined,
+): Promise<string | undefined> {
+  if (!cover) return undefined;
+  const coverFile = `cover.${cover.ext}`;
+  await writeFile(`${dir}/${coverFile}`, cover.bytes, { baseDir: BASE });
+  return coverFile;
 }
