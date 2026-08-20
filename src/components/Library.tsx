@@ -21,6 +21,7 @@ import { onOpenDownloadQueue } from "../store/uiIntents";
 import {
   useNav,
   goLibrary,
+  goShelf,
   openOverlay,
   back,
   type LibraryView,
@@ -41,10 +42,18 @@ import {
   setCoverFromFile,
   updateBookMeta,
   updateBookStatus,
+  updateBookShelfIds,
   type BookIndexEntry,
   type BookStatus,
   type StagedPick,
 } from "../store/library";
+import {
+  listShelves,
+  createShelf as createShelfStore,
+  renameShelf as renameShelfStore,
+  deleteShelf as deleteShelfStore,
+  type Shelf,
+} from "../store/shelves";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
 import { SourceBadge } from "./SourceBadge";
 import { getSourceMeta } from "../sources/registry";
@@ -187,14 +196,50 @@ export function Library({
     libraryEntryId?: string;
   } | null>(null);
 
-  // Shelves (custom collections) — app-authored seed names; shared by both
-  // layouts so the mobile Shelves page and the desktop sidebar agree. (This
-  // list isn't persisted yet; the real assignment feature lands separately.)
-  const [shelves, setShelves] = useState<string[]>(() => [
-    tr("shelves.defaultFavorites"),
-    tr("shelves.defaultToRead"),
-  ]);
+  // Shelves (custom collections) — store-backed (leaflet/shelves.json),
+  // shared by both layouts so the mobile Shelves page and the desktop
+  // sidebar agree. listShelves() seeds the two defaults on first run and is
+  // the source of truth thereafter.
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  useEffect(() => {
+    listShelves().then(setShelves);
+  }, []);
+  const reloadShelves = useCallback(() => listShelves().then(setShelves), []);
   const [newShelfOpen, setNewShelfOpen] = useState(false);
+
+  const onCreateShelf = useCallback(
+    async (name: string) => {
+      await createShelfStore(name);
+      await reloadShelves();
+    },
+    [reloadShelves],
+  );
+  const onRenameShelf = useCallback(
+    async (id: string, name: string) => {
+      await renameShelfStore(id, name);
+      await reloadShelves();
+    },
+    [reloadShelves],
+  );
+  const onDeleteShelf = useCallback(
+    async (id: string) => {
+      await deleteShelfStore(id);
+      await reloadShelves();
+      await refresh(); // books' shelfIds changed
+    },
+    [reloadShelves, refresh],
+  );
+  const onAddBooksToShelf = useCallback(
+    async (shelfId: string, bookIds: string[]) => {
+      for (const bookId of bookIds) {
+        const book = books.find((b) => b.id === bookId);
+        const next = [...new Set([...(book?.shelfIds ?? []), shelfId])];
+        await updateBookShelfIds(bookId, next);
+      }
+      await refresh();
+    },
+    [books, refresh],
+  );
 
   // A "tab" selection is either the Store destination (a history push) or a
   // status filter. A filter change never leaves the shelf, but if the user is
@@ -587,6 +632,11 @@ export function Library({
     onOpenShelves,
     shelves,
     onNewShelf: () => setNewShelfOpen(true),
+    onCreateShelf,
+    onRenameShelf,
+    onDeleteShelf,
+    onAddBooksToShelf,
+    onOpenShelf: (id: string) => goShelf(id),
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);
@@ -723,8 +773,8 @@ export function Library({
       {newShelfOpen && (
         <NewShelfDialog
           theme={theme}
-          existing={shelves}
-          onCreate={(name) => setShelves((s) => [...s, name])}
+          existing={shelves.map((s) => s.name)}
+          onCreate={onCreateShelf}
           onClose={() => setNewShelfOpen(false)}
         />
       )}
@@ -772,10 +822,17 @@ interface LayoutProps {
   shelvesActive: boolean;
   /** Navigate to the Shelves destination. */
   onOpenShelves: () => void;
-  /** Custom-shelf names, owned by the parent so both layouts agree. */
-  shelves: string[];
+  /** Custom shelves, owned by the parent so both layouts agree. Store-backed
+   *  (leaflet/shelves.json) via listShelves/createShelf/renameShelf/deleteShelf. */
+  shelves: Shelf[];
   /** Open the "new shelf" dialog (rendered by the parent). */
   onNewShelf: () => void;
+  onCreateShelf: (name: string) => Promise<void>;
+  onRenameShelf: (id: string, name: string) => Promise<void>;
+  onDeleteShelf: (id: string) => Promise<void>;
+  onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
+  /** Navigate to a specific shelf's detail view (wired in Task 9). */
+  onOpenShelf: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onCardContextMenu: (id: string, x: number, y: number) => void;

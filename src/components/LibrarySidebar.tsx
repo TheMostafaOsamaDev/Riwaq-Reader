@@ -14,6 +14,7 @@ import type { IconProps } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
 import { useNav, back, forward } from "../store/navigation";
+import type { Shelf } from "../store/shelves";
 import type { LibraryTab } from "./Library";
 import { useI18n } from "../i18n/useI18n";
 import type { Dir, MsgKey, Tr } from "../i18n";
@@ -34,7 +35,7 @@ interface Props {
    *  row + its status-filter tree so a lingering filter selection doesn't
    *  stay highlighted after navigating away to a sibling destination. */
   shelfActive: boolean;
-  shelves: string[];
+  shelves: Shelf[];
   shelvesActive: boolean;
   onOpenShelves: () => void;
   onNewShelf: () => void;
@@ -168,7 +169,7 @@ export function LibrarySidebar({
             <Collapse open={openShelves}>
               <Tree theme={theme}>
                 {shelves.map((s) => (
-                  <TreeButton key={s} theme={theme} label={s} active={false} onClick={onOpenShelves} />
+                  <TreeButton key={s.id} theme={theme} label={s.name} active={false} onClick={onOpenShelves} />
                 ))}
                 <button
                   onClick={onNewShelf}

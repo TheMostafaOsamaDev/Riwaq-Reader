@@ -6,10 +6,11 @@
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n/useI18n";
+import type { Shelf } from "../store/shelves";
 
 interface Props {
   theme: Theme;
-  shelves: string[];
+  shelves: Shelf[];
   onNewShelf: () => void;
 }
 
@@ -43,10 +44,10 @@ export function ShelvesPage({ theme, shelves, onNewShelf }: Props) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
           {shelves.map((s) => (
-            <section key={s}>
+            <section key={s.id}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
                 <span style={{ color: theme.muted, display: "flex", alignSelf: "center" }}><Icon name="layers" size={16} /></span>
-                <h2 style={{ fontFamily: FONT_SERIF_DISPLAY, fontWeight: 400, fontSize: 20, margin: 0, color: theme.ink }}>{s}</h2>
+                <h2 style={{ fontFamily: FONT_SERIF_DISPLAY, fontWeight: 400, fontSize: 20, margin: 0, color: theme.ink }}>{s.name}</h2>
                 <span style={{ fontSize: 12, color: theme.muted }}>{tr("shelves.zeroBooks")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 110, border: `1px dashed ${theme.rule}`, borderRadius: 12, color: theme.muted, fontSize: 13 }}>
