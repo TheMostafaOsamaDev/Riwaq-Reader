@@ -236,6 +236,7 @@ export const ar: Messages = {
   "search.clearHistory": "مسح السجل",
   "search.removeRecent": "إزالة {term}",
   "search.jumpTo": "انتقل إلى",
+  "search.websites": "المواقع",
 
   "dialog.editBook.ariaLabel": "تعديل تفاصيل الكتاب",
   "dialog.editBook.title": "تعديل الكتاب",
@@ -349,6 +350,8 @@ export const ar: Messages = {
   "store.subtitle":
     "تصفّح الروايات من المواقع المدعومة، ثم أضفها إلى مكتبتك أو اقرأها مباشرةً.",
   "store.noSources": "لا مصادر مثبَّتة بعد.",
+  "store.filterWebsites": "بحث في المواقع…",
+  "store.noMatchingWebsites": "لا مواقع تطابق «{query}».",
   "store.backToSources": "العودة إلى المصادر",
   "store.searchPlaceholder": "بحث…",
   "store.searching": "جارٍ البحث…",
