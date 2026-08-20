@@ -8,8 +8,8 @@
 // tofu-free preview glyph + font swap) live here once instead of in three
 // copies.
 
-import type { ReactNode } from "react";
-import { Icon } from "./Icon";
+import { Fragment, type ReactNode } from "react";
+import { Icon, type IconProps } from "./Icon";
 import { SystemThemeGlyph } from "./SystemThemeGlyph";
 import {
   FONT_READING_SANS,
@@ -25,9 +25,53 @@ import {
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 import { useI18n } from "../i18n/useI18n";
-import type { MsgKey, UiLangPref } from "../i18n";
+import type { MsgKey, Tr, UiLangPref } from "../i18n";
 
 type SetTweak = <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
+
+// ── settings catalog model (categories + searchable entries) ─────────────────
+
+export type CategoryKey =
+  | "appearance"
+  | "reading"
+  | "behavior"
+  | "downloads"
+  | "data"
+  | "about";
+
+export const CATEGORY_ORDER: readonly CategoryKey[] = [
+  "appearance",
+  "reading",
+  "behavior",
+  "downloads",
+  "data",
+  "about",
+];
+
+export const CATEGORY_META: Record<
+  CategoryKey,
+  { icon: IconProps["name"]; labelKey: MsgKey }
+> = {
+  appearance: { icon: "sun", labelKey: "settings.section.appearance" },
+  reading: { icon: "type", labelKey: "settings.section.reading" },
+  behavior: { icon: "settings", labelKey: "settings.section.behavior" },
+  downloads: { icon: "download", labelKey: "settings.section.downloads" },
+  data: { icon: "doc", labelKey: "settings.section.data" },
+  about: { icon: "info", labelKey: "settings.section.about" },
+};
+
+/** One searchable setting: a translated `label` (matched by the settings
+ *  search + not necessarily rendered) plus the control `node`. */
+export interface SettingEntry {
+  id: string;
+  label: string;
+  node: ReactNode;
+}
+
+/** Render a list of entries (used by category pages and search results). */
+export function renderEntries(entries: SettingEntry[]): ReactNode {
+  return entries.map((e) => <Fragment key={e.id}>{e.node}</Fragment>);
+}
 
 // ── data tables ─────────────────────────────────────────────────────────────
 
@@ -477,10 +521,189 @@ export function UiFontField({
   );
 }
 
-/** The reading typography/layout controls shared by the reader quick-panel and
- *  the Settings page's Reading section. `mobile` surfaces the tap-to-turn
- *  controls; `showPageTurn` surfaces the page-flip toggle (desktop paginated
- *  only — mobile is scroll-only, so it's a no-op there). */
+/** The reading typography/layout controls as individually-searchable entries,
+ *  shared by the reader quick-panel and the Settings page's Reading section.
+ *  `mobile` surfaces the tap-to-turn controls; `showPageTurn` surfaces the
+ *  page-flip toggle (desktop paginated only — mobile is scroll-only). */
+export function readingItems(ctx: {
+  theme: Theme;
+  t: Tweaks;
+  setTweak: SetTweak;
+  tr: Tr;
+  mobile: boolean;
+  showPageTurn: boolean;
+}): SettingEntry[] {
+  const { theme, t, setTweak, tr, mobile, showPageTurn } = ctx;
+  const onOff = (
+    id: string,
+    label: string,
+    value: boolean,
+    onChange: (on: boolean) => void,
+    hint?: string,
+  ): SettingEntry => ({
+    id,
+    label,
+    node: (
+      <Field label={label} theme={theme}>
+        <SegRow<"on" | "off">
+          theme={theme}
+          value={value ? "on" : "off"}
+          onChange={(v) => onChange(v === "on")}
+          options={[
+            { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
+            { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
+          ]}
+        />
+        {hint && (
+          <p style={{ margin: "8px 2px 0", fontSize: 10.5, color: theme.muted, lineHeight: 1.5 }}>
+            {hint}
+          </p>
+        )}
+      </Field>
+    ),
+  });
+
+  const slider = (
+    id: string,
+    label: string,
+    min: number,
+    max: number,
+    step: number | undefined,
+    value: number,
+    onChange: (n: number) => void,
+  ): SettingEntry => ({
+    id,
+    label,
+    node: (
+      <SliderField
+        theme={theme}
+        label={label}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={onChange}
+      />
+    ),
+  });
+
+  const items: SettingEntry[] = [
+    {
+      id: "font",
+      label: tr("settings.font"),
+      node: (
+        <Field label={tr("settings.font")} theme={theme}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {[FONT_ROW_LATIN, FONT_ROW_ARABIC].map((row, i) => (
+              <SegRow<FontFamilyKey>
+                key={i}
+                theme={theme}
+                value={t.fontFamily}
+                onChange={(v) => setTweak("fontFamily", v)}
+                options={row.map((o) => ({
+                  value: o.value,
+                  label: (
+                    <span
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 3,
+                      }}
+                    >
+                      <span style={{ fontFamily: o.font, fontSize: 16 }}>{o.label}</span>
+                      <span style={{ fontSize: 9.5, color: theme.muted, fontWeight: 500 }}>
+                        {o.name}
+                      </span>
+                    </span>
+                  ),
+                }))}
+              />
+            ))}
+          </div>
+        </Field>
+      ),
+    },
+    {
+      id: "fontSize",
+      label: tr("settings.fontSize", { n: t.fontSize }),
+      node: (
+        <Field label={tr("settings.fontSize", { n: t.fontSize })} theme={theme}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: theme.ink }}>
+            <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 12, color: theme.muted }}>A</span>
+            <Slider
+              theme={theme}
+              min={14}
+              max={42}
+              value={t.fontSize}
+              onChange={(n) => setTweak("fontSize", n)}
+              ariaLabel={tr("settings.fontSize", { n: t.fontSize })}
+            />
+            <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 22, color: theme.ink }}>A</span>
+          </div>
+        </Field>
+      ),
+    },
+    slider("lineHeight", tr("settings.lineHeight", { n: t.lineHeight.toFixed(2) }), 1.3, 2.0, 0.05, t.lineHeight, (n) => setTweak("lineHeight", n)),
+    slider("letterSpacing", tr("settings.letterSpacing", { n: t.letterSpacing.toFixed(2) }), -0.02, 0.08, 0.005, t.letterSpacing, (n) => setTweak("letterSpacing", n)),
+    slider("paragraphSpacing", tr("settings.paragraphSpacing", { n: t.paragraphSpacing.toFixed(1) }), 0.4, 2.4, 0.1, t.paragraphSpacing, (n) => setTweak("paragraphSpacing", n)),
+    slider("contentWidth", tr("settings.contentWidth", { n: t.contentWidth }), 50, 100, 1, t.contentWidth, (n) => setTweak("contentWidth", n)),
+    {
+      id: "alignment",
+      label: tr("settings.alignment"),
+      node: (
+        <Field label={tr("settings.alignment")} theme={theme}>
+          <SegRow<Tweaks["textAlign"]>
+            theme={theme}
+            value={t.textAlign}
+            onChange={(v) => setTweak("textAlign", v)}
+            options={[
+              { value: "auto", label: <span style={{ fontSize: 11 }}>{tr("settings.align.auto")}</span> },
+              { value: "left", ariaLabel: tr("settings.align.left"), label: <Icon name="alignLeft" size={16} style={{ display: "block", margin: "0 auto" }} /> },
+              { value: "justify", ariaLabel: tr("settings.align.justify"), label: <Icon name="alignJustify" size={16} style={{ display: "block", margin: "0 auto" }} /> },
+              { value: "right", ariaLabel: tr("settings.align.right"), label: <Icon name="alignRight" size={16} style={{ display: "block", margin: "0 auto" }} /> },
+            ]}
+          />
+        </Field>
+      ),
+    },
+    {
+      id: "readingMode",
+      label: tr("settings.readingMode"),
+      node: (
+        <Field label={tr("settings.readingMode")} theme={theme}>
+          <SegRow<Tweaks["readingMode"]>
+            theme={theme}
+            value={t.readingMode}
+            onChange={(v) => setTweak("readingMode", v)}
+            options={[
+              { value: "paginated-2", label: tr("settings.mode.paginated2") },
+              { value: "paginated-1", label: tr("settings.mode.paginated1") },
+              { value: "scroll", label: tr("settings.mode.scroll") },
+            ]}
+          />
+        </Field>
+      ),
+    },
+    onOff("hyphenation", tr("settings.hyphenation"), t.hyphenation, (on) => setTweak("hyphenation", on)),
+  ];
+
+  if (showPageTurn) {
+    items.push(onOff("pageTurnAnimation", tr("settings.pageTurnAnimation"), t.pageTurnAnimation, (on) => setTweak("pageTurnAnimation", on)));
+  }
+  items.push(onOff("keepScreenAwake", tr("settings.keepScreenAwake"), t.keepScreenAwake, (on) => setTweak("keepScreenAwake", on), tr("settings.keepScreenAwake.hint")));
+
+  if (mobile) {
+    items.push(onOff("tapToTurn", tr("settings.tapToTurn"), t.mobileTapNav, (on) => setTweak("mobileTapNav", on)));
+    if (t.mobileTapNav) {
+      items.push(slider("tapZoneWidth", tr("settings.tapZoneWidth", { n: t.mobileTapZoneWidth }), 10, 45, 1, t.mobileTapZoneWidth, (n) => setTweak("mobileTapZoneWidth", n)));
+      items.push(slider("tapStride", tr("settings.tapStride", { n: t.mobileTapStride }), 30, 100, 5, t.mobileTapStride, (n) => setTweak("mobileTapStride", n)));
+    }
+  }
+  return items;
+}
+
+/** Reader quick-panel reading controls — renders the shared `readingItems`. */
 export function ReadingControls({
   theme,
   t,
@@ -495,221 +718,7 @@ export function ReadingControls({
   showPageTurn?: boolean;
 }) {
   const { tr } = useI18n();
-  return (
-    <>
-      <Field label={tr("settings.font")} theme={theme}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {[FONT_ROW_LATIN, FONT_ROW_ARABIC].map((row, i) => (
-            <SegRow<FontFamilyKey>
-              key={i}
-              theme={theme}
-              value={t.fontFamily}
-              onChange={(v) => setTweak("fontFamily", v)}
-              options={row.map((o) => ({
-                value: o.value,
-                label: (
-                  <span
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 3,
-                    }}
-                  >
-                    <span style={{ fontFamily: o.font, fontSize: 16 }}>
-                      {o.label}
-                    </span>
-                    <span
-                      style={{ fontSize: 9.5, color: theme.muted, fontWeight: 500 }}
-                    >
-                      {o.name}
-                    </span>
-                  </span>
-                ),
-              }))}
-            />
-          ))}
-        </div>
-      </Field>
-
-      <Field label={tr("settings.fontSize", { n: t.fontSize })} theme={theme}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: theme.ink }}>
-          <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 12, color: theme.muted }}>
-            A
-          </span>
-          <Slider
-            theme={theme}
-            min={14}
-            max={42}
-            value={t.fontSize}
-            onChange={(n) => setTweak("fontSize", n)}
-            ariaLabel={tr("settings.fontSize", { n: t.fontSize })}
-          />
-          <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 22, color: theme.ink }}>
-            A
-          </span>
-        </div>
-      </Field>
-
-      <SliderField
-        theme={theme}
-        label={tr("settings.lineHeight", { n: t.lineHeight.toFixed(2) })}
-        min={1.3}
-        max={2.0}
-        step={0.05}
-        value={t.lineHeight}
-        onChange={(n) => setTweak("lineHeight", n)}
-      />
-
-      <SliderField
-        theme={theme}
-        label={tr("settings.letterSpacing", { n: t.letterSpacing.toFixed(2) })}
-        min={-0.02}
-        max={0.08}
-        step={0.005}
-        value={t.letterSpacing}
-        onChange={(n) => setTweak("letterSpacing", n)}
-      />
-
-      <SliderField
-        theme={theme}
-        label={tr("settings.paragraphSpacing", { n: t.paragraphSpacing.toFixed(1) })}
-        min={0.4}
-        max={2.4}
-        step={0.1}
-        value={t.paragraphSpacing}
-        onChange={(n) => setTweak("paragraphSpacing", n)}
-      />
-
-      <SliderField
-        theme={theme}
-        label={tr("settings.contentWidth", { n: t.contentWidth })}
-        min={50}
-        max={100}
-        step={1}
-        value={t.contentWidth}
-        onChange={(n) => setTweak("contentWidth", n)}
-      />
-
-      <Field label={tr("settings.alignment")} theme={theme}>
-        <SegRow<Tweaks["textAlign"]>
-          theme={theme}
-          value={t.textAlign}
-          onChange={(v) => setTweak("textAlign", v)}
-          options={[
-            { value: "auto", label: <span style={{ fontSize: 11 }}>{tr("settings.align.auto")}</span> },
-            {
-              value: "left",
-              ariaLabel: tr("settings.align.left"),
-              label: <Icon name="alignLeft" size={16} style={{ display: "block", margin: "0 auto" }} />,
-            },
-            {
-              value: "justify",
-              ariaLabel: tr("settings.align.justify"),
-              label: <Icon name="alignJustify" size={16} style={{ display: "block", margin: "0 auto" }} />,
-            },
-            {
-              value: "right",
-              ariaLabel: tr("settings.align.right"),
-              label: <Icon name="alignRight" size={16} style={{ display: "block", margin: "0 auto" }} />,
-            },
-          ]}
-        />
-      </Field>
-
-      <Field label={tr("settings.readingMode")} theme={theme}>
-        <SegRow<Tweaks["readingMode"]>
-          theme={theme}
-          value={t.readingMode}
-          onChange={(v) => setTweak("readingMode", v)}
-          options={[
-            { value: "paginated-2", label: tr("settings.mode.paginated2") },
-            { value: "paginated-1", label: tr("settings.mode.paginated1") },
-            { value: "scroll", label: tr("settings.mode.scroll") },
-          ]}
-        />
-      </Field>
-
-      <Field label={tr("settings.hyphenation")} theme={theme}>
-        <SegRow<"on" | "off">
-          theme={theme}
-          value={t.hyphenation ? "on" : "off"}
-          onChange={(v) => setTweak("hyphenation", v === "on")}
-          options={[
-            { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
-            { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
-          ]}
-        />
-      </Field>
-
-      {showPageTurn && (
-        <Field label={tr("settings.pageTurnAnimation")} theme={theme}>
-          <SegRow<"on" | "off">
-            theme={theme}
-            value={t.pageTurnAnimation ? "on" : "off"}
-            onChange={(v) => setTweak("pageTurnAnimation", v === "on")}
-            options={[
-              { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
-              { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
-            ]}
-          />
-        </Field>
-      )}
-
-      <Field label={tr("settings.keepScreenAwake")} theme={theme}>
-        <SegRow<"on" | "off">
-          theme={theme}
-          value={t.keepScreenAwake ? "on" : "off"}
-          onChange={(v) => setTweak("keepScreenAwake", v === "on")}
-          options={[
-            { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
-            { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
-          ]}
-        />
-        <p style={{ margin: "8px 2px 0", fontSize: 10.5, color: theme.muted, lineHeight: 1.5 }}>
-          {tr("settings.keepScreenAwake.hint")}
-        </p>
-      </Field>
-
-      {mobile && (
-        <Field label={tr("settings.tapToTurn")} theme={theme}>
-          <SegRow<"on" | "off">
-            theme={theme}
-            value={t.mobileTapNav ? "on" : "off"}
-            onChange={(v) => setTweak("mobileTapNav", v === "on")}
-            options={[
-              { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
-              { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
-            ]}
-          />
-        </Field>
-      )}
-
-      {mobile && t.mobileTapNav && (
-        <SliderField
-          theme={theme}
-          label={tr("settings.tapZoneWidth", { n: t.mobileTapZoneWidth })}
-          min={10}
-          max={45}
-          step={1}
-          value={t.mobileTapZoneWidth}
-          onChange={(n) => setTweak("mobileTapZoneWidth", n)}
-        />
-      )}
-
-      {mobile && t.mobileTapNav && (
-        <SliderField
-          theme={theme}
-          label={tr("settings.tapStride", { n: t.mobileTapStride })}
-          min={30}
-          max={100}
-          step={5}
-          value={t.mobileTapStride}
-          onChange={(n) => setTweak("mobileTapStride", n)}
-        />
-      )}
-    </>
-  );
+  return <>{renderEntries(readingItems({ theme, t, setTweak, tr, mobile, showPageTurn }))}</>;
 }
 
 /** A tappable full-width row (used for "All settings" in the reader panel and

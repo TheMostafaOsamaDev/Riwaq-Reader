@@ -69,6 +69,10 @@ export const en = {
   "settings.section.data": "Data",
   "settings.section.about": "About",
 
+  // settings nav + scoped search
+  "settings.search": "Search settings",
+  "settings.searchNoResults": "No matching settings",
+
   // appearance
   "settings.uiFont": "Interface font",
 

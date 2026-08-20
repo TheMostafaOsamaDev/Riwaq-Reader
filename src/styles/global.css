@@ -415,6 +415,16 @@ input:focus-visible,
   pointer-events: none;
 }
 
+/* Settings: sidebar categories morph in + content/category slide.
+   `--slide-from` is set inline per reading direction (RTL flips the sign). */
+@keyframes leaflet-settings-slide-in {
+  from { opacity: 0; transform: translateX(var(--slide-from, 10px)); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.leaflet-settings-slide-in {
+  animation: leaflet-settings-slide-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
 /* Backdrop + sheet (mobile) and side panel (desktop) enter/exit. The
    sheet rises from the bottom on mobile; the side panel slides from
    its anchor edge on desktop. Backdrop fades in/out in lock-step. */

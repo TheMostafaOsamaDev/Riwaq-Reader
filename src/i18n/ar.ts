@@ -55,6 +55,9 @@ export const ar: Messages = {
   "settings.section.data": "البيانات",
   "settings.section.about": "حول",
 
+  "settings.search": "بحث في الإعدادات",
+  "settings.searchNoResults": "لا إعدادات مطابقة",
+
   "settings.uiFont": "خط الواجهة",
 
   "settings.paragraphSpacing": "تباعد الفقرات · {n}",
