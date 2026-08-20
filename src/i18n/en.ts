@@ -585,6 +585,14 @@ export const en = {
   "status.notif.allDone": "All done",
   "status.notif.jobsCompleteOne": "1 job complete",
   "status.notif.jobsCompleteOther": "{n} jobs complete",
+  "status.notif.downloadingProgress": "Downloading {done} of {total} · {pct}%",
+  "status.notif.importingTitle": "Importing book",
+  "status.notif.importingBody": "{pct}% done",
+  "status.notif.backgroundTasksTitle": "Background tasks · {pct}%",
+  "status.notif.mixedBody": "{parts}",
+  "status.notif.partDownloads": "Downloading {n}",
+  "status.notif.partConverting": "Converting",
+  "status.notif.partImporting": "Importing",
 
   // ContextMenu.tsx — status submenu labels reuse sidebar.reading/finished/
   // wishlist; these cover the menu's own remaining chrome.

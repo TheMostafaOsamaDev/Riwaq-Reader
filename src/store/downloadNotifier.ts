@@ -303,6 +303,22 @@ async function publish(snap: Snapshot) {
   });
 }
 
+/** Smooth 0..1 progress across all live work in the current burst.
+ *  Each queue job contributes its own `progress`; completed jobs count
+ *  as 1; the active import contributes its `overall`. Denominator is
+ *  the burst total so the bar fills as work finishes. */
+function overallFraction(snap: Snapshot): number {
+  const jobs = getState().jobs;
+  let sum = 0;
+  for (const j of jobs) {
+    if (j.status === "done") sum += 1;
+    else if (j.status === "running" || j.status === "queued") sum += j.progress;
+  }
+  if (snap.importActive) sum += snap.importPct / 100;
+  const denom = Math.max(burstTotal, 1);
+  return Math.min(1, sum / denom);
+}
+
 interface Composed {
   title: string;
   body: string;
@@ -321,6 +337,42 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   const tr = makeTr(currentUiLocale());
   if (snap.active > 0) {
     summaryShown = false;
+    const pctOverall = Math.round(overallFraction(snap) * 100);
+
+    // Mixed work: more than one kind of task overlapping (e.g. a
+    // download burst running alongside a conversion or an import).
+    // Show one aggregate line instead of privileging a single kind.
+    const kinds: string[] = [];
+    const dl = snap.active - snap.activeConversions - (snap.importActive ? 1 : 0);
+    if (dl > 0) kinds.push(tr("status.notif.partDownloads", { n: dl }));
+    if (snap.activeConversions > 0) kinds.push(tr("status.notif.partConverting"));
+    if (snap.importActive) kinds.push(tr("status.notif.partImporting"));
+    if (kinds.length > 1) {
+      const pct = Math.round(overallFraction(snap) * 100);
+      return {
+        title: tr("status.notif.backgroundTasksTitle", { pct }),
+        body: tr("status.notif.mixedBody", { parts: kinds.join(" · ") }),
+        progress: pct,
+        max: 100,
+        indeterminate: false,
+        ongoing: true,
+        tapsToQueue: true,
+      };
+    }
+
+    // Lone import: an import in flight with no queue work overlapping.
+    if (snap.importActive && dl === 0 && snap.activeConversions === 0) {
+      return {
+        title: tr("status.notif.importingTitle"),
+        body: tr("status.notif.importingBody", { pct: snap.importPct }),
+        progress: snap.importPct,
+        max: 100,
+        indeterminate: false,
+        ongoing: true,
+        tapsToQueue: false,
+      };
+    }
+
     // Conversion in flight: T1-style title with "Converting <Novel>".
     if (snap.activeConversions > 0) {
       const runningConversion = findRunningConversion();
@@ -357,38 +409,28 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
 
     // Chapter downloads: T1 title with the currently-running chapter.
     const running = findRunningChapter();
-    const novelCount = countDistinctNovels();
     let title: string;
-    let body: string;
     if (running) {
       title = tr("status.notif.downloadingChapterTitle", {
         novel: running.novelTitle,
         n: running.chapterId,
-      });
-      const suffix =
-        novelCount > 1
-          ? tr("status.notif.novelsSuffix", { n: novelCount })
-          : "";
-      body = tr("status.notif.chapterOfTotal", {
-        n: completedThisBurst,
-        total: burstTotal,
-        suffix,
       });
     } else {
       // Active count > 0 but no `running` job (all queued, none
       // started yet). Use a generic title; the next emission once
       // a worker picks one up will fill in the novel + chapter.
       title = tr("status.notif.downloadingChaptersTitle");
-      body = tr("status.notif.chaptersOfTotal", {
-        done: completedThisBurst,
-        total: burstTotal,
-      });
     }
+    const body = tr("status.notif.downloadingProgress", {
+      done: completedThisBurst,
+      total: burstTotal,
+      pct: pctOverall,
+    });
     return {
       title,
       body,
-      progress: completedThisBurst,
-      max: Math.max(burstTotal, 1),
+      progress: pctOverall,
+      max: 100,
       indeterminate: false,
       ongoing: true,
       tapsToQueue: true,
@@ -486,18 +528,6 @@ function findRunningChapter() {
     return j;
   }
   return null;
-}
-
-/** Count distinct novels currently represented in the queue
- *  (running, queued, or recently terminal). Used to append
- *  "(N novels)" to the body when more than one novel is in flight. */
-function countDistinctNovels(): number {
-  const jobs = getState().jobs;
-  const ids = new Set<string>();
-  for (const j of jobs) {
-    ids.add(j.libraryEntryId);
-  }
-  return ids.size;
 }
 
 /** Test helper: snapshot the current queue state into a notification.
