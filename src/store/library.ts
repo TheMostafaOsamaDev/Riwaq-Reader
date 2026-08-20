@@ -74,6 +74,9 @@ export interface BookIndexEntry {
       via the right-click menu on a shelf card. Undefined for older books
       that predate this field. */
   status?: BookStatus;
+  /** Ids of the shelves this book is on (see store/shelves.ts). Absent on
+   *  older entries → treated as []. A book can be on multiple shelves. */
+  shelfIds?: string[];
   /** What kind of library entry this is. Older entries (and any EPUB
    *  import) don't carry the field — they're treated as "epub" by callers.
    *  "source" entries are lightweight bookmarks: no book.json, no book.epub
@@ -804,6 +807,33 @@ export async function updateBookStatus(
   if (status === "finished") entry.progress = 1;
   await writeIndex(idx);
   return entry;
+}
+
+/** Set the shelves a book belongs to. Mirrors updateBookStatus. */
+export async function updateBookShelfIds(
+  id: string,
+  shelfIds: string[],
+): Promise<BookIndexEntry | null> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return null;
+  entry.shelfIds = [...new Set(shelfIds)];
+  await writeIndex(idx);
+  return entry;
+}
+
+/** Strip one shelf id from every book that has it. Called when a shelf is
+ *  deleted so no dangling membership remains. */
+export async function removeShelfFromAllBooks(shelfId: string): Promise<void> {
+  const idx = await readIndex();
+  let changed = false;
+  for (const b of idx.books) {
+    if (b.shelfIds?.includes(shelfId)) {
+      b.shelfIds = b.shelfIds.filter((sid) => sid !== shelfId);
+      changed = true;
+    }
+  }
+  if (changed) await writeIndex(idx);
 }
 
 /**
