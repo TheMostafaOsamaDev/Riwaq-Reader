@@ -232,6 +232,23 @@ export function Library({
     },
     [reloadShelves, refresh],
   );
+  // Delete-shelf confirmation, mirroring pendingDelete below: holds the
+  // shelf awaiting confirmation (null when the dialog is closed).
+  const [deletingShelf, setDeletingShelf] = useState<Shelf | null>(null);
+  const onRequestDeleteShelf = useCallback(
+    (shelf: Shelf) => setDeletingShelf(shelf),
+    [],
+  );
+  const confirmDeleteShelf = useCallback(async () => {
+    if (!deletingShelf) return;
+    const id = deletingShelf.id;
+    setDeletingShelf(null);
+    // If we're viewing that shelf's page, leave it before it vanishes.
+    if (view.kind === "shelfDetail" && view.shelfId === id) {
+      goLibrary({ kind: "shelves" });
+    }
+    await onDeleteShelf(id);
+  }, [deletingShelf, view, onDeleteShelf]);
   const onAddBooksToShelf = useCallback(
     async (shelfId: string, bookIds: string[]) => {
       for (const bookId of bookIds) {
@@ -639,6 +656,7 @@ export function Library({
     onRenameShelf,
     onRequestRenameShelf: (shelf: Shelf) => setRenaming(shelf),
     onDeleteShelf,
+    onRequestDeleteShelf,
     onAddBooksToShelf,
     onOpenShelf: (id: string) => goShelf(id),
     onDelete: (id: string) => {
@@ -737,6 +755,24 @@ export function Library({
             confirmVariant="destructive"
             onConfirm={performDelete}
             onCancel={cancelDelete}
+          />
+        )}
+      </AnimatedDialog>
+      <AnimatedDialog
+        open={deletingShelf !== null}
+        onScrimClick={() => setDeletingShelf(null)}
+        zIndex={9500}
+      >
+        {deletingShelf && (
+          <ConfirmDialog
+            theme={theme}
+            title={tr("shelves.deleteTitle")}
+            message={tr("shelves.deleteBody")}
+            confirmLabel={tr("shelves.deleteConfirm")}
+            cancelLabel={tr("common.cancel")}
+            confirmVariant="destructive"
+            onConfirm={confirmDeleteShelf}
+            onCancel={() => setDeletingShelf(null)}
           />
         )}
       </AnimatedDialog>
@@ -852,6 +888,10 @@ interface LayoutProps {
    *  Consumed by the overview/single-shelf headers (later tasks). */
   onRequestRenameShelf: (shelf: Shelf) => void;
   onDeleteShelf: (id: string) => Promise<void>;
+  /** Open the delete-shelf confirm dialog (rendered by the parent) for a
+   *  given shelf. Consumed by the overview/single-shelf headers (later
+   *  tasks). */
+  onRequestDeleteShelf: (shelf: Shelf) => void;
   onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
   /** Navigate to a specific shelf's detail view (wired in Task 9). */
   onOpenShelf: (id: string) => void;
