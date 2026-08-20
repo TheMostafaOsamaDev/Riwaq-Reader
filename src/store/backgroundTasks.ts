@@ -34,7 +34,7 @@ async function isAndroid(): Promise<boolean> {
   try {
     cachedIsAndroid = (await platform()) === "android";
   } catch {
-    cachedIsAndroid = false;
+    return false; // transient — don't cache; retry next call
   }
   return cachedIsAndroid;
 }
@@ -58,13 +58,27 @@ async function syncService(): Promise<void> {
   }
 }
 
+// Serialize syncService() calls so a new sync always waits for the
+// prior invoke to settle before evaluating shouldRun again. Without
+// this, two overlapping invokes (e.g. a "stop" from a job finishing
+// racing a "start" from the next job starting) can resolve out of
+// order and leave the native service state diverged from what JS
+// believes it set. Chaining onto the SAME handler for both branches
+// means a rejected prior link doesn't break the chain, and each run
+// re-reads activeBackgroundCount() fresh, so rapid flips coalesce
+// into whatever the count actually is by the time this link runs.
+let syncChain: Promise<void> = Promise.resolve();
+function scheduleSync(): void {
+  syncChain = syncChain.then(syncService, syncService);
+}
+
 /** Wire the coordinator to every active-work source. Idempotent.
  *  Returns an unsubscribe handle (the app doesn't need to call it). */
 export function startBackgroundTaskCoordinator(): () => void {
   if (started) return () => {};
   started = true;
   const unsubQueue = subscribeQueue(() => {
-    void syncService();
+    scheduleSync();
   });
   return () => {
     unsubQueue();
