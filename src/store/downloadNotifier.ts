@@ -48,6 +48,7 @@ import {
   DOWNLOAD_NOTIFICATION_ID,
   DOWNLOAD_SUMMARY_ID,
   pushDownloadNotification,
+  setDockProgress,
 } from "./downloadNotifier/transport";
 import {
   subscribe as subscribeImport,
@@ -236,6 +237,7 @@ async function publish(snap: Snapshot) {
       pendingFlush = null;
     }
     pendingSnap = null;
+    void setDockProgress(null);
     return;
   }
 
@@ -301,6 +303,12 @@ async function publish(snap: Snapshot) {
     ongoing: composed.ongoing,
     tapsToQueue: composed.tapsToQueue,
   });
+
+  if (!isTerminalSummary) {
+    void setDockProgress(overallFraction(snap));
+  } else {
+    void setDockProgress(null);
+  }
 }
 
 /** Smooth 0..1 progress across all live work in the current burst.

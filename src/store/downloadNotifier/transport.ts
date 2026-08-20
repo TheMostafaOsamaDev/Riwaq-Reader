@@ -12,6 +12,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { sendNotification } from "@tauri-apps/plugin-notification";
+import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
 
 /** Channel id used by every download/conversion notification. The
  *  Android channel is created on the Kotlin side; the plugin's
@@ -84,18 +85,43 @@ export async function pushDownloadNotification(
     }
     return;
   }
-  // Fallback: plain plugin notification. No progress widget.
+  // Desktop / iOS fallback: no progress widget in OS notifications and
+  // per-tick sends stack, so only notify on the terminal (non-ongoing)
+  // summary. Live progress is shown on the taskbar/dock instead.
+  if (p.ongoing) {
+    return; // in-progress tick — dock progress is driven separately
+  }
   try {
     sendNotification({
       id,
       channelId: DOWNLOAD_CHANNEL_ID,
       title: p.title,
       body: p.body,
-      ongoing: p.ongoing,
-      silent: p.ongoing,
+      ongoing: false,
+      silent: false,
     });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("[downloadNotifier] fallback sendNotification failed:", e);
+  }
+}
+
+/** Reflect aggregate progress on the desktop taskbar/dock icon.
+ *  fraction: 0..1 while working; null clears the indicator. No-op on
+ *  mobile (guarded by the caller). Best-effort — never throws. */
+export async function setDockProgress(fraction: number | null): Promise<void> {
+  try {
+    const w = getCurrentWindow();
+    if (fraction === null) {
+      await w.setProgressBar({ status: ProgressBarStatus.None });
+    } else {
+      await w.setProgressBar({
+        status: ProgressBarStatus.Normal,
+        progress: Math.max(0, Math.min(100, Math.round(fraction * 100))),
+      });
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[downloadNotifier] setProgressBar failed:", e);
   }
 }
