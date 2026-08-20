@@ -17,8 +17,12 @@ import androidx.core.app.NotificationCompat
  * [NOTIF_ID], the same id DownloadNotifier.update() writes to, so
  * progress flows through unchanged and no duplicate notification appears.
  *
- * Lifecycle is driven from JS via Rust (notify.rs). We intentionally do
- * NOT survive swipe-away (START_NOT_STICKY, no swipe-away handling).
+ * Lifecycle is driven from JS via Rust (notify.rs). On task removal
+ * (the user swipes the app away) the WebView/JS engine that this service
+ * exists to keep fed is gone, so [onTaskRemoved] stops the service
+ * itself rather than lingering as a zombie holding a wake lock and a
+ * stale notification. START_NOT_STICKY additionally means the system
+ * won't pointlessly restart us after a memory-kill with no work to do.
  */
 class TaskService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
@@ -26,23 +30,28 @@ class TaskService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            releaseWakeLock()
-            // REMOVE, not DETACH: the terminal "all done" summary is a
-            // separate notification id (1002), so removing 1001 here just
-            // clears the stale progress bar.
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
         DownloadNotifier.ensureChannelPublic(this)
         startInForeground(NOTIF_ID, buildPlaceholderNotification())
         acquireWakeLock()
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // The app's WebView/JS engine dies with the task, so there is no
+        // more work for this service to keep alive for. Stop cleanly
+        // instead of lingering as a zombie foreground service.
+        stopSelf()
+    }
+
     override fun onDestroy() {
         releaseWakeLock()
+        // REMOVE, not DETACH: the terminal "all done" summary is a
+        // separate notification id (1002), so removing 1001 here just
+        // clears the stale progress bar. Runs on every teardown path
+        // (stopService and task removal), so the notification never
+        // outlives the service.
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
@@ -80,7 +89,6 @@ class TaskService : Service() {
     companion object {
         const val CHANNEL_ID = "leaflet-downloads"
         const val NOTIF_ID = 1001
-        const val ACTION_STOP = "com.leaflet.reader.action.STOP_TASKS"
 
         @JvmStatic
         fun start(ctx: Context) {
@@ -94,12 +102,16 @@ class TaskService : Service() {
 
         @JvmStatic
         fun stop(ctx: Context) {
-            val intent = Intent(ctx, TaskService::class.java).apply { action = ACTION_STOP }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else {
-                ctx.startService(intent)
-            }
+            // stopService on a non-running service is a safe no-op, so
+            // this is fine to call defensively (double-stop, or a stop
+            // issued when no start ever happened). Never route a stop
+            // through startForegroundService: if the service isn't
+            // already running, Android would spin up a fresh instance
+            // that must call startForeground() within the platform's
+            // time limit — and onStartCommand has no such call for a
+            // stop request, which throws
+            // ForegroundServiceDidNotStartInTimeException on API 26+.
+            ctx.stopService(Intent(ctx, TaskService::class.java))
         }
     }
 }
