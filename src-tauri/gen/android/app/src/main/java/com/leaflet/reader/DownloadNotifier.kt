@@ -38,6 +38,11 @@ object DownloadNotifier {
         nm.createNotificationChannel(ch)
     }
 
+    /** Public channel-ensure for TaskService's placeholder foreground
+     *  notification. Idempotent; delegates to the private ensureChannel. */
+    @JvmStatic
+    fun ensureChannelPublic(ctx: Context) = ensureChannel(ctx)
+
     /**
      * Push or update a download-progress notification.
      *
