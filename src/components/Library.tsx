@@ -7,8 +7,6 @@ import { EditBookModal } from "./EditBookModal";
 import { ContextMenu } from "./ContextMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "./Button";
-import { ImportChoiceModal } from "./ImportChoiceModal";
-import { DocxManageView } from "./DocxManageView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
@@ -26,13 +24,10 @@ import {
 } from "../store/downloadQueue";
 import { Store } from "./Store";
 import {
-  commitStagedDocx,
   coverSrcFor,
   listBooks,
-  pickAndImportDocx,
   pickAndImportEpub,
   pickAndImportFolder,
-  pickAndStageDocx,
   deleteBook,
   rescanCover,
   setCoverFromFile,
@@ -41,7 +36,6 @@ import {
   type BookIndexEntry,
   type BookStatus,
 } from "../store/library";
-import { disposeStaging, type StagedDocx } from "../docx/stage";
 import { paletteForId } from "../store/palette";
 import {
   FONT_SERIF_DISPLAY,
@@ -202,124 +196,10 @@ export function Library({
     }
   };
 
-  // Two-step .docx import flow:
-  //   click "Import .docx" → ImportChoiceModal opens
-  //     → "Add directly"      → onImportDocxDirect (legacy path)
-  //     → "Manage before…"    → onImportDocxStage (opens DocxManageView)
-  // `stagedDocx` is the in-memory session for the manage view; while it's
-  // non-null the manage overlay renders.
-  const [docxChoiceOpen, setDocxChoiceOpen] = useState(false);
-  const [stagedDocx, setStagedDocx] = useState<StagedDocx | null>(null);
-
-  const onImportDocx = () => {
-    if (importing) return;
-    setError(null);
-    setDocxChoiceOpen(true);
-  };
-
-  const onImportDocxDirect = async () => {
-    setDocxChoiceOpen(false);
-    if (importing) return;
-    setImporting(true);
-    setError(null);
-    try {
-      const entry = await pickAndImportDocx();
-      if (entry) {
-        await refresh();
-        // Toast on success so the user has a persistent confirmation that
-        // outlives the import-progress modal's auto-dismiss. Without this,
-        // a fast import looked like nothing happened.
-        showToast(
-          "info",
-          tr(
-            entry.chapterCount === 1
-              ? "status.importedDocOne"
-              : "status.importedDocOther",
-            { title: entry.title || tr("common.untitled"), n: entry.chapterCount },
-          ),
-        );
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      // Surface failures both inline (red banner) and as a toast — the
-      // import-progress modal also shows the error, but it's easy to miss
-      // if it's been minimized to the dock.
-      console.error("docx import failed:", e);
-      setError(errorLabel(message, tr));
-      showToast("error", tr("status.importFailed", { error: errorLabel(message, tr) }));
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const onImportDocxStage = async () => {
-    setDocxChoiceOpen(false);
-    if (importing) return;
-    setImporting(true);
-    setError(null);
-    try {
-      const staged = await pickAndStageDocx();
-      if (staged) setStagedDocx(staged);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      console.error("docx staging failed:", e);
-      setError(errorLabel(message, tr));
-      showToast("error", tr("status.docReadError", { error: errorLabel(message, tr) }));
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const onStagingCancel = useCallback(() => {
-    if (stagedDocx) disposeStaging(stagedDocx);
-    setStagedDocx(null);
-  }, [stagedDocx]);
-
-  const onStagingCommit = useCallback(
-    async (
-      edits: Parameters<typeof commitStagedDocx>[1],
-      meta: Parameters<typeof commitStagedDocx>[2],
-    ) => {
-      if (!stagedDocx) return;
-      try {
-        const entry = await commitStagedDocx(stagedDocx, edits, meta);
-        // Free blob URLs and close the manage overlay before refreshing
-        // the library so the staged-doc memory drops out of the heap
-        // before the (potentially large) library list re-renders.
-        disposeStaging(stagedDocx);
-        setStagedDocx(null);
-        await refresh();
-        showToast(
-          "info",
-          tr(
-            entry.chapterCount === 1
-              ? "status.importedDocOne"
-              : "status.importedDocOther",
-            { title: entry.title || tr("common.untitled"), n: entry.chapterCount },
-          ),
-        );
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error("docx commit failed:", e);
-        showToast(
-          "error",
-          tr("status.addToLibraryError", { error: errorLabel(message, tr) }),
-        );
-        // Re-throw so the manage view can render its inline error and
-        // re-enable the Add button.
-        throw e;
-      }
-    },
-    [refresh, showToast, stagedDocx, tr],
-  );
-
-  // Last-ditch cleanup if the component unmounts while a staging session
-  // is still alive (rare — usually only on hot-reload during development).
-  useEffect(() => {
-    return () => {
-      if (stagedDocx) disposeStaging(stagedDocx);
-    };
-  }, [stagedDocx]);
+  // DOCX now imports as a fixed-page document through the unified importer
+  // (pickAndImportEpub routes .docx → importDocxBytes); the old
+  // choice-modal + manage-view + docx→epub conversion flow was removed.
+  const onImportDocx = onImport;
 
   const onImportFolder = async () => {
     if (importing) return;
@@ -638,20 +518,6 @@ export function Library({
         )}
       </AnimatedDialog>
       <AnimatedDialog
-        open={docxChoiceOpen}
-        onScrimClick={() => setDocxChoiceOpen(false)}
-        zIndex={9700}
-      >
-        {docxChoiceOpen && (
-          <ImportChoiceModal
-            theme={theme}
-            onDirect={onImportDocxDirect}
-            onManage={onImportDocxStage}
-            onCancel={() => setDocxChoiceOpen(false)}
-          />
-        )}
-      </AnimatedDialog>
-      <AnimatedDialog
         open={sourceDetailRangeDialog !== null}
         onScrimClick={() => setSourceDetailRangeDialog(null)}
         zIndex={9700}
@@ -682,15 +548,6 @@ export function Library({
           />
         )}
       </AnimatedFullScreen>
-      {stagedDocx && (
-        <DocxManageView
-          theme={theme}
-          layout={layout}
-          staged={stagedDocx}
-          onCommit={onStagingCommit}
-          onCancel={onStagingCancel}
-        />
-      )}
     </>
   );
 }
