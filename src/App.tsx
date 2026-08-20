@@ -11,6 +11,7 @@ import { SourceStreamReader } from "./components/SourceStreamReader";
 import { SettingsPage } from "./components/SettingsPage";
 import { FixedPageReader } from "./reader/fixed/FixedPageReader";
 import { createPdfPageSource } from "./reader/fixed/PdfPageSource";
+import { createDocxPageSource } from "./reader/fixed/DocxPageSource";
 import { startDownloadNotifier } from "./store/downloadNotifier";
 import {
   loadPersistedQueue,
@@ -636,18 +637,12 @@ function App() {
               uiDir={uiDir}
               createSource={() => {
                 const b = loadedFixed.book;
-                if (b.kind === "pdf") return createPdfPageSource(b);
-                return Promise.reject(
-                  new Error("DOCX reader not yet available"),
-                );
+                return b.kind === "pdf"
+                  ? createPdfPageSource(b)
+                  : createDocxPageSource(b);
               }}
-              onLocationChange={(page, off) =>
-                savePagePosition(
-                  loadedFixed.book.id,
-                  loadedFixed.book.kind === "pdf" ? loadedFixed.book.pageCount : 0,
-                  page,
-                  off,
-                )
+              onLocationChange={(page, off, pageCount) =>
+                savePagePosition(loadedFixed.book.id, pageCount, page, off)
               }
               onOpenFullSettings={openSettings}
               onBack={closeBook}

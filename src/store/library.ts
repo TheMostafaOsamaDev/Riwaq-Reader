@@ -288,17 +288,21 @@ export async function pickAndImportEpub(): Promise<BookIndexEntry | null> {
   const picked = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "Books", extensions: ["epub", "pdf"] }],
+    filters: [{ name: "Books", extensions: ["epub", "pdf", "docx"] }],
   });
   if (!picked) return null;
   // The dialog selection itself grants per-path read permission on Tauri v2,
   // so we don't need $HOME / $DOCUMENT in the fs scope.
   const bytes = await readFile(picked);
+  // Dynamic import avoids a static library ↔ fixedImport cycle (fixedImport
+  // imports storage helpers from here).
   if (/\.pdf$/i.test(picked)) {
-    // Dynamic import avoids a static library ↔ fixedImport cycle (fixedImport
-    // imports storage helpers from here).
     const { importPdfBytes } = await import("./fixedImport");
     return importPdfBytes(bytes, filenameTitle(picked));
+  }
+  if (/\.docx$/i.test(picked)) {
+    const { importDocxBytes } = await import("./fixedImport");
+    return importDocxBytes(bytes, filenameTitle(picked));
   }
   return importEpubBytes(bytes);
 }
@@ -791,7 +795,7 @@ export async function pickAndImportFolder(): Promise<ImportFolderResult | null> 
 
   const entries = await readDir(picked);
   const files = entries.filter(
-    (e) => e.isFile && /\.(epub|pdf)$/i.test(e.name),
+    (e) => e.isFile && /\.(epub|pdf|docx)$/i.test(e.name),
   );
 
   if (files.length === 0) {
@@ -808,6 +812,9 @@ export async function pickAndImportFolder(): Promise<ImportFolderResult | null> 
       if (/\.pdf$/i.test(e.name)) {
         const { importPdfBytes } = await import("./fixedImport");
         entry = await importPdfBytes(bytes, filenameTitle(e.name));
+      } else if (/\.docx$/i.test(e.name)) {
+        const { importDocxBytes } = await import("./fixedImport");
+        entry = await importDocxBytes(bytes, filenameTitle(e.name));
       } else {
         entry = await importEpubBytes(bytes);
       }

@@ -38,8 +38,10 @@ export interface FixedPageReaderProps {
   uiDir: "ltr" | "rtl";
   /** Build the page source (PDF from disk, DOCX from disk, or bytes in tests). */
   createSource: () => Promise<FixedPageSource>;
-  /** Persist the reading position (debounced upstream in App). */
-  onLocationChange?: (page: number, pageOffset: number) => void;
+  /** Persist the reading position (debounced upstream in App). `pageCount` is
+   *  the source's total — needed for docx, whose count is only known after
+   *  pagination at read time. */
+  onLocationChange?: (page: number, pageOffset: number, pageCount: number) => void;
   onOpenFullSettings?: () => void;
   onBack: () => void;
 }
@@ -273,7 +275,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
                 return prev.label === p.label ? prev : { page, fraction: p.fraction, label: p.label };
               })
             }
-            onLocationChange={(page, off) => onLocationChange?.(page, off)}
+            onLocationChange={(page, off) =>
+              onLocationChange?.(page, off, source?.pageCount ?? 0)
+            }
           />
         ) : (
           <div
