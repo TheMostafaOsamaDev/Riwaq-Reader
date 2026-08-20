@@ -119,11 +119,15 @@ export async function createDocxPageSourceFromParts(
       host.style.overflow = "hidden";
       const card = document.createElement("div");
       card.setAttribute("dir", parts.dir);
+      // RTL blocks narrower/wider than the host anchor to the inline-start (right)
+      // edge, so the scale origin must match that edge — otherwise the scaled card
+      // overflows the host's clip box on the start side. LTR anchors left.
+      const originX = parts.dir === "rtl" ? "right" : "left";
       card.style.cssText =
         `width:${PAGE_W}px; height:${PAGE_H}px; box-sizing:border-box; padding:${MARGIN}px; ` +
         `background:#ffffff; color:#1b1b1b; overflow:hidden; ` +
         `font-family:${FONT}; font-size:${FONT_SIZE}px; line-height:${LINE_HEIGHT}; ` +
-        `transform: scale(${scale}); transform-origin: top left;`;
+        `transform: scale(${scale}); transform-origin: top ${originX};`;
       for (const n of pages[i] || []) card.appendChild(n.cloneNode(true));
       card.querySelectorAll("img").forEach(IMG_CONSTRAIN);
       host.replaceChildren(card);
