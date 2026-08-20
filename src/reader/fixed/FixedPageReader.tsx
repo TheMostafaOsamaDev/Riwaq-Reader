@@ -14,7 +14,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../../styles/tokens";
-import { EASE, MOTION, useReducedMotion } from "../../styles/motion";
+import { useReducedMotion } from "../../styles/motion";
 import type { Tweaks, TocEntry } from "../../types/reader";
 import type { BookState, FixedBook } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
@@ -106,7 +106,6 @@ export function FixedPageReader(props: FixedPageReaderProps) {
 
   const [source, setSource] = useState<FixedPageSource | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
-  const [chrome, setChrome] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [progress, setProgress] = useState<{ page: number; fraction: number; label: string }>(
     () => ({ page: state.currentPage ?? 0, fraction: 0, label: "" }),
@@ -187,15 +186,14 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     </button>
   );
 
+  // Chrome bars are in-flow flex items (not overlays), so the viewer sits in the
+  // clear space between them and page content never hides behind the bars —
+  // matching the reflow DesktopReader shell.
   const barBase: React.CSSProperties = {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    zIndex: 6,
+    flexShrink: 0,
     background: theme.chrome,
     display: "flex",
     alignItems: "center",
-    transition: reduced ? "none" : `transform ${MOTION.med}ms ${EASE.enter}`,
   };
 
   const title = book.title || tr("common.untitled");
@@ -204,18 +202,23 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   return (
     <div
       dir={uiDir}
-      style={{ position: "absolute", inset: 0, background: theme.bg, overflow: "hidden" }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: theme.bg,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
       {/* top chrome */}
       <div
         style={{
           ...barBase,
-          top: 0,
           height: isMobile ? 56 : 54,
           padding: "0 6px",
           gap: 2,
           borderBottom: `0.5px solid ${theme.rule}`,
-          transform: chrome ? "none" : "translateY(-100%)",
         }}
       >
         {iconBtn(
@@ -246,16 +249,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         {iconBtn("set", ICON.sliders, tr("settings.title"), () => openPanel("settings"), panel === "settings")}
       </div>
 
-      {/* center viewer */}
-      <div
-        style={{ position: "absolute", inset: 0 }}
-        onClick={(e) => {
-          // Tap the reading area (not a control) toggles immersive chrome.
-          if ((e.target as HTMLElement).closest("button,input,a")) return;
-          if (window.getSelection && String(window.getSelection())) return;
-          setChrome((c) => !c);
-        }}
-      >
+      {/* center viewer — flex:1 fills the gap between the bars (positioned
+          context for the viewer's absolute-inset scroll layer). */}
+      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {source ? (
           <FixedPageViewer
             ref={viewerRef}
@@ -301,13 +297,11 @@ export function FixedPageReader(props: FixedPageReaderProps) {
       <div
         style={{
           ...barBase,
-          bottom: 0,
           minHeight: 60,
           padding: "8px 12px",
           gap: 12,
           borderTop: `0.5px solid ${theme.rule}`,
           flexWrap: "wrap",
-          transform: chrome ? "none" : "translateY(110%)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
