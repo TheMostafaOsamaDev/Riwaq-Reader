@@ -80,4 +80,44 @@ export interface Tweaks {
   maxConcurrentDownloads: number;
   /** Only download over Wi-Fi / non-metered connections. */
   wifiOnlyDownloads: boolean;
+  /** Fixed-page (PDF/DOCX) default flow: continuous scroll or one page at a
+      time. Reflowable books ignore it (they use `readingMode`). */
+  fixedFlow: FixedFlow;
+  /** Fixed-page fit: fit the page width, or the whole page, to the viewport. */
+  fixedFit: FixedFit;
+  /** Fixed-page tint: keep page colors, dim them (glare in dark themes), or
+      invert (text-only PDFs; wrecks color art, so opt-in). */
+  fixedPageTint: FixedPageTint;
 }
+
+// ── Normalized, format-agnostic reader vocabulary ───────────────────────────
+// The reader shell + panels speak these instead of EpubBook, so the same
+// Contents / Progress / Highlights UI serves reflowable and fixed-page books.
+
+/** Where the reader is / can go, independent of format. Reflowable books use
+ *  the chapter/paragraph anchor; fixed (PDF/DOCX) books use a page index. */
+export type ReaderLocation =
+  | { fmt: "reflow"; chapter: number; paragraphIndex: number; paragraphOffset?: number }
+  | { fmt: "page"; page: number; pageOffset?: number };
+
+/** One entry in a Contents / outline list. `level` is 0-based nesting depth. */
+export interface TocEntry {
+  title: string;
+  dest: ReaderLocation;
+  level: number;
+}
+
+/** Progress the shell renders in the header bar + counter + Progress panel. */
+export interface ReaderProgress {
+  /** 0..1. */
+  fraction: number;
+  /** Localized, e.g. "٧ / ٢٩٨" or "Ch. 3 · 24%". */
+  label: string;
+}
+
+/** Fixed-page (PDF/DOCX) flow: continuous stacked pages, or one page at a time. */
+export type FixedFlow = "scroll" | "paged";
+/** Fixed-page fit: fit the page width, or the whole page, to the viewport. */
+export type FixedFit = "width" | "page";
+/** Fixed-page tint: keep colors, dim (dark-theme glare), or invert (text PDFs). */
+export type FixedPageTint = "none" | "dim" | "invert";

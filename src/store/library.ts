@@ -27,21 +27,7 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { parseEpub } from "../epub/parser";
 import type { EpubBook } from "../epub/types";
-import {
-  buildEpubFromStaging,
-  convertDocxToStaging,
-  docxToEpubBytes,
-} from "../docx/import";
-import type { StagedDocx, StagingEdits } from "../docx/stage";
-import {
-  beginStep,
-  completeStep,
-  dismiss as dismissImportProgress,
-  failStep,
-  finishImport,
-  getState as getImportProgressState,
-  startImport,
-} from "./importProgress";
+import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
 
 /** Best-effort current UI locale. This module runs outside the component
@@ -87,12 +73,16 @@ export interface BookIndexEntry {
       via the right-click menu on a shelf card. Undefined for older books
       that predate this field. */
   status?: BookStatus;
-  /** What kind of library entry this is. Older entries (and any EPUB /
-   *  DOCX import) don't carry the field — they're treated as "epub" by
-   *  callers. "source" entries are lightweight bookmarks: no book.json,
-   *  no book.epub on disk; the chapter list and content live on the
-   *  source website and are fetched on demand. */
-  kind?: "epub" | "source";
+  /** What kind of library entry this is. Older entries (and any EPUB
+   *  import) don't carry the field — they're treated as "epub" by callers.
+   *  "source" entries are lightweight bookmarks: no book.json, no book.epub
+   *  on disk; the chapter list and content live on the source website and are
+   *  fetched on demand. "pdf" / "docx" are fixed-layout books read as rendered
+   *  pages — page-based progress/resume, not chapters. */
+  kind?: "epub" | "source" | "pdf" | "docx";
+  /** Total fixed pages. Present only on kind "pdf" | "docx"; drives page-based
+   *  progress and the page counter. */
+  pageCount?: number;
   /** Source extension id (e.g. "kolnovel"). Present only on
    *  kind === "source" entries. */
   sourceId?: string;
@@ -111,6 +101,13 @@ export interface BookState {
       so resume lands at the exact scroll position, not just the paragraph top.
       Absent on older saves and on paginated captures → treated as 0. */
   paragraphOffset?: number;
+  /** Fixed-page (PDF/DOCX) resume: current page (0-based). Absent on reflow. */
+  currentPage?: number;
+  /** 0..1 scroll offset within `currentPage` (scroll flow only). */
+  pageOffset?: number;
+  /** DOCX only — a reflow-stable content anchor (nearest block id + intra-block
+      fraction) so resume survives re-pagination when the page box changes. */
+  fixedAnchor?: { blockId: string; frac: number };
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -149,7 +146,7 @@ interface LibraryFile {
 
 // ── low-level fs helpers ──────────────────────────────────────────────────
 
-async function ensureRoot() {
+export async function ensureRoot() {
   for (const dir of [ROOT, BOOKS]) {
     if (!(await exists(dir, { baseDir: BASE }))) {
       await mkdir(dir, { baseDir: BASE, recursive: true });
@@ -178,7 +175,7 @@ async function writeIndex(idx: LibraryFile) {
   await writeTextFile(INDEX, JSON.stringify(idx, null, 2), { baseDir: BASE });
 }
 
-function bookDir(id: string) {
+export function bookDir(id: string) {
   return `${BOOKS}/${id}`;
 }
 
@@ -212,6 +209,17 @@ async function readState(id: string): Promise<BookState> {
       paragraphOffset: typeof parsed.paragraphOffset === "number"
         ? parsed.paragraphOffset
         : 0,
+      currentPage:
+        typeof parsed.currentPage === "number" ? parsed.currentPage : undefined,
+      pageOffset:
+        typeof parsed.pageOffset === "number" ? parsed.pageOffset : undefined,
+      fixedAnchor:
+        parsed.fixedAnchor && typeof parsed.fixedAnchor.blockId === "string"
+          ? {
+              blockId: parsed.fixedAnchor.blockId,
+              frac: Number(parsed.fixedAnchor.frac) || 0,
+            }
+          : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
   } catch {
@@ -265,209 +273,23 @@ export async function pickAndImportEpub(): Promise<BookIndexEntry | null> {
   const picked = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "EPUB", extensions: ["epub"] }],
+    filters: [{ name: "Books", extensions: ["epub", "pdf", "docx"] }],
   });
   if (!picked) return null;
   // The dialog selection itself grants per-path read permission on Tauri v2,
   // so we don't need $HOME / $DOCUMENT in the fs scope.
   const bytes = await readFile(picked);
+  // Dynamic import avoids a static library ↔ fixedImport cycle (fixedImport
+  // imports storage helpers from here).
+  if (/\.pdf$/i.test(picked)) {
+    const { importPdfBytes } = await import("./fixedImport");
+    return importPdfBytes(bytes, filenameTitle(picked));
+  }
+  if (/\.docx$/i.test(picked)) {
+    const { importDocxBytes } = await import("./fixedImport");
+    return importDocxBytes(bytes, filenameTitle(picked));
+  }
   return importEpubBytes(bytes);
-}
-
-/**
- * Prompt for a .docx, convert it to EPUB (chapters split off the doc's
- * heading levels, first embedded image becomes the cover, language and
- * direction inherited from the doc), and persist it like any EPUB. Returns
- * the index entry, or null if the user cancelled the picker.
- *
- * The pipeline reports progress through the import-progress store — the
- * mounted ImportProgress component renders a stepper modal + minimized
- * dock from that store. Closing the modal mid-run does not cancel: the
- * promise keeps resolving in the background.
- */
-export async function pickAndImportDocx(): Promise<BookIndexEntry | null> {
-  const picked = await open({
-    multiple: false,
-    directory: false,
-    filters: [
-      {
-        name: makeTr(currentUiLocale())("sidebar.wordDoc"),
-        extensions: ["docx"],
-      },
-    ],
-  });
-  if (!picked) return null;
-
-  // Refuse to start a second import while one is still running (the
-  // progress store is module-scoped, so it survives Library unmount/remount
-  // when the user reads a book mid-import). Without this guard, starting a
-  // new run would clobber the in-flight one's progress UI.
-  const current = getImportProgressState();
-  if (current.active && current.finishedAt === null) return null;
-
-  const fallbackTitle = filenameTitle(picked);
-
-  startImport([
-    { id: "read", label: "Reading file" },
-    { id: "lang", label: "Detecting language" },
-    { id: "convert", label: "Converting document" },
-    { id: "chapters", label: "Detecting chapters" },
-    { id: "epub", label: "Building EPUB" },
-    { id: "save", label: "Adding to library" },
-  ]);
-
-  let currentStepId = "read";
-  try {
-    beginStep("read");
-    const bytes = await readFile(picked);
-    completeStep("read");
-
-    const { epubBytes } = await docxToEpubBytes(bytes, fallbackTitle, {
-      lang: () => {
-        currentStepId = "lang";
-        beginStep("lang");
-      },
-      convert: () => {
-        completeStep("lang");
-        currentStepId = "convert";
-        beginStep("convert");
-      },
-      chapters: () => {
-        completeStep("convert");
-        currentStepId = "chapters";
-        beginStep("chapters");
-      },
-      epub: () => {
-        completeStep("chapters");
-        currentStepId = "epub";
-        beginStep("epub");
-      },
-    });
-    completeStep("epub");
-
-    currentStepId = "save";
-    beginStep("save");
-    const entry = await importEpubBytes(epubBytes);
-    completeStep("save");
-    finishImport(entry.id);
-    return entry;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    failStep(currentStepId, message);
-    throw err;
-  }
-}
-
-/**
- * "Manage before importing" entry point — picks a .docx, runs the heavy
- * conversion through the import-progress UI, and returns an in-memory
- * staging session for the manage view to render. The session must be
- * either committed via {@link commitStagedDocx} or disposed by the caller
- * (it owns blob URLs that need to be revoked).
- *
- * Returns null if the user cancelled the picker, or if another import is
- * still running (the progress store is single-slot).
- */
-export async function pickAndStageDocx(): Promise<StagedDocx | null> {
-  const picked = await open({
-    multiple: false,
-    directory: false,
-    filters: [
-      {
-        name: makeTr(currentUiLocale())("sidebar.wordDoc"),
-        extensions: ["docx"],
-      },
-    ],
-  });
-  if (!picked) return null;
-
-  const current = getImportProgressState();
-  if (current.active && current.finishedAt === null) return null;
-
-  const fallbackTitle = filenameTitle(picked);
-
-  // Conversion-only progress — the build/save half runs later from
-  // commitStagedDocx with its own progress run.
-  startImport([
-    { id: "read", label: "Reading file" },
-    { id: "lang", label: "Detecting language" },
-    { id: "convert", label: "Converting document" },
-    { id: "chapters", label: "Preparing pages" },
-  ]);
-
-  let currentStepId = "read";
-  try {
-    beginStep("read");
-    const bytes = await readFile(picked);
-    completeStep("read");
-
-    const staged = await convertDocxToStaging(bytes, fallbackTitle, {
-      lang: () => {
-        currentStepId = "lang";
-        beginStep("lang");
-      },
-      convert: () => {
-        completeStep("lang");
-        currentStepId = "convert";
-        beginStep("convert");
-      },
-      chapters: () => {
-        completeStep("convert");
-        currentStepId = "chapters";
-        beginStep("chapters");
-      },
-    });
-    completeStep("chapters");
-    // Drop the progress UI immediately — the manage view takes over from
-    // here and the user is no longer "waiting".
-    dismissImportProgress();
-    return staged;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    failStep(currentStepId, message);
-    throw err;
-  }
-}
-
-/**
- * Apply the user's manage-view edits + persist as a library book. Mirrors
- * the tail end of {@link pickAndImportDocx} (build → save → finish), but
- * starts from an existing {@link StagedDocx} session rather than a file
- * path. The caller is responsible for disposing the staging session
- * (revoking blob URLs) regardless of whether this resolves or rejects.
- */
-export async function commitStagedDocx(
-  staged: StagedDocx,
-  edits: StagingEdits,
-  meta: { title: string; author: string },
-): Promise<BookIndexEntry> {
-  const current = getImportProgressState();
-  if (current.active && current.finishedAt === null) {
-    throw new Error("Another import is still in progress.");
-  }
-
-  startImport([
-    { id: "epub", label: "Building EPUB" },
-    { id: "save", label: "Adding to library" },
-  ]);
-
-  let currentStepId = "epub";
-  try {
-    beginStep("epub");
-    const { epubBytes } = await buildEpubFromStaging(staged, edits, meta);
-    completeStep("epub");
-
-    currentStepId = "save";
-    beginStep("save");
-    const entry = await importEpubBytes(epubBytes);
-    completeStep("save");
-    finishImport(entry.id);
-    return entry;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    failStep(currentStepId, message);
-    throw err;
-  }
 }
 
 /** Pull a reasonable display title out of a file path: drop the directory
@@ -478,11 +300,72 @@ export async function commitStagedDocx(
  *  localizes it wherever the book is rendered, instead of freezing an
  *  English (or whatever-locale-was-active) literal into the book's own
  *  stored title. */
-function filenameTitle(path: string): string {
+export function filenameTitle(path: string): string {
   const base = path.split(/[\\/]/).pop() ?? path;
-  const stem = base.replace(/\.docx$/i, "");
+  const stem = base.replace(/\.(docx|pdf|epub)$/i, "");
   const cleaned = stem.replace(/[_-]+/g, " ").trim();
   return cleaned;
+}
+
+/** Write the default (empty) reading state for a freshly imported book. */
+export async function writeInitialState(id: string): Promise<void> {
+  await writeState({
+    bookId: id,
+    currentChapter: 0,
+    paragraphIndex: 0,
+    highlights: [],
+  });
+}
+
+/** Append an entry to the library index and return it. Shared by every importer. */
+export async function appendIndexEntry(
+  entry: BookIndexEntry,
+): Promise<BookIndexEntry> {
+  const idx = await readIndex();
+  idx.books.push(entry);
+  await writeIndex(idx);
+  return entry;
+}
+
+/** Read a single index entry (used for open-time routing on `kind`). */
+export async function getEntry(id: string): Promise<BookIndexEntry | null> {
+  const idx = await readIndex();
+  return idx.books.find((b) => b.id === id) ?? null;
+}
+
+// ── fixed-layout books (PDF / DOCX) ─────────────────────────────────────────
+
+export interface PdfBook {
+  id: string;
+  kind: "pdf";
+  title: string;
+  author: string;
+  pageCount: number;
+  outline: TocEntry[];
+}
+
+export interface DocxBook {
+  id: string;
+  kind: "docx";
+  title: string;
+  author: string;
+  dir: "ltr" | "rtl";
+  /** Headings with injected anchor ids. Pages are viewport-dependent and don't
+   *  exist until read time, so DocxPageSource maps each anchor to a page then. */
+  outline: { title: string; level: number; anchorId: string }[];
+}
+
+export type FixedBook = PdfBook | DocxBook;
+
+/** Load a fixed-layout book descriptor + its reading state — the page-based
+ *  analogue of loadBook. The descriptor is a PdfBook/DocxBook, not an EpubBook. */
+export async function loadFixedBook(
+  id: string,
+): Promise<{ book: FixedBook; state: BookState }> {
+  const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
+  const book = JSON.parse(raw) as FixedBook;
+  const state = await readState(id);
+  return { book, state };
 }
 
 export async function importEpubBytes(
@@ -500,12 +383,7 @@ export async function importEpubBytes(
   // but lets us re-extract the cover later when the parser improves —
   // without re-asking the user for the file.
   await writeFile(`${dir}/book.epub`, bytes, { baseDir: BASE });
-  await writeState({
-    bookId: book.id,
-    currentChapter: 0,
-    paragraphIndex: 0,
-    highlights: [],
-  });
+  await writeInitialState(book.id);
 
   // Drop in-flow images on disk under books/<id>/<href> so chapter image
   // items resolve to a real file. Each href is `images/img-NNN.ext`, so
@@ -534,10 +412,7 @@ export async function importEpubBytes(
     ...(coverFile ? { coverFile } : {}),
   };
 
-  const idx = await readIndex();
-  idx.books.push(entry);
-  await writeIndex(idx);
-  return entry;
+  return appendIndexEntry(entry);
 }
 
 /**
@@ -693,7 +568,8 @@ export async function importFromSourceUrl(
 export interface ImportFolderResult {
   imported: BookIndexEntry[];
   errors: { file: string; message: string }[];
-  /** True when the folder contained no .epub files at its top level. */
+  /** True when the folder contained no importable (.epub/.pdf) files at its
+   *  top level. */
   empty: boolean;
 }
 
@@ -707,21 +583,30 @@ export async function pickAndImportFolder(): Promise<ImportFolderResult | null> 
   if (!picked) return null;
 
   const entries = await readDir(picked);
-  const epubs = entries.filter(
-    (e) => e.isFile && /\.epub$/i.test(e.name),
+  const files = entries.filter(
+    (e) => e.isFile && /\.(epub|pdf|docx)$/i.test(e.name),
   );
 
-  if (epubs.length === 0) {
+  if (files.length === 0) {
     return { imported: [], errors: [], empty: true };
   }
 
   const imported: BookIndexEntry[] = [];
   const errors: { file: string; message: string }[] = [];
-  for (const e of epubs) {
+  for (const e of files) {
     try {
       const path = await join(picked, e.name);
       const bytes = await readFile(path);
-      const entry = await importEpubBytes(bytes);
+      let entry: BookIndexEntry;
+      if (/\.pdf$/i.test(e.name)) {
+        const { importPdfBytes } = await import("./fixedImport");
+        entry = await importPdfBytes(bytes, filenameTitle(e.name));
+      } else if (/\.docx$/i.test(e.name)) {
+        const { importDocxBytes } = await import("./fixedImport");
+        entry = await importDocxBytes(bytes, filenameTitle(e.name));
+      } else {
+        entry = await importEpubBytes(bytes);
+      }
       imported.push(entry);
     } catch (err) {
       errors.push({
@@ -1008,6 +893,42 @@ export async function updateParagraphPosition(
   state.paragraphIndex = paragraphIndex;
   state.paragraphOffset = paragraphOffset ?? 0;
   await writeState(state);
+}
+
+/**
+ * Persist fixed-page (PDF/DOCX) resume position. Called as the user scrolls /
+ * flips pages (debounced by the caller). Doesn't touch the library index —
+ * page-level progress goes through updatePageProgress.
+ */
+export async function updatePagePosition(
+  id: string,
+  currentPage: number,
+  pageOffset?: number,
+  fixedAnchor?: { blockId: string; frac: number },
+): Promise<void> {
+  const state = await readState(id);
+  state.currentPage = currentPage;
+  state.pageOffset = pageOffset ?? 0;
+  if (fixedAnchor) state.fixedAnchor = fixedAnchor;
+  await writeState(state);
+}
+
+/**
+ * Stamp page-based progress + lastReadAt on a fixed book's index entry — the
+ * page-based analogue of updateReadingPosition. `currentPage` is 0-based.
+ */
+export async function updatePageProgress(
+  id: string,
+  currentPage: number,
+  pageCount: number,
+): Promise<void> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return;
+  entry.progress =
+    pageCount > 0 ? Math.min(1, (currentPage + 1) / pageCount) : 0;
+  entry.lastReadAt = Date.now();
+  await writeIndex(idx);
 }
 
 export async function saveHighlight(

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FONT_SERIF_DISPLAY, FONT_READING_SANS, isArabicTitle } from "../styles/tokens";
+import { ACCENT, FONT_SERIF_DISPLAY, FONT_READING_SANS, isArabicTitle } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -19,6 +19,8 @@ interface Props {
    * where 3 fixed-width sm covers overflow narrower phones.
    */
   fluid?: boolean;
+  /** Small corner pill (e.g. "PDF", "DOCX") marking the book's format. */
+  badge?: string | null;
 }
 
 export const BOOK_COVER_DIMS = {
@@ -34,8 +36,30 @@ export function BookCover({
   size = "md",
   src,
   fluid = false,
+  badge,
 }: Props) {
   const { tr } = useI18n();
+  const badgeEl = badge ? (
+    <span
+      style={{
+        position: "absolute",
+        bottom: 6,
+        insetInlineStart: 6,
+        background: ACCENT,
+        color: "#fff",
+        fontSize: 8.5,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        padding: "2px 5px",
+        borderRadius: 4,
+        fontFamily: FONT_READING_SANS,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+        pointerEvents: "none",
+      }}
+    >
+      {badge}
+    </span>
+  ) : null;
   const { w, h } = BOOK_COVER_DIMS[size];
   const [p1, p2, p3] = palette;
   const [failed, setFailed] = useState(false);
@@ -86,6 +110,7 @@ export function BookCover({
             pointerEvents: "none",
           }}
         />
+        {badgeEl}
       </div>
     );
   }
@@ -190,6 +215,7 @@ export function BookCover({
         />
         <div style={{ width: 14, height: 1, background: p3, opacity: 0.5 }} />
       </div>
+      {badgeEl}
     </div>
   );
 }

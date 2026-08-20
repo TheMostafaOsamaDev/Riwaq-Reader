@@ -182,9 +182,7 @@ export type UiFontKey =
   | "readex"
   | "alexandria"
   | "almarai"
-  | "cairo"
   | "ibmplex"
-  | "tajawal"
   | "vazirmatn"
   | "thmanyah";
 
@@ -192,9 +190,7 @@ export const UI_FONT_STACKS: Record<UiFontKey, string> = {
   readex: FONT_READING_SANS,
   alexandria: '"Alexandria", "Readex Pro", system-ui, sans-serif',
   almarai: '"Almarai", "Readex Pro", system-ui, sans-serif',
-  cairo: '"Cairo", "Readex Pro", system-ui, sans-serif',
   ibmplex: '"IBM Plex Sans Arabic", "Readex Pro", system-ui, sans-serif',
-  tajawal: '"Tajawal", "Readex Pro", system-ui, sans-serif',
   vazirmatn: '"Vazirmatn", "Readex Pro", system-ui, sans-serif',
   // A serif *display* face — an unusual but deliberate chrome choice; falls
   // back to Fraunces for any Latin glyphs it lacks, then Readex Pro.
@@ -205,11 +201,24 @@ export const UI_FONT_LABELS: Record<UiFontKey, string> = {
   readex: "Readex Pro",
   alexandria: "Alexandria",
   almarai: "Almarai",
-  cairo: "Cairo",
   ibmplex: "IBM Plex Sans Arabic",
-  tajawal: "Tajawal",
   vazirmatn: "Vazirmatn",
   thmanyah: "Thmanyah",
+};
+
+/** Per-font `font-size-adjust` so every UI font renders at a consistent
+ *  apparent size while the LAYOUT stays identical — font-size-adjust only
+ *  scales glyph rendering; fixed px paddings/gaps/margins/heights don't move,
+ *  so switching UI font never resizes the UI. Values are calibrated so each
+ *  font's apparent Arabic size matches Readex. Applied to the chrome via the
+ *  `--ui-font-adjust` variable; book content opts out (font-size-adjust:none). */
+export const UI_FONT_ADJUST: Record<UiFontKey, number> = {
+  readex: 0.525,
+  alexandria: 0.48,
+  almarai: 0.5,
+  ibmplex: 0.511,
+  vazirmatn: 0.542,
+  thmanyah: 0.503,
 };
 
 export const FONT_SERIF_DISPLAY =

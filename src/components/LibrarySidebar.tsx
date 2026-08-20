@@ -24,7 +24,6 @@ interface Props {
   setTab: (t: LibraryTab) => void;
   importing: boolean;
   onImport: () => void;
-  onImportDocx: () => void;
   onImportFolder: () => void;
   onOpenQueue: () => void;
   onOpenSettings: () => void;
@@ -59,7 +58,6 @@ export function LibrarySidebar({
   setTab,
   importing,
   onImport,
-  onImportDocx,
   onImportFolder,
   onOpenQueue,
   onOpenSettings,
@@ -238,8 +236,7 @@ export function LibrarySidebar({
           </div>
           {menuOpen && (
             <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 6px)", background: theme.paper, border: `1px solid ${theme.rule}`, borderRadius: 12, boxShadow: "0 16px 36px rgba(0,0,0,0.18)", padding: 6, zIndex: 20 }}>
-              <MenuItem theme={theme} icon="folder" label={tr("sidebar.folderOfEpubs")} onClick={() => { setMenuOpen(false); onImportFolder(); }} />
-              <MenuItem theme={theme} icon="doc" label={tr("sidebar.wordDoc")} tag=".docx" onClick={() => { setMenuOpen(false); onImportDocx(); }} />
+              <MenuItem theme={theme} icon="folder" label={tr("sidebar.folderOfBooks")} onClick={() => { setMenuOpen(false); onImportFolder(); }} />
             </div>
           )}
         </div>

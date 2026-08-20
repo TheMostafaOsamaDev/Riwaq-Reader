@@ -67,3 +67,4 @@ src-tauri/gen/apple/*.xcworkspace/xcuserdata/
 *.sln
 *.sw?
 .superpowers/
+.worktrees/
