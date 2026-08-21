@@ -24,6 +24,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { resolveReadingColors } from "../reader/readingColors";
 import {
   anchorFromRange,
   type SelectionAnchor,
@@ -278,6 +279,13 @@ export function MobileReader({
   // the UI locale above. BookBody sets its own `dir` from this on its own
   // element, so it never inherits from the chrome wrapper below.
   const rtl = isRtlLanguage(book.language);
+
+  // Effective reading colors: ink/paper overrides over the active theme.
+  // `contentTheme` recolors only the reading text; the paper color paints the
+  // scroll surface below. Chrome stays on `theme`.
+  const readingColors = resolveReadingColors(theme, t.inkColor, t.paperColor);
+  const contentTheme: Theme = { ...theme, ink: readingColors.ink };
+
   // Read by the scroll-to-resume effect so it knows whether the chrome is
   // currently occluding the top of the scroll area. Tracked via a ref so a
   // chrome toggle alone doesn't re-trigger the scroll.
@@ -937,6 +945,7 @@ export function MobileReader({
         style={{
           flex: 1,
           overflow: "auto",
+          background: readingColors.paper,
           // Padding stays constant whether chrome is shown or hidden —
           // the chrome bars are absolutely positioned and act as a
           // translucent overlay (iOS Books / Kindle style). Swapping
@@ -951,7 +960,7 @@ export function MobileReader({
           bookId={book.id}
           chapter={chapter}
           chapterCount={chapterCount}
-          theme={theme}
+          theme={contentTheme}
           themeKey={themeKey}
           highlights={state.highlights}
           fontFamily={t.fontFamily}

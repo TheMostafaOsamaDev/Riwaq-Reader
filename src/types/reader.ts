@@ -32,6 +32,14 @@ export interface Tweaks {
       ThemeKey at render time via resolveTheme(). */
   theme: ThemePref;
   fontFamily: "serif" | "sans" | "dyslexic" | "cairo" | "lateef" | "tajawal";
+  /** Reading text (ink) color. "auto" follows the active theme's ink; any CSS
+      hex color overrides it across reflow text, DOCX cards, and (approximated
+      via a GPU duotone) PDF pages. Kept a string so the Import Settings guard,
+      which type-checks with `typeof`, accepts an imported color. */
+  inkColor: string;
+  /** Reading page (background) color. "auto" follows the active theme's bg;
+      any CSS hex color overrides it, same coverage as `inkColor`. */
+  paperColor: string;
   fontSize: number;
   lineHeight: number;
   letterSpacing: number;

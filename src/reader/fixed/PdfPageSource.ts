@@ -28,6 +28,7 @@ export async function createPdfPageSourceFromBytes(
   const mounted = new Map<number, HTMLCanvasElement>();
 
   return {
+    kind: "pdf",
     pageCount: doc.pageCount,
     outline: doc.outline,
     hasTextLayer: doc.hasTextLayer,

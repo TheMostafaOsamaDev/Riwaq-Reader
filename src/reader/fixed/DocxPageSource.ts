@@ -6,10 +6,16 @@
 // Text stays real HTML — selectable + searchable, and Arabic shapes natively.
 
 import { BaseDirectory, readTextFile } from "@tauri-apps/plugin-fs";
-import { bookDir, chapterImageSrcFor, type DocxBook } from "../../store/library";
-import { FONT_STACKS } from "../../styles/tokens";
+import {
+  bookDir,
+  chapterImageSrcFor,
+  type DocxBook,
+  type Highlight,
+} from "../../store/library";
+import { FONT_STACKS, type ThemeKey } from "../../styles/tokens";
 import type { TocEntry } from "../../types/reader";
 import type { FixedPageSource } from "./FixedPageSource";
+import { applyHighlightsToBlock, type BlockMark } from "./docxHighlight";
 
 const BASE = BaseDirectory.AppData;
 
@@ -80,8 +86,12 @@ export async function createDocxPageSourceFromParts(
   const blocks = [...meas.children] as HTMLElement[];
   const pages: Node[][] = [[]];
   const headingPage: Record<string, number> = {};
+  // Stable block id → page. Ids are assigned here (before cloning) so a
+  // highlight anchored to a block survives re-pagination when the page box
+  // changes — it just resolves to a different page.
+  const blockPage: Record<string, number> = {};
   let curH = 0;
-  for (const blk of blocks) {
+  blocks.forEach((blk, blockIndex) => {
     const rect = blk.getBoundingClientRect();
     const cs = getComputedStyle(blk);
     const h =
@@ -93,13 +103,16 @@ export async function createDocxPageSourceFromParts(
       curH = 0;
     }
     const pageIdx = pages.length - 1;
+    const blockId = `b${blockIndex}`;
+    blk.setAttribute("data-block-id", blockId);
+    blockPage[blockId] = pageIdx;
     if (blk.id && blk.id.startsWith("docx-h-")) headingPage[blk.id] = pageIdx;
     blk.querySelectorAll("[id^='docx-h-']").forEach((el) => {
       headingPage[el.id] = pageIdx;
     });
     pages[pageIdx].push(blk.cloneNode(true));
     curH += h;
-  }
+  });
   document.body.removeChild(meas);
 
   const outline: TocEntry[] = parts.outline.map((o) => ({
@@ -108,10 +121,23 @@ export async function createDocxPageSourceFromParts(
     dest: { fmt: "page", page: headingPage[o.anchorId] ?? 0 },
   }));
 
+  // Current highlights + theme, pushed in by the viewer via setHighlights. Read
+  // fresh on every renderPage so a newly-created highlight shows on re-render.
+  let curHighlights: Highlight[] = [];
+  let curThemeKey: ThemeKey = "light";
+
   return {
+    kind: "docx",
     pageCount: pages.length,
     outline,
     hasTextLayer: true,
+    pageForBlock(blockId) {
+      return blockPage[blockId];
+    },
+    setHighlights(hs, themeKey) {
+      curHighlights = hs;
+      curThemeKey = themeKey;
+    },
     async pageSize() {
       return { w: PAGE_W, h: PAGE_H };
     },
@@ -123,13 +149,37 @@ export async function createDocxPageSourceFromParts(
       // edge, so the scale origin must match that edge — otherwise the scaled card
       // overflows the host's clip box on the start side. LTR anchors left.
       const originX = parts.dir === "rtl" ? "right" : "left";
+      // Colors read from CSS vars set on the viewer (see FixedPageViewer), so
+      // the "Page color" / "Text color" reading settings restyle the cards live
+      // — no re-pagination. Fallbacks preserve the original white page + near-
+      // black text when no override / theme is in effect.
       card.style.cssText =
         `width:${PAGE_W}px; height:${PAGE_H}px; box-sizing:border-box; padding:${MARGIN}px; ` +
-        `background:#ffffff; color:#1b1b1b; overflow:hidden; ` +
+        `background:var(--reading-paper, #ffffff); color:var(--reading-ink, #1b1b1b); overflow:hidden; ` +
         `font-family:${FONT}; font-size:${FONT_SIZE}px; line-height:${LINE_HEIGHT}; ` +
         `transform: scale(${scale}); transform-origin: top ${originX};`;
       for (const n of pages[i] || []) card.appendChild(n.cloneNode(true));
       card.querySelectorAll("img").forEach(IMG_CONSTRAIN);
+      // Inject highlight <mark>s for any block on this page (before attaching,
+      // so the mutation isn't visible mid-render).
+      if (curHighlights.length > 0) {
+        card.querySelectorAll<HTMLElement>("[data-block-id]").forEach((blockEl) => {
+          const blockId = blockEl.getAttribute("data-block-id");
+          if (!blockId) return;
+          const marks: BlockMark[] = [];
+          for (const hl of curHighlights) {
+            if (hl.fixed?.fmt === "docx" && hl.fixed.blockId === blockId) {
+              marks.push({
+                id: hl.id,
+                charStart: hl.fixed.charStart,
+                charEnd: hl.fixed.charEnd,
+                color: hl.color,
+              });
+            }
+          }
+          if (marks.length) applyHighlightsToBlock(blockEl, marks, curThemeKey);
+        });
+      }
       host.replaceChildren(card);
     },
     destroy() {

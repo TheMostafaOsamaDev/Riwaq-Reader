@@ -19,24 +19,46 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   titleFontFor,
+  type HighlightColor,
   type Theme,
   type ThemeKey,
 } from "../../styles/tokens";
 import { useReducedMotion } from "../../styles/motion";
 import type { Tweaks, TocEntry } from "../../types/reader";
-import type { BookState, FixedBook } from "../../store/library";
+import type {
+  BookState,
+  DocxHighlightAnchor,
+  FixedBook,
+  Highlight,
+  PdfHighlightAnchor,
+} from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
 import { FixedPageViewer, type FixedPageViewerHandle } from "./FixedPageViewer";
 import { PanelShell } from "../../panels/PanelShell";
+import { HighlightsPanel } from "../../panels/HighlightsPanel";
+import { SelectionPopover } from "../../components/SelectionPopover";
+import { HighlightActionPopover } from "../../components/HighlightActionPopover";
+import type { DocxSelectionAnchor } from "./docxHighlight";
 import { SideSheet } from "../../components/SideSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
 import { ReaderScrubBar } from "../chrome/ReaderScrubBar";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
-import { Field, SegRow, ThemeField } from "../../components/SettingsSection";
+import { ColorField, Field, SegRow, ThemeField } from "../../components/SettingsSection";
 import { useI18n } from "../../i18n/useI18n";
 
 type SetTweak = <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
-type Panel = null | "toc" | "bookmarks" | "progress" | "settings";
+type Panel = null | "toc" | "highlights" | "progress" | "settings";
+
+/** A highlight the fixed reader asks App to persist: colour + note + the
+ *  fixed-layout anchor. App fills the unused reflow fields (chapter/paragraph/
+ *  char) with 0. */
+export interface NewFixedHighlight {
+  text: string;
+  color: HighlightColor;
+  note?: string;
+  groupId?: string;
+  fixed: DocxHighlightAnchor | PdfHighlightAnchor;
+}
 
 export interface FixedPageReaderProps {
   theme: Theme;
@@ -45,6 +67,11 @@ export interface FixedPageReaderProps {
   setTweak: SetTweak;
   book: FixedBook;
   state: BookState;
+  /** This book's highlights (fixed-layout, carrying a `fixed` anchor). */
+  highlights: Highlight[];
+  onCreateHighlight: (h: NewFixedHighlight) => void;
+  onDeleteHighlight: (highlightId: string) => void;
+  onUpdateHighlightNote: (highlightId: string, note: string) => void;
   layout: "mobile" | "desktop";
   /** Chrome (UI) direction — follows the app language. */
   uiDir: "ltr" | "rtl";
@@ -82,10 +109,15 @@ function zoomStepStyle(theme: Theme): CSSProperties {
 export function FixedPageReader(props: FixedPageReaderProps) {
   const {
     theme,
+    themeKey,
     t,
     setTweak,
     book,
     state,
+    highlights,
+    onCreateHighlight,
+    onDeleteHighlight,
+    onUpdateHighlightNote,
     layout,
     uiDir,
     createSource,
@@ -104,6 +136,28 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     () => ({ page: state.currentPage ?? 0, fraction: 0, label: "" }),
   );
   const viewerRef = useRef<FixedPageViewerHandle>(null);
+
+  // Highlighting popovers: `sel` drives the create-color popover after a text
+  // selection; `activeHl` drives the edit/delete popover after clicking a mark.
+  const [sel, setSel] = useState<DocxSelectionAnchor | null>(null);
+  const [activeHl, setActiveHl] = useState<{ id: string; rect: DOMRect } | null>(null);
+
+  const createFromSelection = (color: HighlightColor, note?: string) => {
+    if (!sel) return;
+    onCreateHighlight({
+      text: sel.text,
+      color,
+      note,
+      fixed: {
+        fmt: "docx",
+        blockId: sel.blockId,
+        charStart: sel.charStart,
+        charEnd: sel.charEnd,
+      },
+    });
+    window.getSelection()?.removeAllRanges();
+    setSel(null);
+  };
 
   // Content/page-flip direction: DOCX carries its own; PDF follows the UI.
   const contentDir = book.kind === "docx" ? book.dir : uiDir;
@@ -150,6 +204,15 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     closePanel();
   };
 
+  // Jump to a highlight's page: PDF highlights carry their page directly; DOCX
+  // highlights resolve their block id to whatever page it currently sits on.
+  const jumpToFixedHighlight = (h: Highlight) => {
+    if (!h.fixed) return;
+    const page =
+      h.fixed.fmt === "pdf" ? h.fixed.page : source?.pageForBlock?.(h.fixed.blockId);
+    if (page != null) jumpToPage(page);
+  };
+
   // Logical edge for a panel. Desktop follows the shared convention
   // (navigation panels lead, tool panels trail); mobile keeps its single
   // leading-edge overlay. SideSheet / PanelShell handle the RTL flip.
@@ -179,18 +242,18 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             side={side}
           />
         );
-      case "bookmarks":
+      case "highlights":
         return (
-          <PanelShell
+          <HighlightsPanel
             theme={theme}
-            title={tr("reader.highlights")}
+            themeKey={themeKey}
             onClose={closePanel}
+            highlights={highlights}
+            onJump={jumpToFixedHighlight}
+            onDelete={onDeleteHighlight}
+            onUpdateNote={onUpdateHighlightNote}
             side={side}
-          >
-            <div style={{ padding: "32px 18px", textAlign: "center", color: theme.muted, fontSize: 13, lineHeight: 1.5 }}>
-              {locale === "ar" ? "لا توجد علامات بعد." : "No bookmarks yet."}
-            </div>
-          </PanelShell>
+          />
         );
       case "progress":
         return (
@@ -218,6 +281,13 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             side={side}
           >
             <ThemeField theme={theme} pref={t.theme} onChange={(p) => setTweak("theme", p)} />
+            <ColorField
+              theme={theme}
+              inkColor={t.inkColor}
+              paperColor={t.paperColor}
+              onChangeInk={(v) => setTweak("inkColor", v)}
+              onChangePaper={(v) => setTweak("paperColor", v)}
+            />
             <Field label={locale === "ar" ? "طريقة العرض" : "Flow"} theme={theme}>
               <SegRow<Tweaks["fixedFlow"]>
                 theme={theme}
@@ -312,7 +382,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   const panelLabel =
     panel === "toc"
       ? tr("reader.toc")
-      : panel === "bookmarks"
+      : panel === "highlights"
         ? tr("reader.highlights")
         : panel === "progress"
           ? tr("reader.readingProgress")
@@ -360,10 +430,10 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             />
             <ReaderIconButton
               theme={theme}
-              icon="bookmark"
+              icon="highlight"
               label={tr("reader.highlights")}
-              onClick={() => openPanel("bookmarks")}
-              active={panel === "bookmarks"}
+              onClick={() => openPanel("highlights")}
+              active={panel === "highlights"}
             />
           </>
         }
@@ -398,8 +468,17 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             fit={t.fixedFit}
             zoom={zoom}
             tint={t.fixedPageTint}
+            inkColor={t.inkColor}
+            paperColor={t.paperColor}
             dir={contentDir}
             theme={theme}
+            themeKey={themeKey}
+            highlights={highlights}
+            onSelect={setSel}
+            onHighlightClick={(id, rect) => {
+              setSel(null);
+              setActiveHl({ id, rect });
+            }}
             resume={resume}
             reducedMotion={reduced}
             formatCounter={formatCounter}
@@ -497,6 +576,37 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           </div>
         </>
       )}
+
+      {/* Highlighting popovers (DOCX). Positioned from viewport-coordinate rects. */}
+      {sel && (
+        <SelectionPopover
+          theme={theme}
+          anchor={sel.rect}
+          onPick={(color) => createFromSelection(color)}
+          onAddNote={(color, note) => createFromSelection(color, note)}
+          onDismiss={() => setSel(null)}
+        />
+      )}
+      {activeHl &&
+        (() => {
+          const hl = highlights.find((h) => h.id === activeHl.id);
+          return hl ? (
+            <HighlightActionPopover
+              theme={theme}
+              highlight={hl}
+              anchor={activeHl.rect}
+              onDelete={() => {
+                onDeleteHighlight(hl.id);
+                setActiveHl(null);
+              }}
+              onUpdateNote={(note) => {
+                onUpdateHighlightNote(hl.id, note);
+                setActiveHl(null);
+              }}
+              onDismiss={() => setActiveHl(null)}
+            />
+          ) : null;
+        })()}
     </div>
   );
 }

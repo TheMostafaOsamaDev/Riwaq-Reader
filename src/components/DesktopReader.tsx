@@ -28,6 +28,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { resolveReadingColors } from "../reader/readingColors";
 import { useI18n } from "../i18n/useI18n";
 import type { Tr } from "../i18n";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
@@ -107,6 +108,12 @@ export function DesktopReader({
   // the UI locale above. Feeds BookBody/PaginatedView's own `dir` attribute
   // (set on their own elements, so it never inherits from the chrome below).
   const rtl = isRtlLanguage(book.language);
+
+  // Effective reading colors: the user's ink/paper overrides layered over the
+  // active theme ("auto" falls back to theme.ink / theme.bg). `contentTheme`
+  // recolors only the reading surface + text, leaving the chrome on `theme`.
+  const readingColors = resolveReadingColors(theme, t.inkColor, t.paperColor);
+  const contentTheme: Theme = { ...theme, ink: readingColors.ink };
 
   // The live paragraph for the current chapter — updated by both the
   // scroll listener and PaginatedView. Used so that switching reading
@@ -716,6 +723,7 @@ export function DesktopReader({
                 position: "relative",
                 minHeight: 0,
                 minWidth: 0,
+                background: readingColors.paper,
               }}
             >
               <PaginatedView
@@ -732,7 +740,7 @@ export function DesktopReader({
                     bookId={book.id}
                     chapter={chapter}
                     chapterCount={chapterCount}
-                    theme={theme}
+                    theme={contentTheme}
                     themeKey={themeKey}
                     fontFamily={t.fontFamily}
                     fontSize={t.fontSize}
@@ -756,6 +764,7 @@ export function DesktopReader({
                 overflow: "auto",
                 padding: "60px 80px 30px",
                 position: "relative",
+                background: readingColors.paper,
                 // overscroll-behavior: contain stops the browser's own
                 // chrome bounce so our wheel preventDefault is the
                 // authority on what happens past the edge.
@@ -768,7 +777,7 @@ export function DesktopReader({
                   bookId={book.id}
                   chapter={chapter}
                   chapterCount={chapterCount}
-                  theme={theme}
+                  theme={contentTheme}
                   themeKey={themeKey}
                   fontFamily={t.fontFamily}
                   fontSize={t.fontSize}
