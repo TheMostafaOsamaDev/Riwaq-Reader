@@ -686,23 +686,17 @@ export function Library({
           />
         )}
       </AnimatedDialog>
-      <AnimatedDialog
+      <DownloadRangeDialog
+        theme={theme}
+        layout={layout}
         open={sourceDetailRangeDialog !== null}
-        onScrimClick={() => setSourceDetailRangeDialog(null)}
-        zIndex={9700}
-      >
-        {sourceDetailRangeDialog && (
-          <DownloadRangeDialog
-            theme={theme}
-            sourceId={sourceDetailRangeDialog.sourceId}
-            novelUrl={sourceDetailRangeDialog.novelUrl}
-            libraryEntryId={sourceDetailRangeDialog.libraryEntryId}
-            onCancel={() => setSourceDetailRangeDialog(null)}
-            onStarted={() => setSourceDetailRangeDialog(null)}
-            onCompleted={() => void refresh()}
-          />
-        )}
-      </AnimatedDialog>
+        sourceId={sourceDetailRangeDialog?.sourceId}
+        novelUrl={sourceDetailRangeDialog?.novelUrl}
+        libraryEntryId={sourceDetailRangeDialog?.libraryEntryId}
+        onCancel={() => setSourceDetailRangeDialog(null)}
+        onStarted={() => setSourceDetailRangeDialog(null)}
+        onCompleted={() => void refresh()}
+      />
       <AnimatedFullScreen
         open={queueOpen}
         layout={layout}
