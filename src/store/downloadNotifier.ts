@@ -142,6 +142,14 @@ let summaryShown = false;
  *  the queue is fully idle to avoid showing inflated totals after a
  *  clearTerminals(). */
 let burstTotal = 0;
+/** Monotonic high-water-mark of the displayed percent within a burst,
+ *  so progress never ticks backward. The running chapters' partial
+ *  progress resetting at chapter boundaries otherwise made the percent
+ *  bounce (19% → 18% → 19%). Reset when the queue goes fully idle. */
+let burstMaxPct = 0;
+/** `finishedAt` of the import whose completion we've already announced,
+ *  so an undismissed finished import isn't re-announced in a later burst. */
+let announcedImportFinishedAt: number | null = null;
 let started = false;
 
 /** Smallest interval between consecutive in-progress notification
@@ -225,9 +233,21 @@ function summarize(jobs: DownloadJob[]): Snapshot {
 }
 
 async function publish(snap: Snapshot) {
-  // Reset burst counters when the queue is fully idle.
-  if (snap.active === 0 && snap.total === 0) {
+  // A lone import (no queue jobs) finishes by flipping inactive with an
+  // empty queue, which looks "fully idle" — but we still owe a completion
+  // summary. Detect that so the idle-reset below doesn't swallow it.
+  const impState = getImportState();
+  const importTerminalPending =
+    !summaryShown &&
+    impState.finishedAt !== null &&
+    impState.finishedAt !== announcedImportFinishedAt &&
+    (impState.resultBookId !== null || impState.error !== null);
+
+  // Reset burst counters when the queue is fully idle and nothing is
+  // waiting to be announced.
+  if (snap.active === 0 && snap.total === 0 && !importTerminalPending) {
     burstTotal = 0;
+    burstMaxPct = 0;
     summaryShown = false;
     lastBody = "";
     lastTitle = "";
@@ -294,8 +314,8 @@ async function publish(snap: Snapshot) {
   // permission — `setProgressBar` is unrelated to that permission, and
   // `ensurePermission()` below can permanently cache "denied" for the
   // session, which must not kill the dock progress bar too.
-  if (!isTerminalSummary) {
-    void setDockProgress(overallFraction(snap));
+  if (!isTerminalSummary && composed.max > 0) {
+    void setDockProgress(composed.progress / composed.max);
   } else {
     void setDockProgress(null);
   }
@@ -315,20 +335,15 @@ async function publish(snap: Snapshot) {
   });
 }
 
-/** Smooth 0..1 progress across all live work in the current burst.
- *  Each queue job contributes its own `progress`; completed jobs count
- *  as 1; the active import contributes its `overall`. Denominator is
- *  the burst total so the bar fills as work finishes. */
-function overallFraction(snap: Snapshot): number {
-  const jobs = getState().jobs;
-  let sum = 0;
-  for (const j of jobs) {
-    if (j.status === "done") sum += 1;
-    else if (j.status === "running" || j.status === "queued") sum += j.progress;
-  }
-  if (snap.importActive) sum += snap.importPct / 100;
-  const denom = Math.max(burstTotal, 1);
-  return Math.min(1, sum / denom);
+/** Monotonic display percent for the aggregate download/mixed progress.
+ *  Based on the RESOLVED-job fraction (done + failed + cancelled over the
+ *  burst total) so it matches the "N of M" count exactly, then clamped to
+ *  a per-burst high-water-mark so it never ticks backward. Using the
+ *  resolved count instead of the running chapters' live partial progress
+ *  is what removes the 19% → 18% → 19% bounce. */
+function clampPct(pct: number): number {
+  if (pct > burstMaxPct) burstMaxPct = pct;
+  return burstMaxPct;
 }
 
 interface Composed {
@@ -349,7 +364,9 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   const tr = makeTr(currentUiLocale());
   if (snap.active > 0) {
     summaryShown = false;
-    const pctOverall = Math.round(overallFraction(snap) * 100);
+    const pctOverall = clampPct(
+      Math.round((completedThisBurst / Math.max(burstTotal, 1)) * 100),
+    );
 
     // Mixed work: more than one kind of task overlapping (e.g. a
     // download burst running alongside a conversion or an import).
@@ -449,41 +466,63 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   }
 
   if (summaryShown) return null;
-  // If nothing actually finished in this session (e.g. on launch
-  // with only `interrupted` jobs hanging around), the summary
-  // notification would read as a misleading "all done" — skip it.
-  if (snap.done === 0 && snap.error === 0 && snap.cancelled === 0) {
+
+  // Describe what actually finished, BY TASK TYPE with counts — instead
+  // of a generic "background work finished". Queue jobs stay in the list
+  // as terminal entries until clearTerminals(), so we tally them here;
+  // imports live in their own store and are read directly.
+  const finishedJobs = getState().jobs;
+  let chDone = 0;
+  let chFail = 0;
+  let cvDone = 0;
+  for (const j of finishedJobs) {
+    if (j.kind === "chapter") {
+      if (j.status === "done") chDone++;
+      else if (j.status === "error" || j.status === "cancelled") chFail++;
+    } else if (j.kind === "conversion") {
+      if (j.status === "done") cvDone++;
+    }
+  }
+  const imp = getImportState();
+  const impFresh =
+    imp.finishedAt !== null && imp.finishedAt !== announcedImportFinishedAt;
+  const impDone = impFresh && imp.error === null && imp.resultBookId !== null;
+  const impFail = impFresh && imp.error !== null;
+
+  // Nothing actually finished this session (e.g. launch with only
+  // interrupted jobs) → don't show a misleading "all done".
+  if (chDone === 0 && chFail === 0 && cvDone === 0 && !impDone && !impFail) {
     return null;
   }
-  if (snap.error > 0 || snap.cancelled > 0) {
-    const bits: string[] = [];
-    if (snap.done > 0) bits.push(tr("status.notif.completedCount", { n: snap.done }));
-    if (snap.error > 0) bits.push(tr("status.notif.failedCount", { n: snap.error }));
-    if (snap.cancelled > 0)
-      bits.push(tr("status.notif.cancelledCount", { n: snap.cancelled }));
-    return {
-      title: tr("status.notif.backgroundWorkFinished"),
-      body: bits.join(" · "),
-      progress: 100,
-      max: 100,
-      indeterminate: false,
-      ongoing: false,
-      tapsToQueue: true,
-    };
-  }
+  // Mark this import announced so an undismissed finished import isn't
+  // re-announced when a later, unrelated burst completes.
+  if (impDone || impFail) announcedImportFinishedAt = imp.finishedAt;
+
+  const bodyParts: string[] = [];
+  if (chDone > 0)
+    bodyParts.push(tr("status.notif.chaptersDownloaded", { n: chDone }));
+  if (cvDone > 0) bodyParts.push(tr("status.notif.offlineBookReady"));
+  if (impDone) bodyParts.push(tr("status.notif.bookImported"));
+  if (chFail > 0) bodyParts.push(tr("status.notif.failedCount", { n: chFail }));
+  if (impFail) bodyParts.push(tr("status.notif.importFailed"));
+
+  const successKinds =
+    (chDone > 0 ? 1 : 0) + (cvDone > 0 ? 1 : 0) + (impDone ? 1 : 0);
+  let title: string;
+  if (successKinds > 1) title = tr("status.notif.allTasksDone");
+  else if (chDone > 0) title = tr("status.notif.downloadComplete");
+  else if (cvDone > 0) title = tr("status.notif.offlineBookReady");
+  else if (impDone) title = tr("status.notif.importComplete");
+  else title = tr("status.notif.backgroundWorkFinished"); // failures only
+
   return {
-    title: tr("status.notif.allDone"),
-    body: tr(
-      snap.done === 1
-        ? "status.notif.jobsCompleteOne"
-        : "status.notif.jobsCompleteOther",
-      { n: snap.done },
-    ),
+    title,
+    body: bodyParts.join(" · "),
     progress: 100,
     max: 100,
     indeterminate: false,
     ongoing: false,
-    tapsToQueue: false,
+    tapsToQueue: true,
   };
 }
 

@@ -472,6 +472,13 @@ export const ar: Messages = {
   "status.notif.partDownloads": "تنزيل {n}",
   "status.notif.partConverting": "تحويل",
   "status.notif.partImporting": "استيراد",
+  "status.notif.chaptersDownloaded": "تم تنزيل {n} فصل",
+  "status.notif.downloadComplete": "اكتمل التنزيل",
+  "status.notif.offlineBookReady": "الكتاب جاهز للقراءة دون اتصال",
+  "status.notif.importComplete": "اكتمل الاستيراد",
+  "status.notif.allTasksDone": "اكتملت كل المهام",
+  "status.notif.bookImported": "تمت إضافة الكتاب إلى مكتبتك",
+  "status.notif.importFailed": "فشل الاستيراد",
 
   "contextMenu.status": "الحالة",
   "contextMenu.statusNone": "بلا",
