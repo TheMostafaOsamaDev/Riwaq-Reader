@@ -16,6 +16,8 @@ pub fn run() {
             notify::update_download_notification,
             notify::set_status_bar_style,
             notify::consume_launch_intent,
+            notify::start_task_service,
+            notify::stop_task_service,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

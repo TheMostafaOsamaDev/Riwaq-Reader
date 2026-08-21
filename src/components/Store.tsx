@@ -13,8 +13,12 @@
 // component's state intact (React keeps the instance alive), so the user
 // returns to whatever they were browsing.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SourcesListView } from "./SourcesListView";
+import {
+  onOpenStoreSource,
+  takePendingStoreSource,
+} from "../store/uiIntents";
 import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
@@ -68,6 +72,18 @@ export function Store({ theme, layout, onStreamRead, onImportComplete }: Props) 
     });
   }, []);
 
+  // Open a source targeted from outside the Store (the main search's Websites
+  // results). A request that arrived before we mounted — e.g. the search
+  // jumped in from the shelf — is consumed on mount; later ones arrive live
+  // through the subscription.
+  useEffect(() => {
+    const pending = takePendingStoreSource();
+    if (pending) setView({ kind: "source", sourceId: pending });
+    return onOpenStoreSource((sourceId) =>
+      setView({ kind: "source", sourceId }),
+    );
+  }, []);
+
   return (
     <>
       <div
@@ -111,20 +127,16 @@ export function Store({ theme, layout, onStreamRead, onImportComplete }: Props) 
           />
         )}
       </div>
-      {rangeDialog && (
-        <DownloadRangeDialog
-          theme={theme}
-          sourceId={rangeDialog.sourceId}
-          novelUrl={rangeDialog.novelUrl}
-          onCancel={() => setRangeDialog(null)}
-          onStarted={() => {
-            setRangeDialog(null);
-          }}
-          onCompleted={() => {
-            onImportComplete();
-          }}
-        />
-      )}
+      <DownloadRangeDialog
+        theme={theme}
+        layout={layout}
+        open={rangeDialog !== null}
+        sourceId={rangeDialog?.sourceId}
+        novelUrl={rangeDialog?.novelUrl}
+        onCancel={() => setRangeDialog(null)}
+        onStarted={() => setRangeDialog(null)}
+        onCompleted={() => onImportComplete()}
+      />
     </>
   );
 }

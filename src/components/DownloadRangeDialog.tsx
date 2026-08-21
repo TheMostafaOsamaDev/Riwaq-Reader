@@ -1,15 +1,18 @@
-// Dialog opened from the novel detail page to bulk-download a chapter
-// slice. The selected range is enqueued into the download queue —
-// per-chapter content + images land under the existing library entry's
-// `chapters/<id>/` directory, and the queue page (download icon in the
-// library header) is where the user watches progress + cancels.
+// Bulk "download a range of chapters" flow, opened from the novel detail
+// page. The selected [from, to] slice is enqueued into the download queue —
+// per-chapter content + images land under the library entry's
+// `chapters/<id>/` directory, and the queue page is where the user watches
+// progress + cancels.
 //
-// This used to build a separate EPUB entry per range (legacy
-// "Download range" behavior). That import path is gone: one source-
-// backed entry now owns its chapters, and the queue is the single
-// place to manage downloads.
+// Presentation is responsive: a centered popup (AnimatedDialog) on desktop,
+// a slide-up bottom sheet (MobileSheet — the same primitive behind the
+// reader's highlights panel) on mobile. Both wrap the one DownloadRangeContent.
+//
+// The From/To pickers are searchable, volume-grouped chapter lists (not native
+// <select>s) so the user gets search, per-volume context, and a downloaded ✓
+// on chapters already on disk.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { getSource } from "../sources/registry";
 import {
   readSnapshot,
@@ -20,36 +23,41 @@ import {
 import { enqueueRange } from "../store/downloadQueue";
 import type { SourceNovel } from "../sources/types";
 import { Button } from "./Button";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import { Icon } from "./Icon";
+import { AnimatedDialog } from "./AnimatedDialog";
+import { MobileSheet } from "./MobileSheet";
+import {
+  ACCENT,
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+} from "../styles/tokens";
+import { transition } from "../styles/motion";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
   theme: Theme;
-  sourceId: string;
-  novelUrl: string;
-  /** Library entry id for the novel being downloaded. The dialog
-   *  enqueues into this entry's chapter folder, so it MUST be
-   *  source-backed (the dialog's parent only opens it for kind:
-   *  "source" entries). Undefined indicates an invalid open path —
-   *  the dialog surfaces an error instead of running. */
+  layout: "desktop" | "mobile";
+  /** Drives the container's open/close (+ enter/exit animation). */
+  open: boolean;
+  sourceId?: string;
+  novelUrl?: string;
+  /** Library entry id for the novel being downloaded. The dialog enqueues
+   *  into this entry's chapter folder, so it MUST be source-backed. */
   libraryEntryId?: string;
   onCancel: () => void;
-  /** Dialog has enqueued the range — caller should unmount the
-   *  dialog. The queue worker takes over from here. */
+  /** Dialog has enqueued the range — caller should close it. */
   onStarted: () => void;
-  /** No longer fires per-completion (downloads are async via the
-   *  queue) — kept for API compatibility. Called once at enqueue
-   *  time so the caller can refresh the shelf if it wants. */
+  /** Called once at enqueue time so the caller can refresh the shelf. */
   onCompleted: () => void;
 }
 
-interface ChapterChoice {
-  id: number;
-  label: string;
-}
-
+/** Responsive shell: bottom sheet on mobile, centered popup on desktop.
+ *  Kept always-mounted (open toggles) so the container animates in/out. */
 export function DownloadRangeDialog({
   theme,
+  layout,
+  open,
   sourceId,
   novelUrl,
   libraryEntryId,
@@ -58,27 +66,89 @@ export function DownloadRangeDialog({
   onCompleted,
 }: Props) {
   const { tr } = useI18n();
+  const content =
+    open && sourceId && novelUrl ? (
+      <DownloadRangeContent
+        theme={theme}
+        layout={layout}
+        sourceId={sourceId}
+        novelUrl={novelUrl}
+        libraryEntryId={libraryEntryId}
+        onCancel={onCancel}
+        onStarted={onStarted}
+        onCompleted={onCompleted}
+      />
+    ) : null;
+
+  if (layout === "mobile") {
+    return (
+      <MobileSheet
+        theme={theme}
+        open={open}
+        onClose={onCancel}
+        label={tr("downloads.range.title")}
+      >
+        {content}
+      </MobileSheet>
+    );
+  }
+  return (
+    <AnimatedDialog open={open} onScrimClick={onCancel} zIndex={9700}>
+      {content}
+    </AnimatedDialog>
+  );
+}
+
+interface ContentProps {
+  theme: Theme;
+  layout: "desktop" | "mobile";
+  sourceId: string;
+  novelUrl: string;
+  libraryEntryId?: string;
+  onCancel: () => void;
+  onStarted: () => void;
+  onCompleted: () => void;
+}
+
+interface ChapterOption {
+  id: number;
+  title: string;
+  volumeTitle: string;
+  downloaded: boolean;
+}
+
+function DownloadRangeContent({
+  theme,
+  layout,
+  sourceId,
+  novelUrl,
+  libraryEntryId,
+  onCancel,
+  onStarted,
+  onCompleted,
+}: ContentProps) {
+  const { tr } = useI18n();
   const source = useMemo(() => getSource(sourceId), [sourceId]);
-  // Two data sources to populate the dropdowns:
-  //   - the persisted snapshot (offline, the typical path now that
-  //     the dialog only opens for source-backed library entries)
+  const isMobile = layout === "mobile";
+  // Two data sources to populate the pickers:
+  //   - the persisted snapshot (offline, the typical path)
   //   - source.getNovel as a fallback when no snapshot is on disk
-  //     (legacy entries created before the snapshot-on-import path
-  //     landed; the dialog still works for them)
   const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null);
   const [novel, setNovel] = useState<SourceNovel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startId, setStartId] = useState<number | null>(null);
   const [endId, setEndId] = useState<number | null>(null);
-  // Lazy-volume pre-load progress. When a Cenele-style source returns
-  // empty per-volume chapters from getNovel, we lazy-load each missing
-  // volume so the range dropdowns see every chapter — otherwise the
-  // user can only pick from whichever volumes they've already
-  // expanded.
+  // Which picker's list is expanded ("from" | "to" | null) — only one at a
+  // time so the sheet/popup doesn't grow two long lists at once.
+  const [openField, setOpenField] = useState<"from" | "to" | null>(null);
+  // Lazy-volume pre-load progress (see the effect below).
   const [preloadTotal, setPreloadTotal] = useState(0);
   const [preloadDone, setPreloadDone] = useState(0);
   const [preloading, setPreloading] = useState(false);
+  const direction = (snapshot?.direction ?? novel?.direction ?? "ltr") as
+    | "rtl"
+    | "ltr";
 
   useEffect(() => {
     if (!source) return;
@@ -90,8 +160,8 @@ export function DownloadRangeDialog({
     (async () => {
       try {
         // Snapshot path: read source.json. The book's chapters list
-        // is identical in shape (id, title, url) so the dropdowns
-        // and submit code work without further branching.
+        // is identical in shape (id, title, url) so the pickers and
+        // submit code work without further branching.
         if (libraryEntryId) {
           let snap = await readSnapshot(libraryEntryId);
           if (snap && !cancelled) {
@@ -102,9 +172,7 @@ export function DownloadRangeDialog({
             // in source.json until each volume gets expanded. The
             // range dialog needs the FULL listing or the user
             // can't pick endpoints past the first volume — so
-            // top-up by fetching every missing volume here. The
-            // results are persisted via setVolumeChapters, so the
-            // accordion in the detail view sees them next time.
+            // top-up by fetching every missing volume here.
             if (source.hasLazyVolumes && source.getVolumeChapters) {
               const missing = snap.volumes.filter(
                 (v) => !v.chaptersLoaded && v.chapters.length === 0,
@@ -134,9 +202,6 @@ export function DownloadRangeDialog({
                     if (cancelled) return;
                     if (snap) setSnapshot(snap);
                   } catch (e) {
-                    // Per-volume error doesn't fail the whole
-                    // dialog — surface so the user knows the range
-                    // is partial, but keep going with what we have.
                     if (cancelled) return;
                     setError(
                       tr("downloads.range.volumeLoadError", {
@@ -153,9 +218,8 @@ export function DownloadRangeDialog({
               }
             }
 
-            // Pick the default range AFTER the preload so endId
-            // lands inside the now-loaded volumes rather than
-            // wherever the snapshot happened to truncate.
+            // Pick the default range AFTER the preload so endId lands
+            // inside the now-loaded volumes.
             const final = await readSnapshot(libraryEntryId);
             if (final && !cancelled) {
               setSnapshot(final);
@@ -191,33 +255,35 @@ export function DownloadRangeDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, novelUrl, libraryEntryId]);
 
-  // Map both data sources to the same ChapterChoice[] shape so the
-  // rest of the dialog doesn't need to branch.
-  const choices = useMemo<ChapterChoice[]>(() => {
-    const flat = snapshot
-      ? snapshot.volumes.flatMap((v) =>
-          v.chapters.map((c) => ({
-            id: c.id,
-            title: c.title,
-            downloaded: !!c.downloadedAt,
-          })),
-        )
-      : novel
-        ? flatChapters(novel).map((c) => ({
-            id: c.id,
-            title: c.title,
-            downloaded: false,
-          }))
-        : [];
-    return flat.map((c) => ({
-      id: c.id,
-      label: `${c.id}. ${truncate(c.title, 60)}${c.downloaded ? " ✓" : ""}`,
-    }));
+  // Volume-grouped chapter options for the pickers. Both data sources map
+  // to the same shape so the rest of the component doesn't branch.
+  const options = useMemo<ChapterOption[]>(() => {
+    if (snapshot) {
+      return snapshot.volumes.flatMap((v) =>
+        v.chapters.map((c) => ({
+          id: c.id,
+          title: c.title,
+          volumeTitle: v.title,
+          downloaded: !!c.downloadedAt,
+        })),
+      );
+    }
+    if (novel) {
+      return novel.volumes.flatMap((v) =>
+        v.chapters.map((c) => ({
+          id: c.id,
+          title: c.title,
+          volumeTitle: v.title,
+          downloaded: false,
+        })),
+      );
+    }
+    return [];
   }, [snapshot, novel]);
 
-  // How many chapters in the range still need downloading. We skip
-  // already-downloaded ones (enqueue() does this too, but surfacing
-  // the count up-front sets the user's expectations).
+  // How many chapters in the range still need downloading (skip already-
+  // downloaded ones — enqueue does this too, but surfacing it sets
+  // expectations).
   const pendingInRange = useMemo(() => {
     if (startId === null || endId === null) return 0;
     const lo = Math.min(startId, endId);
@@ -231,7 +297,6 @@ export function DownloadRangeDialog({
       }
       return n;
     }
-    // No snapshot yet → assume everything in range is pending.
     return Math.abs(endId - startId) + 1;
   }, [snapshot, startId, endId]);
 
@@ -251,9 +316,181 @@ export function DownloadRangeDialog({
     onCompleted();
   }, [startId, endId, snapshot, libraryEntryId, onStarted, onCompleted, tr]);
 
+  const submitDisabled =
+    loading ||
+    preloading ||
+    startId === null ||
+    endId === null ||
+    pendingInRange === 0;
+
+  const submitLabel = preloading
+    ? tr("downloads.range.loadingVolumes")
+    : pendingInRange === 0
+      ? tr("downloads.range.nothingToDownload")
+      : tr("downloads.range.queueButton", { n: pendingInRange });
+
+  // Shared inner body (preload / error / pickers / count) used by both
+  // the mobile-sheet and desktop-popup layouts.
+  const body = loading ? (
+    <div style={{ padding: "30px 0", textAlign: "center", color: theme.muted }}>
+      {tr("downloads.range.loading")}
+    </div>
+  ) : (
+    <>
+      {preloading && (
+        <PreloadProgress theme={theme} done={preloadDone} total={preloadTotal} />
+      )}
+      {error && (
+        <div
+          role="alert"
+          style={{
+            padding: 12,
+            background: "rgba(180,60,60,0.10)",
+            border: "0.5px solid rgba(180,60,60,0.4)",
+            borderRadius: 10,
+            fontSize: 12.5,
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
+      <ChapterRangeField
+        theme={theme}
+        label={tr("downloads.range.from")}
+        options={options}
+        value={startId}
+        onChange={setStartId}
+        open={openField === "from"}
+        onToggle={() =>
+          setOpenField((f) => (f === "from" ? null : "from"))
+        }
+        onClose={() => setOpenField(null)}
+        disabled={preloading}
+        direction={direction}
+      />
+      <ChapterRangeField
+        theme={theme}
+        label={tr("downloads.range.to")}
+        options={options}
+        value={endId}
+        onChange={setEndId}
+        open={openField === "to"}
+        onToggle={() => setOpenField((f) => (f === "to" ? null : "to"))}
+        onClose={() => setOpenField(null)}
+        disabled={preloading}
+        direction={direction}
+      />
+      <div style={{ fontSize: 12, color: theme.muted, paddingTop: 2 }}>
+        {tr(
+          pendingInRange === 1
+            ? "downloads.range.queueCountOne"
+            : "downloads.range.queueCountOther",
+          {
+            n: pendingInRange,
+            extra:
+              countSelected(startId, endId) !== pendingInRange
+                ? tr("downloads.range.alreadyOnDisk", {
+                    n: countSelected(startId, endId) - pendingInRange,
+                  })
+                : "",
+          },
+        )}
+      </div>
+    </>
+  );
+
+  if (isMobile) {
+    // One scrollable column filling the sheet. Actions live inline at the
+    // end (a bottom-pinned footer would sit below the sheet's default snap).
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        data-sheet-scrollable
+        className="leaflet-scroll-hidden"
+        style={{
+          height: "100%",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: FONT_STACKS.sans,
+          color: theme.ink,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "4px 18px 4px",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontSize: 21,
+                letterSpacing: "-0.01em",
+                marginBottom: 4,
+              }}
+            >
+              {tr("downloads.range.title")}
+            </div>
+            <div style={{ fontSize: 12.5, color: theme.muted, lineHeight: 1.5 }}>
+              {tr("downloads.range.body")}
+            </div>
+          </div>
+          <button
+            onClick={onCancel}
+            aria-label={tr("common.close")}
+            style={{
+              flexShrink: 0,
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              border: `0.5px solid ${theme.rule}`,
+              background: theme.bg,
+              color: theme.ink,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="close" size={15} />
+          </button>
+        </div>
+        <div
+          style={{
+            padding: "14px 18px 8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            flex: 1,
+          }}
+        >
+          {body}
+        </div>
+        <div style={{ padding: "10px 18px 20px" }}>
+          <Button
+            theme={theme}
+            variant="primary"
+            size="lg"
+            fullWidth
+            disabled={submitDisabled}
+            onClick={submit}
+          >
+            {submitLabel}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: centered card with a sticky footer.
   return (
-    // The scrim, centering, and enter/exit animation live in AnimatedDialog
-    // at the call site. This component just renders the card.
     <div
       role="dialog"
       aria-modal="true"
@@ -271,138 +508,326 @@ export function DownloadRangeDialog({
         fontFamily: FONT_STACKS.sans,
       }}
     >
-        <div style={{ padding: "22px 22px 8px" }}>
-          <div
-            style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontSize: 22,
-              marginBottom: 6,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {tr("downloads.range.title")}
-          </div>
-          <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.5 }}>
-            {tr("downloads.range.body")}
-          </div>
-        </div>
-
+      <div style={{ padding: "22px 22px 8px" }}>
         <div
           style={{
-            padding: "8px 22px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            overflowY: "auto",
+            fontFamily: FONT_SERIF_DISPLAY,
+            fontSize: 22,
+            marginBottom: 6,
+            letterSpacing: "-0.01em",
           }}
         >
-          {loading ? (
+          {tr("downloads.range.title")}
+        </div>
+        <div style={{ fontSize: 13, color: theme.muted, lineHeight: 1.5 }}>
+          {tr("downloads.range.body")}
+        </div>
+      </div>
+      <div
+        style={{
+          padding: "8px 22px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          overflowY: "auto",
+        }}
+      >
+        {body}
+      </div>
+      <div
+        style={{
+          padding: "14px 22px 18px",
+          borderTop: `0.5px solid ${theme.rule}`,
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+        }}
+      >
+        <Button theme={theme} variant="ghost" size="sm" onClick={onCancel}>
+          {tr("common.cancel")}
+        </Button>
+        <Button
+          theme={theme}
+          variant="primary"
+          size="sm"
+          disabled={submitDisabled}
+          onClick={submit}
+        >
+          {submitLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── searchable, volume-grouped chapter picker ──────────────────────────────
+
+interface ChapterRangeFieldProps {
+  theme: Theme;
+  label: string;
+  options: ChapterOption[];
+  value: number | null;
+  onChange: (id: number) => void;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  disabled?: boolean;
+  direction: "rtl" | "ltr";
+}
+
+function ChapterRangeField({
+  theme,
+  label,
+  options,
+  value,
+  onChange,
+  open,
+  onToggle,
+  onClose,
+  disabled,
+  direction,
+}: ChapterRangeFieldProps) {
+  const { tr, locale } = useI18n();
+  const isAr = locale === "ar";
+  const [query, setQuery] = useState("");
+  const selected = options.find((o) => o.id === value) ?? null;
+
+  // Reset the search whenever the list collapses so reopening starts clean.
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? options.filter(
+        (o) => String(o.id).includes(q) || o.title.toLowerCase().includes(q),
+      )
+    : options;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: isAr ? "normal" : "0.04em",
+          textTransform: isAr ? "none" : "uppercase",
+          color: theme.muted,
+        }}
+      >
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={disabled ? undefined : onToggle}
+        disabled={disabled}
+        aria-expanded={open}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          width: "100%",
+          padding: "11px 14px",
+          fontSize: 13.5,
+          fontFamily: "inherit",
+          color: theme.ink,
+          background: theme.chrome,
+          border: `0.5px solid ${open ? theme.ruleStrong : theme.rule}`,
+          borderRadius: 10,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.5 : 1,
+          textAlign: "start",
+          direction,
+        }}
+      >
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {selected ? (
+            <>
+              <span style={{ color: theme.muted }}>{selected.id}.</span>{" "}
+              {selected.title}
+              {selected.downloaded ? "  ✓" : ""}
+            </>
+          ) : (
+            <span style={{ color: theme.muted }}>
+              {tr("downloads.range.selectChapter")}
+            </span>
+          )}
+        </span>
+        <span
+          className="rtl-flip-x"
+          style={{
+            display: "inline-flex",
+            color: theme.muted,
+            flexShrink: 0,
+            transition: transition("transform", "fast", "out"),
+            transform: open ? "rotate(90deg)" : "rotate(0deg)",
+          }}
+        >
+          <Icon name="chevronR" size={14} />
+        </span>
+      </button>
+      {open && (
+        <div
+          style={{
+            border: `0.5px solid ${theme.rule}`,
+            borderRadius: 10,
+            overflow: "hidden",
+            background: theme.bg,
+          }}
+        >
+          <div style={{ padding: 8, borderBottom: `0.5px solid ${theme.rule}` }}>
             <div
               style={{
-                padding: "30px 0",
-                textAlign: "center",
-                color: theme.muted,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: theme.chrome,
+                border: `0.5px solid ${theme.rule}`,
+                borderRadius: 8,
+                padding: "6px 10px",
               }}
             >
-              {tr("downloads.range.loading")}
+              <Icon name="search" size={14} style={{ color: theme.muted }} />
+              <input
+                autoFocus
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={tr("downloads.range.searchPlaceholder")}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: "transparent",
+                  color: theme.ink,
+                  border: "none",
+                  outline: "none",
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                  direction,
+                }}
+              />
             </div>
-          ) : (
-            <>
-              {preloading && (
-                <PreloadProgress
-                  theme={theme}
-                  done={preloadDone}
-                  total={preloadTotal}
-                />
-              )}
-              {error && (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(180,60,60,0.10)",
-                    border: "0.5px solid rgba(180,60,60,0.4)",
-                    borderRadius: 10,
-                    fontSize: 12.5,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {error}
-                </div>
-              )}
-              <RangePicker
-                theme={theme}
-                label={tr("downloads.range.from")}
-                choices={choices}
-                value={startId}
-                onChange={setStartId}
-                disabled={preloading}
-              />
-              <RangePicker
-                theme={theme}
-                label={tr("downloads.range.to")}
-                choices={choices}
-                value={endId}
-                onChange={setEndId}
-                disabled={preloading}
-              />
+          </div>
+          <div
+            data-sheet-scrollable
+            className="leaflet-scroll-hidden"
+            style={{ maxHeight: 260, overflowY: "auto" }}
+          >
+            {filtered.length === 0 ? (
               <div
                 style={{
-                  fontSize: 12,
+                  padding: 14,
                   color: theme.muted,
-                  paddingTop: 4,
+                  fontSize: 12.5,
+                  textAlign: "center",
                 }}
               >
-                {tr(
-                  pendingInRange === 1
-                    ? "downloads.range.queueCountOne"
-                    : "downloads.range.queueCountOther",
-                  {
-                    n: pendingInRange,
-                    extra:
-                      countSelected(startId, endId) !== pendingInRange
-                        ? tr("downloads.range.alreadyOnDisk", {
-                            n: countSelected(startId, endId) - pendingInRange,
-                          })
-                        : "",
-                  },
-                )}
+                {tr("downloads.range.noMatches")}
               </div>
-            </>
-          )}
+            ) : (
+              filtered.map((o, i) => {
+                const showHeader =
+                  i === 0 || filtered[i - 1].volumeTitle !== o.volumeTitle;
+                const isSel = o.id === value;
+                return (
+                  <Fragment key={o.id}>
+                    {showHeader && (
+                      <div
+                        style={{
+                          padding: "7px 14px 5px",
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          letterSpacing: isAr ? "normal" : "0.04em",
+                          textTransform: isAr ? "none" : "uppercase",
+                          color: theme.muted,
+                          background: theme.chrome,
+                          position: "sticky",
+                          top: 0,
+                          zIndex: 1,
+                          direction,
+                        }}
+                      >
+                        {o.volumeTitle}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(o.id);
+                        onClose();
+                      }}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "9px 14px",
+                        border: "none",
+                        borderInlineStart: `2px solid ${
+                          isSel ? ACCENT : "transparent"
+                        }`,
+                        background: isSel ? theme.hover : "transparent",
+                        color: theme.ink,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        fontSize: 12.5,
+                        textAlign: "start",
+                        direction,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSel) e.currentTarget.style.background = theme.hover;
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSel)
+                          e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: theme.muted,
+                          minWidth: 28,
+                          flexShrink: 0,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {o.id}
+                      </span>
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {o.title}
+                      </span>
+                      {o.downloaded && (
+                        <Icon
+                          name="check"
+                          size={13}
+                          style={{ color: ACCENT, flexShrink: 0 }}
+                        />
+                      )}
+                    </button>
+                  </Fragment>
+                );
+              })
+            )}
+          </div>
         </div>
-
-        <div
-          style={{
-            padding: "14px 22px 18px",
-            borderTop: `0.5px solid ${theme.rule}`,
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-          }}
-        >
-          <Button theme={theme} variant="ghost" size="sm" onClick={onCancel}>
-            {tr("common.cancel")}
-          </Button>
-          <Button
-            theme={theme}
-            variant="primary"
-            size="sm"
-            disabled={
-              loading ||
-              preloading ||
-              startId === null ||
-              endId === null ||
-              pendingInRange === 0
-            }
-            onClick={submit}
-          >
-            {preloading
-              ? tr("downloads.range.loadingVolumes")
-              : pendingInRange === 0
-                ? tr("downloads.range.nothingToDownload")
-                : tr("downloads.range.queueButton", { n: pendingInRange })}
-          </Button>
-        </div>
+      )}
     </div>
   );
 }
@@ -413,10 +838,8 @@ interface PreloadProgressProps {
   total: number;
 }
 
-/** Inline progress bar shown while DownloadRangeDialog pre-loads
- *  per-volume chapter listings from a lazy source. The bar fills
- *  proportional to (done / total) and the text counts up as each
- *  volume's AJAX call lands. */
+/** Inline progress bar shown while the dialog pre-loads per-volume chapter
+ *  listings from a lazy source. */
 function PreloadProgress({ theme, done, total }: PreloadProgressProps) {
   const { tr } = useI18n();
   const pct = total > 0 ? Math.min(1, done / total) : 0;
@@ -467,67 +890,6 @@ function PreloadProgress({ theme, done, total }: PreloadProgressProps) {
   );
 }
 
-interface RangePickerProps {
-  theme: Theme;
-  label: string;
-  choices: ChapterChoice[];
-  value: number | null;
-  onChange: (id: number) => void;
-  disabled?: boolean;
-}
-
-function RangePicker({
-  theme,
-  label,
-  choices,
-  value,
-  onChange,
-  disabled,
-}: RangePickerProps) {
-  // Tracking + uppercasing are a Latin-typography convention: extra
-  // letter-spacing breaks Arabic glyph joining/ligatures, and uppercase is a
-  // no-op on Arabic anyway. Skip both when the UI is Arabic.
-  const { locale } = useI18n();
-  const isAr = locale === "ar";
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          letterSpacing: isAr ? "normal" : "0.04em",
-          textTransform: isAr ? "none" : "uppercase",
-          color: theme.muted,
-        }}
-      >
-        {label}
-      </span>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        disabled={disabled}
-        style={{
-          padding: "8px 10px",
-          fontSize: 13,
-          fontFamily: "inherit",
-          color: theme.ink,
-          background: theme.chrome,
-          border: `0.5px solid ${theme.rule}`,
-          borderRadius: 8,
-          outline: "none",
-          opacity: disabled ? 0.5 : 1,
-        }}
-      >
-        {choices.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function flatChapters(novel: SourceNovel) {
@@ -537,8 +899,4 @@ function flatChapters(novel: SourceNovel) {
 function countSelected(start: number | null, end: number | null): number {
   if (start === null || end === null) return 0;
   return Math.abs(end - start) + 1;
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1).trim() + "…" : s;
 }

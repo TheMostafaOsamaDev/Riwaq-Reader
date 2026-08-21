@@ -19,7 +19,7 @@ import { AddToShelfDialog } from "./AddToShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
-import { onOpenDownloadQueue } from "../store/uiIntents";
+import { onOpenDownloadQueue, openStoreSource } from "../store/uiIntents";
 import {
   useNav,
   goLibrary,
@@ -996,23 +996,17 @@ export function Library({
           />
         )}
       </AnimatedDialog>
-      <AnimatedDialog
+      <DownloadRangeDialog
+        theme={theme}
+        layout={layout}
         open={sourceDetailRangeDialog !== null}
-        onScrimClick={() => setSourceDetailRangeDialog(null)}
-        zIndex={9700}
-      >
-        {sourceDetailRangeDialog && (
-          <DownloadRangeDialog
-            theme={theme}
-            sourceId={sourceDetailRangeDialog.sourceId}
-            novelUrl={sourceDetailRangeDialog.novelUrl}
-            libraryEntryId={sourceDetailRangeDialog.libraryEntryId}
-            onCancel={() => setSourceDetailRangeDialog(null)}
-            onStarted={() => setSourceDetailRangeDialog(null)}
-            onCompleted={() => void refresh()}
-          />
-        )}
-      </AnimatedDialog>
+        sourceId={sourceDetailRangeDialog?.sourceId}
+        novelUrl={sourceDetailRangeDialog?.novelUrl}
+        libraryEntryId={sourceDetailRangeDialog?.libraryEntryId}
+        onCancel={() => setSourceDetailRangeDialog(null)}
+        onStarted={() => setSourceDetailRangeDialog(null)}
+        onCompleted={() => void refresh()}
+      />
       {/* Add-to-shelf picker (Task 12) — same tier as the confirm dialogs
           above; mutually exclusive with them (only opens once the
           from-library choice is made in AddToShelfMenu below). */}
@@ -1622,6 +1616,10 @@ function DesktopLibrary({
           setQuery={setQuery}
           onOpenSettings={onOpenSettings}
           onOpenQueue={onOpenQueue}
+          onOpenStoreSource={(sourceId) => {
+            openStoreSource(sourceId);
+            setTab("store");
+          }}
           onClose={() => setSearchOpen(false)}
         />
       )}

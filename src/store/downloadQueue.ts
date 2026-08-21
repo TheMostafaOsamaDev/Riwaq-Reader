@@ -133,6 +133,51 @@ let concurrency = 2;
  *  around for the queue UI. New terminals push older terminals off. */
 const TERMINAL_LIMIT = 50;
 
+/** Lifetime tally of resolved jobs by kind + outcome, incremented on each
+ *  terminal transition and NEVER evicted. The jobs array caps terminals at
+ *  TERMINAL_LIMIT, so scanning it undercounts large bursts (a 187-chapter
+ *  download would appear stuck at "50"). The notifier reads these counters
+ *  instead to show true progress. Not persisted — a fresh process starts
+ *  at zero, which is fine since the notifier rebases per burst. */
+const resolvedCounters = {
+  chDone: 0,
+  chFailed: 0,
+  chCancelled: 0,
+  cvDone: 0,
+  cvFailed: 0,
+};
+
+/** Snapshot of the lifetime resolved counters (see `resolvedCounters`).
+ *  Consumed by the download notifier for accurate, eviction-proof burst
+ *  progress and completion summaries. */
+export function getResolvedCounters(): {
+  chDone: number;
+  chFailed: number;
+  chCancelled: number;
+  cvDone: number;
+  cvFailed: number;
+} {
+  return { ...resolvedCounters };
+}
+
+function isTerminalStatus(s: DownloadJobStatus): boolean {
+  return s === "done" || s === "error" || s === "cancelled";
+}
+
+/** Adjust the lifetime counters for one job's terminal outcome by `delta`
+ *  (+1 on entering a terminal state, -1 on leaving it). Conversions lump
+ *  error/cancelled into cvFailed. */
+function bumpResolved(job: DownloadJob, status: DownloadJobStatus, delta: number) {
+  if (job.kind === "chapter") {
+    if (status === "done") resolvedCounters.chDone += delta;
+    else if (status === "error") resolvedCounters.chFailed += delta;
+    else if (status === "cancelled") resolvedCounters.chCancelled += delta;
+  } else {
+    if (status === "done") resolvedCounters.cvDone += delta;
+    else resolvedCounters.cvFailed += delta; // error or cancelled
+  }
+}
+
 const state: QueueState = { jobs: [] };
 const listeners = new Set<Listener>();
 const cancelled = new Set<string>();
@@ -279,12 +324,21 @@ function setStatus(
   status: DownloadJobStatus,
   patch?: Partial<DownloadJob>,
 ) {
+  const prev = job.status;
   job.status = status;
   job.updatedAt = Date.now();
   if (patch) Object.assign(job, patch);
-  if (status === "done" || status === "error" || status === "cancelled") {
-    evictTerminals();
+  // Keep the lifetime counters reconciled to each job's CURRENT terminal
+  // outcome: increment when a job enters a terminal state, decrement when
+  // it leaves one (e.g. retry re-arms a failed job back to "queued").
+  // Without the decrement a fail-then-retry-succeed would be counted as
+  // BOTH a failure and a success. Guarded on an actual status change so
+  // repeated running-progress updates don't touch the counters.
+  if (prev !== status) {
+    if (isTerminalStatus(prev)) bumpResolved(job, prev, -1);
+    if (isTerminalStatus(status)) bumpResolved(job, status, 1);
   }
+  if (isTerminalStatus(status)) evictTerminals();
   emit();
 }
 
@@ -419,14 +473,17 @@ export function retry(jobId: string): void {
 /** Re-queue every job that's currently interrupted or errored.
  *  Used by the queue page's "Retry all" affordance. */
 export function retryAll(): void {
-  for (const j of state.jobs) {
-    if (j.status === "interrupted" || j.status === "error") {
-      delete (j as { error?: string }).error;
-      j.status = "queued";
-      j.updatedAt = Date.now();
-    }
+  // Snapshot first: setStatus mutates job.status, and re-arming an errored
+  // job must go through setStatus so the lifetime resolvedCounters get
+  // decremented (a bulk-retried failure that later succeeds must not be
+  // counted as both failed and done).
+  const toRearm = state.jobs.filter(
+    (j) => j.status === "interrupted" || j.status === "error",
+  );
+  for (const j of toRearm) {
+    delete (j as { error?: string }).error;
+    setStatus(j, "queued");
   }
-  emit();
   pump();
 }
 

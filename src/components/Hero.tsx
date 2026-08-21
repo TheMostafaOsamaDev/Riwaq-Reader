@@ -47,8 +47,13 @@ export function Hero({
     <div
       style={{
         position: "relative",
-        width: "100%",
         minHeight: resolvedMinHeight,
+        // Float the hero: inset from the view edges with rounded corners + a
+        // soft shadow so it reads as a raised card rather than a full-bleed
+        // banner. `overflow: hidden` clips the blurred backdrop to the radius.
+        margin: isMobile ? "6px 12px 16px" : "8px 24px 22px",
+        borderRadius: isMobile ? 18 : 24,
+        boxShadow: "0 14px 40px rgba(0,0,0,0.34)",
         display: "flex",
         alignItems: "flex-end",
         overflow: "hidden",

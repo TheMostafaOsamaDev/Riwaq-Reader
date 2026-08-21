@@ -300,6 +300,7 @@ export const en = {
   "search.clearHistory": "Clear history",
   "search.removeRecent": "Remove {term}",
   "search.jumpTo": "Jump to",
+  "search.websites": "Websites",
 
   // edit-book modal
   "dialog.editBook.ariaLabel": "Edit book details",
@@ -355,6 +356,9 @@ export const en = {
     "This range download requires the novel to be in your library first.",
   "downloads.range.from": "From",
   "downloads.range.to": "To",
+  "downloads.range.selectChapter": "Select a chapter",
+  "downloads.range.searchPlaceholder": "Search chapters…",
+  "downloads.range.noMatches": "No matching chapters",
   "downloads.range.queueCountOne":
     "{n} chapter will be queued for download{extra}.",
   "downloads.range.queueCountOther":
@@ -423,6 +427,8 @@ export const en = {
   "store.subtitle":
     "Browse novels from supported websites, then add them to your library or stream them inline.",
   "store.noSources": "No sources installed yet.",
+  "store.filterWebsites": "Search websites…",
+  "store.noMatchingWebsites": "No websites match “{query}”.",
   "store.backToSources": "Back to sources",
   "store.searchPlaceholder": "Search…",
   "store.searching": "Searching…",
@@ -483,6 +489,9 @@ export const en = {
   "novel.queuedClickCancel": "Queued — click to cancel",
   "novel.downloadingClickCancel": "Downloading ({pct}%) — click to cancel",
   "novel.downloadChapter": "Download chapter",
+  "novel.downloadVolume": "Download volume",
+  "novel.downloadingVolume": "Queuing volume…",
+  "novel.volumeAllDownloaded": "All chapters downloaded",
   "novel.volumeFallback": "Volume {n}",
   // Rare technical fallback (deferred from Task 10): a scraped chapter with
   // no usable title text after sanitization. Same rationale + pattern as
@@ -598,10 +607,7 @@ export const en = {
   "status.notif.preparingOfflineBook": "Preparing offline book",
   "status.notif.jobsDoneOf": "{done} of {total} jobs done",
   "status.notif.downloadingChapterTitle": "Downloading {novel} — Ch. {n}",
-  "status.notif.chapterOfTotal": "Chapter {n} of {total}{suffix}",
-  "status.notif.novelsSuffix": " ({n} novels)",
   "status.notif.downloadingChaptersTitle": "Downloading chapters",
-  "status.notif.chaptersOfTotal": "{done} of {total} chapters",
   "status.notif.backgroundWorkFinished": "Background work finished",
   "status.notif.completedCount": "{n} completed",
   "status.notif.failedCount": "{n} failed",
@@ -609,6 +615,22 @@ export const en = {
   "status.notif.allDone": "All done",
   "status.notif.jobsCompleteOne": "1 job complete",
   "status.notif.jobsCompleteOther": "{n} jobs complete",
+  "status.notif.downloadingProgress": "Downloading {done} of {total} · {pct}%",
+  "status.notif.importingTitle": "Importing book",
+  "status.notif.importingBody": "{pct}% done",
+  "status.notif.backgroundTasksTitle": "Background tasks · {pct}%",
+  "status.notif.mixedBody": "{parts}",
+  "status.notif.partDownloads": "Downloading {n}",
+  "status.notif.partConverting": "Converting",
+  "status.notif.partImporting": "Importing",
+  "status.notif.chaptersDownloaded": "{n} chapters downloaded",
+  "status.notif.downloadComplete": "Download complete",
+  "status.notif.offlineBookReady": "Offline book ready",
+  "status.notif.importComplete": "Import complete",
+  "status.notif.allTasksDone": "All tasks complete",
+  "status.notif.bookImported": "Book added to your library",
+  "status.notif.importFailed": "Import failed",
+  "status.notif.conversionFailed": "Offline book failed",
 
   // ContextMenu.tsx — status submenu labels reuse sidebar.reading/finished/
   // wishlist; these cover the menu's own remaining chrome.

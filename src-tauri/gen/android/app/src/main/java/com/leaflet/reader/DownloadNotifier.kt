@@ -38,6 +38,43 @@ object DownloadNotifier {
         nm.createNotificationChannel(ch)
     }
 
+    /** Public channel-ensure for TaskService's placeholder foreground
+     *  notification. Idempotent; delegates to the private ensureChannel. */
+    @JvmStatic
+    fun ensureChannelPublic(ctx: Context) = ensureChannel(ctx)
+
+    /** Cached full-colour app-launcher bitmap for the notification's large
+     *  icon. Android force-monochromes the small icon, so the large icon is
+     *  what actually shows the recognisable Riwaq icon. Rendered once from
+     *  the app's launcher icon via the package manager, which handles
+     *  adaptive (XML) icons that BitmapFactory.decodeResource cannot read. */
+    @Volatile
+    private var cachedAppIcon: android.graphics.Bitmap? = null
+
+    @JvmStatic
+    private fun appIconBitmap(ctx: Context): android.graphics.Bitmap? {
+        cachedAppIcon?.let { return it }
+        return try {
+            val d = ctx.packageManager.getApplicationIcon(ctx.packageName)
+            if (d is android.graphics.drawable.BitmapDrawable && d.bitmap != null) {
+                cachedAppIcon = d.bitmap
+                return d.bitmap
+            }
+            val w = if (d.intrinsicWidth > 0) d.intrinsicWidth else 108
+            val h = if (d.intrinsicHeight > 0) d.intrinsicHeight else 108
+            val bmp = android.graphics.Bitmap.createBitmap(
+                w, h, android.graphics.Bitmap.Config.ARGB_8888,
+            )
+            val canvas = android.graphics.Canvas(bmp)
+            d.setBounds(0, 0, canvas.width, canvas.height)
+            d.draw(canvas)
+            cachedAppIcon = bmp
+            bmp
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /**
      * Push or update a download-progress notification.
      *
@@ -76,6 +113,10 @@ object DownloadNotifier {
             // `ic_launcher` is what every Tauri 2 Android app ships
             // with; replace later with a dedicated monochrome icon.
             .setSmallIcon(R.mipmap.ic_launcher)
+            // Full-colour app icon on the right; the small icon above is
+            // force-monochromed by Android, so this is what makes the
+            // notification recognisably Riwaq.
+            .setLargeIcon(appIconBitmap(ctx))
             .setOnlyAlertOnce(true)
             .setOngoing(ongoing)
             .setProgress(max, progress, indeterminate)

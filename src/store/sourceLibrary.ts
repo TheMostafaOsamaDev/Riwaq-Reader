@@ -155,7 +155,52 @@ function chapterContentPath(entryId: string, chapterId: number): string {
  * sequence isn't guaranteed stable between fetches (new chapters can
  * slot in mid-volume on an updating ongoing novel).
  */
+// Per-entry write serialization. source.json is a read-modify-write file:
+// every mutation reads the whole snapshot, patches it, and writes it back.
+// Concurrent mutations on the same entry — e.g. a range download flipping
+// `downloadedAt` on several chapters at once with concurrency > 1 — would
+// otherwise interleave their read and write phases and clobber each other
+// (a lost update): the last writer's snapshot lacks the flags the earlier
+// writers set, so middle-of-range chapters show as un-downloaded even though
+// their content is already on disk. Funnel every read-modify-write for an
+// entry through a per-entry promise chain so they run strictly sequentially.
+const entryWriteLocks = new Map<string, Promise<unknown>>();
+
+function withEntryLock<T>(
+  entryId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = entryWriteLocks.get(entryId) ?? Promise.resolve();
+  // Chain onto the tail whether it resolved or rejected, so one failed
+  // mutation doesn't wedge the queue for the entry.
+  const run = prev.then(fn, fn);
+  // Store a rejection-swallowed tail so the next waiter's `prev.then`
+  // doesn't reject before its own `fn` runs.
+  entryWriteLocks.set(
+    entryId,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
+
+/** Serialized entry point — the read-modify-write body is in
+ *  writeSnapshotFromSourceNovelImpl, run under the per-entry lock so it
+ *  can't interleave with a concurrent snapshot mutation for the same entry. */
 export async function writeSnapshotFromSourceNovel(
+  entryId: string,
+  sourceId: string,
+  novelUrl: string,
+  novel: SourceNovel,
+): Promise<SourceSnapshot> {
+  return withEntryLock(entryId, () =>
+    writeSnapshotFromSourceNovelImpl(entryId, sourceId, novelUrl, novel),
+  );
+}
+
+async function writeSnapshotFromSourceNovelImpl(
   entryId: string,
   sourceId: string,
   novelUrl: string,
@@ -318,6 +363,16 @@ export async function setVolumeChapters(
   volumeId: number,
   chapters: SourceChapter[],
 ): Promise<SourceSnapshot | null> {
+  return withEntryLock(entryId, () =>
+    setVolumeChaptersImpl(entryId, volumeId, chapters),
+  );
+}
+
+async function setVolumeChaptersImpl(
+  entryId: string,
+  volumeId: number,
+  chapters: SourceChapter[],
+): Promise<SourceSnapshot | null> {
   const snap = await readSnapshot(entryId);
   if (!snap) return null;
   const vol = snap.volumes.find((v) => v.id === volumeId);
@@ -350,7 +405,19 @@ export async function setVolumeChapters(
  *  return null to leave it unchanged; otherwise the partial it returns
  *  is merged over the existing record. Returns the new snapshot so
  *  callers can re-render the UI without a separate read. */
-async function patchChapter(
+function patchChapter(
+  entryId: string,
+  chapterId: number,
+  mutator: (
+    c: PersistedSourceChapter,
+  ) => Partial<PersistedSourceChapter> | null,
+): Promise<SourceSnapshot | null> {
+  return withEntryLock(entryId, () =>
+    patchChapterImpl(entryId, chapterId, mutator),
+  );
+}
+
+async function patchChapterImpl(
   entryId: string,
   chapterId: number,
   mutator: (

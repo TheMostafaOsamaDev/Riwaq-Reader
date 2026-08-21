@@ -12,6 +12,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { FixedPageReader } from "./reader/fixed/FixedPageReader";
 import { createPdfPageSource } from "./reader/fixed/PdfPageSource";
 import { createDocxPageSource } from "./reader/fixed/DocxPageSource";
+import { startBackgroundTaskCoordinator } from "./store/backgroundTasks";
 import { startDownloadNotifier } from "./store/downloadNotifier";
 import {
   loadPersistedQueue,
@@ -259,6 +260,7 @@ function App() {
     (async () => {
       await loadPersistedQueue();
       startDownloadNotifier();
+      startBackgroundTaskCoordinator();
     })();
   }, []);
 
