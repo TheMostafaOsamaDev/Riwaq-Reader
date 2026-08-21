@@ -17,7 +17,7 @@ import { NewShelfDialog } from "./NewShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
-import { onOpenDownloadQueue } from "../store/uiIntents";
+import { onOpenDownloadQueue, openStoreSource } from "../store/uiIntents";
 import {
   useNav,
   goLibrary,
@@ -1072,6 +1072,10 @@ function DesktopLibrary({
           setQuery={setQuery}
           onOpenSettings={onOpenSettings}
           onOpenQueue={onOpenQueue}
+          onOpenStoreSource={(sourceId) => {
+            openStoreSource(sourceId);
+            setTab("store");
+          }}
           onClose={() => setSearchOpen(false)}
         />
       )}

@@ -277,6 +277,7 @@ export const en = {
   "search.clearHistory": "Clear history",
   "search.removeRecent": "Remove {term}",
   "search.jumpTo": "Jump to",
+  "search.websites": "Websites",
 
   // edit-book modal
   "dialog.editBook.ariaLabel": "Edit book details",
@@ -400,6 +401,8 @@ export const en = {
   "store.subtitle":
     "Browse novels from supported websites, then add them to your library or stream them inline.",
   "store.noSources": "No sources installed yet.",
+  "store.filterWebsites": "Search websites…",
+  "store.noMatchingWebsites": "No websites match “{query}”.",
   "store.backToSources": "Back to sources",
   "store.searchPlaceholder": "Search…",
   "store.searching": "Searching…",

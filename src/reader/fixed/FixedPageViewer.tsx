@@ -3,6 +3,11 @@
 // fit-width / fit-page + zoom, RTL page-flip, lazy per-window size measurement
 // with height reservation (no layout shift), skeleton placeholders, and reports
 // progress + resume location.
+//
+// Paged flow turns pages with a "peek": at a scroll edge the wheel first pans
+// the page, then drags the incoming page in from that edge; a page only turns
+// once the reader has pushed past a resistance threshold (so a stray notch
+// can't flip by accident). A thin floating scrollbar fades in while scrolling.
 
 import {
   forwardRef,
@@ -26,6 +31,17 @@ import type { FixedPageSource } from "./FixedPageSource";
 const PAD = 20;
 const GAP = 18;
 const MAX_W = 860; // cap page display width so wide screens stay readable + light
+
+// Paged turn feel: TURN_PX is the overscroll (px, accumulated) needed to commit
+// a turn — the "strength" that guards against accidental flips. IDLE_MS springs
+// a half-finished peek back; ANIM/CANCEL are the slide timings; POST_LOCK eats
+// trackpad momentum right after a turn so it doesn't immediately start another.
+const TURN_PX = 200;
+const IDLE_MS = 170;
+const ANIM_MS = 220;
+const CANCEL_MS = 190;
+const POST_LOCK_MS = 340;
+const TURN_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 
 export function tintFilter(tint: FixedPageTint): string {
   switch (tint) {
@@ -104,6 +120,37 @@ export const FixedPageViewer = forwardRef<
   const [current, setCurrent] = useState(resume?.page ?? 0);
   const [win, setWin] = useState({ start: 0, end: Math.min(pageCount - 1, 2) });
   const [rendered, setRendered] = useState<Set<number>>(() => new Set());
+
+  // Paged turn state. `peek` mounts the incoming page as an overlay and its
+  // `reveal` (0→1) slides it in from the edge; `peekIdx` is the page shown in
+  // that overlay (stable across reveal, so the pdf only renders once per turn);
+  // `peekReady` flips true when that page has painted.
+  const [peek, setPeek] = useState<{ dir: 1 | -1; reveal: number } | null>(null);
+  const [peekAnimating, setPeekAnimating] = useState(false);
+  const [peekIdx, setPeekIdx] = useState<number | null>(null);
+  const [peekReady, setPeekReady] = useState(false);
+
+  // Where the swapped-in page lands (top normally; bottom when turning back).
+  const pendingScroll = useRef<null | "top" | "bottom">(null);
+  const turnLockUntil = useRef(0); // momentum guard after a turn
+  const accum = useRef(0); // overscroll accumulated toward the current turn
+  const peekDir = useRef<0 | 1 | -1>(0);
+  const peekNeighbor = useRef(0); // index in the overlay (ref mirror of peekIdx)
+  const peekHold = useRef<number | null>(null); // keep overlay until base paints
+  const turning = useRef(false); // commit slide in flight
+  const idleTimer = useRef<number | null>(null);
+  const turnTimer = useRef<number | null>(null);
+  const holdTimer = useRef<number | null>(null);
+  const peekRaf = useRef(0);
+  const peekHostRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const barIdle = useRef<number | null>(null);
+
+  // Live mirrors the subscribe-once wheel listener reads without re-subscribing.
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  const reducedRef = useRef(reducedMotion);
+  reducedRef.current = reducedMotion;
 
   useEffect(() => ensureShimmerStyle(), []);
 
@@ -331,6 +378,135 @@ export const FixedPageViewer = forwardRef<
     };
   }, [flow, current, layout, sizes, tint, source, emit]);
 
+  // ---- Paged turn controller ------------------------------------------------
+
+  const clampIdx = useCallback(
+    (i: number) => Math.max(0, Math.min(pageCount - 1, i)),
+    [pageCount],
+  );
+
+  // Swap in the peeked page. The overlay is held (fully covering) until the base
+  // layer has painted the new page, so a turn never flashes a skeleton.
+  const finalize = useCallback((d: 1 | -1) => {
+    if (turnTimer.current) {
+      window.clearTimeout(turnTimer.current);
+      turnTimer.current = null;
+    }
+    const neighbor = peekNeighbor.current;
+    turning.current = false;
+    accum.current = 0;
+    peekDir.current = 0;
+    turnLockUntil.current = performance.now() + POST_LOCK_MS;
+    pendingScroll.current = d > 0 ? "top" : "bottom";
+    peekHold.current = neighbor;
+    setCurrent(neighbor);
+    if (holdTimer.current) window.clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => {
+      holdTimer.current = null;
+      peekHold.current = null;
+      setPeek(null);
+      setPeekIdx(null);
+      setPeekAnimating(false);
+    }, 500);
+  }, []);
+
+  const commit = useCallback(
+    (d: 1 | -1) => {
+      if (idleTimer.current) {
+        window.clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+      turning.current = true;
+      if (reducedRef.current) {
+        finalize(d);
+        return;
+      }
+      setPeekAnimating(true);
+      setPeek({ dir: d, reveal: 1 });
+      if (turnTimer.current) window.clearTimeout(turnTimer.current);
+      turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+    },
+    [finalize],
+  );
+
+  const cancelPeek = useCallback(() => {
+    if (idleTimer.current) {
+      window.clearTimeout(idleTimer.current);
+      idleTimer.current = null;
+    }
+    turning.current = false;
+    accum.current = 0;
+    peekDir.current = 0;
+    if (reducedRef.current) {
+      setPeek(null);
+      setPeekIdx(null);
+      setPeekAnimating(false);
+      return;
+    }
+    setPeekAnimating(true);
+    setPeek((p) => (p ? { ...p, reveal: 0 } : null));
+    if (turnTimer.current) window.clearTimeout(turnTimer.current);
+    turnTimer.current = window.setTimeout(() => {
+      turnTimer.current = null;
+      setPeek(null);
+      setPeekIdx(null);
+      setPeekAnimating(false);
+    }, CANCEL_MS);
+  }, []);
+
+  const scheduleIdle = useCallback(() => {
+    if (idleTimer.current) window.clearTimeout(idleTimer.current);
+    idleTimer.current = window.setTimeout(() => {
+      idleTimer.current = null;
+      if (!turning.current) cancelPeek();
+    }, IDLE_MS);
+  }, [cancelPeek]);
+
+  // Push the accumulated overscroll into the overlay, coalesced to one state
+  // update per frame while the wheel streams events.
+  const renderPeek = useCallback(() => {
+    if (peekRaf.current) return;
+    peekRaf.current = window.requestAnimationFrame(() => {
+      peekRaf.current = 0;
+      const d = peekDir.current;
+      if (!d) return;
+      const reveal = Math.min(1, accum.current / TURN_PX);
+      setPeekAnimating(false);
+      setPeek({ dir: d, reveal });
+      if (reveal >= 1) commit(d);
+    });
+  }, [commit]);
+
+  // Programmatic turn (arrow keys / edge click): slide a full peek 0→1, swap.
+  const animateTurn = useCallback(
+    (d: 1 | -1) => {
+      const dest = clampIdx(currentRef.current + d);
+      if (dest === currentRef.current) return;
+      peekDir.current = d;
+      peekNeighbor.current = dest;
+      accum.current = TURN_PX;
+      if (reducedRef.current) {
+        finalize(d);
+        return;
+      }
+      turning.current = true;
+      setPeekReady(false);
+      setPeekIdx(dest);
+      setPeekAnimating(false);
+      setPeek({ dir: d, reveal: 0 });
+      window.requestAnimationFrame(() => {
+        // Flush the reveal:0 mount (WKWebView otherwise coalesces the mount +
+        // the reveal:1 change and the slide snaps — see two-frame gotcha).
+        void peekHostRef.current?.offsetHeight;
+        setPeekAnimating(true);
+        setPeek({ dir: d, reveal: 1 });
+        if (turnTimer.current) window.clearTimeout(turnTimer.current);
+        turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+      });
+    },
+    [clampIdx, finalize],
+  );
+
   const goToPage = useCallback(
     (i: number) => {
       const clamped = Math.max(0, Math.min(pageCount - 1, i));
@@ -339,19 +515,24 @@ export const FixedPageViewer = forwardRef<
           top: layout.top[clamped],
           behavior: reducedMotion ? "auto" : "smooth",
         });
+        return;
+      }
+      if (turning.current || peekDir.current) return; // a turn is already running
+      const cur = currentRef.current;
+      if (clamped === cur) return;
+      if (Math.abs(clamped - cur) === 1) {
+        animateTurn((clamped - cur) as 1 | -1);
       } else {
+        pendingScroll.current = "top"; // multi-page jump: land at the top
         setCurrent(clamped);
       }
     },
-    [flow, layout, pageCount, reducedMotion],
+    [flow, layout, pageCount, reducedMotion, animateTurn],
   );
 
   useImperativeHandle(ref, () => ({ goToPage }), [goToPage]);
 
-  const flip = useCallback(
-    (delta: number) => goToPage(current + delta),
-    [goToPage, current],
-  );
+  const flip = useCallback((delta: number) => goToPage(current + delta), [goToPage, current]);
   useEffect(() => {
     if (flow !== "paged") return;
     const onKey = (e: KeyboardEvent) => {
@@ -362,9 +543,184 @@ export const FixedPageViewer = forwardRef<
     return () => window.removeEventListener("keydown", onKey);
   }, [flow, dir, flip]);
 
+  // Paged mode: land the swapped-in page at the right edge — top normally,
+  // bottom when turning back. Also pins the first paint to the top so a page
+  // taller than the viewport opens at its head rather than centered + clipped.
+  useLayoutEffect(() => {
+    if (flow !== "paged") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const mode = pendingScroll.current;
+    pendingScroll.current = null;
+    el.scrollTop = mode === "bottom" ? el.scrollHeight : 0;
+  }, [current, flow]);
+
+  // Paged mode: wheel pans a tall page; at the edge it drags the neighbour in
+  // (peek) and only turns past TURN_PX of push. Non-passive so we can swallow
+  // the event once we take over. Subscribes once — reads live values via refs.
+  useEffect(() => {
+    if (flow !== "paged") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // horizontal gesture
+      if (turning.current) {
+        e.preventDefault();
+        return;
+      }
+      const down = e.deltaY > 0;
+      const d: 1 | -1 = down ? 1 : -1;
+      // `peekDir` is set synchronously, so back-to-back wheel events in one
+      // frame accumulate instead of each restarting the peek (React state would
+      // lag a frame). 0 means no peek is open.
+      if (peekDir.current === 0) {
+        const max = el.scrollHeight - el.clientHeight;
+        const TOL = 4; // a page fit to the viewport is often 1-2px taller
+        const atEdge =
+          max <= TOL || (down ? el.scrollTop >= max - TOL : el.scrollTop <= TOL);
+        if (!atEdge) return; // room to pan — let native scroll do it
+        const dest = clampIdx(currentRef.current + d);
+        if (dest === currentRef.current) return; // first / last page
+        if (e.timeStamp < turnLockUntil.current || peekHold.current != null) {
+          e.preventDefault(); // still settling the previous turn
+          return;
+        }
+        e.preventDefault();
+        if (turnTimer.current) {
+          window.clearTimeout(turnTimer.current); // abort a spring-back mid-flight
+          turnTimer.current = null;
+        }
+        peekDir.current = d;
+        peekNeighbor.current = dest;
+        accum.current = Math.abs(e.deltaY);
+        setPeekReady(false);
+        setPeekIdx(dest);
+        renderPeek();
+        scheduleIdle();
+        return;
+      }
+      // A peek is in progress: grow it in its direction, shrink on reverse.
+      e.preventDefault();
+      accum.current += (d === peekDir.current ? 1 : -1) * Math.abs(e.deltaY);
+      if (accum.current <= 0) {
+        cancelPeek();
+        return;
+      }
+      renderPeek();
+      scheduleIdle();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.style.cursor = "";
+    };
+  }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek]);
+
+  // Render the peeked page into the overlay host (once per turn — keyed on the
+  // page index, not the reveal, so dragging doesn't re-render the pdf).
+  useEffect(() => {
+    if (peekIdx == null) return;
+    const host = peekHostRef.current;
+    if (!host) return;
+    let cancelled = false;
+    (async () => {
+      let s = sizes[peekIdx];
+      if (!s) {
+        try {
+          s = await source.pageSize(peekIdx);
+        } catch {
+          s = { w: 800, h: 1132 };
+        }
+        if (cancelled) return;
+        setSizes((prev) => {
+          if (prev[peekIdx]) return prev;
+          const next = prev.slice();
+          next[peekIdx] = s!;
+          return next;
+        });
+      }
+      const sc = (layout.displayW[peekIdx] || usableW) / s.w;
+      await source.renderPage(peekIdx, host, sc);
+      if (!cancelled) setPeekReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [peekIdx, layout, sizes, tint, source, usableW]);
+
+  // Drop the covering overlay once the base layer has painted the new page.
+  useEffect(() => {
+    const hold = peekHold.current;
+    if (hold == null || !rendered.has(hold)) return;
+    peekHold.current = null;
+    if (holdTimer.current) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    setPeek(null);
+    setPeekIdx(null);
+    setPeekAnimating(false);
+  }, [rendered]);
+
+  // ---- Floating scrollbar ---------------------------------------------------
+
+  const updateBar = useCallback(() => {
+    const el = scrollRef.current;
+    const bar = barRef.current;
+    if (!el || !bar) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight <= clientHeight + 2) {
+      bar.style.opacity = "0";
+      return;
+    }
+    const trackH = clientHeight - PAD * 2;
+    const thumbH = Math.max(28, (clientHeight / scrollHeight) * trackH);
+    const top = (scrollTop / (scrollHeight - clientHeight)) * (trackH - thumbH);
+    bar.style.height = `${thumbH}px`;
+    bar.style.transform = `translateY(${PAD + Math.max(0, top)}px)`;
+  }, []);
+
+  const flashBar = useCallback(() => {
+    const el = scrollRef.current;
+    const bar = barRef.current;
+    if (!el || !bar || el.scrollHeight <= el.clientHeight + 2) return;
+    bar.style.opacity = "0.5";
+    if (barIdle.current) window.clearTimeout(barIdle.current);
+    barIdle.current = window.setTimeout(() => {
+      if (barRef.current) barRef.current.style.opacity = "0";
+    }, 800);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      flashBar();
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        updateBar();
+      });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, [updateBar, flashBar]);
+
+  useEffect(() => {
+    updateBar();
+  }, [updateBar, container.w, container.h, current, layout, flow]);
+
   useEffect(
     () => () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      for (const t of [idleTimer, turnTimer, holdTimer, barIdle]) {
+        if (t.current) window.clearTimeout(t.current);
+      }
+      if (peekRaf.current) window.cancelAnimationFrame(peekRaf.current);
     },
     [],
   );
@@ -385,6 +741,32 @@ export const FixedPageViewer = forwardRef<
     }
     return cb;
   }, []);
+
+  // Paged mode: click the left / right edge (18%) to turn. Direction follows
+  // reading order and matches the arrow keys — RTL left edge is "next".
+  const edgeSideAt = useCallback((clientX: number): -1 | 0 | 1 => {
+    const el = scrollRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    const frac = (clientX - r.left) / r.width;
+    if (frac <= 0.18) return -1;
+    if (frac >= 0.82) return 1;
+    return 0;
+  }, []);
+  const onPagedClick = useCallback(
+    (e: React.MouseEvent) => {
+      const edge = edgeSideAt(e.clientX);
+      if (edge !== 0) flip(edge * (dir === "rtl" ? -1 : 1));
+    },
+    [edgeSideAt, flip, dir],
+  );
+  const onPagedMove = useCallback(
+    (e: React.MouseEvent) => {
+      const el = scrollRef.current;
+      if (el) el.style.cursor = edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
+    },
+    [edgeSideAt],
+  );
 
   const skeletonStyle = (
     w: number,
@@ -407,47 +789,53 @@ export const FixedPageViewer = forwardRef<
     for (let i = win.start; i <= win.end; i++) visible.push(i);
   }
 
+  const nIdx = peekIdx ?? 0;
+
   return (
     <div
-      ref={scrollRef}
       dir={dir}
-      style={{
-        position: "absolute",
-        inset: 0,
-        overflow: flow === "scroll" ? "auto" : "hidden",
-        background: theme.bg,
-      }}
+      style={{ position: "absolute", inset: 0, overflow: "hidden", background: theme.bg }}
     >
-      {flow === "scroll" ? (
-        <div style={{ position: "relative", width: "100%", height: layout.totalH }}>
-          {visible.map((i) => (
-            <div
-              key={i}
-              ref={hostCb(i)}
-              style={{
-                position: "absolute",
-                top: layout.top[i],
-                left: `calc(50% - ${layout.displayW[i] / 2}px)`,
-                filter: tintFilter(tint),
-                ...skeletonStyle(layout.displayW[i], layout.displayH[i], !rendered.has(i)),
-              }}
-            />
-          ))}
-        </div>
-      ) : (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
+      <div
+        ref={scrollRef}
+        className="no-scrollbar"
+        onClick={flow === "paged" ? onPagedClick : undefined}
+        onMouseMove={flow === "paged" ? onPagedMove : undefined}
+        style={{
+          position: "absolute",
+          inset: 0,
+          overflow: "auto",
+          overscrollBehavior: "contain",
+          background: theme.bg,
+          // Paged: a scrollable flex box. The page uses margin:auto, so it
+          // centers when it fits and pins to the top-start (fully scrollable,
+          // head never clipped) when it's taller / wider than the viewport.
+          ...(flow === "paged" ? { display: "flex", padding: PAD } : null),
+        }}
+      >
+        {flow === "scroll" ? (
+          <div style={{ position: "relative", width: "100%", height: layout.totalH }}>
+            {visible.map((i) => (
+              <div
+                key={i}
+                ref={hostCb(i)}
+                style={{
+                  position: "absolute",
+                  top: layout.top[i],
+                  left: `calc(50% - ${layout.displayW[i] / 2}px)`,
+                  filter: tintFilter(tint),
+                  ...skeletonStyle(layout.displayW[i], layout.displayH[i], !rendered.has(i)),
+                }}
+              />
+            ))}
+          </div>
+        ) : (
           <div
             key={current}
             ref={hostCb(current)}
             style={{
+              margin: "auto",
+              flexShrink: 0,
               filter: tintFilter(tint),
               ...skeletonStyle(
                 layout.displayW[current] || 0,
@@ -456,17 +844,63 @@ export const FixedPageViewer = forwardRef<
               ),
             }}
           />
-          {/* Tap zones: start side = next in RTL / prev in LTR. */}
+        )}
+      </div>
+
+      {/* Peek overlay: the incoming page, sliding in from the edge as the turn
+          progresses. Pointer-events off so the wheel keeps reaching the scroller
+          underneath (which drives the peek). */}
+      {flow === "paged" && peek && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            overflow: "hidden",
+            pointerEvents: "none",
+            zIndex: 5,
+            display: "flex",
+            padding: PAD,
+            justifyContent: "center",
+            alignItems: peek.dir > 0 ? "flex-start" : "flex-end",
+          }}
+        >
           <div
-            onClick={() => flip(dir === "rtl" ? +1 : -1)}
-            style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "18%", cursor: "pointer" }}
-          />
-          <div
-            onClick={() => flip(dir === "rtl" ? -1 : +1)}
-            style={{ position: "absolute", insetInlineEnd: 0, top: 0, bottom: 0, width: "18%", cursor: "pointer" }}
+            ref={peekHostRef}
+            style={{
+              flexShrink: 0,
+              transform: `translateY(${peek.dir * (1 - peek.reveal) * (container.h || 1)}px)`,
+              transition:
+                peekAnimating && !reducedMotion ? `transform ${ANIM_MS}ms ${TURN_EASE}` : "none",
+              filter: tintFilter(tint),
+              ...skeletonStyle(
+                layout.displayW[nIdx] || 0,
+                layout.displayH[nIdx] || 0,
+                !peekReady,
+              ),
+            }}
           />
         </div>
       )}
+
+      {/* Floating scrollbar — driven imperatively (no re-render), fades out ~0.8s
+          after scrolling stops. */}
+      <div
+        ref={barRef}
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 0,
+          insetInlineEnd: 3,
+          width: 6,
+          height: 28,
+          borderRadius: 3,
+          background: theme.muted,
+          opacity: 0,
+          transition: "opacity 240ms ease",
+          pointerEvents: "none",
+          zIndex: 6,
+        }}
+      />
     </div>
   );
 });

@@ -4,7 +4,7 @@
 // no loading state to manage. Sideloaded extensions (planned future work)
 // would slot in here the same way.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
@@ -20,6 +20,23 @@ interface Props {
 export function SourcesListView({ theme, onOpenSource }: Props) {
   const { tr } = useI18n();
   const sources = useMemo(() => listSources(), []);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+
+  // Live filter over the installed sources by name / URL / description. The
+  // description may be an i18n key (bundled sources) or plain text (future
+  // sideloaded ones), so resolve it before matching.
+  const filtered = useMemo(() => {
+    if (!q) return sources;
+    return sources.filter((s) => {
+      const desc = s.descriptionKey ? tr(s.descriptionKey) : s.description ?? "";
+      return (
+        s.name.toLowerCase().includes(q) ||
+        s.baseUrl.toLowerCase().includes(q) ||
+        desc.toLowerCase().includes(q)
+      );
+    });
+  }, [sources, q, tr]);
 
   return (
     <div
@@ -44,7 +61,7 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
       </h2>
       <p
         style={{
-          margin: "0 0 24px 0",
+          margin: "0 0 20px 0",
           color: theme.muted,
           fontSize: 13,
           lineHeight: 1.5,
@@ -52,6 +69,58 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
       >
         {tr("store.subtitle")}
       </p>
+
+      {sources.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: theme.bg,
+            border: `1px solid ${theme.rule}`,
+            borderRadius: 11,
+            padding: "10px 13px",
+            marginBottom: 22,
+          }}
+        >
+          <span style={{ color: theme.muted, display: "flex", flexShrink: 0 }}>
+            <Icon name="search" size={16} />
+          </span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={tr("store.filterWebsites")}
+            aria-label={tr("store.filterWebsites")}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: 0,
+              outline: "none",
+              background: "transparent",
+              font: "inherit",
+              fontSize: 14,
+              color: theme.ink,
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              aria-label={tr("common.close")}
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                border: 0,
+                background: "transparent",
+                color: theme.muted,
+                cursor: "pointer",
+                padding: 2,
+              }}
+            >
+              <Icon name="close" size={15} />
+            </button>
+          )}
+        </div>
+      )}
 
       {sources.length === 0 ? (
         <div
@@ -64,6 +133,17 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
         >
           {tr("store.noSources")}
         </div>
+      ) : filtered.length === 0 ? (
+        <div
+          style={{
+            padding: 40,
+            color: theme.muted,
+            textAlign: "center",
+            fontSize: 13,
+          }}
+        >
+          {tr("store.noMatchingWebsites", { query: query.trim() })}
+        </div>
       ) : (
         <div
           style={{
@@ -72,7 +152,7 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
             gap: 16,
           }}
         >
-          {sources.map((s) => (
+          {filtered.map((s) => (
             <SourceCard
               key={s.id}
               theme={theme}
