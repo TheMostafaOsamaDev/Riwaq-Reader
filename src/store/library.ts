@@ -114,6 +114,36 @@ export interface BookState {
   highlights: Highlight[];
 }
 
+/** Fixed-layout (DOCX) highlight anchor: a stable block id + intra-block char
+ *  range. Block ids are assigned once at parse (before pagination), so the
+ *  anchor survives re-pagination when the page box changes. */
+export interface DocxHighlightAnchor {
+  fmt: "docx";
+  blockId: string;
+  /** Inclusive char offset within the block's text content. */
+  charStart: number;
+  /** Exclusive char offset. */
+  charEnd: number;
+}
+
+/** A rectangle expressed as fractions (0..1) of the page box, so it survives
+ *  zoom/fit changes — multiply by the current display size to draw it. */
+export interface NormRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Fixed-layout (PDF) highlight anchor: a page plus the page-normalized
+ *  rectangles covering the selected text (PDF pages don't reflow, so the page
+ *  index is stable and rects only need scaling). */
+export interface PdfHighlightAnchor {
+  fmt: "pdf";
+  page: number;
+  rects: NormRect[];
+}
+
 export interface Highlight {
   id: string;
   chapter: number;
@@ -131,6 +161,11 @@ export interface Highlight {
   note?: string;
   color: "yellow" | "blue" | "pink" | "green";
   ts: number;
+  /** Fixed-layout anchor. Present ONLY on PDF/DOCX highlights — when set, the
+   *  reflow fields above (chapter/paragraphIndex/charStart/charEnd) are unused
+   *  (0) and this drives jump + render instead. Absent on every EPUB
+   *  highlight, so the reflow pipeline is unaffected. */
+  fixed?: DocxHighlightAnchor | PdfHighlightAnchor;
   /** When a selection spans multiple paragraphs, every highlight created
    *  from that one user gesture shares the same groupId. Tap-to-delete
    *  on any member deletes the whole group so the user sees a single

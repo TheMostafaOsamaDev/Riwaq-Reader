@@ -19,7 +19,9 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Theme } from "../../styles/tokens";
+import type { Theme, ThemeKey } from "../../styles/tokens";
+import type { Highlight } from "../../store/library";
+import { resolveDocxSelection, type DocxSelectionAnchor } from "./docxHighlight";
 import type {
   FixedFit,
   FixedFlow,
@@ -27,6 +29,7 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import type { FixedPageSource } from "./FixedPageSource";
+import { pdfDuotone, resolveReadingColors } from "../readingColors";
 
 const PAD = 20;
 const GAP = 18;
@@ -61,6 +64,10 @@ export interface FixedPageViewerProps {
   /** Multiplier on the fit scale (0.5–~2.5). */
   zoom: number;
   tint: FixedPageTint;
+  /** Reading color overrides ("auto" or a hex). DOCX cards take them as real
+   *  CSS via `--reading-ink`/`--reading-paper`; PDF pages get a GPU duotone. */
+  inkColor: string;
+  paperColor: string;
   dir: "ltr" | "rtl";
   theme: Theme;
   resume?: { page: number; pageOffset?: number };
@@ -69,6 +76,13 @@ export interface FixedPageViewerProps {
   /** Localized page-counter label, e.g. "٧ / ٢٩٨". */
   formatCounter?: (page1: number, total: number) => string;
   reducedMotion?: boolean;
+  /** This book's highlights (for DOCX render-back) + the active theme key. */
+  highlights: Highlight[];
+  themeKey: ThemeKey;
+  /** DOCX text selected (or null to dismiss) — the shell shows a color popover. */
+  onSelect: (anchor: DocxSelectionAnchor | null) => void;
+  /** An existing highlight `<mark>` was clicked — the shell shows edit/delete. */
+  onHighlightClick: (id: string, rect: DOMRect) => void;
 }
 
 export interface FixedPageViewerHandle {
@@ -95,6 +109,8 @@ export const FixedPageViewer = forwardRef<
     fit,
     zoom,
     tint,
+    inkColor,
+    paperColor,
     dir,
     theme,
     resume,
@@ -102,8 +118,84 @@ export const FixedPageViewer = forwardRef<
     onLocationChange,
     formatCounter,
     reducedMotion,
+    highlights,
+    themeKey,
+    onSelect,
+    onHighlightClick,
   } = props;
   const pageCount = source.pageCount;
+
+  // Bumped whenever DOCX highlights/theme change to force a re-render of the
+  // visible pages (renderPage re-injects the <mark> spans from the source).
+  const [highlightNonce, setHighlightNonce] = useState(0);
+  useEffect(() => {
+    if (source.kind !== "docx" || !source.setHighlights) return;
+    source.setHighlights(highlights, themeKey);
+    // Force the visible pages to re-render so renderPage re-injects the marks.
+    // The per-page render cache is keyed only on scale, which hasn't changed, so
+    // without clearing it the render effect would skip these pages. `rendered`
+    // is untouched, so no skeleton flashes.
+    renderedScale.current.clear();
+    setHighlightNonce((n) => n + 1);
+  }, [source, highlights, themeKey]);
+
+  // DOCX text selection → color popover; clicking an existing <mark> → its
+  // edit/delete popover. Deferred a tick so the browser finalizes the selection.
+  useEffect(() => {
+    if (source.kind !== "docx") return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const onUp = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      window.setTimeout(() => {
+        const anchor = resolveDocxSelection(scroller);
+        if (anchor) {
+          onSelect(anchor);
+          return;
+        }
+        onSelect(null);
+        const mark = target?.closest?.("[data-h-id]") as HTMLElement | null;
+        const id = mark?.getAttribute("data-h-id");
+        if (id) onHighlightClick(id, mark!.getBoundingClientRect());
+      }, 0);
+    };
+    scroller.addEventListener("pointerup", onUp);
+    return () => scroller.removeEventListener("pointerup", onUp);
+  }, [source, onSelect, onHighlightClick]);
+
+  // Reading colors, split by backend. PDF: a GPU duotone (or null → untouched,
+  // today's behavior), which supersedes the dim/invert tint filter. DOCX:
+  // resolved concrete colors handed to the cards through CSS vars, so "auto"
+  // makes DOCX follow the active theme instead of always rendering white.
+  const duotone = source.kind === "pdf" ? pdfDuotone(inkColor, paperColor) : null;
+  const hostFilter = duotone ? duotone.hostFilter : tintFilter(tint);
+  const docxColors =
+    source.kind === "docx" ? resolveReadingColors(theme, inkColor, paperColor) : null;
+
+  // The ink + paper blend layers for a single PDF page, positioned by `box`.
+  // A plain element factory (not a component) so it never remounts the hosts.
+  const duotoneOverlays = (
+    keyPrefix: string,
+    box: React.CSSProperties,
+  ): React.ReactElement[] => {
+    if (!duotone) return [];
+    return [
+      { key: `${keyPrefix}-ink`, layer: duotone.ink },
+      { key: `${keyPrefix}-paper`, layer: duotone.paper },
+    ].map(({ key, layer }) => (
+      <div
+        key={key}
+        aria-hidden
+        style={{
+          ...box,
+          borderRadius: 4,
+          background: layer.color,
+          mixBlendMode: layer.blend as React.CSSProperties["mixBlendMode"],
+          pointerEvents: "none",
+        }}
+      />
+    ));
+  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRefs = useRef(new Map<number, HTMLDivElement>());
@@ -342,7 +434,7 @@ export const FixedPageViewer = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [win, layout, sizes, tint, flow, source]);
+  }, [win, layout, sizes, tint, flow, source, highlightNonce]);
 
   // Lazily measure + render the single current page (paged).
   useEffect(() => {
@@ -376,7 +468,7 @@ export const FixedPageViewer = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [flow, current, layout, sizes, tint, source, emit]);
+  }, [flow, current, layout, sizes, tint, source, emit, highlightNonce]);
 
   // ---- Paged turn controller ------------------------------------------------
 
@@ -794,7 +886,21 @@ export const FixedPageViewer = forwardRef<
   return (
     <div
       dir={dir}
-      style={{ position: "absolute", inset: 0, overflow: "hidden", background: theme.bg }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        background: theme.bg,
+        // Confine the PDF duotone's mix-blend overlays to this subtree.
+        isolation: duotone ? "isolate" : undefined,
+        // DOCX cards read these; unset for PDF (which uses the duotone instead).
+        ...(docxColors
+          ? ({
+              ["--reading-ink"]: docxColors.ink,
+              ["--reading-paper"]: docxColors.paper,
+            } as React.CSSProperties)
+          : null),
+      }}
     >
       <div
         ref={scrollRef}
@@ -823,27 +929,69 @@ export const FixedPageViewer = forwardRef<
                   position: "absolute",
                   top: layout.top[i],
                   left: `calc(50% - ${layout.displayW[i] / 2}px)`,
-                  filter: tintFilter(tint),
+                  filter: hostFilter,
                   ...skeletonStyle(layout.displayW[i], layout.displayH[i], !rendered.has(i)),
                 }}
               />
             ))}
+            {/* PDF duotone: two GPU-composited mix-blend overlays per rendered
+                page, sized/positioned to match its host. `lighten`/`darken`
+                (order + modes chosen by pdfDuotone for polarity) remap the
+                grayscaled page's darks→ink and lights→paper. */}
+            {duotone &&
+              visible.flatMap((i) =>
+                rendered.has(i)
+                  ? duotoneOverlays(`s${i}`, {
+                      position: "absolute",
+                      top: layout.top[i],
+                      left: `calc(50% - ${layout.displayW[i] / 2}px)`,
+                      width: layout.displayW[i],
+                      height: layout.displayH[i],
+                    })
+                  : [],
+              )}
           </div>
         ) : (
-          <div
-            key={current}
-            ref={hostCb(current)}
-            style={{
-              margin: "auto",
-              flexShrink: 0,
-              filter: tintFilter(tint),
-              ...skeletonStyle(
-                layout.displayW[current] || 0,
-                layout.displayH[current] || 0,
-                !rendered.has(current),
-              ),
-            }}
-          />
+          <>
+            <div
+              key={current}
+              ref={hostCb(current)}
+              style={{
+                margin: "auto",
+                flexShrink: 0,
+                filter: hostFilter,
+                ...skeletonStyle(
+                  layout.displayW[current] || 0,
+                  layout.displayH[current] || 0,
+                  !rendered.has(current),
+                ),
+              }}
+            />
+            {/* Paged duotone: mirror the host's flex-centered box exactly. */}
+            {duotone && rendered.has(current) && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  padding: PAD,
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    position: "relative",
+                    margin: "auto",
+                    flexShrink: 0,
+                    width: layout.displayW[current] || 0,
+                    height: layout.displayH[current] || 0,
+                  }}
+                >
+                  {duotoneOverlays("p", { position: "absolute", inset: 0 })}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -871,7 +1019,11 @@ export const FixedPageViewer = forwardRef<
               transform: `translateY(${peek.dir * (1 - peek.reveal) * (container.h || 1)}px)`,
               transition:
                 peekAnimating && !reducedMotion ? `transform ${ANIM_MS}ms ${TURN_EASE}` : "none",
-              filter: tintFilter(tint),
+              // The sliding peek page keeps the same tonal filter as the settled
+              // pages (grayscale/invert for a color duotone; else the tint), so
+              // it doesn't flash its original colors mid-turn. The colored blend
+              // overlays are omitted here — the page picks them up once it lands.
+              filter: hostFilter,
               ...skeletonStyle(
                 layout.displayW[nIdx] || 0,
                 layout.displayH[nIdx] || 0,

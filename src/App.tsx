@@ -45,8 +45,10 @@ import {
   updateParagraphPosition,
   updateReadingPosition,
   type BookState,
+  type DocxHighlightAnchor,
   type FixedBook,
   type Highlight,
+  type PdfHighlightAnchor,
 } from "./store/library";
 import { MOTION, setReduceMotionOverride, useReducedMotion } from "./styles/motion";
 import type { HighlightColor } from "./styles/tokens";
@@ -525,6 +527,96 @@ function App() {
     [loaded],
   );
 
+  // Fixed-layout (PDF/DOCX) highlight handlers. The EPUB handlers above operate
+  // on `loaded`, which is null for a fixed book — these mirror them against
+  // `loadedFixed`. Fixed highlights carry a `fixed` anchor and leave the reflow
+  // fields (chapter/paragraph/char) at 0.
+  const createFixedHighlight = useCallback(
+    async (h: {
+      text: string;
+      color: HighlightColor;
+      note?: string;
+      groupId?: string;
+      fixed: DocxHighlightAnchor | PdfHighlightAnchor;
+    }) => {
+      if (!loadedFixed) return;
+      const saved = await saveHighlight(loadedFixed.book.id, {
+        chapter: 0,
+        paragraphIndex: 0,
+        charStart: 0,
+        charEnd: 0,
+        text: h.text,
+        color: h.color,
+        note: h.note,
+        groupId: h.groupId,
+        fixed: h.fixed,
+      });
+      setLoadedFixed((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: {
+                ...prev.state,
+                highlights: [...prev.state.highlights, saved],
+              },
+            }
+          : prev,
+      );
+    },
+    [loadedFixed],
+  );
+
+  const removeFixedHighlight = useCallback(
+    async (highlightId: string) => {
+      if (!loadedFixed) return;
+      const target = loadedFixed.state.highlights.find((h) => h.id === highlightId);
+      if (!target) return;
+      const ids = target.groupId
+        ? loadedFixed.state.highlights
+            .filter((h) => h.groupId === target.groupId)
+            .map((h) => h.id)
+        : [highlightId];
+      await deleteHighlights(loadedFixed.book.id, ids);
+      const idSet = new Set(ids);
+      setLoadedFixed((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: {
+                ...prev.state,
+                highlights: prev.state.highlights.filter((h) => !idSet.has(h.id)),
+              },
+            }
+          : prev,
+      );
+    },
+    [loadedFixed],
+  );
+
+  const editFixedHighlightNote = useCallback(
+    async (highlightId: string, note: string) => {
+      if (!loadedFixed) return;
+      const trimmed = note.trim();
+      await updateHighlightNote(loadedFixed.book.id, highlightId, trimmed);
+      setLoadedFixed((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: {
+                ...prev.state,
+                highlights: prev.state.highlights.map((h) =>
+                  h.id === highlightId
+                    ? { ...h, note: trimmed.length > 0 ? trimmed : undefined }
+                    : h,
+                ),
+              },
+            }
+          : prev,
+      );
+    },
+    [loadedFixed],
+  );
+
   const editHighlightNote = useCallback(
     async (highlightId: string, note: string) => {
       if (!loaded) return;
@@ -694,6 +786,10 @@ function App() {
               setTweak={setTweak}
               book={loadedFixed.book}
               state={loadedFixed.state}
+              highlights={loadedFixed.state.highlights}
+              onCreateHighlight={createFixedHighlight}
+              onDeleteHighlight={removeFixedHighlight}
+              onUpdateHighlightNote={editFixedHighlightNote}
               layout={isMobile ? "mobile" : "desktop"}
               uiDir={uiDir}
               createSource={() => {
