@@ -4,17 +4,19 @@
 // identical open/close motion, scrim dismissal, Esc-to-close and RTL-correct
 // slide direction.
 //
-// It deliberately reuses the app's existing motion vocabulary — the
-// `leaflet-backdrop-*` fade (as in AnimatedDialog) and the
-// `leaflet-panel-enter/exit-<side>` slide (as in AnimatedPanel) — driven by the
-// same 3-phase enter/open/exit machine, so no new keyframes are introduced and
-// the sheet feels like the rest of the app.
+// Animation: the panel mounts OFF-SCREEN with no transition, then flips to its
+// resting position on the next frame via a CSS transition. Driving the slide
+// with a transition (rather than a keyframe applied at mount time) is the
+// engine-agnostic way to guarantee the enter plays: WebKit/WKWebView can skip a
+// keyframe that is present on a node the instant it is inserted, which made the
+// enter "snap" while the exit (a class change on an already-painted node) stayed
+// smooth. Forcing a paint of the off-screen state before the flip fixes that.
 //
 // `side` is LOGICAL: "left" = the reader's leading edge, "right" = trailing.
-// The panel is anchored with logical inset properties so it rests on the
-// correct edge under RTL automatically; the *physical* slide keyframe is picked
-// to match wherever it actually lands (see `physicalSide`), mirroring
-// AnimatedPanel — otherwise it would sweep in from the wrong edge under RTL.
+// The panel is anchored with logical inset properties so it rests on the correct
+// edge under RTL automatically; the *physical* off-screen translate is picked to
+// match wherever it actually lands (see `physicalSide`) so it slides off its own
+// edge rather than sweeping across the reader under RTL.
 //
 // The sheet fills its positioning parent (`position: absolute; inset: 0`), so
 // mount it inside the reader's *content* region (below the chrome) — that keeps
@@ -22,7 +24,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "../i18n/useI18n";
-import { MOTION, useReducedMotion } from "../styles/motion";
+import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 
 interface Props {
   open: boolean;
@@ -42,8 +44,6 @@ interface Props {
   zIndex?: number;
 }
 
-type Phase = "enter" | "open" | "exit";
-
 export function SideSheet({
   open,
   onClose,
@@ -56,9 +56,12 @@ export function SideSheet({
 }: Props) {
   const { dir } = useI18n();
   const reduced = useReducedMotion();
-  const [phase, setPhase] = useState<Phase | null>(open ? "enter" : null);
+  // `mounted` = present in the DOM (stays true through the exit transition).
+  // `shown`   = at the resting position (false = off-screen / faded out).
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open && reduced);
 
-  // Freeze the children + side seen while open so the exit animation plays the
+  // Freeze the children + side seen while open so the exit transition plays the
   // panel the user was actually using, sliding off its own edge — even though
   // the parent has already cleared its active-panel state to null.
   const lastChildrenRef = useRef<ReactNode>(children);
@@ -75,21 +78,33 @@ export function SideSheet({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // Drive the enter → open → exit → unmount phase machine.
+  // Mount/unmount + drive the slide via `shown`.
   useEffect(() => {
     if (open) {
-      setPhase("enter");
-      const t = setTimeout(() => setPhase("open"), reduced ? 0 : MOTION.med);
-      return () => clearTimeout(t);
+      setMounted(true);
+      if (reduced) {
+        setShown(true);
+        return;
+      }
+      // Two frames: let the off-screen start paint, then flip to the resting
+      // position so the browser runs a real transition instead of jumping.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setShown(true));
+      });
+      return () => {
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+      };
     }
-    if (phase !== null) {
-      setPhase("exit");
-      const t = setTimeout(() => setPhase(null), reduced ? 0 : MOTION.fast);
-      return () => clearTimeout(t);
+    // Closing: slide out, then unmount after the exit finishes.
+    setShown(false);
+    if (reduced) {
+      setMounted(false);
+      return;
     }
-    // phase intentionally omitted: this effect reacts to `open`, and the
-    // exit branch reads the current phase at cleanup-time only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = setTimeout(() => setMounted(false), MOTION.fast);
+    return () => clearTimeout(t);
   }, [open, reduced]);
 
   // While open: Esc closes, focus moves into the panel, and focus is restored
@@ -111,34 +126,27 @@ export function SideSheet({
     };
   }, [open]);
 
-  if (phase === null) return null;
+  if (!mounted) return null;
 
   const activeSide = open ? side : lastSideRef.current;
-  // The panel is anchored on the logical edge via inset properties (which flip
-  // under RTL on their own); the slide keyframes are physical (translateX
-  // ±100%), so choose the keyframe by where the panel physically lands.
+  // Anchor on the logical edge (inset properties flip under RTL on their own);
+  // the off-screen translate is physical, so choose it by where the panel lands.
   const physicalSide =
     dir === "rtl" ? (activeSide === "left" ? "right" : "left") : activeSide;
   const anchor =
     activeSide === "left"
       ? { insetInlineStart: 0, insetInlineEnd: "auto" as const }
       : { insetInlineEnd: 0, insetInlineStart: "auto" as const };
+  const offscreen =
+    physicalSide === "left" ? "translateX(-100%)" : "translateX(100%)";
 
-  const backdropClass = reduced
-    ? undefined
-    : phase === "exit"
-      ? "leaflet-backdrop-exit"
-      : phase === "enter"
-        ? "leaflet-backdrop-enter"
-        : undefined;
-  const panelClass = reduced
-    ? undefined
-    : phase === "enter"
-      ? `leaflet-panel-enter-${physicalSide}`
-      : phase === "exit"
-        ? `leaflet-panel-exit-${physicalSide}`
-        : undefined;
-  const animating = phase === "enter" || phase === "exit";
+  // Timing follows the direction of travel: entering uses the longer spring-in,
+  // exiting the snappier ease-out. The transition value on the *new* render is
+  // what governs each change, so keying it off `shown` is correct.
+  const dur = shown ? MOTION.med : MOTION.fast;
+  const ease = shown ? EASE.enter : EASE.exit;
+  const slideTransition = reduced ? undefined : `transform ${dur}ms ${ease}`;
+  const fadeTransition = reduced ? undefined : `opacity ${dur}ms ${ease}`;
 
   return (
     <div
@@ -146,21 +154,19 @@ export function SideSheet({
         position: "absolute",
         inset: 0,
         zIndex,
-        // Don't swallow clicks meant for the reader while sliding out.
-        pointerEvents: phase === "exit" ? "none" : "auto",
+        // Don't swallow clicks meant for the reader while off-screen / exiting.
+        pointerEvents: shown ? "auto" : "none",
       }}
     >
       {dim && (
         <div
           onClick={onClose}
-          className={backdropClass}
           style={{
             position: "absolute",
             inset: 0,
             background: "rgba(0,0,0,0.42)",
-            // While the keyframe runs, `both` fill-mode owns the opacity; once
-            // settled, pin to fully visible so the scrim doesn't blink.
-            opacity: animating ? undefined : 1,
+            opacity: shown ? 1 : 0,
+            transition: fadeTransition,
             cursor: "pointer",
           }}
         />
@@ -171,7 +177,6 @@ export function SideSheet({
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        className={panelClass}
         style={{
           position: "absolute",
           top: 0,
@@ -182,6 +187,10 @@ export function SideSheet({
           display: "flex",
           outline: "none",
           zIndex: 1,
+          transform: shown ? "translateX(0)" : offscreen,
+          transition: slideTransition,
+          // Hint the compositor so the slide stays smooth under reader load.
+          willChange: "transform",
         }}
       >
         {open ? children : lastChildrenRef.current}
