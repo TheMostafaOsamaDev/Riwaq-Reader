@@ -147,6 +147,10 @@ let burstTotal = 0;
  *  progress resetting at chapter boundaries otherwise made the percent
  *  bounce (19% → 18% → 19%). Reset when the queue goes fully idle. */
 let burstMaxPct = 0;
+/** Per-kind resolved-count tally captured at the start of a burst. Queue
+ *  terminals from a previous burst linger until clearTerminals(), so we
+ *  subtract this baseline to keep a new burst's counts/percent its own. */
+let burstBase = { resolved: 0, chDone: 0, chFail: 0, cvDone: 0 };
 /** `finishedAt` of the import whose completion we've already announced,
  *  so an undismissed finished import isn't re-announced in a later burst. */
 let announcedImportFinishedAt: number | null = null;
@@ -248,6 +252,7 @@ async function publish(snap: Snapshot) {
   if (snap.active === 0 && snap.total === 0 && !importTerminalPending) {
     burstTotal = 0;
     burstMaxPct = 0;
+    burstBase = { resolved: 0, chDone: 0, chFail: 0, cvDone: 0 };
     summaryShown = false;
     lastBody = "";
     lastTitle = "";
@@ -261,16 +266,26 @@ async function publish(snap: Snapshot) {
     return;
   }
 
-  // Bump the denominator when new jobs arrive (queue grew).
-  const completedThisBurst = snap.done + snap.error + snap.cancelled;
-  const liveTotal = snap.active + completedThisBurst;
+  // Per-burst accounting. Terminal jobs from a previous burst linger in
+  // the queue (until clearTerminals), so on a fresh burst we rebase and
+  // subtract the leftover count — otherwise this burst's "N of M" and
+  // percent would inherit the previous burst's totals.
+  const tally = resolvedTally();
+  if (snap.active > 0 && summaryShown) {
+    burstTotal = 0;
+    burstMaxPct = 0;
+    summaryShown = false;
+    burstBase = tally;
+  }
+  const burstCompleted = Math.max(0, tally.resolved - burstBase.resolved);
+  const liveTotal = snap.active + burstCompleted;
   if (liveTotal > burstTotal) burstTotal = liveTotal;
 
   const isTerminalSummary = snap.active === 0;
   // Compose what to display. A conversion in flight gets first
   // billing — it's whole-novel work that produces a library entry,
   // versus chapter downloads which are per-row.
-  const composed = compose(snap, completedThisBurst);
+  const composed = compose(snap, burstCompleted);
   if (!composed) return; // summary already shown this burst
   const { title, body } = composed;
 
@@ -333,6 +348,31 @@ async function publish(snap: Snapshot) {
     ongoing: composed.ongoing,
     tapsToQueue: composed.tapsToQueue,
   });
+}
+
+/** Per-kind tally of RESOLVED (terminal) jobs currently in the queue.
+ *  Used both for the burst baseline and the completion summary. */
+function resolvedTally(): {
+  resolved: number;
+  chDone: number;
+  chFail: number;
+  cvDone: number;
+} {
+  const jobs = getState().jobs;
+  let chDone = 0;
+  let chFail = 0;
+  let cvDone = 0;
+  let cvFail = 0;
+  for (const j of jobs) {
+    if (j.kind === "chapter") {
+      if (j.status === "done") chDone++;
+      else if (j.status === "error" || j.status === "cancelled") chFail++;
+    } else if (j.kind === "conversion") {
+      if (j.status === "done") cvDone++;
+      else if (j.status === "error" || j.status === "cancelled") cvFail++;
+    }
+  }
+  return { resolved: chDone + chFail + cvDone + cvFail, chDone, chFail, cvDone };
 }
 
 /** Monotonic display percent for the aggregate download/mixed progress.
@@ -471,18 +511,11 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   // of a generic "background work finished". Queue jobs stay in the list
   // as terminal entries until clearTerminals(), so we tally them here;
   // imports live in their own store and are read directly.
-  const finishedJobs = getState().jobs;
-  let chDone = 0;
-  let chFail = 0;
-  let cvDone = 0;
-  for (const j of finishedJobs) {
-    if (j.kind === "chapter") {
-      if (j.status === "done") chDone++;
-      else if (j.status === "error" || j.status === "cancelled") chFail++;
-    } else if (j.kind === "conversion") {
-      if (j.status === "done") cvDone++;
-    }
-  }
+  // Burst-relative per-kind counts (exclude prior-burst terminals).
+  const t = resolvedTally();
+  const chDone = Math.max(0, t.chDone - burstBase.chDone);
+  const chFail = Math.max(0, t.chFail - burstBase.chFail);
+  const cvDone = Math.max(0, t.cvDone - burstBase.cvDone);
   const imp = getImportState();
   const impFresh =
     imp.finishedAt !== null && imp.finishedAt !== announcedImportFinishedAt;
