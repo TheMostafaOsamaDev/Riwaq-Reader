@@ -187,6 +187,10 @@ export function Library({
         }
       : null;
   const shelvesActive = view.kind === "shelves";
+  // The shelf whose detail view is open, if any — drives the sidebar's
+  // per-shelf active highlight (Task 9).
+  const activeShelfId =
+    view.kind === "shelfDetail" ? view.shelfId : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
 
@@ -659,6 +663,7 @@ export function Library({
     onRequestDeleteShelf,
     onAddBooksToShelf,
     onOpenShelf: (id: string) => goShelf(id),
+    activeShelfId,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);
@@ -895,6 +900,9 @@ interface LayoutProps {
   onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
   /** Navigate to a specific shelf's detail view (wired in Task 9). */
   onOpenShelf: (id: string) => void;
+  /** The shelf whose detail view is open, if any — drives the sidebar's
+   *  per-shelf active highlight (Task 9). */
+  activeShelfId?: string;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onCardContextMenu: (id: string, x: number, y: number) => void;
@@ -957,6 +965,8 @@ function DesktopLibrary({
   onOpenShelves,
   shelves,
   onNewShelf,
+  onOpenShelf,
+  activeShelfId,
   onDelete,
   onEdit,
   onCardContextMenu,
@@ -1026,6 +1036,8 @@ function DesktopLibrary({
         shelvesActive={shelvesActive}
         onOpenShelves={onOpenShelves}
         onNewShelf={onNewShelf}
+        onOpenShelf={onOpenShelf}
+        activeShelfId={activeShelfId}
       />
       <div
         style={{
