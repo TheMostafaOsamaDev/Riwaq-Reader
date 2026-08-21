@@ -333,6 +333,9 @@ export const en = {
     "This range download requires the novel to be in your library first.",
   "downloads.range.from": "From",
   "downloads.range.to": "To",
+  "downloads.range.selectChapter": "Select a chapter",
+  "downloads.range.searchPlaceholder": "Search chapters…",
+  "downloads.range.noMatches": "No matching chapters",
   "downloads.range.queueCountOne":
     "{n} chapter will be queued for download{extra}.",
   "downloads.range.queueCountOther":
@@ -462,6 +465,9 @@ export const en = {
   "novel.queuedClickCancel": "Queued — click to cancel",
   "novel.downloadingClickCancel": "Downloading ({pct}%) — click to cancel",
   "novel.downloadChapter": "Download chapter",
+  "novel.downloadVolume": "Download volume",
+  "novel.downloadingVolume": "Queuing volume…",
+  "novel.volumeAllDownloaded": "All chapters downloaded",
   "novel.volumeFallback": "Volume {n}",
   // Rare technical fallback (deferred from Task 10): a scraped chapter with
   // no usable title text after sanitization. Same rationale + pattern as

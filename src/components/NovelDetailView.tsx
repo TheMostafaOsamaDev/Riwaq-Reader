@@ -1537,6 +1537,75 @@ function VolumesAccordion({
     onChapterFlagsChange(buildFlagMap(snap));
   }, [libraryEntryId, onChapterFlagsChange]);
 
+  // Per-volume "download all" — enqueues every not-yet-downloaded chapter in
+  // one volume. Lazy volumes are fetched first so their chapter list exists
+  // before we enqueue. `downloadingVol` guards the brief enqueue window so a
+  // double-tap can't fire it twice.
+  const [downloadingVol, setDownloadingVol] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const downloadVolume = useCallback(
+    async (volumeId: number) => {
+      if (!libraryEntryId) return;
+      if (downloadingVol.has(volumeId)) return;
+      const vol = novel.volumes.find((v) => v.id === volumeId);
+      if (!vol) return;
+      setDownloadingVol((s) => new Set(s).add(volumeId));
+      try {
+        // Ensure the chapter list exists (lazy volumes arrive empty).
+        let chapters = vol.chapters;
+        if (chapters.length === 0 && source.getVolumeChapters) {
+          const fetched = await source.getVolumeChapters(novelUrl, vol);
+          if (!aliveRef.current) return;
+          chapters = fetched;
+          const { setVolumeChapters } = await import("../store/sourceLibrary");
+          await setVolumeChapters(libraryEntryId, volumeId, fetched);
+          onNovelPatch((current) =>
+            current
+              ? {
+                  ...current,
+                  volumes: current.volumes.map((v) =>
+                    v.id === volumeId ? { ...v, chapters: fetched } : v,
+                  ),
+                }
+              : current,
+          );
+          expandedRef.current.add(volumeId);
+        }
+        const { enqueue } = await import("../store/downloadQueue");
+        for (const c of chapters) {
+          if (chapterFlags.get(c.id)?.downloadedAt) continue;
+          enqueue({
+            libraryEntryId,
+            chapterId: c.id,
+            novelTitle: novel.title,
+            chapterTitle: c.title,
+          });
+        }
+      } catch {
+        // The per-chapter rows surface queue/error state; a failed lazy
+        // fetch leaves the volume untouched for a retry.
+      } finally {
+        if (aliveRef.current) {
+          setDownloadingVol((s) => {
+            const next = new Set(s);
+            next.delete(volumeId);
+            return next;
+          });
+        }
+      }
+    },
+    [
+      libraryEntryId,
+      downloadingVol,
+      novel,
+      novelUrl,
+      source,
+      chapterFlags,
+      onNovelPatch,
+    ],
+  );
+
   // Live queue state for this entry — drives the per-row download
   // icon's queued/running/error rendering. We subscribe to the
   // module-scoped queue once for the accordion (not once per row) and
@@ -1615,6 +1684,13 @@ function VolumesAccordion({
       {novel.volumes.map((v) => {
         const isOpen = open.has(v.id);
         const count = v.chapters.length > 0 ? v.chapters.length : v.chapterCount ?? 0;
+        const volLoaded = v.chapters.length > 0;
+        const volPending = volLoaded
+          ? v.chapters.filter((c) => !chapterFlags.get(c.id)?.downloadedAt)
+              .length
+          : count;
+        const volAllDownloaded = volLoaded && volPending === 0;
+        const volDownloading = downloadingVol.has(v.id);
         return (
           <div
             key={v.id}
@@ -1626,77 +1702,129 @@ function VolumesAccordion({
               transition: transition("background", "fast", "out"),
             }}
           >
-            <button
-              onClick={() => toggle(v.id)}
-              aria-expanded={isOpen}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                padding: "13px 14px",
-                border: "none",
-                background: "transparent",
-                color: theme.ink,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                textAlign: "start",
-              }}
-              onMouseEnter={(e) => {
-                if (!isOpen) e.currentTarget.style.background = theme.hover;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                {/* Outer span mirrors the chevron in RTL; the inner span
-                    rotates it between closed (points toward content) and open
-                    (points down). Two layers so the rotate transform doesn't
-                    clobber the rtl-flip. Reduced motion neutralizes the
-                    rotation via the global transition-duration override. */}
-                <span
-                  className="rtl-flip-x"
-                  style={{ display: "inline-flex", flexShrink: 0, color: theme.muted }}
-                >
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      transition: transition("transform", "fast", "out"),
-                      transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-                    }}
-                  >
-                    <Icon name="chevronR" size={14} />
-                  </span>
-                </span>
-                <span
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {v.title}
-                </span>
-              </div>
-              <span
+            <div style={{ display: "flex", alignItems: "stretch" }}>
+              <button
+                onClick={() => toggle(v.id)}
+                aria-expanded={isOpen}
                 style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: theme.muted,
-                  flexShrink: 0,
-                  padding: "3px 9px",
-                  borderRadius: 999,
-                  background: theme.bg,
-                  border: `0.5px solid ${theme.rule}`,
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  padding: "13px 14px",
+                  border: "none",
+                  background: "transparent",
+                  color: theme.ink,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  textAlign: "start",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isOpen) e.currentTarget.style.background = theme.hover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
                 }}
               >
-                {count > 0 ? tr("novel.chapterCountShort", { n: count }) : "—"}
-              </span>
-            </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                  {/* Outer span mirrors the chevron in RTL; the inner span
+                      rotates it between closed (points toward content) and open
+                      (points down). Two layers so the rotate transform doesn't
+                      clobber the rtl-flip. Reduced motion neutralizes the
+                      rotation via the global transition-duration override. */}
+                  <span
+                    className="rtl-flip-x"
+                    style={{ display: "inline-flex", flexShrink: 0, color: theme.muted }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        transition: transition("transform", "fast", "out"),
+                        transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                      }}
+                    >
+                      <Icon name="chevronR" size={14} />
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {v.title}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: theme.muted,
+                    flexShrink: 0,
+                    padding: "3px 9px",
+                    borderRadius: 999,
+                    background: theme.bg,
+                    border: `0.5px solid ${theme.rule}`,
+                  }}
+                >
+                  {count > 0 ? tr("novel.chapterCountShort", { n: count }) : "—"}
+                </span>
+              </button>
+              {libraryEntryId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!volAllDownloaded && !volDownloading) {
+                      void downloadVolume(v.id);
+                    }
+                  }}
+                  disabled={volAllDownloaded || volDownloading}
+                  title={
+                    volAllDownloaded
+                      ? tr("novel.volumeAllDownloaded")
+                      : volDownloading
+                        ? tr("novel.downloadingVolume")
+                        : tr("novel.downloadVolume")
+                  }
+                  aria-label={
+                    volAllDownloaded
+                      ? tr("novel.volumeAllDownloaded")
+                      : tr("novel.downloadVolume")
+                  }
+                  style={{
+                    flexShrink: 0,
+                    width: 42,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "none",
+                    background: "transparent",
+                    color: volAllDownloaded ? theme.muted : theme.ink,
+                    cursor:
+                      volAllDownloaded || volDownloading ? "default" : "pointer",
+                    opacity: volDownloading ? 0.5 : volAllDownloaded ? 0.55 : 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!volAllDownloaded && !volDownloading) {
+                      e.currentTarget.style.background = theme.hover;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <Icon
+                    name={volAllDownloaded ? "check" : "download"}
+                    size={15}
+                  />
+                </button>
+              )}
+            </div>
             {isOpen && (
               <>
                 {(() => {

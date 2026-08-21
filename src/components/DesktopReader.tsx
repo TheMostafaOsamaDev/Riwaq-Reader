@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { SideSheet } from "./SideSheet";
+import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
+import { ReaderScrubBar } from "../reader/chrome/ReaderScrubBar";
+import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { PaginatedView, type PaginatedAPI } from "./PaginatedView";
-import { ChapterProgressBar } from "./ChapterProgressBar";
 import {
   chapterScrollFraction,
   paragraphScrollOffset,
@@ -73,21 +74,6 @@ interface Props {
   /** Navigate to the top-level Settings page (from the quick-panel link). */
   onOpenFullSettings?: () => void;
   onBack: () => void;
-}
-
-function chromeBtn(theme: Theme, active = false): CSSProperties {
-  return {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    border: "none",
-    background: active ? theme.hover : "transparent",
-    color: active ? theme.ink : theme.chromeInk,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  };
 }
 
 export function DesktopReader({
@@ -638,43 +624,6 @@ export function DesktopReader({
     dismissSelection();
   };
 
-  // Click + drag the bottom progress bar to scrub through chapters.
-  // Pointer capture keeps drag alive after the cursor leaves the track.
-  const trackRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-  const [dragging, setDragging] = useState(false);
-  const chapterFromClientX = (clientX: number): number | null => {
-    const el = trackRef.current;
-    if (!el || chapterCount === 0) return null;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0) return null;
-    const ratio = Math.min(
-      1,
-      Math.max(0, (clientX - rect.left) / rect.width),
-    );
-    return Math.min(chapterCount - 1, Math.floor(ratio * chapterCount));
-  };
-  const onTrackPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    draggingRef.current = true;
-    setDragging(true);
-    const next = chapterFromClientX(e.clientX);
-    if (next !== null && next !== currentChapter) onChapterChange(next);
-  };
-  const onTrackPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current) return;
-    const next = chapterFromClientX(e.clientX);
-    if (next !== null && next !== currentChapter) onChapterChange(next);
-  };
-  const onTrackPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    setDragging(false);
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-  };
-
   return (
     <div
       // Reader CHROME follows the UI language (toolbars, panels, bottom
@@ -694,106 +643,57 @@ export function DesktopReader({
         fontFamily: FONT_STACKS.sans,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "14px 22px",
-          borderBottom: `0.5px solid ${theme.rule}`,
-          color: theme.chromeInk,
-          flexShrink: 0,
-          position: "relative",
-        }}
-      >
-        <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
-        <button onClick={onBack} style={chromeBtn(theme)} aria-label={tr("reader.backToLibrary")}>
-          <Icon name="home" size={16} />
-        </button>
-        <div style={{ width: 1, height: 18, background: theme.rule, margin: "0 4px" }} />
-        <button
-          onClick={() => toggle("toc")}
-          style={chromeBtn(theme, activePanel === "toc")}
-          aria-label={tr("reader.toc")}
-        >
-          <Icon name="list" size={16} />
-        </button>
-        <button
-          onClick={() => toggle("highlights")}
-          style={chromeBtn(theme, activePanel === "highlights")}
-          aria-label={tr("reader.highlights")}
-        >
-          <Icon name="highlight" size={16} />
-        </button>
-
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 2,
-            minWidth: 0,
-          }}
-        >
-          <div
-            title={chapter.title}
-            style={{
-              // Arabic / mixed titles render in Readex Pro (via the sans
-              // stack) so digits and Latin punctuation interleaved with
-              // Arabic share the same family. Suppress italic on Arabic
-              // — Readex Pro doesn't ship an italic, and synthetic
-              // italic on Arabic looks broken.
-              fontFamily: titleFontFor(chapter.title),
-              fontSize: 13,
-              // Explicit line-height — Readex Pro's Arabic glyphs need
-              // more vertical room than Fraunces' Latin, and without it
-              // `overflow: hidden` (needed for the ellipsis) clips the
-              // ascenders/descenders.
-              lineHeight: 1.55,
-              fontStyle: "normal",
-              fontWeight: 500,
-              color: theme.ink,
-              letterSpacing: "-0.01em",
-              width: "100%",
-              textAlign: "center",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {chapter.title}
-          </div>
-          <div
-            style={{
-              fontSize: 10.5,
-              color: theme.muted,
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-            }}
-          >
-            <span>
-              {tr("reader.chapterOfTotal", { n: currentChapter + 1, total: chapterCount })}
-            </span>
-          </div>
-        </div>
-
-        <button
-          onClick={() => toggle("progress")}
-          style={chromeBtn(theme, activePanel === "progress")}
-          aria-label={tr("reader.progress")}
-        >
-          <Icon name="clock" size={16} />
-        </button>
-        <button
-          onClick={() => toggle("settings")}
-          style={chromeBtn(theme, activePanel === "settings")}
-          aria-label={tr("reader.settings")}
-        >
-          <Icon name="type" size={16} />
-        </button>
-      </div>
+      <ReaderTopBar
+        theme={theme}
+        onBack={onBack}
+        backLabel={tr("reader.backToLibrary")}
+        title={chapter.title}
+        subtitle={tr("reader.chapterOfTotal", {
+          n: currentChapter + 1,
+          total: chapterCount,
+        })}
+        // Arabic / mixed titles render in Readex Pro (via the sans stack) so
+        // interleaved digits/Latin share the family; no synthetic italic.
+        titleStyle={{ fontFamily: titleFontFor(chapter.title) }}
+        progressFillRef={progressFillRef}
+        fillRtl={rtl}
+        navButtons={
+          <>
+            <ReaderIconButton
+              theme={theme}
+              icon="list"
+              label={tr("reader.toc")}
+              onClick={() => toggle("toc")}
+              active={activePanel === "toc"}
+            />
+            <ReaderIconButton
+              theme={theme}
+              icon="highlight"
+              label={tr("reader.highlights")}
+              onClick={() => toggle("highlights")}
+              active={activePanel === "highlights"}
+            />
+          </>
+        }
+        trailing={
+          <>
+            <ReaderIconButton
+              theme={theme}
+              icon="clock"
+              label={tr("reader.progress")}
+              onClick={() => toggle("progress")}
+              active={activePanel === "progress"}
+            />
+            <ReaderIconButton
+              theme={theme}
+              icon="type"
+              label={tr("reader.settings")}
+              onClick={() => toggle("settings")}
+              active={activePanel === "settings"}
+            />
+          </>
+        }
+      />
 
       {/* Content region is the positioning context for the overlay SideSheet:
           the reading column stays full-width and the panel floats over it. */}
@@ -892,135 +792,32 @@ export function DesktopReader({
             <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} tr={tr} isAr={dir === "rtl"} />
           )}
 
-          <div
-            style={{
-              padding: "14px 80px 22px",
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              color: theme.muted,
-              fontSize: 11,
-              flexShrink: 0,
+          <ReaderScrubBar
+            theme={theme}
+            rtl={dir === "rtl"}
+            fraction={(currentChapter + 1) / Math.max(1, chapterCount)}
+            pctLabel={`${pct}%`}
+            label={chapter.title}
+            ticks={ticks}
+            prevLabel={tr("reader.prevChapter")}
+            nextLabel={tr("reader.nextChapter")}
+            onPrev={prevChapter}
+            onNext={nextChapter}
+            prevDisabled={currentChapter === 0}
+            nextDisabled={currentChapter >= chapterCount - 1}
+            onSeek={(f) => {
+              const next = Math.min(
+                chapterCount - 1,
+                Math.floor(f * chapterCount),
+              );
+              if (next !== currentChapter) onChapterChange(next);
             }}
-          >
-            <button
-              onClick={prevChapter}
-              disabled={currentChapter === 0}
-              aria-label={tr("reader.prevChapter")}
-              style={{
-                ...chromeBtn(theme),
-                width: 28,
-                height: 28,
-                opacity: currentChapter === 0 ? 0.35 : 1,
-                cursor: currentChapter === 0 ? "not-allowed" : "pointer",
-              }}
-            >
-              <Icon name="arrowL" size={14} className="rtl-flip-x" />
-            </button>
-            <span style={{ fontVariantNumeric: "tabular-nums", minWidth: 32 }}>
-              {pct}%
-            </span>
-            <div
-              role="slider"
-              aria-label={tr("reader.chapterProgress")}
-              aria-valuemin={1}
-              aria-valuemax={Math.max(1, chapterCount)}
-              aria-valuenow={currentChapter + 1}
-              aria-valuetext={chapter.title}
-              onPointerDown={onTrackPointerDown}
-              onPointerMove={onTrackPointerMove}
-              onPointerUp={onTrackPointerUp}
-              onPointerCancel={onTrackPointerUp}
-              style={{
-                flex: 1,
-                height: 22,
-                display: "flex",
-                alignItems: "center",
-                cursor: dragging ? "grabbing" : "pointer",
-                // Stop the browser from interpreting horizontal pointer
-                // moves as scroll/zoom while we're scrubbing.
-                touchAction: "none",
-                userSelect: "none",
-              }}
-            >
-              <div
-                ref={trackRef}
-                style={{ position: "relative", width: "100%", height: 3 }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background: theme.rule,
-                    borderRadius: 1.5,
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: `${pct}%`,
-                    background: theme.ink,
-                    borderRadius: 1.5,
-                  }}
-                />
-                {ticks.map((p, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      position: "absolute",
-                      insetInlineStart: `${p * 100}%`,
-                      top: -2,
-                      width: 1,
-                      height: 7,
-                      background: theme.muted,
-                      opacity: 0.5,
-                    }}
-                  />
-                ))}
-                <div
-                  style={{
-                    position: "absolute",
-                    insetInlineStart: `${pct}%`,
-                    top: "50%",
-                    transform: `translate(-50%, -50%) scale(${dragging ? 1.25 : 1})`,
-                    width: 12,
-                    height: 12,
-                    borderRadius: 6,
-                    background: theme.ink,
-                    boxShadow: `0 0 0 3px ${theme.bg}`,
-                    transition: "transform 120ms ease",
-                  }}
-                />
-              </div>
-            </div>
-            <span
-              style={{
-                fontVariantNumeric: "tabular-nums",
-                maxWidth: 200,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {chapter.title}
-            </span>
-            <button
-              onClick={nextChapter}
-              disabled={currentChapter >= chapterCount - 1}
-              aria-label={tr("reader.nextChapter")}
-              style={{
-                ...chromeBtn(theme),
-                width: 28,
-                height: 28,
-                opacity: currentChapter >= chapterCount - 1 ? 0.35 : 1,
-                cursor:
-                  currentChapter >= chapterCount - 1 ? "not-allowed" : "pointer",
-              }}
-            >
-              <Icon name="arrowR" size={14} className="rtl-flip-x" />
-            </button>
-          </div>
+            ariaLabel={tr("reader.chapterProgress")}
+            valueMin={1}
+            valueMax={Math.max(1, chapterCount)}
+            valueNow={currentChapter + 1}
+            valueText={chapter.title}
+          />
         </div>
 
         <SideSheet

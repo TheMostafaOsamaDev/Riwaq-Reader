@@ -127,20 +127,16 @@ export function Store({ theme, layout, onStreamRead, onImportComplete }: Props) 
           />
         )}
       </div>
-      {rangeDialog && (
-        <DownloadRangeDialog
-          theme={theme}
-          sourceId={rangeDialog.sourceId}
-          novelUrl={rangeDialog.novelUrl}
-          onCancel={() => setRangeDialog(null)}
-          onStarted={() => {
-            setRangeDialog(null);
-          }}
-          onCompleted={() => {
-            onImportComplete();
-          }}
-        />
-      )}
+      <DownloadRangeDialog
+        theme={theme}
+        layout={layout}
+        open={rangeDialog !== null}
+        sourceId={rangeDialog?.sourceId}
+        novelUrl={rangeDialog?.novelUrl}
+        onCancel={() => setRangeDialog(null)}
+        onStarted={() => setRangeDialog(null)}
+        onCompleted={() => onImportComplete()}
+      />
     </>
   );
 }
