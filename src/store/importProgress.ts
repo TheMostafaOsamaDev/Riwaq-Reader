@@ -77,6 +77,13 @@ export function getState(): ProgressState {
   return state;
 }
 
+/** True while an import is actively in progress (started, not yet
+ *  finished or errored). Used by the background-task coordinator and
+ *  the notifier so imports keep the service alive and show progress. */
+export function isImportActive(s: ProgressState): boolean {
+  return s.active && s.finishedAt === null && s.error === null;
+}
+
 export function useImportProgress(): ProgressState {
   return useSyncExternalStore(subscribe, getState, getState);
 }
