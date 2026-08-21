@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
 
 export type ToastKind = "info" | "warn" | "error";
@@ -7,6 +7,10 @@ export interface ToastMessage {
   id: number;
   kind: ToastKind;
   text: string;
+  /** Optional trailing action (e.g. "Undo"). Rendered as a small text
+   *  button; clicking it does not itself dismiss the toast — the auto-
+   *  dismiss timer (or a later toast) still owns that. */
+  action?: { label: string; onClick: () => void };
 }
 
 interface Props {
@@ -49,6 +53,9 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
         borderInlineStart: `3px solid ${accent}`,
         borderRadius: 8,
         padding: "12px 18px",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
         fontFamily: FONT_STACKS.sans,
         fontSize: 13,
         lineHeight: 1.4,
@@ -56,7 +63,51 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
         boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
       }}
     >
-      {toast.text}
+      <span>{toast.text}</span>
+      {toast.action && (
+        <ToastActionButton
+          theme={theme}
+          label={toast.action.label}
+          onClick={toast.action.onClick}
+        />
+      )}
     </div>
+  );
+}
+
+function ToastActionButton({
+  theme,
+  label,
+  onClick,
+}: {
+  theme: Theme;
+  label: string;
+  onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        flexShrink: 0,
+        border: 0,
+        background: "transparent",
+        color: theme.ink,
+        font: "inherit",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        padding: "2px 4px",
+        marginInlineEnd: -4,
+        borderRadius: 4,
+        textDecoration: hover ? "underline" : "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
   );
 }

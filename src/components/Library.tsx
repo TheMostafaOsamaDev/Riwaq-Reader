@@ -56,7 +56,12 @@ import {
   deleteShelf as deleteShelfStore,
   type Shelf,
 } from "../store/shelves";
-import { booksOnShelf, toggleMembership } from "../store/shelfLogic";
+import {
+  booksOnShelf,
+  toggleMembership,
+  removeMembership,
+  wouldOrphan,
+} from "../store/shelfLogic";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
 import { SourceBadge } from "./SourceBadge";
 import { getSourceMeta } from "../sources/registry";
@@ -181,6 +186,21 @@ export function Library({
   } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
+  // Declared this early (rather than alongside the other toast-firing
+  // handlers further down) so shelf-membership handlers defined below —
+  // onRemoveBookFromShelf in particular — can call it without a
+  // used-before-declaration error.
+  const showToast = useCallback(
+    (
+      kind: ToastMessage["kind"],
+      text: string,
+      action?: ToastMessage["action"],
+    ) => {
+      toastIdRef.current += 1;
+      setToast({ id: toastIdRef.current, kind, text, action });
+    },
+    [],
+  );
 
   // The book-status FILTER (all/reading/finished/wishlist) is ephemeral UI
   // state — flipping a filter pill is not a navigation step, so it lives here
@@ -294,6 +314,43 @@ export function Library({
     },
     [books, refresh],
   );
+  // Smart remove-from-shelf (Task 14): unconditionally writes the
+  // membership change. Shared by the non-orphan (silent + undo) path and
+  // the orphan dialog's "Keep in library" cancel action.
+  const doUnshelve = useCallback(
+    async (bookId: string, shelfId: string) => {
+      const book = books.find((b) => b.id === bookId);
+      await updateBookShelfIds(bookId, removeMembership(book?.shelfIds, shelfId));
+      await refresh();
+    },
+    [books, refresh],
+  );
+  // Holds the pending orphan confirmation (null when no dialog is open) —
+  // only populated when removing from `shelfId` would leave the book on no
+  // shelf at all.
+  const [orphanRemoval, setOrphanRemoval] = useState<{
+    bookId: string;
+    shelfId: string;
+    title: string;
+  } | null>(null);
+  const onRemoveBookFromShelf = useCallback(
+    (bookId: string, shelfId: string) => {
+      const book = books.find((b) => b.id === bookId);
+      if (wouldOrphan(book?.shelfIds, shelfId)) {
+        setOrphanRemoval({ bookId, shelfId, title: book?.title ?? "" });
+        return;
+      }
+      // Non-orphan case: silent + undoable — no confirmation needed since
+      // the book stays in the library either way.
+      const shelfName = shelves.find((s) => s.id === shelfId)?.name ?? "";
+      void doUnshelve(bookId, shelfId);
+      showToast("info", tr("shelves.removedToast", { shelf: shelfName }), {
+        label: tr("common.undo"),
+        onClick: () => void onAddBooksToShelf(shelfId, [bookId]),
+      });
+    },
+    [books, shelves, doUnshelve, onAddBooksToShelf, showToast, tr],
+  );
   // "Add to shelf" entry point (Task 12): opens the from-library/from-device
   // choice menu for a given shelf. addMenuShelf drives AddToShelfMenu;
   // choosing "From library" swaps it for pickerShelf (AddToShelfDialog),
@@ -321,11 +378,6 @@ export function Library({
     [view.kind],
   );
   const onOpenShelves = useCallback(() => goLibrary({ kind: "shelves" }), []);
-
-  const showToast = useCallback((kind: ToastMessage["kind"], text: string) => {
-    toastIdRef.current += 1;
-    setToast({ id: toastIdRef.current, kind, text });
-  }, []);
 
   const fmtNum = useCallback(
     (n: number) =>
@@ -602,16 +654,27 @@ export function Library({
 
   // Right-click menu on shelf cards. The menu lives at the Library top
   // level so its actions can reach the modal + delete handlers without
-  // threading more props through the layout components.
+  // threading more props through the layout components. `shelfId` is only
+  // set when the menu was opened from a shelf-scoped grid (the single-shelf
+  // detail page) — it gates the extra "Remove from shelf" row (Task 14).
   const [menu, setMenu] = useState<{
     bookId: string;
     x: number;
     y: number;
+    shelfId?: string;
   } | null>(null);
   const menuBook =
     menu !== null ? books.find((b) => b.id === menu.bookId) : undefined;
-  const openContextMenu = (bookId: string, x: number, y: number) =>
-    setMenu({ bookId, x, y });
+  // Hoisted out of the JSX below so the truthiness check narrows a local
+  // `const` (stable across the closure) rather than a property access on
+  // `menu`, which TS won't narrow inside a nested callback.
+  const menuShelfId = menu?.shelfId;
+  const openContextMenu = (
+    bookId: string,
+    x: number,
+    y: number,
+    shelfId?: string,
+  ) => setMenu({ bookId, x, y, shelfId });
   const closeContextMenu = () => setMenu(null);
   const onPickStatus = async (bookId: string, s: BookStatus) => {
     try {
@@ -759,6 +822,7 @@ export function Library({
     onRequestDeleteShelf,
     onAddBooksToShelf,
     onToggleBookShelf,
+    onRemoveBookFromShelf,
     onAddToShelf,
     onOpenShelf: (id: string) => goShelf(id),
     activeShelfId,
@@ -828,6 +892,15 @@ export function Library({
           }}
           onDelete={() => onMenuDelete(menuBook.id, menuBook.title)}
           onClose={closeContextMenu}
+          shelfContextId={menuShelfId}
+          onRemoveFromShelf={
+            menuShelfId
+              ? () => {
+                  closeContextMenu();
+                  onRemoveBookFromShelf(menuBook.id, menuShelfId);
+                }
+              : undefined
+          }
         />
       )}
       {/* Dialog + full-screen wrappers manage their own enter/exit and stay
@@ -858,6 +931,41 @@ export function Library({
             confirmVariant="destructive"
             onConfirm={performDelete}
             onCancel={cancelDelete}
+          />
+        )}
+      </AnimatedDialog>
+      {/* Orphan-removal confirm (Task 14): only shown when removing the book
+          from its last shelf. Mapping is deliberately inverted from the
+          usual destructive-dialog shape — Cancel is the SAFE choice here
+          ("Keep in library", just unshelves) and is what ConfirmDialog
+          focuses by default; Confirm is the destructive one ("Remove from
+          library", deletes the book outright). */}
+      <AnimatedDialog
+        open={orphanRemoval !== null}
+        onScrimClick={() => setOrphanRemoval(null)}
+        zIndex={9500}
+      >
+        {orphanRemoval && (
+          <ConfirmDialog
+            theme={theme}
+            title={tr("shelves.keepTitle", {
+              title: orphanRemoval.title || tr("common.untitled"),
+            })}
+            message={tr("shelves.keepBody")}
+            cancelLabel={tr("shelves.keepInLibrary")}
+            confirmLabel={tr("library.removeFromLibrary")}
+            confirmVariant="destructive"
+            onCancel={async () => {
+              const o = orphanRemoval;
+              setOrphanRemoval(null);
+              await doUnshelve(o.bookId, o.shelfId);
+            }}
+            onConfirm={async () => {
+              const o = orphanRemoval;
+              setOrphanRemoval(null);
+              await deleteBook(o.bookId);
+              await refresh();
+            }}
           />
         )}
       </AnimatedDialog>
@@ -1048,6 +1156,10 @@ interface LayoutProps {
    *  page's "Shelves" checklist (Task 13). Pure membership editing; never
    *  deletes the book. */
   onToggleBookShelf: (bookId: string, shelfId: string) => Promise<void>;
+  /** Smart remove-from-shelf (Task 14): silent + undoable when the book
+   *  stays on another shelf, otherwise opens the parent's orphan confirm
+   *  dialog. Consumed by the overview's hover "×" (optional parity). */
+  onRemoveBookFromShelf: (bookId: string, shelfId: string) => void;
   /** Open the from-library/from-device add-book menu (rendered by the
    *  parent) for a given shelf. Consumed by the overview/single-shelf
    *  headers (later tasks) — threaded here so this task's plumbing is in
@@ -1060,7 +1172,16 @@ interface LayoutProps {
   activeShelfId?: string;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
-  onCardContextMenu: (id: string, x: number, y: number) => void;
+  /** Optional 4th arg: the shelf id, when the card lives in a shelf-scoped
+   *  grid (the single-shelf detail page) — threaded through to `<ContextMenu
+   *  shelfContextId>` so it can show the "Remove from shelf" row. Omitted
+   *  from the main library grid's call sites. */
+  onCardContextMenu: (
+    id: string,
+    x: number,
+    y: number,
+    shelfId?: string,
+  ) => void;
 }
 
 /** "store" is a top-level destination, not a book filter — when the tab
@@ -1127,6 +1248,7 @@ function DesktopLibrary({
   onRequestDeleteShelf,
   onAddBooksToShelf: _onAddBooksToShelf,
   onToggleBookShelf,
+  onRemoveBookFromShelf,
   onAddToShelf,
   onOpenShelf,
   activeShelfId,
@@ -1256,6 +1378,7 @@ function DesktopLibrary({
           onRequestRenameShelf={onRequestRenameShelf}
           onRequestDeleteShelf={onRequestDeleteShelf}
           onNewShelf={onNewShelf}
+          onRemoveFromShelf={onRemoveBookFromShelf}
         />
       ) : sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
@@ -1386,7 +1509,7 @@ function DesktopLibrary({
                   coverSrc={covers[b.id]}
                   onOpen={() => onOpen(b.id)}
                   onContextMenu={(x: number, y: number) =>
-                    onCardContextMenu(b.id, x, y)
+                    onCardContextMenu(b.id, x, y, activeShelf.id)
                   }
                 />
               ))}
@@ -1525,6 +1648,7 @@ function MobileLibrary({
   onRequestDeleteShelf,
   onAddBooksToShelf: _onAddBooksToShelf,
   onToggleBookShelf,
+  onRemoveBookFromShelf,
   onAddToShelf,
   onOpenShelf,
   activeShelfId,
@@ -1670,6 +1794,7 @@ function MobileLibrary({
             onRequestRenameShelf={onRequestRenameShelf}
             onRequestDeleteShelf={onRequestDeleteShelf}
             onNewShelf={onNewShelf}
+            onRemoveFromShelf={onRemoveBookFromShelf}
           />
         </div>
       ) : sourceDetailView ? (
@@ -1829,7 +1954,9 @@ function MobileLibrary({
                     book={b}
                     coverSrc={covers[b.id]}
                     onOpen={() => onOpen(b.id)}
-                    onContextMenu={(x, y) => onCardContextMenu(b.id, x, y)}
+                    onContextMenu={(x, y) =>
+                      onCardContextMenu(b.id, x, y, activeShelf.id)
+                    }
                   />
                 ))}
               </div>

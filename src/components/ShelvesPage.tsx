@@ -26,6 +26,12 @@ interface Props {
   onRequestRenameShelf: (shelf: Shelf) => void;
   onRequestDeleteShelf: (shelf: Shelf) => void;
   onNewShelf: () => void;
+  /** Optional parity with the single-shelf detail page's context-menu
+   *  "Remove from shelf" row (Task 14): when provided, each cover shows a
+   *  small hover "×" that calls it directly. Omitting it (e.g. on a
+   *  touch-only build) just skips the affordance — touch users still reach
+   *  the same action from the book's own context menu. */
+  onRemoveFromShelf?: (bookId: string, shelfId: string) => void;
 }
 
 export function ShelvesPage({
@@ -39,6 +45,7 @@ export function ShelvesPage({
   onRequestRenameShelf,
   onRequestDeleteShelf,
   onNewShelf,
+  onRemoveFromShelf,
 }: Props) {
   const { tr, dir } = useI18n();
   return (
@@ -81,6 +88,7 @@ export function ShelvesPage({
               onAddToShelf={onAddToShelf}
               onRequestRenameShelf={onRequestRenameShelf}
               onRequestDeleteShelf={onRequestDeleteShelf}
+              onRemoveFromShelf={onRemoveFromShelf}
             />
           ))}
         </div>
@@ -144,6 +152,7 @@ interface ShelfSectionProps {
   onAddToShelf: (shelfId: string) => void;
   onRequestRenameShelf: (shelf: Shelf) => void;
   onRequestDeleteShelf: (shelf: Shelf) => void;
+  onRemoveFromShelf?: (bookId: string, shelfId: string) => void;
 }
 
 function ShelfSection({
@@ -157,6 +166,7 @@ function ShelfSection({
   onAddToShelf,
   onRequestRenameShelf,
   onRequestDeleteShelf,
+  onRemoveFromShelf,
 }: ShelfSectionProps) {
   const { tr } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -257,6 +267,11 @@ function ShelfSection({
                 book={b}
                 coverSrc={covers[b.id]}
                 onOpen={() => onOpenBook(b.id)}
+                onRemove={
+                  onRemoveFromShelf
+                    ? () => onRemoveFromShelf(b.id, shelf.id)
+                    : undefined
+                }
               />
             </div>
           ))}
@@ -278,38 +293,101 @@ function ShelfBookTile({
   book,
   coverSrc,
   onOpen,
+  onRemove,
 }: {
   theme: Theme;
   book: BookIndexEntry;
   coverSrc?: string;
   onOpen: () => void;
+  /** Optional parity affordance (Task 14) — shows a small hover "×" over
+   *  the cover that removes the book from just this shelf. Undefined when
+   *  the caller didn't wire it up; the row then only offers the click-through
+   *  to the book itself (touch users still reach "Remove from shelf" via the
+   *  book's own context menu on the single-shelf detail page). */
+  onRemove?: () => void;
 }) {
   const { tr } = useI18n();
+  const [hover, setHover] = useState(false);
   const displayTitle = book.title || tr("common.untitled");
   return (
-    <button
-      onClick={onOpen}
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
         width: BOOK_COVER_DIMS.sm.w,
-        border: 0,
-        background: "transparent",
-        padding: 0,
-        font: "inherit",
-        cursor: "pointer",
-        textAlign: "start",
       }}
     >
-      <BookCover
-        title={book.title}
-        author={book.author}
-        palette={paletteForId(book.id)}
-        size="sm"
-        src={coverSrc}
-        badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
-      />
+      <div style={{ position: "relative" }}>
+        <button
+          onClick={onOpen}
+          style={{
+            display: "block",
+            border: 0,
+            background: "transparent",
+            padding: 0,
+            font: "inherit",
+            cursor: "pointer",
+            textAlign: "start",
+          }}
+        >
+          <BookCover
+            title={book.title}
+            author={book.author}
+            palette={paletteForId(book.id)}
+            size="sm"
+            src={coverSrc}
+            badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
+          />
+        </button>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            aria-label={tr("shelves.removeFromShelf")}
+            title={tr("shelves.removeFromShelf")}
+            style={{
+              position: "absolute",
+              top: 4,
+              insetInlineEnd: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              border: 0,
+              background: "rgba(0,0,0,0.55)",
+              color: "#fff",
+              cursor: "pointer",
+              padding: 0,
+              opacity: hover ? 1 : 0,
+              transition: "opacity 120ms ease",
+              pointerEvents: hover ? "auto" : "none",
+            }}
+          >
+            <Icon name="close" size={13} stroke={2} />
+          </button>
+        )}
+      </div>
+      <button
+        onClick={onOpen}
+        style={{
+          display: "block",
+          width: "100%",
+          border: 0,
+          background: "transparent",
+          padding: 0,
+          font: "inherit",
+          cursor: "pointer",
+          textAlign: "start",
+        }}
+      >
       <span
         style={{
           marginTop: 8,
@@ -329,7 +407,8 @@ function ShelfBookTile({
       >
         {displayTitle}
       </span>
-    </button>
+      </button>
+    </div>
   );
 }
 
