@@ -319,7 +319,8 @@ input[type="range"]::-moz-range-thumb {
 /* Focus — soft amber ring, matches the design's warm accent */
 button:focus-visible,
 input:focus-visible,
-[role="button"]:focus-visible {
+[role="button"]:focus-visible,
+[role="checkbox"]:focus-visible {
   outline: 2px solid rgba(201, 100, 66, 0.55);
   outline-offset: 2px;
 }

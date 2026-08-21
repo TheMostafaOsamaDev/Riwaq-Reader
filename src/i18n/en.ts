@@ -195,8 +195,6 @@ export const en = {
   "shelves.newShelf": "New shelf",
   "shelves.empty": "No shelves yet",
   "shelves.emptyHint": "Create a shelf to group books your way.",
-  "shelves.zeroBooks": "0 books",
-  "shelves.sectionEmpty": "No books in this shelf yet.",
   "shelves.dialogHint": "Name a collection. You can add books to it later.",
   "shelves.namePlaceholder": "e.g. Favorites, Summer reads…",
   // Seed names for the first-run shelf list (LibraryLayout — not persisted
@@ -223,10 +221,11 @@ export const en = {
   "shelves.removeFromShelf": "Remove from shelf",
   "shelves.removedToast": "Removed from {shelf}",
   "shelves.addedToast": "Added {n} to {shelf}",
-"shelves.keepTitle": "Keep “{title}” in your library?",
+  "shelves.keepTitle": "Keep “{title}” in your library?",
   "shelves.keepBody": "This book isn't on any other shelf.",
   "shelves.keepInLibrary": "Keep in library",
-  "shelves.count": "{n} books",
+  "shelves.bookCountOne": "{n} book",
+  "shelves.bookCountOther": "{n} books",
   "shelves.shelfOptions": "{shelf} options",
 
   // reader chrome (desktop + mobile toolbars, chapter progress, mobile sheet)

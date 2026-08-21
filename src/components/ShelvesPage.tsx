@@ -206,7 +206,10 @@ function ShelfSection({
           </h2>
         </button>
         <span style={{ fontSize: 12, color: theme.muted, flexShrink: 0 }}>
-          {tr("shelves.count", { n: books.length })}
+          {tr(
+            books.length === 1 ? "shelves.bookCountOne" : "shelves.bookCountOther",
+            { n: books.length },
+          )}
         </span>
         <div style={{ marginInlineStart: "auto", position: "relative", flexShrink: 0 }}>
           <button

@@ -143,10 +143,7 @@ export function ShelfChecklist({
             ref={shelves.length === 0 ? firstRowRef : undefined}
             theme={theme}
             label={tr("sidebar.newShelf")}
-            onClick={() => {
-              onNewShelf();
-              onClose();
-            }}
+            onClick={onNewShelf}
           />
         </div>
       </div>
@@ -232,6 +229,7 @@ const NewShelfRow = forwardRef<HTMLButtonElement, {
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      role="menuitem"
       style={{
         width: "100%",
         display: "flex",

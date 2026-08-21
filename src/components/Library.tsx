@@ -44,7 +44,8 @@ import {
   setCoverFromFile,
   updateBookMeta,
   updateBookStatus,
-  updateBookShelfIds,
+  addBookToShelf,
+  removeBookFromShelf,
   type BookIndexEntry,
   type BookStatus,
   type StagedPick,
@@ -58,8 +59,7 @@ import {
 } from "../store/shelves";
 import {
   booksOnShelf,
-  toggleMembership,
-  removeMembership,
+  isOnShelf,
   wouldOrphan,
 } from "../store/shelfLogic";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
@@ -290,26 +290,36 @@ export function Library({
     }
     await onDeleteShelf(id);
   }, [deletingShelf, view, onDeleteShelf]);
+  // Uses the race-safe delta mutator (see store/library.ts) rather than
+  // computing an absolute shelfIds list from the `books` snapshot — two
+  // handlers racing on the same book (e.g. rapid picker + undo) would
+  // otherwise both read stale membership and the second write could
+  // silently drop the first's change.
   const onAddBooksToShelf = useCallback(
     async (shelfId: string, bookIds: string[]) => {
       for (const bookId of bookIds) {
-        const book = books.find((b) => b.id === bookId);
-        const next = [...new Set([...(book?.shelfIds ?? []), shelfId])];
-        await updateBookShelfIds(bookId, next);
+        await addBookToShelf(bookId, shelfId);
       }
       await refresh();
     },
-    [books, refresh],
+    [refresh],
   );
   // Single-book shelf membership toggle for the detail page's "Shelves"
   // checklist (Task 13). Pure membership editing — flips one shelf's
   // membership for one book and nothing else; it never deletes the book,
   // even when this empties its shelf list (unlike the shelf-page "remove"
   // flow, which prompts to keep an orphaned book in the library).
+  //
+  // Decides add-vs-remove from the current (possibly momentarily stale)
+  // `books` snapshot, then hands off to a delta mutator that re-reads the
+  // index fresh before writing — so rapid successive toggles on this same
+  // checklist can't clobber each other the way an absolute-list write
+  // would (see FIX 1 / store/library.ts).
   const onToggleBookShelf = useCallback(
     async (bookId: string, shelfId: string) => {
       const book = books.find((b) => b.id === bookId);
-      await updateBookShelfIds(bookId, toggleMembership(book?.shelfIds, shelfId));
+      const isOn = isOnShelf(book?.shelfIds, shelfId);
+      await (isOn ? removeBookFromShelf : addBookToShelf)(bookId, shelfId);
       await refresh();
     },
     [books, refresh],
@@ -319,11 +329,10 @@ export function Library({
   // the orphan dialog's "Keep in library" cancel action.
   const doUnshelve = useCallback(
     async (bookId: string, shelfId: string) => {
-      const book = books.find((b) => b.id === bookId);
-      await updateBookShelfIds(bookId, removeMembership(book?.shelfIds, shelfId));
+      await removeBookFromShelf(bookId, shelfId);
       await refresh();
     },
-    [books, refresh],
+    [refresh],
   );
   // Holds the pending orphan confirmation (null when no dialog is open) —
   // only populated when removing from `shelfId` would leave the book on no
@@ -1457,7 +1466,12 @@ function DesktopLibrary({
                 {activeShelf.name}
               </h1>
               <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
-                {tr("shelves.count", { n: shelfBooks.length })}
+                {tr(
+                  shelfBooks.length === 1
+                    ? "shelves.bookCountOne"
+                    : "shelves.bookCountOther",
+                  { n: shelfBooks.length },
+                )}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1895,7 +1909,12 @@ function MobileLibrary({
                   {activeShelf.name}
                 </h1>
                 <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
-                  {tr("shelves.count", { n: shelfBooks.length })}
+                  {tr(
+                    shelfBooks.length === 1
+                      ? "shelves.bookCountOne"
+                      : "shelves.bookCountOther",
+                    { n: shelfBooks.length },
+                  )}
                 </div>
               </div>
             </div>

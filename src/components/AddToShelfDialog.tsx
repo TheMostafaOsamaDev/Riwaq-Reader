@@ -280,11 +280,22 @@ function BookRow({
   return (
     <div
       onClick={onShelf ? undefined : onToggle}
+      onKeyDown={
+        onShelf
+          ? undefined
+          : (e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                onToggle();
+              }
+            }
+      }
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       role="checkbox"
       aria-checked={checked}
       aria-disabled={onShelf}
+      tabIndex={onShelf ? -1 : 0}
       style={{
         height: "100%",
         display: "flex",
