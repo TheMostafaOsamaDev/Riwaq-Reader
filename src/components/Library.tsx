@@ -1101,6 +1101,13 @@ function DesktopLibrary({
   onOpenShelves,
   shelves,
   onNewShelf,
+  onCreateShelf: _onCreateShelf,
+  onRenameShelf: _onRenameShelf,
+  onRequestRenameShelf,
+  onDeleteShelf: _onDeleteShelf,
+  onRequestDeleteShelf,
+  onAddBooksToShelf: _onAddBooksToShelf,
+  onAddToShelf,
   onOpenShelf,
   activeShelfId,
   onDelete,
@@ -1208,7 +1215,18 @@ function DesktopLibrary({
           }
         >
       {shelvesActive ? (
-        <ShelvesPage theme={theme} shelves={shelves} onNewShelf={onNewShelf} />
+        <ShelvesPage
+          theme={theme}
+          shelves={shelves}
+          books={books}
+          covers={covers}
+          onOpenBook={onOpen}
+          onOpenShelf={onOpenShelf}
+          onAddToShelf={onAddToShelf}
+          onRequestRenameShelf={onRequestRenameShelf}
+          onRequestDeleteShelf={onRequestDeleteShelf}
+          onNewShelf={onNewShelf}
+        />
       ) : sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
         // NovelDetailView the Store uses for browsing. Tabs above stay
@@ -1372,6 +1390,17 @@ function MobileLibrary({
   onOpenShelves,
   shelves,
   onNewShelf,
+  onCreateShelf: _onCreateShelf,
+  onRenameShelf: _onRenameShelf,
+  onRequestRenameShelf,
+  onDeleteShelf: _onDeleteShelf,
+  onRequestDeleteShelf,
+  onAddBooksToShelf: _onAddBooksToShelf,
+  onAddToShelf,
+  onOpenShelf,
+  activeShelfId: _activeShelfId,
+  onDelete: _onDelete,
+  onEdit: _onEdit,
   onCardContextMenu,
 }: LayoutProps) {
   const { tr, locale } = useI18n();
@@ -1491,7 +1520,18 @@ function MobileLibrary({
             title={tr("shelves.title")}
             onBack={() => back()}
           />
-          <ShelvesPage theme={theme} shelves={shelves} onNewShelf={onNewShelf} />
+          <ShelvesPage
+            theme={theme}
+            shelves={shelves}
+            books={books}
+            covers={covers}
+            onOpenBook={onOpen}
+            onOpenShelf={onOpenShelf}
+            onAddToShelf={onAddToShelf}
+            onRequestRenameShelf={onRequestRenameShelf}
+            onRequestDeleteShelf={onRequestDeleteShelf}
+            onNewShelf={onNewShelf}
+          />
         </div>
       ) : sourceDetailView ? (
         <div

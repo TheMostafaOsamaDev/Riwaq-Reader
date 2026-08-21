@@ -200,6 +200,7 @@ export const ar: Messages = {
   "shelves.keepBody": "هذا الكتاب ليس في أي رف آخر.",
   "shelves.keepInLibrary": "الإبقاء في المكتبة",
   "shelves.count": "{n} كتب",
+  "shelves.shelfOptions": "خيارات {shelf}",
 
   "reader.backToLibrary": "العودة إلى المكتبة",
   "reader.prevChapter": "الفصل السابق",

@@ -227,6 +227,7 @@ export const en = {
   "shelves.keepBody": "This book isn't on any other shelf.",
   "shelves.keepInLibrary": "Keep in library",
   "shelves.count": "{n} books",
+  "shelves.shelfOptions": "{shelf} options",
 
   // reader chrome (desktop + mobile toolbars, chapter progress, mobile sheet)
   "reader.backToLibrary": "Back to library",
