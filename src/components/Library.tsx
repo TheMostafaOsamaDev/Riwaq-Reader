@@ -14,6 +14,8 @@ import { LibrarySidebar } from "./LibrarySidebar";
 import { SearchOverlay } from "./SearchOverlay";
 import { ShelvesPage } from "./ShelvesPage";
 import { NewShelfDialog } from "./NewShelfDialog";
+import { AddToShelfMenu } from "./AddToShelfMenu";
+import { AddToShelfDialog } from "./AddToShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
@@ -162,6 +164,20 @@ export function Library({
     imported: 0,
     errors: [],
   });
+  // Set by startImportToShelf when the device-import flow (AddToShelfMenu's
+  // "From device") kicks off — carries the target shelf + a pre-import
+  // snapshot of book ids so the *actual* completion point (summarizeImport,
+  // the one choke point every import path funnels through: immediate
+  // EPUB-only imports, a fully-drained draft queue, and skip-rest) can diff
+  // the fresh index and assign whatever landed to that shelf. A ref (not
+  // state) so a stale render's closure — resumed after the file-picker's
+  // await — still reads the value written just before onImport() was
+  // called, and so it survives across every re-render the multi-step draft
+  // queue produces before that point is reached.
+  const pendingShelfImportRef = useRef<{
+    shelfId: string;
+    before: Set<string>;
+  } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
 
@@ -264,6 +280,16 @@ export function Library({
     },
     [books, refresh],
   );
+  // "Add to shelf" entry point (Task 12): opens the from-library/from-device
+  // choice menu for a given shelf. addMenuShelf drives AddToShelfMenu;
+  // choosing "From library" swaps it for pickerShelf (AddToShelfDialog),
+  // "From device" clears the menu and kicks off startImportToShelf below.
+  const [addMenuShelf, setAddMenuShelf] = useState<string | null>(null);
+  const [pickerShelf, setPickerShelf] = useState<string | null>(null);
+  const onAddToShelf = useCallback(
+    (shelfId: string) => setAddMenuShelf(shelfId),
+    [],
+  );
 
   // A "tab" selection is either the Store destination (a history push) or a
   // status filter. A filter change never leaves the shelf, but if the user is
@@ -322,6 +348,31 @@ export function Library({
   // defaults the remainder.
   const currentDraft = importQueue[qIndex] ?? null;
 
+  // If startImportToShelf kicked off this import, diff the fresh index
+  // against its pre-import snapshot and assign whatever landed to that
+  // shelf. Called from summarizeImport — the single point every import
+  // path (immediate EPUB-only import, a fully-drained draft queue, and
+  // skip-rest) funnels through — so this fires exactly once per completed
+  // import, regardless of which path got there. listBooks() reads the
+  // fresh index directly rather than the `books` state closure, which may
+  // still be stale at this point in the call chain.
+  const finishPendingShelfImport = async () => {
+    const pending = pendingShelfImportRef.current;
+    if (!pending) return;
+    pendingShelfImportRef.current = null;
+    const after = await listBooks();
+    const newIds = after
+      .filter((b) => !pending.before.has(b.id))
+      .map((b) => b.id);
+    if (newIds.length === 0) return;
+    await onAddBooksToShelf(pending.shelfId, newIds);
+    const name = shelves.find((s) => s.id === pending.shelfId)?.name ?? "";
+    showToast(
+      "info",
+      tr("shelves.addedToast", { n: newIds.length, shelf: name }),
+    );
+  };
+
   const summarizeImport = () => {
     setImportQueue([]);
     setQIndex(0);
@@ -341,6 +392,10 @@ export function Library({
     } else if (imported === 0 && errors.length > 0) {
       setError(errorLabel(errors[0], tr));
     }
+    // Fire-and-forget: a pending shelf assignment (device import started via
+    // AddToShelfMenu) resolves after its own listBooks() round-trip, whose
+    // toast then supersedes whichever message was just shown above.
+    void finishPendingShelfImport();
   };
 
   const advanceQueue = async (draft: FixedImportDraft, didImport: boolean) => {
@@ -356,9 +411,17 @@ export function Library({
   };
 
   const beginImport = async (res: StagedPick | null) => {
-    if (!res) return;
+    if (!res) {
+      // Nothing was picked (dialog cancelled) — nothing will ever call
+      // summarizeImport for this attempt, so drop any pending shelf
+      // assignment now instead of letting it leak onto a later, unrelated
+      // import.
+      pendingShelfImportRef.current = null;
+      return;
+    }
     if (res.empty) {
       showToast("warn", tr("status.emptyFolderImport"));
+      pendingShelfImportRef.current = null;
       return;
     }
     importStats.current = {
@@ -382,9 +445,28 @@ export function Library({
       await beginImport(await pickBooksForImport());
     } catch (e) {
       setError(errorLabel(e instanceof Error ? e.message : String(e), tr));
+      // The pick/import blew up before beginImport could run its own
+      // cleanup — same reasoning as beginImport's `!res` branch above.
+      pendingShelfImportRef.current = null;
     } finally {
       setImporting(false);
     }
+  };
+
+  // Device → shelf (AddToShelfMenu's "From device"): snapshot the current
+  // book ids, then run the *existing* single-file import trigger unchanged.
+  // Its own completion path (via summarizeImport, see
+  // finishPendingShelfImport above) diffs the fresh index against this
+  // snapshot and assigns whatever's new to `shelfId`. Guarded the same way
+  // onImport guards itself, so a tap while an import is already underway
+  // is a no-op rather than a second concurrent pick.
+  const startImportToShelf = async (shelfId: string) => {
+    if (importing || importQueue.length > 0) return;
+    pendingShelfImportRef.current = {
+      shelfId,
+      before: new Set(books.map((b) => b.id)),
+    };
+    await onImport();
   };
 
   const onImportFolder = async () => {
@@ -662,6 +744,7 @@ export function Library({
     onDeleteShelf,
     onRequestDeleteShelf,
     onAddBooksToShelf,
+    onAddToShelf,
     onOpenShelf: (id: string) => goShelf(id),
     activeShelfId,
     onDelete: (id: string) => {
@@ -798,6 +881,35 @@ export function Library({
           />
         )}
       </AnimatedDialog>
+      {/* Add-to-shelf picker (Task 12) — same tier as the confirm dialogs
+          above; mutually exclusive with them (only opens once the
+          from-library choice is made in AddToShelfMenu below). */}
+      <AnimatedDialog
+        open={pickerShelf !== null}
+        onScrimClick={() => setPickerShelf(null)}
+        zIndex={9500}
+      >
+        {pickerShelf && (
+          <AddToShelfDialog
+            theme={theme}
+            shelfId={pickerShelf}
+            shelfName={shelves.find((s) => s.id === pickerShelf)?.name ?? ""}
+            books={books}
+            covers={covers}
+            onConfirm={async (ids) => {
+              const shelfId = pickerShelf;
+              setPickerShelf(null);
+              await onAddBooksToShelf(shelfId, ids);
+              const name = shelves.find((s) => s.id === shelfId)?.name ?? "";
+              showToast(
+                "info",
+                tr("shelves.addedToast", { n: ids.length, shelf: name }),
+              );
+            }}
+            onClose={() => setPickerShelf(null)}
+          />
+        )}
+      </AnimatedDialog>
       <AnimatedFullScreen
         open={queueOpen}
         layout={layout}
@@ -836,6 +948,25 @@ export function Library({
           confirmLabel={tr("shelves.renameConfirm")}
           onCreate={(name) => onRenameShelf(renaming.id, name)}
           onClose={() => setRenaming(null)}
+        />
+      )}
+      {/* Add-to-shelf entry menu (Task 12) — self-contained overlay, same
+          shape as NewShelfDialog above. "From library" swaps it for the
+          AnimatedDialog-wrapped picker; "From device" hands off to the
+          existing import flow via startImportToShelf. */}
+      {addMenuShelf && (
+        <AddToShelfMenu
+          theme={theme}
+          onFromLibrary={() => {
+            setPickerShelf(addMenuShelf);
+            setAddMenuShelf(null);
+          }}
+          onFromDevice={() => {
+            const id = addMenuShelf;
+            setAddMenuShelf(null);
+            void startImportToShelf(id);
+          }}
+          onClose={() => setAddMenuShelf(null)}
         />
       )}
     </>
@@ -898,6 +1029,11 @@ interface LayoutProps {
    *  tasks). */
   onRequestDeleteShelf: (shelf: Shelf) => void;
   onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
+  /** Open the from-library/from-device add-book menu (rendered by the
+   *  parent) for a given shelf. Consumed by the overview/single-shelf
+   *  headers (later tasks) — threaded here so this task's plumbing is in
+   *  place before those call sites land. */
+  onAddToShelf: (shelfId: string) => void;
   /** Navigate to a specific shelf's detail view (wired in Task 9). */
   onOpenShelf: (id: string) => void;
   /** The shelf whose detail view is open, if any — drives the sidebar's
