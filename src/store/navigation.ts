@@ -35,6 +35,7 @@ export type LibraryView =
   | { kind: "shelf" }
   | { kind: "store" }
   | { kind: "shelves" }
+  | { kind: "shelfDetail"; shelfId: string }
   | {
       kind: "novel";
       sourceId: string;
@@ -197,6 +198,10 @@ export function goBase(base: BaseLocation, opts?: { replace?: boolean }): void {
 
 export function goLibrary(view: LibraryView, opts?: { replace?: boolean }): void {
   goBase({ screen: "library", view }, opts);
+}
+
+export function goShelf(shelfId: string, opts?: { replace?: boolean }): void {
+  goLibrary({ kind: "shelfDetail", shelfId }, opts);
 }
 
 export function goReader(bookId: string, opts?: { replace?: boolean }): void {

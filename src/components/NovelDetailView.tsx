@@ -65,6 +65,8 @@ import { Hero } from "./Hero";
 import { SourceBadge } from "./SourceBadge";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "./Skeleton";
 import { SaveAsOfflineBookDialog } from "./SaveAsOfflineBookDialog";
+import { ShelfChecklist } from "./ShelfChecklist";
+import type { Shelf } from "../store/shelves";
 
 /** Debounce window for the in-novel chapter search. Same rationale as
  *  the homepage suggest debounce — fast enough to feel live, slow enough
@@ -93,6 +95,17 @@ interface Props {
    *  finishes. */
   onImportComplete: () => void;
   onOpenRangeDialog: () => void;
+  /** Shelves membership plumbing for the hero "Shelves" action — all
+   *  optional so call sites that don't (yet) support shelves, like the
+   *  Store's browsing detail view for a novel not in the library, keep
+   *  compiling and simply don't render the button. Only rendered together
+   *  when the book is in the library AND these are provided. */
+  shelves?: Shelf[];
+  /** This book's current shelf ids (its `shelfIds`). */
+  bookShelfIds?: string[];
+  onToggleShelf?: (shelfId: string) => void;
+  /** Opens the "new shelf" dialog (rendered by the parent Library). */
+  onNewShelfFromDetail?: () => void;
 }
 
 interface State {
@@ -111,6 +124,10 @@ export function NovelDetailView({
   onStreamRead,
   onImportComplete,
   onOpenRangeDialog,
+  shelves,
+  bookShelfIds,
+  onToggleShelf,
+  onNewShelfFromDetail,
 }: Props) {
   const { tr } = useI18n();
   const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
@@ -141,6 +158,10 @@ export function NovelDetailView({
   // background snapshot refresh without prop drilling.
   const [saveOfflineOpen, setSaveOfflineOpen] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  // "Shelves" checklist popover — only ever opened when the hero button
+  // that triggers it is rendered, which itself requires `libraryEntryId`,
+  // `shelves`, and `onToggleShelf` (see the `onOpenShelfList` guard below).
+  const [shelfListOpen, setShelfListOpen] = useState(false);
 
   // Two data sources, selected by `libraryEntryIdProp`:
   //   - in-library:  read source.json from disk, then refresh from
@@ -367,7 +388,25 @@ export function NovelDetailView({
             onOpenSaveOffline={
               libraryEntryId ? () => setSaveOfflineOpen(true) : undefined
             }
+            onOpenShelfList={
+              libraryEntryId != null && shelves && onToggleShelf
+                ? () => setShelfListOpen(true)
+                : undefined
+            }
           />
+          {shelfListOpen && shelves && onToggleShelf && (
+            <ShelfChecklist
+              theme={theme}
+              shelves={shelves}
+              memberIds={bookShelfIds ?? []}
+              onToggle={onToggleShelf}
+              onNewShelf={() => {
+                setShelfListOpen(false);
+                onNewShelfFromDetail?.();
+              }}
+              onClose={() => setShelfListOpen(false)}
+            />
+          )}
           <NovelAbout
             theme={theme}
             layout={layout}
@@ -442,6 +481,9 @@ interface NovelHeroProps {
   onOpenRangeDialog: () => void;
   /** Only present for in-library, source-backed entries. */
   onOpenSaveOffline?: () => void;
+  /** Only present when the book is in the library AND the parent passed
+   *  shelf props — opens the ShelfChecklist popover. */
+  onOpenShelfList?: () => void;
 }
 
 /** The cinematic top of the detail page: the cover blurred into a backdrop,
@@ -464,6 +506,7 @@ function NovelHero({
   onRemoveFromLibrary,
   onOpenRangeDialog,
   onOpenSaveOffline,
+  onOpenShelfList,
 }: NovelHeroProps) {
   const { tr } = useI18n();
   const isMobile = layout === "mobile";
@@ -693,6 +736,19 @@ function NovelHero({
                 leadingIcon={<Icon name="bookmark" size={14} />}
               >
                 {working ? tr("novel.adding") : tr("novel.addToLibrary")}
+              </Button>
+            )}
+            {onOpenShelfList && (
+              <Button
+                theme={theme}
+                surface="onImage"
+                variant="outline"
+                shape="pill"
+                size="lg"
+                onClick={onOpenShelfList}
+                leadingIcon={<Icon name="layers" size={14} />}
+              >
+                {tr("novel.shelves")}
               </Button>
             )}
             <Button

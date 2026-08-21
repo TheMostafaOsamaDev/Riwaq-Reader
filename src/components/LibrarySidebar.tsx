@@ -14,6 +14,7 @@ import type { IconProps } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
 import { useNav, back, forward } from "../store/navigation";
+import type { Shelf } from "../store/shelves";
 import type { LibraryTab } from "./Library";
 import { useI18n } from "../i18n/useI18n";
 import type { Dir, MsgKey, Tr } from "../i18n";
@@ -34,10 +35,15 @@ interface Props {
    *  row + its status-filter tree so a lingering filter selection doesn't
    *  stay highlighted after navigating away to a sibling destination. */
   shelfActive: boolean;
-  shelves: string[];
+  shelves: Shelf[];
   shelvesActive: boolean;
   onOpenShelves: () => void;
   onNewShelf: () => void;
+  /** Navigate to a specific shelf's detail view. */
+  onOpenShelf: (id: string) => void;
+  /** The shelf whose detail view is currently open, if any. Highlights the
+   *  matching row in the tree below the "Shelves" parent. */
+  activeShelfId?: string;
 }
 
 const TRANSITION = "background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease";
@@ -73,6 +79,8 @@ export function LibrarySidebar({
   shelvesActive,
   onOpenShelves,
   onNewShelf,
+  onOpenShelf,
+  activeShelfId,
 }: Props) {
   const { tr, dir } = useI18n();
   const dark = themeKey === "dark" || themeKey === "oled";
@@ -164,11 +172,11 @@ export function LibrarySidebar({
 
           {/* Shelves (collapsible) — row + tree grouped so the nav gap stays uniform */}
           <div>
-            <CollapsibleRow theme={theme} dark={dark} icon="layers" label={tr("sidebar.shelves")} active={shelvesActive} open={openShelves} onActivate={onOpenShelves} setOpen={setOpenShelves} dir={dir} tr={tr} />
+            <CollapsibleRow theme={theme} dark={dark} icon="layers" label={tr("sidebar.shelves")} active={shelvesActive || activeShelfId !== undefined} open={openShelves} onActivate={onOpenShelves} setOpen={setOpenShelves} dir={dir} tr={tr} />
             <Collapse open={openShelves}>
               <Tree theme={theme}>
                 {shelves.map((s) => (
-                  <TreeButton key={s} theme={theme} label={s} active={false} onClick={onOpenShelves} />
+                  <TreeButton key={s.id} theme={theme} label={s.name} active={activeShelfId === s.id} onClick={() => onOpenShelf(s.id)} />
                 ))}
                 <button
                   onClick={onNewShelf}

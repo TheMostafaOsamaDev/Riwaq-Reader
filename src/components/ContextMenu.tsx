@@ -34,6 +34,14 @@ export interface ContextMenuProps {
   onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** When both this and `onRemoveFromShelf` are set, the menu renders an
+   *  extra "Remove from shelf" row above Delete — only meaningful when the
+   *  menu was opened from a shelf-scoped grid (the single-shelf detail
+   *  page), not the main library grid. `shelfContextId` itself is unused
+   *  beyond gating the row; the actual shelf id lives in the caller's
+   *  closure over `onRemoveFromShelf`. */
+  shelfContextId?: string;
+  onRemoveFromShelf?: () => void;
 }
 
 /** Status submenu entries. Labels reuse the sidebar's already-translated
@@ -87,9 +95,21 @@ export function ContextMenu({
   onEdit,
   onDelete,
   onClose,
+  shelfContextId,
+  onRemoveFromShelf,
 }: ContextMenuProps) {
   const { tr, dir } = useI18n();
   const STATUS_OPTIONS = getStatusOptions(tr);
+  // Only meaningful when the menu was opened from a shelf-scoped grid —
+  // the main library grid never passes these two together.
+  const hasShelfRow = Boolean(shelfContextId && onRemoveFromShelf);
+  // Main-panel row indices: Status(0), Edit(1), [Remove from shelf](2),
+  // Delete(last). Kept as constants rather than hardcoded 2/3 so the
+  // keyboard-nav math below stays in sync with whichever row set is
+  // actually rendered.
+  const REMOVE_SHELF_INDEX = 2;
+  const DELETE_INDEX = hasShelfRow ? 3 : 2;
+  const MAIN_COUNT = hasShelfRow ? 4 : 3;
   // `(hover: none)` alone misses Android Chrome configs that report
   // `hover: hover`, so OR with `(pointer: coarse)` (the rest of the app's
   // mobile signal) and fall back to navigator.maxTouchPoints.
@@ -232,6 +252,9 @@ export function ContextMenu({
     () => runWithExit(onDelete),
     [runWithExit, onDelete],
   );
+  const handleRemoveFromShelf = useCallback(() => {
+    if (onRemoveFromShelf) runWithExit(onRemoveFromShelf);
+  }, [runWithExit, onRemoveFromShelf]);
   const handlePickStatus = useCallback(
     (s: BookStatus) => runWithExit(() => onPickStatus(s)),
     [runWithExit, onPickStatus],
@@ -274,7 +297,7 @@ export function ContextMenu({
           if (inSubmenu) {
             setSubFocus((p) => (p + 1) % n);
           } else {
-            setMainFocus((p) => (p < 0 ? 0 : (p + 1) % 3));
+            setMainFocus((p) => (p < 0 ? 0 : (p + 1) % MAIN_COUNT));
           }
           break;
         case "ArrowUp":
@@ -282,7 +305,9 @@ export function ContextMenu({
           if (inSubmenu) {
             setSubFocus((p) => (p - 1 + n) % n);
           } else {
-            setMainFocus((p) => (p < 0 ? 2 : (p - 1 + 3) % 3));
+            setMainFocus((p) =>
+              p < 0 ? MAIN_COUNT - 1 : (p - 1 + MAIN_COUNT) % MAIN_COUNT,
+            );
           }
           break;
         case enterSubmenuKey:
@@ -324,7 +349,9 @@ export function ContextMenu({
             }
           } else if (mainFocus === 1) {
             handleEdit();
-          } else if (mainFocus === 2) {
+          } else if (hasShelfRow && mainFocus === REMOVE_SHELF_INDEX) {
+            handleRemoveFromShelf();
+          } else if (mainFocus === DELETE_INDEX) {
             handleDelete();
           }
           break;
@@ -352,8 +379,13 @@ export function ContextMenu({
     status,
     handleEdit,
     handleDelete,
+    handleRemoveFromShelf,
     handlePickStatus,
     requestClose,
+    hasShelfRow,
+    MAIN_COUNT,
+    REMOVE_SHELF_INDEX,
+    DELETE_INDEX,
   ]);
 
   // Desktop: collapse the submenu the moment the highlight moves off the
@@ -466,6 +498,20 @@ export function ContextMenu({
       >
         {tr("contextMenu.editBookInfo")}
       </SheetRow>
+      {hasShelfRow && (
+        <>
+          <SheetDivider theme={theme} inset={isTouch ? 56 : 0} />
+          <SheetRow
+            theme={theme}
+            onClick={handleRemoveFromShelf}
+            suppressHover={isTouch}
+            icon={isTouch ? "layers" : undefined}
+            compact={!isTouch}
+          >
+            {tr("shelves.removeFromShelf")}
+          </SheetRow>
+        </>
+      )}
       <SheetDivider theme={theme} inset={isTouch ? 56 : 0} />
       <SheetRow
         theme={theme}
@@ -705,14 +751,29 @@ export function ContextMenu({
       >
         {tr("contextMenu.editBookInfo")}
       </SheetRow>
+      {hasShelfRow && (
+        <>
+          <SheetDivider theme={theme} />
+          <SheetRow
+            theme={theme}
+            compact
+            icon="layers"
+            forceHighlight={mainFocus === REMOVE_SHELF_INDEX}
+            onMouseEnter={() => setMainFocus(REMOVE_SHELF_INDEX)}
+            onClick={handleRemoveFromShelf}
+          >
+            {tr("shelves.removeFromShelf")}
+          </SheetRow>
+        </>
+      )}
       <SheetDivider theme={theme} />
       <SheetRow
         theme={theme}
         compact
         icon="trash"
         destructive
-        forceHighlight={mainFocus === 2}
-        onMouseEnter={() => setMainFocus(2)}
+        forceHighlight={mainFocus === DELETE_INDEX}
+        onMouseEnter={() => setMainFocus(DELETE_INDEX)}
         onClick={handleDelete}
       >
         {tr("contextMenu.removeBook")}

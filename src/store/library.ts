@@ -74,6 +74,9 @@ export interface BookIndexEntry {
       via the right-click menu on a shelf card. Undefined for older books
       that predate this field. */
   status?: BookStatus;
+  /** Ids of the shelves this book is on (see store/shelves.ts). Absent on
+   *  older entries → treated as []. A book can be on multiple shelves. */
+  shelfIds?: string[];
   /** What kind of library entry this is. Older entries (and any EPUB
    *  import) don't carry the field — they're treated as "epub" by callers.
    *  "source" entries are lightweight bookmarks: no book.json, no book.epub
@@ -804,6 +807,87 @@ export async function updateBookStatus(
   if (status === "finished") entry.progress = 1;
   await writeIndex(idx);
   return entry;
+}
+
+/** Set the shelves a book belongs to. Mirrors updateBookStatus. */
+export async function updateBookShelfIds(
+  id: string,
+  shelfIds: string[],
+): Promise<BookIndexEntry | null> {
+  const idx = await readIndex();
+  const entry = idx.books.find((b) => b.id === id);
+  if (!entry) return null;
+  entry.shelfIds = [...new Set(shelfIds)];
+  await writeIndex(idx);
+  return entry;
+}
+
+// ── shelf membership (delta mutators) ────────────────────────────────────
+//
+// addBookToShelf / removeBookFromShelf mutate a single id instead of taking
+// a caller-computed absolute shelfIds list. A caller that reads the React
+// `books` snapshot, computes the full next list, and writes it back
+// wholesale (as updateBookShelfIds above requires) can race with itself:
+// two rapid toggles both read the same stale snapshot before either
+// `refresh()` lands, and the second write silently clobbers the first
+// change. These two mutators read the index fresh on every call and only
+// touch the one id they're asked about, so a stale caller-side "is this on
+// the shelf" check is harmless — the write itself is a safe, idempotent
+// add/remove. `serialize` below closes the remaining race where two calls
+// could both read the index before either has written it back.
+let writeChain: Promise<unknown> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(fn, fn);
+  writeChain = run.catch(() => {});
+  return run;
+}
+
+/** Add one shelf id to a book's membership, reading the fresh index rather
+ *  than trusting a caller-supplied list. No-op if the book is missing or
+ *  already on the shelf. */
+export async function addBookToShelf(
+  bookId: string,
+  shelfId: string,
+): Promise<void> {
+  await serialize(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === bookId);
+    if (!entry) return;
+    const set = new Set(entry.shelfIds ?? []);
+    if (set.has(shelfId)) return;
+    set.add(shelfId);
+    entry.shelfIds = [...set];
+    await writeIndex(idx);
+  });
+}
+
+/** Remove one shelf id from a book's membership. Mirrors addBookToShelf. */
+export async function removeBookFromShelf(
+  bookId: string,
+  shelfId: string,
+): Promise<void> {
+  await serialize(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === bookId);
+    if (!entry) return;
+    if (!entry.shelfIds?.includes(shelfId)) return;
+    entry.shelfIds = entry.shelfIds.filter((sid) => sid !== shelfId);
+    await writeIndex(idx);
+  });
+}
+
+/** Strip one shelf id from every book that has it. Called when a shelf is
+ *  deleted so no dangling membership remains. */
+export async function removeShelfFromAllBooks(shelfId: string): Promise<void> {
+  const idx = await readIndex();
+  let changed = false;
+  for (const b of idx.books) {
+    if (b.shelfIds?.includes(shelfId)) {
+      b.shelfIds = b.shelfIds.filter((sid) => sid !== shelfId);
+      changed = true;
+    }
+  }
+  if (changed) await writeIndex(idx);
 }
 
 /**

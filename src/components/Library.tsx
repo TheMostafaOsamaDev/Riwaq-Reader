@@ -12,8 +12,10 @@ import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
 import { LibrarySidebar } from "./LibrarySidebar";
 import { SearchOverlay } from "./SearchOverlay";
-import { ShelvesPage } from "./ShelvesPage";
+import { ShelvesPage, AddTile } from "./ShelvesPage";
 import { NewShelfDialog } from "./NewShelfDialog";
+import { AddToShelfMenu } from "./AddToShelfMenu";
+import { AddToShelfDialog } from "./AddToShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
@@ -21,6 +23,7 @@ import { onOpenDownloadQueue, openStoreSource } from "../store/uiIntents";
 import {
   useNav,
   goLibrary,
+  goShelf,
   openOverlay,
   back,
   type LibraryView,
@@ -41,10 +44,24 @@ import {
   setCoverFromFile,
   updateBookMeta,
   updateBookStatus,
+  addBookToShelf,
+  removeBookFromShelf,
   type BookIndexEntry,
   type BookStatus,
   type StagedPick,
 } from "../store/library";
+import {
+  listShelves,
+  createShelf as createShelfStore,
+  renameShelf as renameShelfStore,
+  deleteShelf as deleteShelfStore,
+  type Shelf,
+} from "../store/shelves";
+import {
+  booksOnShelf,
+  isOnShelf,
+  wouldOrphan,
+} from "../store/shelfLogic";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
 import { SourceBadge } from "./SourceBadge";
 import { getSourceMeta } from "../sources/registry";
@@ -153,8 +170,37 @@ export function Library({
     imported: 0,
     errors: [],
   });
+  // Set by startImportToShelf when the device-import flow (AddToShelfMenu's
+  // "From device") kicks off — carries the target shelf + a pre-import
+  // snapshot of book ids so the *actual* completion point (summarizeImport,
+  // the one choke point every import path funnels through: immediate
+  // EPUB-only imports, a fully-drained draft queue, and skip-rest) can diff
+  // the fresh index and assign whatever landed to that shelf. A ref (not
+  // state) so a stale render's closure — resumed after the file-picker's
+  // await — still reads the value written just before onImport() was
+  // called, and so it survives across every re-render the multi-step draft
+  // queue produces before that point is reached.
+  const pendingShelfImportRef = useRef<{
+    shelfId: string;
+    before: Set<string>;
+  } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
+  // Declared this early (rather than alongside the other toast-firing
+  // handlers further down) so shelf-membership handlers defined below —
+  // onRemoveBookFromShelf in particular — can call it without a
+  // used-before-declaration error.
+  const showToast = useCallback(
+    (
+      kind: ToastMessage["kind"],
+      text: string,
+      action?: ToastMessage["action"],
+    ) => {
+      toastIdRef.current += 1;
+      setToast({ id: toastIdRef.current, kind, text, action });
+    },
+    [],
+  );
 
   // The book-status FILTER (all/reading/finished/wishlist) is ephemeral UI
   // state — flipping a filter pill is not a navigation step, so it lives here
@@ -178,6 +224,10 @@ export function Library({
         }
       : null;
   const shelvesActive = view.kind === "shelves";
+  // The shelf whose detail view is open, if any — drives the sidebar's
+  // per-shelf active highlight (Task 9).
+  const activeShelfId =
+    view.kind === "shelfDetail" ? view.shelfId : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
 
@@ -187,14 +237,139 @@ export function Library({
     libraryEntryId?: string;
   } | null>(null);
 
-  // Shelves (custom collections) — app-authored seed names; shared by both
-  // layouts so the mobile Shelves page and the desktop sidebar agree. (This
-  // list isn't persisted yet; the real assignment feature lands separately.)
-  const [shelves, setShelves] = useState<string[]>(() => [
-    tr("shelves.defaultFavorites"),
-    tr("shelves.defaultToRead"),
-  ]);
+  // Shelves (custom collections) — store-backed (leaflet/shelves.json),
+  // shared by both layouts so the mobile Shelves page and the desktop
+  // sidebar agree. listShelves() seeds the two defaults on first run and is
+  // the source of truth thereafter.
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  useEffect(() => {
+    listShelves().then(setShelves);
+  }, []);
+  const reloadShelves = useCallback(() => listShelves().then(setShelves), []);
   const [newShelfOpen, setNewShelfOpen] = useState(false);
+  // Rename dialog is the same NewShelfDialog, prefilled + relabeled — see
+  // Task 7. Holds the shelf being renamed (null when closed).
+  const [renaming, setRenaming] = useState<Shelf | null>(null);
+
+  const onCreateShelf = useCallback(
+    async (name: string) => {
+      await createShelfStore(name);
+      await reloadShelves();
+    },
+    [reloadShelves],
+  );
+  const onRenameShelf = useCallback(
+    async (id: string, name: string) => {
+      await renameShelfStore(id, name);
+      await reloadShelves();
+    },
+    [reloadShelves],
+  );
+  const onDeleteShelf = useCallback(
+    async (id: string) => {
+      await deleteShelfStore(id);
+      await reloadShelves();
+      await refresh(); // books' shelfIds changed
+    },
+    [reloadShelves, refresh],
+  );
+  // Delete-shelf confirmation, mirroring pendingDelete below: holds the
+  // shelf awaiting confirmation (null when the dialog is closed).
+  const [deletingShelf, setDeletingShelf] = useState<Shelf | null>(null);
+  const onRequestDeleteShelf = useCallback(
+    (shelf: Shelf) => setDeletingShelf(shelf),
+    [],
+  );
+  const confirmDeleteShelf = useCallback(async () => {
+    if (!deletingShelf) return;
+    const id = deletingShelf.id;
+    setDeletingShelf(null);
+    // If we're viewing that shelf's page, leave it before it vanishes.
+    if (view.kind === "shelfDetail" && view.shelfId === id) {
+      goLibrary({ kind: "shelves" });
+    }
+    await onDeleteShelf(id);
+  }, [deletingShelf, view, onDeleteShelf]);
+  // Uses the race-safe delta mutator (see store/library.ts) rather than
+  // computing an absolute shelfIds list from the `books` snapshot — two
+  // handlers racing on the same book (e.g. rapid picker + undo) would
+  // otherwise both read stale membership and the second write could
+  // silently drop the first's change.
+  const onAddBooksToShelf = useCallback(
+    async (shelfId: string, bookIds: string[]) => {
+      for (const bookId of bookIds) {
+        await addBookToShelf(bookId, shelfId);
+      }
+      await refresh();
+    },
+    [refresh],
+  );
+  // Single-book shelf membership toggle for the detail page's "Shelves"
+  // checklist (Task 13). Pure membership editing — flips one shelf's
+  // membership for one book and nothing else; it never deletes the book,
+  // even when this empties its shelf list (unlike the shelf-page "remove"
+  // flow, which prompts to keep an orphaned book in the library).
+  //
+  // Decides add-vs-remove from the current (possibly momentarily stale)
+  // `books` snapshot, then hands off to a delta mutator that re-reads the
+  // index fresh before writing — so rapid successive toggles on this same
+  // checklist can't clobber each other the way an absolute-list write
+  // would (see FIX 1 / store/library.ts).
+  const onToggleBookShelf = useCallback(
+    async (bookId: string, shelfId: string) => {
+      const book = books.find((b) => b.id === bookId);
+      const isOn = isOnShelf(book?.shelfIds, shelfId);
+      await (isOn ? removeBookFromShelf : addBookToShelf)(bookId, shelfId);
+      await refresh();
+    },
+    [books, refresh],
+  );
+  // Smart remove-from-shelf (Task 14): unconditionally writes the
+  // membership change. Shared by the non-orphan (silent + undo) path and
+  // the orphan dialog's "Keep in library" cancel action.
+  const doUnshelve = useCallback(
+    async (bookId: string, shelfId: string) => {
+      await removeBookFromShelf(bookId, shelfId);
+      await refresh();
+    },
+    [refresh],
+  );
+  // Holds the pending orphan confirmation (null when no dialog is open) —
+  // only populated when removing from `shelfId` would leave the book on no
+  // shelf at all.
+  const [orphanRemoval, setOrphanRemoval] = useState<{
+    bookId: string;
+    shelfId: string;
+    title: string;
+  } | null>(null);
+  const onRemoveBookFromShelf = useCallback(
+    (bookId: string, shelfId: string) => {
+      const book = books.find((b) => b.id === bookId);
+      if (wouldOrphan(book?.shelfIds, shelfId)) {
+        setOrphanRemoval({ bookId, shelfId, title: book?.title ?? "" });
+        return;
+      }
+      // Non-orphan case: silent + undoable — no confirmation needed since
+      // the book stays in the library either way.
+      const shelfName = shelves.find((s) => s.id === shelfId)?.name ?? "";
+      void doUnshelve(bookId, shelfId);
+      showToast("info", tr("shelves.removedToast", { shelf: shelfName }), {
+        label: tr("common.undo"),
+        onClick: () => void onAddBooksToShelf(shelfId, [bookId]),
+      });
+    },
+    [books, shelves, doUnshelve, onAddBooksToShelf, showToast, tr],
+  );
+  // "Add to shelf" entry point (Task 12): opens the from-library/from-device
+  // choice menu for a given shelf. addMenuShelf drives AddToShelfMenu;
+  // choosing "From library" swaps it for pickerShelf (AddToShelfDialog),
+  // "From device" clears the menu and kicks off startImportToShelf below.
+  const [addMenuShelf, setAddMenuShelf] = useState<string | null>(null);
+  const [pickerShelf, setPickerShelf] = useState<string | null>(null);
+  const onAddToShelf = useCallback(
+    (shelfId: string) => setAddMenuShelf(shelfId),
+    [],
+  );
 
   // A "tab" selection is either the Store destination (a history push) or a
   // status filter. A filter change never leaves the shelf, but if the user is
@@ -212,11 +387,6 @@ export function Library({
     [view.kind],
   );
   const onOpenShelves = useCallback(() => goLibrary({ kind: "shelves" }), []);
-
-  const showToast = useCallback((kind: ToastMessage["kind"], text: string) => {
-    toastIdRef.current += 1;
-    setToast({ id: toastIdRef.current, kind, text });
-  }, []);
 
   const fmtNum = useCallback(
     (n: number) =>
@@ -253,6 +423,31 @@ export function Library({
   // defaults the remainder.
   const currentDraft = importQueue[qIndex] ?? null;
 
+  // If startImportToShelf kicked off this import, diff the fresh index
+  // against its pre-import snapshot and assign whatever landed to that
+  // shelf. Called from summarizeImport — the single point every import
+  // path (immediate EPUB-only import, a fully-drained draft queue, and
+  // skip-rest) funnels through — so this fires exactly once per completed
+  // import, regardless of which path got there. listBooks() reads the
+  // fresh index directly rather than the `books` state closure, which may
+  // still be stale at this point in the call chain.
+  const finishPendingShelfImport = async () => {
+    const pending = pendingShelfImportRef.current;
+    if (!pending) return;
+    pendingShelfImportRef.current = null;
+    const after = await listBooks();
+    const newIds = after
+      .filter((b) => !pending.before.has(b.id))
+      .map((b) => b.id);
+    if (newIds.length === 0) return;
+    await onAddBooksToShelf(pending.shelfId, newIds);
+    const name = shelves.find((s) => s.id === pending.shelfId)?.name ?? "";
+    showToast(
+      "info",
+      tr("shelves.addedToast", { n: newIds.length, shelf: name }),
+    );
+  };
+
   const summarizeImport = () => {
     setImportQueue([]);
     setQIndex(0);
@@ -272,6 +467,10 @@ export function Library({
     } else if (imported === 0 && errors.length > 0) {
       setError(errorLabel(errors[0], tr));
     }
+    // Fire-and-forget: a pending shelf assignment (device import started via
+    // AddToShelfMenu) resolves after its own listBooks() round-trip, whose
+    // toast then supersedes whichever message was just shown above.
+    void finishPendingShelfImport();
   };
 
   const advanceQueue = async (draft: FixedImportDraft, didImport: boolean) => {
@@ -287,9 +486,17 @@ export function Library({
   };
 
   const beginImport = async (res: StagedPick | null) => {
-    if (!res) return;
+    if (!res) {
+      // Nothing was picked (dialog cancelled) — nothing will ever call
+      // summarizeImport for this attempt, so drop any pending shelf
+      // assignment now instead of letting it leak onto a later, unrelated
+      // import.
+      pendingShelfImportRef.current = null;
+      return;
+    }
     if (res.empty) {
       showToast("warn", tr("status.emptyFolderImport"));
+      pendingShelfImportRef.current = null;
       return;
     }
     importStats.current = {
@@ -313,9 +520,28 @@ export function Library({
       await beginImport(await pickBooksForImport());
     } catch (e) {
       setError(errorLabel(e instanceof Error ? e.message : String(e), tr));
+      // The pick/import blew up before beginImport could run its own
+      // cleanup — same reasoning as beginImport's `!res` branch above.
+      pendingShelfImportRef.current = null;
     } finally {
       setImporting(false);
     }
+  };
+
+  // Device → shelf (AddToShelfMenu's "From device"): snapshot the current
+  // book ids, then run the *existing* single-file import trigger unchanged.
+  // Its own completion path (via summarizeImport, see
+  // finishPendingShelfImport above) diffs the fresh index against this
+  // snapshot and assigns whatever's new to `shelfId`. Guarded the same way
+  // onImport guards itself, so a tap while an import is already underway
+  // is a no-op rather than a second concurrent pick.
+  const startImportToShelf = async (shelfId: string) => {
+    if (importing || importQueue.length > 0) return;
+    pendingShelfImportRef.current = {
+      shelfId,
+      before: new Set(books.map((b) => b.id)),
+    };
+    await onImport();
   };
 
   const onImportFolder = async () => {
@@ -437,16 +663,27 @@ export function Library({
 
   // Right-click menu on shelf cards. The menu lives at the Library top
   // level so its actions can reach the modal + delete handlers without
-  // threading more props through the layout components.
+  // threading more props through the layout components. `shelfId` is only
+  // set when the menu was opened from a shelf-scoped grid (the single-shelf
+  // detail page) — it gates the extra "Remove from shelf" row (Task 14).
   const [menu, setMenu] = useState<{
     bookId: string;
     x: number;
     y: number;
+    shelfId?: string;
   } | null>(null);
   const menuBook =
     menu !== null ? books.find((b) => b.id === menu.bookId) : undefined;
-  const openContextMenu = (bookId: string, x: number, y: number) =>
-    setMenu({ bookId, x, y });
+  // Hoisted out of the JSX below so the truthiness check narrows a local
+  // `const` (stable across the closure) rather than a property access on
+  // `menu`, which TS won't narrow inside a nested callback.
+  const menuShelfId = menu?.shelfId;
+  const openContextMenu = (
+    bookId: string,
+    x: number,
+    y: number,
+    shelfId?: string,
+  ) => setMenu({ bookId, x, y, shelfId });
   const closeContextMenu = () => setMenu(null);
   const onPickStatus = async (bookId: string, s: BookStatus) => {
     try {
@@ -587,6 +824,17 @@ export function Library({
     onOpenShelves,
     shelves,
     onNewShelf: () => setNewShelfOpen(true),
+    onCreateShelf,
+    onRenameShelf,
+    onRequestRenameShelf: (shelf: Shelf) => setRenaming(shelf),
+    onDeleteShelf,
+    onRequestDeleteShelf,
+    onAddBooksToShelf,
+    onToggleBookShelf,
+    onRemoveBookFromShelf,
+    onAddToShelf,
+    onOpenShelf: (id: string) => goShelf(id),
+    activeShelfId,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);
@@ -653,6 +901,15 @@ export function Library({
           }}
           onDelete={() => onMenuDelete(menuBook.id, menuBook.title)}
           onClose={closeContextMenu}
+          shelfContextId={menuShelfId}
+          onRemoveFromShelf={
+            menuShelfId
+              ? () => {
+                  closeContextMenu();
+                  onRemoveBookFromShelf(menuBook.id, menuShelfId);
+                }
+              : undefined
+          }
         />
       )}
       {/* Dialog + full-screen wrappers manage their own enter/exit and stay
@@ -686,6 +943,59 @@ export function Library({
           />
         )}
       </AnimatedDialog>
+      {/* Orphan-removal confirm (Task 14): only shown when removing the book
+          from its last shelf. Mapping is deliberately inverted from the
+          usual destructive-dialog shape — Cancel is the SAFE choice here
+          ("Keep in library", just unshelves) and is what ConfirmDialog
+          focuses by default; Confirm is the destructive one ("Remove from
+          library", deletes the book outright). */}
+      <AnimatedDialog
+        open={orphanRemoval !== null}
+        onScrimClick={() => setOrphanRemoval(null)}
+        zIndex={9500}
+      >
+        {orphanRemoval && (
+          <ConfirmDialog
+            theme={theme}
+            title={tr("shelves.keepTitle", {
+              title: orphanRemoval.title || tr("common.untitled"),
+            })}
+            message={tr("shelves.keepBody")}
+            cancelLabel={tr("shelves.keepInLibrary")}
+            confirmLabel={tr("library.removeFromLibrary")}
+            confirmVariant="destructive"
+            onCancel={async () => {
+              const o = orphanRemoval;
+              setOrphanRemoval(null);
+              await doUnshelve(o.bookId, o.shelfId);
+            }}
+            onConfirm={async () => {
+              const o = orphanRemoval;
+              setOrphanRemoval(null);
+              await deleteBook(o.bookId);
+              await refresh();
+            }}
+          />
+        )}
+      </AnimatedDialog>
+      <AnimatedDialog
+        open={deletingShelf !== null}
+        onScrimClick={() => setDeletingShelf(null)}
+        zIndex={9500}
+      >
+        {deletingShelf && (
+          <ConfirmDialog
+            theme={theme}
+            title={tr("shelves.deleteTitle")}
+            message={tr("shelves.deleteBody")}
+            confirmLabel={tr("shelves.deleteConfirm")}
+            cancelLabel={tr("common.cancel")}
+            confirmVariant="destructive"
+            onConfirm={confirmDeleteShelf}
+            onCancel={() => setDeletingShelf(null)}
+          />
+        )}
+      </AnimatedDialog>
       <DownloadRangeDialog
         theme={theme}
         layout={layout}
@@ -697,6 +1007,35 @@ export function Library({
         onStarted={() => setSourceDetailRangeDialog(null)}
         onCompleted={() => void refresh()}
       />
+      {/* Add-to-shelf picker (Task 12) — same tier as the confirm dialogs
+          above; mutually exclusive with them (only opens once the
+          from-library choice is made in AddToShelfMenu below). */}
+      <AnimatedDialog
+        open={pickerShelf !== null}
+        onScrimClick={() => setPickerShelf(null)}
+        zIndex={9500}
+      >
+        {pickerShelf && (
+          <AddToShelfDialog
+            theme={theme}
+            shelfId={pickerShelf}
+            shelfName={shelves.find((s) => s.id === pickerShelf)?.name ?? ""}
+            books={books}
+            covers={covers}
+            onConfirm={async (ids) => {
+              const shelfId = pickerShelf;
+              setPickerShelf(null);
+              await onAddBooksToShelf(shelfId, ids);
+              const name = shelves.find((s) => s.id === shelfId)?.name ?? "";
+              showToast(
+                "info",
+                tr("shelves.addedToast", { n: ids.length, shelf: name }),
+              );
+            }}
+            onClose={() => setPickerShelf(null)}
+          />
+        )}
+      </AnimatedDialog>
       <AnimatedFullScreen
         open={queueOpen}
         layout={layout}
@@ -717,9 +1056,43 @@ export function Library({
       {newShelfOpen && (
         <NewShelfDialog
           theme={theme}
-          existing={shelves}
-          onCreate={(name) => setShelves((s) => [...s, name])}
+          existing={shelves.map((s) => s.name)}
+          onCreate={onCreateShelf}
           onClose={() => setNewShelfOpen(false)}
+        />
+      )}
+      {/* Rename dialog — same NewShelfDialog, prefilled with the current
+          name and relabeled. Rendered separately from the "new shelf"
+          dialog above since the two are mutually exclusive but driven by
+          different state (a shelf reference vs a boolean). */}
+      {renaming && (
+        <NewShelfDialog
+          theme={theme}
+          existing={shelves.map((s) => s.name)}
+          initialName={renaming.name}
+          title={tr("shelves.renameTitle")}
+          confirmLabel={tr("shelves.renameConfirm")}
+          onCreate={(name) => onRenameShelf(renaming.id, name)}
+          onClose={() => setRenaming(null)}
+        />
+      )}
+      {/* Add-to-shelf entry menu (Task 12) — self-contained overlay, same
+          shape as NewShelfDialog above. "From library" swaps it for the
+          AnimatedDialog-wrapped picker; "From device" hands off to the
+          existing import flow via startImportToShelf. */}
+      {addMenuShelf && (
+        <AddToShelfMenu
+          theme={theme}
+          onFromLibrary={() => {
+            setPickerShelf(addMenuShelf);
+            setAddMenuShelf(null);
+          }}
+          onFromDevice={() => {
+            const id = addMenuShelf;
+            setAddMenuShelf(null);
+            void startImportToShelf(id);
+          }}
+          onClose={() => setAddMenuShelf(null)}
         />
       )}
     </>
@@ -766,13 +1139,52 @@ interface LayoutProps {
   shelvesActive: boolean;
   /** Navigate to the Shelves destination. */
   onOpenShelves: () => void;
-  /** Custom-shelf names, owned by the parent so both layouts agree. */
-  shelves: string[];
+  /** Custom shelves, owned by the parent so both layouts agree. Store-backed
+   *  (leaflet/shelves.json) via listShelves/createShelf/renameShelf/deleteShelf. */
+  shelves: Shelf[];
   /** Open the "new shelf" dialog (rendered by the parent). */
   onNewShelf: () => void;
+  onCreateShelf: (name: string) => Promise<void>;
+  onRenameShelf: (id: string, name: string) => Promise<void>;
+  /** Open the rename dialog (rendered by the parent) for a given shelf.
+   *  Consumed by the overview/single-shelf headers (later tasks). */
+  onRequestRenameShelf: (shelf: Shelf) => void;
+  onDeleteShelf: (id: string) => Promise<void>;
+  /** Open the delete-shelf confirm dialog (rendered by the parent) for a
+   *  given shelf. Consumed by the overview/single-shelf headers (later
+   *  tasks). */
+  onRequestDeleteShelf: (shelf: Shelf) => void;
+  onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
+  /** Flip one book's membership on one shelf — wired into the book detail
+   *  page's "Shelves" checklist (Task 13). Pure membership editing; never
+   *  deletes the book. */
+  onToggleBookShelf: (bookId: string, shelfId: string) => Promise<void>;
+  /** Smart remove-from-shelf (Task 14): silent + undoable when the book
+   *  stays on another shelf, otherwise opens the parent's orphan confirm
+   *  dialog. Consumed by the overview's hover "×" (optional parity). */
+  onRemoveBookFromShelf: (bookId: string, shelfId: string) => void;
+  /** Open the from-library/from-device add-book menu (rendered by the
+   *  parent) for a given shelf. Consumed by the overview/single-shelf
+   *  headers (later tasks) — threaded here so this task's plumbing is in
+   *  place before those call sites land. */
+  onAddToShelf: (shelfId: string) => void;
+  /** Navigate to a specific shelf's detail view (wired in Task 9). */
+  onOpenShelf: (id: string) => void;
+  /** The shelf whose detail view is open, if any — drives the sidebar's
+   *  per-shelf active highlight (Task 9). */
+  activeShelfId?: string;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
-  onCardContextMenu: (id: string, x: number, y: number) => void;
+  /** Optional 4th arg: the shelf id, when the card lives in a shelf-scoped
+   *  grid (the single-shelf detail page) — threaded through to `<ContextMenu
+   *  shelfContextId>` so it can show the "Remove from shelf" row. Omitted
+   *  from the main library grid's call sites. */
+  onCardContextMenu: (
+    id: string,
+    x: number,
+    y: number,
+    shelfId?: string,
+  ) => void;
 }
 
 /** "store" is a top-level destination, not a book filter — when the tab
@@ -832,6 +1244,17 @@ function DesktopLibrary({
   onOpenShelves,
   shelves,
   onNewShelf,
+  onCreateShelf: _onCreateShelf,
+  onRenameShelf: _onRenameShelf,
+  onRequestRenameShelf,
+  onDeleteShelf: _onDeleteShelf,
+  onRequestDeleteShelf,
+  onAddBooksToShelf: _onAddBooksToShelf,
+  onToggleBookShelf,
+  onRemoveBookFromShelf,
+  onAddToShelf,
+  onOpenShelf,
+  activeShelfId,
   onDelete,
   onEdit,
   onCardContextMenu,
@@ -855,6 +1278,14 @@ function DesktopLibrary({
   // row + status-filter highlight so a lingering filter doesn't stay lit
   // after navigating to a sibling destination.
   const shelfActive = tab !== "store" && !shelvesActive && !sourceDetailView;
+  // The single-shelf detail page (Task 10): resolves the nav view's shelfId
+  // (already threaded down as `activeShelfId`) against the live shelf list,
+  // so a shelf deleted out from under an open detail view quietly falls
+  // back to null instead of crashing.
+  const activeShelf = activeShelfId
+    ? shelves.find((s) => s.id === activeShelfId) ?? null
+    : null;
+  const shelfBooks = activeShelf ? booksOnShelf(books, activeShelf.id) : [];
   const visible = books
     .filter((b) => matchesTab(b, tab))
     .filter(
@@ -901,6 +1332,8 @@ function DesktopLibrary({
         shelvesActive={shelvesActive}
         onOpenShelves={onOpenShelves}
         onNewShelf={onNewShelf}
+        onOpenShelf={onOpenShelf}
+        activeShelfId={activeShelfId}
       />
       <div
         style={{
@@ -927,15 +1360,29 @@ function DesktopLibrary({
       >
         <AnimatedSwap
           viewKey={
-            shelvesActive
-              ? "shelves"
-              : sourceDetailView
-                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-                : `tab:${tab}`
+            activeShelf
+              ? `shelf:${activeShelf.id}`
+              : shelvesActive
+                ? "shelves"
+                : sourceDetailView
+                  ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                  : `tab:${tab}`
           }
         >
       {shelvesActive ? (
-        <ShelvesPage theme={theme} shelves={shelves} onNewShelf={onNewShelf} />
+        <ShelvesPage
+          theme={theme}
+          shelves={shelves}
+          books={books}
+          covers={covers}
+          onOpenBook={onOpen}
+          onOpenShelf={onOpenShelf}
+          onAddToShelf={onAddToShelf}
+          onRequestRenameShelf={onRequestRenameShelf}
+          onRequestDeleteShelf={onRequestDeleteShelf}
+          onNewShelf={onNewShelf}
+          onRemoveFromShelf={onRemoveBookFromShelf}
+        />
       ) : sourceDetailView ? (
         // Source-backed library entries replace the shelf with the same
         // NovelDetailView the Store uses for browsing. Tabs above stay
@@ -965,6 +1412,15 @@ function DesktopLibrary({
             }
             onImportComplete={onSourceImportComplete}
             onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+            shelves={shelves}
+            bookShelfIds={
+              books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                ?.shelfIds ?? []
+            }
+            onToggleShelf={(shelfId) =>
+              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+            }
+            onNewShelfFromDetail={onNewShelf}
           />
         </div>
       ) : tab === "store" ? (
@@ -974,6 +1430,100 @@ function DesktopLibrary({
           onStreamRead={onStreamRead}
           onImportComplete={onSourceImportComplete}
         />
+      ) : activeShelf ? (
+        // Single-shelf detail page (Task 10): the same header pattern as
+        // ShelvesPage's own title, filtered to one shelf's books. Shares
+        // the library grid's LibraryCard + gridTemplateColumns exactly so
+        // switching between "all books" and a shelf doesn't jitter.
+        <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px 40px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+              marginBottom: 24,
+            }}
+          >
+            <div>
+              <h1
+                style={{
+                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontWeight: 400,
+                  fontSize: 30,
+                  margin: 0,
+                  letterSpacing: "-0.01em",
+                  color: theme.ink,
+                }}
+              >
+                {activeShelf.name}
+              </h1>
+              <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
+                {tr(
+                  shelfBooks.length === 1
+                    ? "shelves.bookCountOne"
+                    : "shelves.bookCountOther",
+                  { n: shelfBooks.length },
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Button
+                theme={theme}
+                variant="primary"
+                size="md"
+                onClick={() => onAddToShelf(activeShelf.id)}
+                leadingIcon={<Icon name="plus" size={14} />}
+              >
+                {tr("shelves.addBook")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="ghost"
+                size="md"
+                onClick={() => onRequestRenameShelf(activeShelf)}
+                leadingIcon={<Icon name="pencil" size={14} />}
+              >
+                {tr("shelves.rename")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="destructiveGhost"
+                size="md"
+                onClick={() => onRequestDeleteShelf(activeShelf)}
+                leadingIcon={<Icon name="trash" size={14} />}
+              >
+                {tr("shelves.delete")}
+              </Button>
+            </div>
+          </div>
+          {shelfBooks.length === 0 ? (
+            <AddTile theme={theme} onClick={() => onAddToShelf(activeShelf.id)} />
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gap: 32,
+                rowGap: 40,
+              }}
+            >
+              {shelfBooks.map((b) => (
+                <LibraryCard
+                  key={b.id}
+                  theme={theme}
+                  book={b}
+                  coverSrc={covers[b.id]}
+                  onOpen={() => onOpen(b.id)}
+                  onContextMenu={(x: number, y: number) =>
+                    onCardContextMenu(b.id, x, y, activeShelf.id)
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
@@ -1103,10 +1653,30 @@ function MobileLibrary({
   onOpenShelves,
   shelves,
   onNewShelf,
+  onCreateShelf: _onCreateShelf,
+  onRenameShelf: _onRenameShelf,
+  onRequestRenameShelf,
+  onDeleteShelf: _onDeleteShelf,
+  onRequestDeleteShelf,
+  onAddBooksToShelf: _onAddBooksToShelf,
+  onToggleBookShelf,
+  onRemoveBookFromShelf,
+  onAddToShelf,
+  onOpenShelf,
+  activeShelfId,
+  onDelete: _onDelete,
+  onEdit: _onEdit,
   onCardContextMenu,
 }: LayoutProps) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
+  // Single-shelf detail page (Task 10) — see DesktopLibrary for the same
+  // computation. Resolves the nav view's shelfId (threaded down as
+  // `activeShelfId`) against the live shelf list.
+  const activeShelf = activeShelfId
+    ? shelves.find((s) => s.id === activeShelfId) ?? null
+    : null;
+  const shelfBooks = activeShelf ? booksOnShelf(books, activeShelf.id) : [];
   // Filter to the selected status tab. "store" is handled separately
   // (a body swap, not a filter); the tab pills exclude it on mobile
   // because Store toggling lives in the bottom nav.
@@ -1158,11 +1728,12 @@ function MobileLibrary({
       }}
     >
       {/* Top header — title + filter tabs. Only on the shelf. The
-          Store tab and the Shelves page swap in their own back-arrow
-          headers below. The source detail view (NovelDetailView) brings
-          its own header with a back arrow. Action buttons live in the
-          bottom nav, so the right side of the title row is empty. */}
-      {!sourceDetailView && !shelvesActive && tab !== "store" && (
+          Store tab, the Shelves page, and a single-shelf detail page swap
+          in their own back-arrow headers below. The source detail view
+          (NovelDetailView) brings its own header with a back arrow. Action
+          buttons live in the bottom nav, so the right side of the title
+          row is empty. */}
+      {!sourceDetailView && !shelvesActive && !activeShelf && tab !== "store" && (
         <div
           style={{
             display: "flex",
@@ -1200,11 +1771,13 @@ function MobileLibrary({
       >
         <AnimatedSwap
           viewKey={
-            shelvesActive
-              ? "shelves"
-              : sourceDetailView
-                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-                : `tab:${tab}`
+            activeShelf
+              ? `shelf:${activeShelf.id}`
+              : shelvesActive
+                ? "shelves"
+                : sourceDetailView
+                  ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                  : `tab:${tab}`
           }
         >
       {shelvesActive ? (
@@ -1222,7 +1795,19 @@ function MobileLibrary({
             title={tr("shelves.title")}
             onBack={() => back()}
           />
-          <ShelvesPage theme={theme} shelves={shelves} onNewShelf={onNewShelf} />
+          <ShelvesPage
+            theme={theme}
+            shelves={shelves}
+            books={books}
+            covers={covers}
+            onOpenBook={onOpen}
+            onOpenShelf={onOpenShelf}
+            onAddToShelf={onAddToShelf}
+            onRequestRenameShelf={onRequestRenameShelf}
+            onRequestDeleteShelf={onRequestDeleteShelf}
+            onNewShelf={onNewShelf}
+            onRemoveFromShelf={onRemoveBookFromShelf}
+          />
         </div>
       ) : sourceDetailView ? (
         <div
@@ -1250,6 +1835,15 @@ function MobileLibrary({
             }
             onImportComplete={onSourceImportComplete}
             onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+            shelves={shelves}
+            bookShelfIds={
+              books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                ?.shelfIds ?? []
+            }
+            onToggleShelf={(shelfId) =>
+              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+            }
+            onNewShelfFromDetail={onNewShelf}
           />
         </div>
       ) : tab === "store" ? (
@@ -1273,6 +1867,118 @@ function MobileLibrary({
             onStreamRead={onStreamRead}
             onImportComplete={onSourceImportComplete}
           />
+        </div>
+      ) : activeShelf ? (
+        // Single-shelf detail page (Task 10), mobile: same back-arrow +
+        // large-title pattern as the Shelves/Store branches above, then a
+        // header row (count + Add/Rename/Delete) and the same 3-column
+        // grid + MobileShelfCard the default shelf uses.
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <BackHeader theme={theme} title={activeShelf.name} onBack={() => back()} />
+          <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h1
+                  style={{
+                    fontFamily: FONT_SERIF_DISPLAY,
+                    fontWeight: 400,
+                    fontSize: 24,
+                    margin: 0,
+                    letterSpacing: "-0.01em",
+                    color: theme.ink,
+                  }}
+                >
+                  {activeShelf.name}
+                </h1>
+                <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
+                  {tr(
+                    shelfBooks.length === 1
+                      ? "shelves.bookCountOne"
+                      : "shelves.bookCountOther",
+                    { n: shelfBooks.length },
+                  )}
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 20,
+                flexWrap: "wrap",
+              }}
+            >
+              <Button
+                theme={theme}
+                variant="primary"
+                size="sm"
+                onClick={() => onAddToShelf(activeShelf.id)}
+                leadingIcon={<Icon name="plus" size={13} />}
+              >
+                {tr("shelves.addBook")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="ghost"
+                size="sm"
+                onClick={() => onRequestRenameShelf(activeShelf)}
+                leadingIcon={<Icon name="pencil" size={13} />}
+              >
+                {tr("shelves.rename")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="destructiveGhost"
+                size="sm"
+                onClick={() => onRequestDeleteShelf(activeShelf)}
+                leadingIcon={<Icon name="trash" size={13} />}
+              >
+                {tr("shelves.delete")}
+              </Button>
+            </div>
+            {shelfBooks.length === 0 ? (
+              <AddTile theme={theme} onClick={() => onAddToShelf(activeShelf.id)} />
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 16,
+                  rowGap: 22,
+                }}
+              >
+                {shelfBooks.map((b) => (
+                  <MobileShelfCard
+                    key={b.id}
+                    theme={theme}
+                    book={b}
+                    coverSrc={covers[b.id]}
+                    onOpen={() => onOpen(b.id)}
+                    onContextMenu={(x, y) =>
+                      onCardContextMenu(b.id, x, y, activeShelf.id)
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
@@ -1428,7 +2134,7 @@ function MobileLibrary({
           theme={theme}
           importing={importing}
           tab={tab}
-          shelvesActive={shelvesActive}
+          shelvesActive={shelvesActive || !!activeShelf}
           onOpenShelves={onOpenShelves}
           onSetStore={() => setTab(tab === "store" ? "all" : "store")}
           onOpenQueue={onOpenQueue}

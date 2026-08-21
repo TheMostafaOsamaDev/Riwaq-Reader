@@ -9,13 +9,28 @@ import { useI18n } from "../i18n/useI18n";
 interface Props {
   theme: Theme;
   existing: string[];
+  /** When renaming, the current name (prefilled) and the value excluded from
+   *  the duplicate check so re-saving the same name is allowed. */
+  initialName?: string;
+  title?: string;
+  hint?: string;
+  confirmLabel?: string;
   onCreate: (name: string) => void;
   onClose: () => void;
 }
 
-export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
+export function NewShelfDialog({
+  theme,
+  existing,
+  initialName,
+  title,
+  hint,
+  confirmLabel,
+  onCreate,
+  onClose,
+}: Props) {
   const { tr } = useI18n();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.focus();
@@ -25,7 +40,11 @@ export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
   }, [onClose]);
 
   const trimmed = name.trim();
-  const dupe = existing.some((s) => s.toLowerCase() === trimmed.toLowerCase());
+  const dupe = existing.some(
+    (s) =>
+      s.toLowerCase() === trimmed.toLowerCase() &&
+      s.toLowerCase() !== (initialName ?? "").trim().toLowerCase(),
+  );
   const valid = trimmed.length > 0 && !dupe;
   const create = () => { if (valid) { onCreate(trimmed); onClose(); } };
 
@@ -50,9 +69,9 @@ export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
           boxShadow: "0 24px 60px rgba(0,0,0,0.35)", animation: "riwaqPop 150ms ease",
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{tr("shelves.newShelf")}</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{title ?? tr("shelves.newShelf")}</div>
         <div style={{ fontSize: 12.5, color: theme.muted, marginBottom: 16 }}>
-          {tr("shelves.dialogHint")}
+          {hint ?? tr("shelves.dialogHint")}
         </div>
         <input
           ref={inputRef}
@@ -81,7 +100,7 @@ export function NewShelfDialog({ theme, existing, onCreate, onClose }: Props) {
             disabled={!valid}
             style={{ border: 0, background: theme.ink, color: theme.paper, borderRadius: 10, padding: "9px 18px", font: "inherit", fontSize: 13, fontWeight: 600, cursor: valid ? "pointer" : "default", opacity: valid ? 1 : 0.5 }}
           >
-            {tr("shelves.create")}
+            {confirmLabel ?? tr("shelves.create")}
           </button>
         </div>
       </div>
