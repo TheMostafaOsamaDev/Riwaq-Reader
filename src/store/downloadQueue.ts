@@ -164,6 +164,20 @@ function isTerminalStatus(s: DownloadJobStatus): boolean {
   return s === "done" || s === "error" || s === "cancelled";
 }
 
+/** Adjust the lifetime counters for one job's terminal outcome by `delta`
+ *  (+1 on entering a terminal state, -1 on leaving it). Conversions lump
+ *  error/cancelled into cvFailed. */
+function bumpResolved(job: DownloadJob, status: DownloadJobStatus, delta: number) {
+  if (job.kind === "chapter") {
+    if (status === "done") resolvedCounters.chDone += delta;
+    else if (status === "error") resolvedCounters.chFailed += delta;
+    else if (status === "cancelled") resolvedCounters.chCancelled += delta;
+  } else {
+    if (status === "done") resolvedCounters.cvDone += delta;
+    else resolvedCounters.cvFailed += delta; // error or cancelled
+  }
+}
+
 const state: QueueState = { jobs: [] };
 const listeners = new Set<Listener>();
 const cancelled = new Set<string>();
@@ -314,22 +328,17 @@ function setStatus(
   job.status = status;
   job.updatedAt = Date.now();
   if (patch) Object.assign(job, patch);
-  if (isTerminalStatus(status)) {
-    // Count each job's terminal transition exactly once (a job can only
-    // become terminal from a non-terminal state), so retries or repeat
-    // setStatus calls don't inflate the lifetime counters.
-    if (!isTerminalStatus(prev)) {
-      if (job.kind === "chapter") {
-        if (status === "done") resolvedCounters.chDone++;
-        else if (status === "error") resolvedCounters.chFailed++;
-        else resolvedCounters.chCancelled++;
-      } else {
-        if (status === "done") resolvedCounters.cvDone++;
-        else resolvedCounters.cvFailed++;
-      }
-    }
-    evictTerminals();
+  // Keep the lifetime counters reconciled to each job's CURRENT terminal
+  // outcome: increment when a job enters a terminal state, decrement when
+  // it leaves one (e.g. retry re-arms a failed job back to "queued").
+  // Without the decrement a fail-then-retry-succeed would be counted as
+  // BOTH a failure and a success. Guarded on an actual status change so
+  // repeated running-progress updates don't touch the counters.
+  if (prev !== status) {
+    if (isTerminalStatus(prev)) bumpResolved(job, prev, -1);
+    if (isTerminalStatus(status)) bumpResolved(job, status, 1);
   }
+  if (isTerminalStatus(status)) evictTerminals();
   emit();
 }
 
