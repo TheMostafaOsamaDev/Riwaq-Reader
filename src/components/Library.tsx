@@ -12,7 +12,7 @@ import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
 import { LibrarySidebar } from "./LibrarySidebar";
 import { SearchOverlay } from "./SearchOverlay";
-import { ShelvesPage } from "./ShelvesPage";
+import { ShelvesPage, AddTile } from "./ShelvesPage";
 import { NewShelfDialog } from "./NewShelfDialog";
 import { AddToShelfMenu } from "./AddToShelfMenu";
 import { AddToShelfDialog } from "./AddToShelfDialog";
@@ -56,6 +56,7 @@ import {
   deleteShelf as deleteShelfStore,
   type Shelf,
 } from "../store/shelves";
+import { booksOnShelf } from "../store/shelfLogic";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
 import { SourceBadge } from "./SourceBadge";
 import { getSourceMeta } from "../sources/registry";
@@ -1133,6 +1134,14 @@ function DesktopLibrary({
   // row + status-filter highlight so a lingering filter doesn't stay lit
   // after navigating to a sibling destination.
   const shelfActive = tab !== "store" && !shelvesActive && !sourceDetailView;
+  // The single-shelf detail page (Task 10): resolves the nav view's shelfId
+  // (already threaded down as `activeShelfId`) against the live shelf list,
+  // so a shelf deleted out from under an open detail view quietly falls
+  // back to null instead of crashing.
+  const activeShelf = activeShelfId
+    ? shelves.find((s) => s.id === activeShelfId) ?? null
+    : null;
+  const shelfBooks = activeShelf ? booksOnShelf(books, activeShelf.id) : [];
   const visible = books
     .filter((b) => matchesTab(b, tab))
     .filter(
@@ -1207,11 +1216,13 @@ function DesktopLibrary({
       >
         <AnimatedSwap
           viewKey={
-            shelvesActive
-              ? "shelves"
-              : sourceDetailView
-                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-                : `tab:${tab}`
+            activeShelf
+              ? `shelf:${activeShelf.id}`
+              : shelvesActive
+                ? "shelves"
+                : sourceDetailView
+                  ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                  : `tab:${tab}`
           }
         >
       {shelvesActive ? (
@@ -1265,6 +1276,95 @@ function DesktopLibrary({
           onStreamRead={onStreamRead}
           onImportComplete={onSourceImportComplete}
         />
+      ) : activeShelf ? (
+        // Single-shelf detail page (Task 10): the same header pattern as
+        // ShelvesPage's own title, filtered to one shelf's books. Shares
+        // the library grid's LibraryCard + gridTemplateColumns exactly so
+        // switching between "all books" and a shelf doesn't jitter.
+        <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px 40px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+              marginBottom: 24,
+            }}
+          >
+            <div>
+              <h1
+                style={{
+                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontWeight: 400,
+                  fontSize: 30,
+                  margin: 0,
+                  letterSpacing: "-0.01em",
+                  color: theme.ink,
+                }}
+              >
+                {activeShelf.name}
+              </h1>
+              <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
+                {tr("shelves.count", { n: shelfBooks.length })}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Button
+                theme={theme}
+                variant="primary"
+                size="md"
+                onClick={() => onAddToShelf(activeShelf.id)}
+                leadingIcon={<Icon name="plus" size={14} />}
+              >
+                {tr("shelves.addBook")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="ghost"
+                size="md"
+                onClick={() => onRequestRenameShelf(activeShelf)}
+                leadingIcon={<Icon name="pencil" size={14} />}
+              >
+                {tr("shelves.rename")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="destructiveGhost"
+                size="md"
+                onClick={() => onRequestDeleteShelf(activeShelf)}
+                leadingIcon={<Icon name="trash" size={14} />}
+              >
+                {tr("shelves.delete")}
+              </Button>
+            </div>
+          </div>
+          {shelfBooks.length === 0 ? (
+            <AddTile theme={theme} onClick={() => onAddToShelf(activeShelf.id)} />
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gap: 32,
+                rowGap: 40,
+              }}
+            >
+              {shelfBooks.map((b) => (
+                <LibraryCard
+                  key={b.id}
+                  theme={theme}
+                  book={b}
+                  coverSrc={covers[b.id]}
+                  onOpen={() => onOpen(b.id)}
+                  onContextMenu={(x: number, y: number) =>
+                    onCardContextMenu(b.id, x, y)
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px 40px" }}>
         {error && <ErrorBanner theme={theme} message={error} />}
@@ -1398,13 +1498,20 @@ function MobileLibrary({
   onAddBooksToShelf: _onAddBooksToShelf,
   onAddToShelf,
   onOpenShelf,
-  activeShelfId: _activeShelfId,
+  activeShelfId,
   onDelete: _onDelete,
   onEdit: _onEdit,
   onCardContextMenu,
 }: LayoutProps) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
+  // Single-shelf detail page (Task 10) — see DesktopLibrary for the same
+  // computation. Resolves the nav view's shelfId (threaded down as
+  // `activeShelfId`) against the live shelf list.
+  const activeShelf = activeShelfId
+    ? shelves.find((s) => s.id === activeShelfId) ?? null
+    : null;
+  const shelfBooks = activeShelf ? booksOnShelf(books, activeShelf.id) : [];
   // Filter to the selected status tab. "store" is handled separately
   // (a body swap, not a filter); the tab pills exclude it on mobile
   // because Store toggling lives in the bottom nav.
@@ -1456,11 +1563,12 @@ function MobileLibrary({
       }}
     >
       {/* Top header — title + filter tabs. Only on the shelf. The
-          Store tab and the Shelves page swap in their own back-arrow
-          headers below. The source detail view (NovelDetailView) brings
-          its own header with a back arrow. Action buttons live in the
-          bottom nav, so the right side of the title row is empty. */}
-      {!sourceDetailView && !shelvesActive && tab !== "store" && (
+          Store tab, the Shelves page, and a single-shelf detail page swap
+          in their own back-arrow headers below. The source detail view
+          (NovelDetailView) brings its own header with a back arrow. Action
+          buttons live in the bottom nav, so the right side of the title
+          row is empty. */}
+      {!sourceDetailView && !shelvesActive && !activeShelf && tab !== "store" && (
         <div
           style={{
             display: "flex",
@@ -1498,11 +1606,13 @@ function MobileLibrary({
       >
         <AnimatedSwap
           viewKey={
-            shelvesActive
-              ? "shelves"
-              : sourceDetailView
-                ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
-                : `tab:${tab}`
+            activeShelf
+              ? `shelf:${activeShelf.id}`
+              : shelvesActive
+                ? "shelves"
+                : sourceDetailView
+                  ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+                  : `tab:${tab}`
           }
         >
       {shelvesActive ? (
@@ -1582,6 +1692,111 @@ function MobileLibrary({
             onStreamRead={onStreamRead}
             onImportComplete={onSourceImportComplete}
           />
+        </div>
+      ) : activeShelf ? (
+        // Single-shelf detail page (Task 10), mobile: same back-arrow +
+        // large-title pattern as the Shelves/Store branches above, then a
+        // header row (count + Add/Rename/Delete) and the same 3-column
+        // grid + MobileShelfCard the default shelf uses.
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <BackHeader theme={theme} title={activeShelf.name} onBack={() => back()} />
+          <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h1
+                  style={{
+                    fontFamily: FONT_SERIF_DISPLAY,
+                    fontWeight: 400,
+                    fontSize: 24,
+                    margin: 0,
+                    letterSpacing: "-0.01em",
+                    color: theme.ink,
+                  }}
+                >
+                  {activeShelf.name}
+                </h1>
+                <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
+                  {tr("shelves.count", { n: shelfBooks.length })}
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 20,
+                flexWrap: "wrap",
+              }}
+            >
+              <Button
+                theme={theme}
+                variant="primary"
+                size="sm"
+                onClick={() => onAddToShelf(activeShelf.id)}
+                leadingIcon={<Icon name="plus" size={13} />}
+              >
+                {tr("shelves.addBook")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="ghost"
+                size="sm"
+                onClick={() => onRequestRenameShelf(activeShelf)}
+                leadingIcon={<Icon name="pencil" size={13} />}
+              >
+                {tr("shelves.rename")}
+              </Button>
+              <Button
+                theme={theme}
+                variant="destructiveGhost"
+                size="sm"
+                onClick={() => onRequestDeleteShelf(activeShelf)}
+                leadingIcon={<Icon name="trash" size={13} />}
+              >
+                {tr("shelves.delete")}
+              </Button>
+            </div>
+            {shelfBooks.length === 0 ? (
+              <AddTile theme={theme} onClick={() => onAddToShelf(activeShelf.id)} />
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 16,
+                  rowGap: 22,
+                }}
+              >
+                {shelfBooks.map((b) => (
+                  <MobileShelfCard
+                    key={b.id}
+                    theme={theme}
+                    book={b}
+                    coverSrc={covers[b.id]}
+                    onOpen={() => onOpen(b.id)}
+                    onContextMenu={(x, y) => onCardContextMenu(b.id, x, y)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
@@ -1737,7 +1952,7 @@ function MobileLibrary({
           theme={theme}
           importing={importing}
           tab={tab}
-          shelvesActive={shelvesActive}
+          shelvesActive={shelvesActive || !!activeShelf}
           onOpenShelves={onOpenShelves}
           onSetStore={() => setTab(tab === "store" ? "all" : "store")}
           onOpenQueue={onOpenQueue}
