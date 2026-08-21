@@ -360,11 +360,10 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
     if (snap.activeConversions > 0) kinds.push(tr("status.notif.partConverting"));
     if (snap.importActive) kinds.push(tr("status.notif.partImporting"));
     if (kinds.length > 1) {
-      const pct = Math.round(overallFraction(snap) * 100);
       return {
-        title: tr("status.notif.backgroundTasksTitle", { pct }),
+        title: tr("status.notif.backgroundTasksTitle", { pct: pctOverall }),
         body: tr("status.notif.mixedBody", { parts: kinds.join(" · ") }),
-        progress: pct,
+        progress: pctOverall,
         max: 100,
         indeterminate: false,
         ongoing: true,

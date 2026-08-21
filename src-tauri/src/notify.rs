@@ -84,6 +84,7 @@ pub async fn set_status_bar_style(app: AppHandle, dark_icons: bool) -> Result<()
 pub async fn start_task_service(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
+        let _ = &app;
         android_task_service("start").map_err(|e| format!("start service failed: {e}"))?;
         return Ok(());
     }
@@ -99,6 +100,7 @@ pub async fn start_task_service(app: AppHandle) -> Result<(), String> {
 pub async fn stop_task_service(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
+        let _ = &app;
         android_task_service("stop").map_err(|e| format!("stop service failed: {e}"))?;
         return Ok(());
     }

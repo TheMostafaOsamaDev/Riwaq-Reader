@@ -112,6 +112,11 @@ class TaskService : Service() {
             // stop request, which throws
             // ForegroundServiceDidNotStartInTimeException on API 26+.
             ctx.stopService(Intent(ctx, TaskService::class.java))
+            // Defensive fallback: if the stop is dropped or onDestroy's
+            // teardown gets interrupted before stopForeground() runs,
+            // this ensures the ongoing "Downloading…" notification can't
+            // strand itself indefinitely.
+            DownloadNotifier.cancel(ctx, NOTIF_ID)
         }
     }
 }
