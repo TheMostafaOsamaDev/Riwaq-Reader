@@ -56,7 +56,7 @@ import {
   deleteShelf as deleteShelfStore,
   type Shelf,
 } from "../store/shelves";
-import { booksOnShelf } from "../store/shelfLogic";
+import { booksOnShelf, toggleMembership } from "../store/shelfLogic";
 import { ImportDetailsDialog } from "./ImportDetailsDialog";
 import { SourceBadge } from "./SourceBadge";
 import { getSourceMeta } from "../sources/registry";
@@ -277,6 +277,19 @@ export function Library({
         const next = [...new Set([...(book?.shelfIds ?? []), shelfId])];
         await updateBookShelfIds(bookId, next);
       }
+      await refresh();
+    },
+    [books, refresh],
+  );
+  // Single-book shelf membership toggle for the detail page's "Shelves"
+  // checklist (Task 13). Pure membership editing — flips one shelf's
+  // membership for one book and nothing else; it never deletes the book,
+  // even when this empties its shelf list (unlike the shelf-page "remove"
+  // flow, which prompts to keep an orphaned book in the library).
+  const onToggleBookShelf = useCallback(
+    async (bookId: string, shelfId: string) => {
+      const book = books.find((b) => b.id === bookId);
+      await updateBookShelfIds(bookId, toggleMembership(book?.shelfIds, shelfId));
       await refresh();
     },
     [books, refresh],
@@ -745,6 +758,7 @@ export function Library({
     onDeleteShelf,
     onRequestDeleteShelf,
     onAddBooksToShelf,
+    onToggleBookShelf,
     onAddToShelf,
     onOpenShelf: (id: string) => goShelf(id),
     activeShelfId,
@@ -1030,6 +1044,10 @@ interface LayoutProps {
    *  tasks). */
   onRequestDeleteShelf: (shelf: Shelf) => void;
   onAddBooksToShelf: (shelfId: string, bookIds: string[]) => Promise<void>;
+  /** Flip one book's membership on one shelf — wired into the book detail
+   *  page's "Shelves" checklist (Task 13). Pure membership editing; never
+   *  deletes the book. */
+  onToggleBookShelf: (bookId: string, shelfId: string) => Promise<void>;
   /** Open the from-library/from-device add-book menu (rendered by the
    *  parent) for a given shelf. Consumed by the overview/single-shelf
    *  headers (later tasks) — threaded here so this task's plumbing is in
@@ -1108,6 +1126,7 @@ function DesktopLibrary({
   onDeleteShelf: _onDeleteShelf,
   onRequestDeleteShelf,
   onAddBooksToShelf: _onAddBooksToShelf,
+  onToggleBookShelf,
   onAddToShelf,
   onOpenShelf,
   activeShelfId,
@@ -1267,6 +1286,15 @@ function DesktopLibrary({
             }
             onImportComplete={onSourceImportComplete}
             onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+            shelves={shelves}
+            bookShelfIds={
+              books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                ?.shelfIds ?? []
+            }
+            onToggleShelf={(shelfId) =>
+              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+            }
+            onNewShelfFromDetail={onNewShelf}
           />
         </div>
       ) : tab === "store" ? (
@@ -1496,6 +1524,7 @@ function MobileLibrary({
   onDeleteShelf: _onDeleteShelf,
   onRequestDeleteShelf,
   onAddBooksToShelf: _onAddBooksToShelf,
+  onToggleBookShelf,
   onAddToShelf,
   onOpenShelf,
   activeShelfId,
@@ -1669,6 +1698,15 @@ function MobileLibrary({
             }
             onImportComplete={onSourceImportComplete}
             onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+            shelves={shelves}
+            bookShelfIds={
+              books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                ?.shelfIds ?? []
+            }
+            onToggleShelf={(shelfId) =>
+              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+            }
+            onNewShelfFromDetail={onNewShelf}
           />
         </div>
       ) : tab === "store" ? (
