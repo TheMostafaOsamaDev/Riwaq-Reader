@@ -479,6 +479,7 @@ export const ar: Messages = {
   "status.notif.allTasksDone": "اكتملت كل المهام",
   "status.notif.bookImported": "تمت إضافة الكتاب إلى مكتبتك",
   "status.notif.importFailed": "فشل الاستيراد",
+  "status.notif.conversionFailed": "فشل التحويل",
 
   "contextMenu.status": "الحالة",
   "contextMenu.statusNone": "بلا",

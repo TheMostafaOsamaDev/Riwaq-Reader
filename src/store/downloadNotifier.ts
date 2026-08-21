@@ -40,6 +40,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import {
   getState,
+  getResolvedCounters,
   subscribe,
   type DownloadJob,
   type DownloadJobStatus,
@@ -150,7 +151,14 @@ let burstMaxPct = 0;
 /** Per-kind resolved-count tally captured at the start of a burst. Queue
  *  terminals from a previous burst linger until clearTerminals(), so we
  *  subtract this baseline to keep a new burst's counts/percent its own. */
-let burstBase = { resolved: 0, chDone: 0, chFail: 0, cvDone: 0 };
+let burstBase = {
+  resolved: 0,
+  chDone: 0,
+  chFailed: 0,
+  chCancelled: 0,
+  cvDone: 0,
+  cvFailed: 0,
+};
 /** `finishedAt` of the import whose completion we've already announced,
  *  so an undismissed finished import isn't re-announced in a later burst. */
 let announcedImportFinishedAt: number | null = null;
@@ -252,7 +260,14 @@ async function publish(snap: Snapshot) {
   if (snap.active === 0 && snap.total === 0 && !importTerminalPending) {
     burstTotal = 0;
     burstMaxPct = 0;
-    burstBase = { resolved: 0, chDone: 0, chFail: 0, cvDone: 0 };
+    burstBase = {
+      resolved: 0,
+      chDone: 0,
+      chFailed: 0,
+      chCancelled: 0,
+      cvDone: 0,
+      cvFailed: 0,
+    };
     summaryShown = false;
     lastBody = "";
     lastTitle = "";
@@ -350,29 +365,24 @@ async function publish(snap: Snapshot) {
   });
 }
 
-/** Per-kind tally of RESOLVED (terminal) jobs currently in the queue.
- *  Used both for the burst baseline and the completion summary. */
+/** Per-kind tally of RESOLVED jobs, read from the queue's eviction-proof
+ *  lifetime counters (the jobs array caps terminals at 50, so scanning it
+ *  undercounts large bursts). `resolved` is the grand total for the
+ *  denominator/baseline; the per-kind fields drive the completion summary. */
 function resolvedTally(): {
   resolved: number;
   chDone: number;
-  chFail: number;
+  chFailed: number;
+  chCancelled: number;
   cvDone: number;
+  cvFailed: number;
 } {
-  const jobs = getState().jobs;
-  let chDone = 0;
-  let chFail = 0;
-  let cvDone = 0;
-  let cvFail = 0;
-  for (const j of jobs) {
-    if (j.kind === "chapter") {
-      if (j.status === "done") chDone++;
-      else if (j.status === "error" || j.status === "cancelled") chFail++;
-    } else if (j.kind === "conversion") {
-      if (j.status === "done") cvDone++;
-      else if (j.status === "error" || j.status === "cancelled") cvFail++;
-    }
-  }
-  return { resolved: chDone + chFail + cvDone + cvFail, chDone, chFail, cvDone };
+  const c = getResolvedCounters();
+  return {
+    resolved:
+      c.chDone + c.chFailed + c.chCancelled + c.cvDone + c.cvFailed,
+    ...c,
+  };
 }
 
 /** Monotonic display percent for the aggregate download/mixed progress.
@@ -507,15 +517,16 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
 
   if (summaryShown) return null;
 
-  // Describe what actually finished, BY TASK TYPE with counts — instead
-  // of a generic "background work finished". Queue jobs stay in the list
-  // as terminal entries until clearTerminals(), so we tally them here;
-  // imports live in their own store and are read directly.
-  // Burst-relative per-kind counts (exclude prior-burst terminals).
+  // Describe what actually finished, BY TASK TYPE with counts — instead of
+  // a generic "background work finished". Counts come from the queue's
+  // eviction-proof lifetime counters (not the 50-capped jobs array) and are
+  // rebased to this burst; imports are read from their own store.
   const t = resolvedTally();
   const chDone = Math.max(0, t.chDone - burstBase.chDone);
-  const chFail = Math.max(0, t.chFail - burstBase.chFail);
+  const chFailed = Math.max(0, t.chFailed - burstBase.chFailed);
+  const chCancelled = Math.max(0, t.chCancelled - burstBase.chCancelled);
   const cvDone = Math.max(0, t.cvDone - burstBase.cvDone);
+  const cvFailed = Math.max(0, t.cvFailed - burstBase.cvFailed);
   const imp = getImportState();
   const impFresh =
     imp.finishedAt !== null && imp.finishedAt !== announcedImportFinishedAt;
@@ -524,7 +535,15 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
 
   // Nothing actually finished this session (e.g. launch with only
   // interrupted jobs) → don't show a misleading "all done".
-  if (chDone === 0 && chFail === 0 && cvDone === 0 && !impDone && !impFail) {
+  if (
+    chDone === 0 &&
+    chFailed === 0 &&
+    chCancelled === 0 &&
+    cvDone === 0 &&
+    cvFailed === 0 &&
+    !impDone &&
+    !impFail
+  ) {
     return null;
   }
   // Mark this import announced so an undismissed finished import isn't
@@ -536,7 +555,11 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
     bodyParts.push(tr("status.notif.chaptersDownloaded", { n: chDone }));
   if (cvDone > 0) bodyParts.push(tr("status.notif.offlineBookReady"));
   if (impDone) bodyParts.push(tr("status.notif.bookImported"));
-  if (chFail > 0) bodyParts.push(tr("status.notif.failedCount", { n: chFail }));
+  if (chFailed > 0)
+    bodyParts.push(tr("status.notif.failedCount", { n: chFailed }));
+  if (chCancelled > 0)
+    bodyParts.push(tr("status.notif.cancelledCount", { n: chCancelled }));
+  if (cvFailed > 0) bodyParts.push(tr("status.notif.conversionFailed"));
   if (impFail) bodyParts.push(tr("status.notif.importFailed"));
 
   const successKinds =

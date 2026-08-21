@@ -133,6 +133,37 @@ let concurrency = 2;
  *  around for the queue UI. New terminals push older terminals off. */
 const TERMINAL_LIMIT = 50;
 
+/** Lifetime tally of resolved jobs by kind + outcome, incremented on each
+ *  terminal transition and NEVER evicted. The jobs array caps terminals at
+ *  TERMINAL_LIMIT, so scanning it undercounts large bursts (a 187-chapter
+ *  download would appear stuck at "50"). The notifier reads these counters
+ *  instead to show true progress. Not persisted — a fresh process starts
+ *  at zero, which is fine since the notifier rebases per burst. */
+const resolvedCounters = {
+  chDone: 0,
+  chFailed: 0,
+  chCancelled: 0,
+  cvDone: 0,
+  cvFailed: 0,
+};
+
+/** Snapshot of the lifetime resolved counters (see `resolvedCounters`).
+ *  Consumed by the download notifier for accurate, eviction-proof burst
+ *  progress and completion summaries. */
+export function getResolvedCounters(): {
+  chDone: number;
+  chFailed: number;
+  chCancelled: number;
+  cvDone: number;
+  cvFailed: number;
+} {
+  return { ...resolvedCounters };
+}
+
+function isTerminalStatus(s: DownloadJobStatus): boolean {
+  return s === "done" || s === "error" || s === "cancelled";
+}
+
 const state: QueueState = { jobs: [] };
 const listeners = new Set<Listener>();
 const cancelled = new Set<string>();
@@ -279,10 +310,24 @@ function setStatus(
   status: DownloadJobStatus,
   patch?: Partial<DownloadJob>,
 ) {
+  const prev = job.status;
   job.status = status;
   job.updatedAt = Date.now();
   if (patch) Object.assign(job, patch);
-  if (status === "done" || status === "error" || status === "cancelled") {
+  if (isTerminalStatus(status)) {
+    // Count each job's terminal transition exactly once (a job can only
+    // become terminal from a non-terminal state), so retries or repeat
+    // setStatus calls don't inflate the lifetime counters.
+    if (!isTerminalStatus(prev)) {
+      if (job.kind === "chapter") {
+        if (status === "done") resolvedCounters.chDone++;
+        else if (status === "error") resolvedCounters.chFailed++;
+        else resolvedCounters.chCancelled++;
+      } else {
+        if (status === "done") resolvedCounters.cvDone++;
+        else resolvedCounters.cvFailed++;
+      }
+    }
     evictTerminals();
   }
   emit();
