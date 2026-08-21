@@ -473,14 +473,17 @@ export function retry(jobId: string): void {
 /** Re-queue every job that's currently interrupted or errored.
  *  Used by the queue page's "Retry all" affordance. */
 export function retryAll(): void {
-  for (const j of state.jobs) {
-    if (j.status === "interrupted" || j.status === "error") {
-      delete (j as { error?: string }).error;
-      j.status = "queued";
-      j.updatedAt = Date.now();
-    }
+  // Snapshot first: setStatus mutates job.status, and re-arming an errored
+  // job must go through setStatus so the lifetime resolvedCounters get
+  // decremented (a bulk-retried failure that later succeeds must not be
+  // counted as both failed and done).
+  const toRearm = state.jobs.filter(
+    (j) => j.status === "interrupted" || j.status === "error",
+  );
+  for (const j of toRearm) {
+    delete (j as { error?: string }).error;
+    setStatus(j, "queued");
   }
-  emit();
   pump();
 }
 
