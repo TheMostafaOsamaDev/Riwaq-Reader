@@ -121,6 +121,11 @@ export interface ReaderProgress {
   fraction: number;
   /** Localized, e.g. "٧ / ٢٩٨" or "Ch. 3 · 24%". */
   label: string;
+  /** Fixed-layout only: the 0-based page this progress refers to. Carried
+   *  explicitly because `fraction` cannot be inverted back to a page — it is
+   *  `(page + 1) / pageCount`, so recovering the index from it lands a page
+   *  ahead and the counter reads one too high on every page. */
+  page?: number;
 }
 
 /** Fixed-page (PDF/DOCX) flow: continuous stacked pages, or one page at a time. */

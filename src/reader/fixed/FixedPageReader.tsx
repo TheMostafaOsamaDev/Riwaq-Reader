@@ -389,8 +389,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             formatCounter={formatCounter}
             onProgress={(p) =>
               setProgress((prev) => {
-                const page = Math.round(p.fraction * (sourcePageCount(source) - 1));
-                return prev.label === p.label ? prev : { page, fraction: p.fraction, label: p.label };
+                // Take the page the viewer reports; `fraction` is not
+                // invertible (see ReaderProgress.page).
+                const page = p.page ?? prev.page;
+                return prev.label === p.label
+                  ? prev
+                  : { page, fraction: p.fraction, label: p.label };
               })
             }
             onLocationChange={(page, off) =>

@@ -46,6 +46,35 @@ const CANCEL_MS = 190;
 const POST_LOCK_MS = 340;
 const TURN_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 
+// Touch drag feel. AXIS_LOCK is the travel before a drag commits to an axis (so
+// a slightly-diagonal vertical pan isn't stolen as a page turn). On release a
+// turn completes if the strip was dragged past SNAP_FRACTION of the viewport OR
+// flicked faster than FLING — a quick flick shouldn't need a long drag.
+const AXIS_LOCK_PX = 10;
+const SNAP_FRACTION = 0.25;
+const FLING_PX_MS = 0.45;
+// Only the tail of a drag counts toward the fling test, so a long slow pan that
+// ends in a flick still throws the page — averaging over the whole gesture
+// would drown the flick. (MobileSheet's sheetSnap does the same for its own
+// vertical axis; the two aren't shared because the axes and units differ.)
+const VELOCITY_WINDOW_MS = 100;
+
+/** Signed px/ms across the sample ring, measured over the most recent
+ *  VELOCITY_WINDOW_MS. Returns 0 when there's nothing to measure. */
+function releaseVelocity(samples: Array<{ x: number; t: number }>): number {
+  if (samples.length < 2) return 0;
+  const last = samples[samples.length - 1];
+  let first = samples[0];
+  for (const s of samples) {
+    if (last.t - s.t <= VELOCITY_WINDOW_MS) {
+      first = s;
+      break;
+    }
+  }
+  const dt = last.t - first.t;
+  return dt > 0 ? (last.x - first.x) / dt : 0;
+}
+
 export function tintFilter(tint: FixedPageTint): string {
   switch (tint) {
     case "dim":
@@ -221,6 +250,10 @@ export const FixedPageViewer = forwardRef<
   const [peekAnimating, setPeekAnimating] = useState(false);
   const [peekIdx, setPeekIdx] = useState<number | null>(null);
   const [peekReady, setPeekReady] = useState(false);
+  // True from the moment the base layer swaps to the incoming page until the
+  // overlay is dropped. While it's set the base must sit untransformed (it is
+  // already showing the new page), otherwise it would slide a second time.
+  const [swapped, setSwapped] = useState(false);
 
   // Where the swapped-in page lands (top normally; bottom when turning back).
   const pendingScroll = useRef<null | "top" | "bottom">(null);
@@ -234,6 +267,24 @@ export const FixedPageViewer = forwardRef<
   const turnTimer = useRef<number | null>(null);
   const holdTimer = useRef<number | null>(null);
   const peekRaf = useRef(0);
+  // Live touch-drag origin + the axis it locked onto ("" until it commits).
+  // `samples` is a short ring of recent positions — a flick is judged on the
+  // last few milliseconds, not on the whole gesture (see releaseVelocity).
+  const touch = useRef({
+    x: 0,
+    y: 0,
+    t: 0,
+    axis: "" as "" | "x" | "y",
+    samples: [] as Array<{ x: number; t: number }>,
+  });
+  // Set while a drag is turning pages, so the trailing click doesn't turn again.
+  const suppressClick = useRef(false);
+  // How far the current page overflows the viewport horizontally, in px.
+  // Derived from LAYOUT, never from `scrollWidth - clientWidth`: a turn
+  // translates the base layer, and a transformed child counts toward its
+  // scroll container's scrollable overflow — so mid-turn the scroller reports
+  // a page-wide overflow and the drag gets mistaken for panning a zoomed page.
+  const overflowX = useRef(0);
   const peekHostRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const barIdle = useRef<number | null>(null);
@@ -257,7 +308,13 @@ export const FixedPageViewer = forwardRef<
     return () => ro.disconnect();
   }, []);
 
-  const contentW = Math.max(0, container.w - PAD * 2);
+  // "Fit width" means exactly that: the page spans the viewport edge to edge,
+  // with no side gutter. Only "fit page" keeps the horizontal inset, where the
+  // page is height-bound anyway and the breathing room reads as a margin.
+  // MAX_W still caps very wide windows so a desktop page stays readable — on a
+  // phone the container is far narrower than the cap, so it never binds.
+  const padX = fit === "width" ? 0 : PAD;
+  const contentW = Math.max(0, container.w - padX * 2);
   const usableW = Math.min(contentW, MAX_W);
   const fallbackRatio = useMemo(() => {
     const m = sizes.find(Boolean);
@@ -299,6 +356,7 @@ export const FixedPageViewer = forwardRef<
       if (page === lastEmitted.current) return;
       lastEmitted.current = page;
       onProgress?.({
+        page,
         fraction: pageCount > 0 ? (page + 1) / pageCount : 0,
         label: formatCounter
           ? formatCounter(page + 1, pageCount)
@@ -492,6 +550,7 @@ export const FixedPageViewer = forwardRef<
     pendingScroll.current = d > 0 ? "top" : "bottom";
     peekHold.current = neighbor;
     setCurrent(neighbor);
+    setSwapped(true);
     if (holdTimer.current) window.clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(() => {
       holdTimer.current = null;
@@ -499,6 +558,7 @@ export const FixedPageViewer = forwardRef<
       setPeek(null);
       setPeekIdx(null);
       setPeekAnimating(false);
+      setSwapped(false);
     }, 500);
   }, []);
 
@@ -708,6 +768,136 @@ export const FixedPageViewer = forwardRef<
     };
   }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek]);
 
+  // Paged mode on touch: a horizontal drag pans the filmstrip 1:1 with the
+  // finger and snaps on release. The wheel path above never fires from a finger,
+  // so without this a touch device could only turn pages by tapping an edge.
+  // Vertical drags are left alone so the native scroller still pans a tall page.
+  useEffect(() => {
+    if (flow !== "paged") return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      touch.current = {
+        x: t.clientX,
+        y: t.clientY,
+        t: e.timeStamp,
+        axis: "",
+        samples: [{ x: t.clientX, t: e.timeStamp }],
+      };
+      suppressClick.current = false;
+      // A held finger must not be sprung back by the wheel path's idle timer.
+      if (idleTimer.current) {
+        window.clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const s = touch.current;
+      const t = e.touches[0];
+      const dx = t.clientX - s.x;
+      const dy = t.clientY - s.y;
+
+      if (s.axis === "") {
+        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+        s.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (s.axis === "y") return; // let the scroller pan a tall page
+
+      // Zoomed in: pan the page horizontally first, only turn at the edge. The
+      // same 4px tolerance the wheel path uses — a page fit to the viewport
+      // routinely overflows by a pixel or two, which must not read as "zoomed"
+      // and swallow every drag. RTL engines report scrollLeft negative, so
+      // compare on distance from the origin edge.
+      const TOL = 4;
+      const maxX = overflowX.current;
+      if (maxX > TOL) {
+        const from = Math.abs(el.scrollLeft);
+        const atEdge = dx > 0 ? from <= TOL : from >= maxX - TOL;
+        if (!atEdge) {
+          // We asked for `touch-action: pan-y` so the page-turn drag could
+          // claim horizontal gestures, which also means the compositor will
+          // NOT pan this axis for us. Drive it by hand, then rebase the origin
+          // so the next move is measured from here (and a subsequent turn
+          // starts from zero travel rather than inheriting the pan distance).
+          e.preventDefault();
+          // Clamp against the layout-derived range for the same reason maxX is
+          // read from layout — scrollLeft's own bounds move during a turn.
+          const next = el.scrollLeft - dx;
+          el.scrollLeft = el.scrollLeft < 0 || next < 0
+            ? Math.max(-maxX, Math.min(0, next))
+            : Math.max(0, Math.min(maxX, next));
+          s.x = t.clientX;
+          s.samples.length = 0;
+          s.samples.push({ x: t.clientX, t: e.timeStamp });
+          return;
+        }
+      }
+      if (turning.current || peekHold.current != null) {
+        e.preventDefault(); // still settling the previous turn
+        return;
+      }
+
+      // Dragging left advances an LTR book; RTL mirrors it.
+      const d = ((dx < 0 ? 1 : -1) * (dir === "rtl" ? -1 : 1)) as 1 | -1;
+      if (peekDir.current === 0) {
+        const dest = clampIdx(currentRef.current + d);
+        if (dest === currentRef.current) return; // first / last page
+        peekDir.current = d;
+        peekNeighbor.current = dest;
+        setPeekReady(false);
+        setPeekIdx(dest);
+      } else if (peekDir.current !== d) {
+        cancelPeek(); // dragged back past the origin
+        return;
+      }
+      e.preventDefault();
+      suppressClick.current = true;
+      s.samples.push({ x: t.clientX, t: e.timeStamp });
+      while (s.samples.length > 2 && e.timeStamp - s.samples[0].t > VELOCITY_WINDOW_MS) {
+        s.samples.shift();
+      }
+      // renderPeek derives reveal as accum/TURN_PX, so expressing the travelled
+      // fraction of a viewport in that unit makes the strip follow the finger.
+      accum.current = Math.min(1, Math.abs(dx) / (el.clientWidth || 1)) * TURN_PX;
+      renderPeek();
+    };
+
+    const onEnd = () => {
+      const s = touch.current;
+      const d = peekDir.current;
+      const wasDrag = s.axis === "x";
+      s.axis = "";
+      if (!wasDrag || d === 0 || turning.current) return;
+      const dragged = accum.current / TURN_PX; // 0..1 of a viewport
+      // A flick only counts toward the turn it was already heading into —
+      // `d` is the direction the peek opened in, so require the tail velocity
+      // to point the same way before treating it as a throw.
+      const vx = releaseVelocity(s.samples);
+      const towards = dir === "rtl" ? d : -d; // strip travel sign for this turn
+      const flicked = Math.sign(vx) === Math.sign(towards) &&
+        Math.abs(vx) >= FLING_PX_MS;
+      s.samples = [];
+      if (dragged >= SNAP_FRACTION || flicked) commit(d);
+      else cancelPeek();
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit]);
+
   // Render the peeked page into the overlay host (once per turn — keyed on the
   // page index, not the reveal, so dragging doesn't re-render the pdf).
   useEffect(() => {
@@ -847,6 +1037,11 @@ export const FixedPageViewer = forwardRef<
   }, []);
   const onPagedClick = useCallback(
     (e: React.MouseEvent) => {
+      if (suppressClick.current) {
+        // Trailing click of a drag that already turned the page.
+        suppressClick.current = false;
+        return;
+      }
       const edge = edgeSideAt(e.clientX);
       if (edge !== 0) flip(edge * (dir === "rtl" ? -1 : 1));
     },
@@ -867,9 +1062,11 @@ export const FixedPageViewer = forwardRef<
   ): React.CSSProperties => ({
     width: w,
     height: h,
-    borderRadius: 4,
-    border: `1px solid ${theme.rule}`,
-    boxShadow: "0 8px 30px rgba(0,0,0,0.22)",
+    // No outline on the page itself — the sheet of paper is the content, and a
+    // rule around it just reads as chrome. The drop shadow is what separates
+    // the page from the background, so it's kept wherever there's a gutter for
+    // it to fall into; full-bleed (fit: width) has none, so it's dropped too.
+    boxShadow: padX > 0 ? "0 8px 30px rgba(0,0,0,0.22)" : "none",
     backgroundColor: theme.chrome,
     backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
     backgroundSize: "200% 100%",
@@ -881,7 +1078,30 @@ export const FixedPageViewer = forwardRef<
     for (let i = win.start; i <= win.end; i++) visible.push(i);
   }
 
+  // Keep the touch handler's overflow measure in sync (see `overflowX`).
+  overflowX.current = Math.max(0, (layout.displayW[current] || 0) - contentW);
+
   const nIdx = peekIdx ?? 0;
+
+  // A turn pans horizontally across a filmstrip of pages: BOTH layers move as
+  // one, the incoming page entering from the edge while the outgoing leaves by
+  // exactly the distance the incoming covers. Nothing is dealt on top of a
+  // frozen page, so the motion reads as the viewport travelling along the strip.
+  // `turnAxis` mirrors the strip for RTL books, where the next page sits to the
+  // left — the same mapping edge-taps already use. Once the base has swapped to
+  // the new page (`swapped`) it sits at rest; the overlay still covers at that
+  // point, so the reset is never visible.
+  const turnAxis = dir === "rtl" ? -1 : 1;
+  const turnSpan = container.w || 1;
+  const turnActive = flow === "paged" && peek && !swapped;
+  const baseShift = turnActive ? -peek.dir * turnAxis * peek.reveal * turnSpan : 0;
+  const baseTurnStyle: React.CSSProperties = {
+    transform: `translateX(${baseShift}px)`,
+    transition:
+      peekAnimating && !swapped && !reducedMotion
+        ? `transform ${ANIM_MS}ms ${TURN_EASE}`
+        : "none",
+  };
 
   return (
     <div
@@ -913,10 +1133,16 @@ export const FixedPageViewer = forwardRef<
           overflow: "auto",
           overscrollBehavior: "contain",
           background: theme.bg,
+          // Paged: claim horizontal gestures for the page-turn drag. Without
+          // this the compositor can take the pan before the touch handler sees
+          // it, and the strip never follows the finger.
+          touchAction: flow === "paged" ? "pan-y" : undefined,
           // Paged: a scrollable flex box. The page uses margin:auto, so it
           // centers when it fits and pins to the top-start (fully scrollable,
           // head never clipped) when it's taller / wider than the viewport.
-          ...(flow === "paged" ? { display: "flex", padding: PAD } : null),
+          ...(flow === "paged"
+            ? { display: "flex", padding: `${PAD}px ${padX}px` }
+            : null),
         }}
       >
         {flow === "scroll" ? (
@@ -960,6 +1186,7 @@ export const FixedPageViewer = forwardRef<
                 margin: "auto",
                 flexShrink: 0,
                 filter: hostFilter,
+                ...baseTurnStyle,
                 ...skeletonStyle(
                   layout.displayW[current] || 0,
                   layout.displayH[current] || 0,
@@ -974,8 +1201,11 @@ export const FixedPageViewer = forwardRef<
                   position: "absolute",
                   inset: 0,
                   display: "flex",
-                  padding: PAD,
+                  padding: `${PAD}px ${padX}px`,
                   pointerEvents: "none",
+                  // Travel with the page it tints, or the duotone would smear
+                  // across a moving page mid-turn.
+                  ...baseTurnStyle,
                 }}
               >
                 <div
@@ -1007,16 +1237,18 @@ export const FixedPageViewer = forwardRef<
             pointerEvents: "none",
             zIndex: 5,
             display: "flex",
-            padding: PAD,
-            justifyContent: "center",
-            alignItems: peek.dir > 0 ? "flex-start" : "flex-end",
+            // Mirror the base scroller's box exactly (flex + PAD + margin:auto
+            // on the child) so the page lands where the settled page sits and
+            // the swap is invisible.
+            padding: `${PAD}px ${padX}px`,
           }}
         >
           <div
             ref={peekHostRef}
             style={{
+              margin: "auto",
               flexShrink: 0,
-              transform: `translateY(${peek.dir * (1 - peek.reveal) * (container.h || 1)}px)`,
+              transform: `translateX(${peek.dir * turnAxis * (1 - peek.reveal) * turnSpan}px)`,
               transition:
                 peekAnimating && !reducedMotion ? `transform ${ANIM_MS}ms ${TURN_EASE}` : "none",
               // The sliding peek page keeps the same tonal filter as the settled
