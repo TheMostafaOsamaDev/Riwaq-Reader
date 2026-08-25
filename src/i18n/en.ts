@@ -63,6 +63,24 @@ export const en = {
   "settings.tapZoneWidth": "Tap zone width · {n}%",
   "settings.tapStride": "Tap scroll length · {n}%",
 
+  // fixed-layout (PDF / DOCX) page controls. These live beside the reflow
+  // controls above because both readers render them through the same
+  // SettingsPanel — see `fixedItems()` in components/SettingsSection.tsx.
+  "settings.subtitle.fixed": "Appearance & page layout",
+  "settings.flow": "Flow",
+  "settings.flow.scroll": "Scroll",
+  "settings.flow.paged": "Page",
+  "settings.fit": "Fit",
+  "settings.fit.width": "Width",
+  "settings.fit.page": "Page",
+  "settings.pageTint": "Page tint",
+  "settings.pageTint.none": "None",
+  "settings.pageTint.dim": "Dim",
+  "settings.pageTint.invert": "Invert",
+  "settings.zoom": "Zoom",
+  "settings.zoom.in": "Zoom in",
+  "settings.zoom.out": "Zoom out",
+
   // reader quick-panel → full settings page
   "settings.openFull": "All settings",
   "settings.openFull.hint": "Language, downloads, data & more",

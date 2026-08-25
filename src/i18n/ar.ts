@@ -51,6 +51,21 @@ export const ar: Messages = {
   "settings.tapZoneWidth": "عرض منطقة النقر · {n}٪",
   "settings.tapStride": "مسافة تمرير النقرة · {n}٪",
 
+  "settings.subtitle.fixed": "المظهر وتخطيط الصفحة",
+  "settings.flow": "طريقة العرض",
+  "settings.flow.scroll": "تمرير",
+  "settings.flow.paged": "صفحة",
+  "settings.fit": "الملاءمة",
+  "settings.fit.width": "العرض",
+  "settings.fit.page": "الصفحة",
+  "settings.pageTint": "تدرّج الصفحة",
+  "settings.pageTint.none": "بلا",
+  "settings.pageTint.dim": "تعتيم",
+  "settings.pageTint.invert": "عكس",
+  "settings.zoom": "التكبير",
+  "settings.zoom.in": "تكبير",
+  "settings.zoom.out": "تصغير",
+
   "settings.openFull": "كل الإعدادات",
   "settings.openFull.hint": "اللغة والتنزيلات والبيانات والمزيد",
 

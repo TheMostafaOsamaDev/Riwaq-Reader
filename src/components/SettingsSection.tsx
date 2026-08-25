@@ -21,7 +21,8 @@ import {
 } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 import { useI18n } from "../i18n/useI18n";
-import type { MsgKey, Tr, UiLangPref } from "../i18n";
+import { formatNum } from "../i18n";
+import type { Locale, MsgKey, Tr, UiLangPref } from "../i18n";
 import {
   isColorSet,
   isLowContrast,
@@ -29,6 +30,12 @@ import {
 } from "../reader/readingColors";
 
 type SetTweak = <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
+
+/** Fixed-layout viewer zoom bounds, shared by the panel stepper and any
+ *  caller that clamps zoom itself. */
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 2.5;
+export const ZOOM_STEP = 0.1;
 
 // ── settings catalog model (categories + searchable entries) ─────────────────
 
@@ -809,6 +816,179 @@ export function ReadingControls({
 }) {
   const { tr } = useI18n();
   return <>{renderEntries(readingItems({ theme, t, setTweak, tr, mobile, showPageTurn }))}</>;
+}
+
+/** Zoom stepper button. Sized to the platform's touch minimum on mobile
+ *  (44pt, Apple HIG) and to the panel's denser desktop rhythm otherwise. */
+function zoomStepStyle(theme: Theme, mobile: boolean): CSSProperties {
+  const size = mobile ? 44 : 34;
+  return {
+    width: size,
+    height: size,
+    borderRadius: 8,
+    border: `1px solid ${theme.rule}`,
+    background: theme.hover,
+    color: theme.ink,
+    cursor: "pointer",
+    fontSize: 18,
+    lineHeight: 1,
+    display: "grid",
+    placeItems: "center",
+    touchAction: "manipulation",
+    flexShrink: 0,
+  };
+}
+
+/** Fixed-layout (PDF / DOCX) page controls, as searchable entries.
+ *
+ *  The reflow counterpart is `readingItems()` above. A fixed-layout page is a
+ *  rendered image — font size, line height and alignment are baked in — so
+ *  this list swaps typography for the knobs that DO apply: how pages advance,
+ *  how they're scaled, and how they're tinted.
+ *
+ *  `zoom` is deliberately NOT a `Tweaks` field: it's per-session viewer state
+ *  owned by FixedPageReader, so it arrives as an explicit value + setter. */
+export function fixedItems(ctx: {
+  theme: Theme;
+  t: Tweaks;
+  setTweak: SetTweak;
+  tr: Tr;
+  locale: Locale;
+  zoom: number;
+  onZoomChange: (next: number) => void;
+  mobile: boolean;
+}): SettingEntry[] {
+  const { theme, t, setTweak, tr, locale, zoom, onZoomChange, mobile } = ctx;
+  const step = (delta: number) =>
+    onZoomChange(
+      Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoom + delta).toFixed(2))),
+    );
+  return [
+    {
+      id: "readingColors",
+      label: tr("settings.colors"),
+      node: (
+        <ColorField
+          theme={theme}
+          inkColor={t.inkColor}
+          paperColor={t.paperColor}
+          onChangeInk={(v) => setTweak("inkColor", v)}
+          onChangePaper={(v) => setTweak("paperColor", v)}
+        />
+      ),
+    },
+    {
+      id: "fixedFlow",
+      label: tr("settings.flow"),
+      node: (
+        <Field label={tr("settings.flow")} theme={theme}>
+          <SegRow<Tweaks["fixedFlow"]>
+            theme={theme}
+            value={t.fixedFlow}
+            onChange={(v) => setTweak("fixedFlow", v)}
+            options={[
+              { value: "scroll", label: tr("settings.flow.scroll") },
+              { value: "paged", label: tr("settings.flow.paged") },
+            ]}
+          />
+        </Field>
+      ),
+    },
+    {
+      id: "fixedFit",
+      label: tr("settings.fit"),
+      node: (
+        <Field label={tr("settings.fit")} theme={theme}>
+          <SegRow<Tweaks["fixedFit"]>
+            theme={theme}
+            value={t.fixedFit}
+            onChange={(v) => setTweak("fixedFit", v)}
+            options={[
+              { value: "width", label: tr("settings.fit.width") },
+              { value: "page", label: tr("settings.fit.page") },
+            ]}
+          />
+        </Field>
+      ),
+    },
+    {
+      id: "fixedPageTint",
+      label: tr("settings.pageTint"),
+      node: (
+        <Field label={tr("settings.pageTint")} theme={theme}>
+          <SegRow<Tweaks["fixedPageTint"]>
+            theme={theme}
+            value={t.fixedPageTint}
+            onChange={(v) => setTweak("fixedPageTint", v)}
+            options={[
+              { value: "none", label: tr("settings.pageTint.none") },
+              { value: "dim", label: tr("settings.pageTint.dim") },
+              { value: "invert", label: tr("settings.pageTint.invert") },
+            ]}
+          />
+        </Field>
+      ),
+    },
+    {
+      id: "fixedZoom",
+      label: tr("settings.zoom"),
+      node: (
+        <Field label={tr("settings.zoom")} theme={theme}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => step(-ZOOM_STEP)}
+              disabled={zoom <= ZOOM_MIN}
+              aria-label={tr("settings.zoom.out")}
+              style={{
+                ...zoomStepStyle(theme, mobile),
+                opacity: zoom <= ZOOM_MIN ? 0.4 : 1,
+                cursor: zoom <= ZOOM_MIN ? "default" : "pointer",
+              }}
+            >
+              −
+            </button>
+            <span
+              style={{
+                flex: 1,
+                textAlign: "center",
+                fontVariantNumeric: "tabular-nums",
+                color: theme.ink,
+                fontSize: 13,
+              }}
+            >
+              {formatNum(Math.round(zoom * 100), locale)}%
+            </span>
+            <button
+              onClick={() => step(ZOOM_STEP)}
+              disabled={zoom >= ZOOM_MAX}
+              aria-label={tr("settings.zoom.in")}
+              style={{
+                ...zoomStepStyle(theme, mobile),
+                opacity: zoom >= ZOOM_MAX ? 0.4 : 1,
+                cursor: zoom >= ZOOM_MAX ? "default" : "pointer",
+              }}
+            >
+              +
+            </button>
+          </div>
+        </Field>
+      ),
+    },
+  ];
+}
+
+/** Reader quick-panel controls for fixed-layout books — the `fixedItems`
+ *  counterpart to `ReadingControls`. */
+export function FixedPageControls(props: {
+  theme: Theme;
+  t: Tweaks;
+  setTweak: SetTweak;
+  zoom: number;
+  onZoomChange: (next: number) => void;
+  mobile?: boolean;
+}) {
+  const { tr, locale } = useI18n();
+  return <>{renderEntries(fixedItems({ ...props, tr, locale, mobile: props.mobile ?? false }))}</>;
 }
 
 /** A tappable full-width row (used for "All settings" in the reader panel and

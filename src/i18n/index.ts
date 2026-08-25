@@ -41,6 +41,16 @@ export type Tr = (
   params?: Record<string, string | number>,
 ) => string;
 
+const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+
+/** Render a number in the locale's own digits. Arabic UI uses Eastern Arabic
+ *  numerals everywhere a count is shown to the reader (page counters, zoom
+ *  level); every other locale passes through unchanged. */
+export function formatNum(n: number | string, locale: Locale): string {
+  const s = String(n);
+  return locale === "ar" ? s.replace(/[0-9]/g, (d) => ARABIC_DIGITS[+d]) : s;
+}
+
 /** Build a translator bound to a locale. Fallback: locale → en → key. */
 export function makeTr(locale: Locale): Tr {
   const dict = CATALOGS[locale];
