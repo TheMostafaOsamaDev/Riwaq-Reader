@@ -57,7 +57,11 @@ export function ReaderTopBar({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "14px 22px",
+        // Clear the status bar / notch on Android: the reader is drawn
+        // edge-to-edge, so without the inset the back button and title sit
+        // under the system clock and can't be tapped. Resolves to a plain
+        // 14px on desktop, where the inset is 0.
+        padding: "calc(14px + env(safe-area-inset-top, 0px)) 22px 14px",
         borderBottom: `0.5px solid ${theme.rule}`,
         background: theme.bg,
         color: theme.chromeInk,
