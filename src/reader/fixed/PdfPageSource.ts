@@ -10,6 +10,20 @@ import type { FixedPageSource } from "./FixedPageSource";
 const BASE = BaseDirectory.AppData;
 const MAX_MOUNTED = 8; // rendered canvases kept alive at once (bounds memory)
 
+/** A page we have already rasterized, plus the scale its pixels were drawn at.
+ *  Keeping the scale lets `renderPage` re-mount a canvas somewhere else without
+ *  redrawing it — see the note there. */
+interface Mounted {
+  canvas: HTMLCanvasElement;
+  scale: number;
+}
+
+/** Scale comparisons go through the same rounding the viewer uses, so a float
+ *  that differs in the 4th decimal doesn't force a pointless re-render. */
+function quantize(scale: number): number {
+  return Math.round(scale * 1000) / 1000;
+}
+
 export async function createPdfPageSource(
   book: PdfBook,
 ): Promise<FixedPageSource> {
@@ -25,7 +39,17 @@ export async function createPdfPageSourceFromBytes(
   const doc = await openPdfDocument(bytes);
   const sizeCache = new Map<number, { w: number; h: number }>();
   // Insertion-ordered so the first key is the oldest — cheap LRU.
-  const mounted = new Map<number, HTMLCanvasElement>();
+  const mounted = new Map<number, Mounted>();
+
+  /** Drop the least-recently-used canvases past the window, never `keep`. */
+  function evict(keep: number) {
+    while (mounted.size > MAX_MOUNTED) {
+      const oldest = mounted.keys().next().value as number | undefined;
+      if (oldest === undefined || oldest === keep) break;
+      mounted.get(oldest)?.canvas.remove();
+      mounted.delete(oldest);
+    }
+  }
 
   return {
     kind: "pdf",
@@ -43,30 +67,42 @@ export async function createPdfPageSourceFromBytes(
     },
 
     async renderPage(i, host, scale) {
-      let canvas = mounted.get(i);
-      if (!canvas || canvas.parentElement !== host) {
-        // Fresh host (or recycled by the virtualizer) — reset it.
-        host.textContent = "";
-        canvas = document.createElement("canvas");
-        canvas.style.display = "block";
-        host.appendChild(canvas);
+      const want = quantize(scale);
+      const entry = mounted.get(i);
+      if (entry) {
+        // MOVE the existing canvas rather than building a new one. A page turn
+        // hands the same page from the overlay host to the base host, and a
+        // fresh canvas there meant rasterizing the page a second time — the
+        // single most expensive thing a turn did, and it landed mid-animation.
+        // Re-parenting keeps the pixels, so the second mount is free.
+        if (entry.canvas.parentElement !== host) {
+          host.textContent = "";
+          host.appendChild(entry.canvas);
+        }
         // Refresh LRU order.
         mounted.delete(i);
-        mounted.set(i, canvas);
+        mounted.set(i, entry);
+        // Same scale → the bitmap is still correct, nothing to redraw.
+        if (entry.scale === want) return;
+        entry.scale = want;
+        await doc.renderPage(i, entry.canvas, scale);
+        evict(i);
+        return;
       }
-      await doc.renderPage(i, canvas, scale);
 
-      // Evict the oldest beyond the window (never the page just rendered).
-      while (mounted.size > MAX_MOUNTED) {
-        const oldest = mounted.keys().next().value as number | undefined;
-        if (oldest === undefined || oldest === i) break;
-        mounted.get(oldest)?.remove();
-        mounted.delete(oldest);
-      }
+      // Fresh host (or recycled by the virtualizer) — reset it.
+      host.textContent = "";
+      const canvas = document.createElement("canvas");
+      canvas.style.display = "block";
+      host.appendChild(canvas);
+      const created: Mounted = { canvas, scale: want };
+      mounted.set(i, created);
+      await doc.renderPage(i, canvas, scale);
+      evict(i);
     },
 
     destroy() {
-      for (const c of mounted.values()) c.remove();
+      for (const m of mounted.values()) m.canvas.remove();
       mounted.clear();
       doc.destroy();
     },
