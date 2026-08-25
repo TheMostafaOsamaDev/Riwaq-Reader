@@ -26,6 +26,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { FixedImportDraft } from "./fixedImportStage";
+import { detectBookFormat, isOpaqueUri } from "./bookFormat";
 import { parseEpub } from "../epub/parser";
 import type { EpubBook } from "../epub/types";
 import type { TocEntry } from "../types/reader";
@@ -316,6 +317,20 @@ export interface StagedPick {
 
 /** Read + classify a list of picked paths: EPUBs import directly, PDF/DOCX are
  *  staged (parsed in memory, cover candidates ready) for the import dialog. */
+/** Decide whether a picked file is a fixed-layout book (PDF/DOCX) or an EPUB.
+ *  Sniffs the bytes first: Android's picker returns a Storage Access Framework
+ *  URI with no extension, so the path alone used to send every Android import
+ *  into the EPUB parser. Extension only breaks ties for bytes we can't
+ *  identify, keeping the previous desktop behaviour intact. */
+function fixedKindFor(bytes: Uint8Array, path: string): "pdf" | "docx" | null {
+  const format = detectBookFormat(bytes);
+  if (format === "pdf" || format === "docx") return format;
+  if (format === "epub") return null;
+  if (/\.pdf$/i.test(path)) return "pdf";
+  if (/\.docx$/i.test(path)) return "docx";
+  return null;
+}
+
 async function stagePaths(paths: string[]): Promise<StagedPick> {
   const autoImported: BookIndexEntry[] = [];
   const drafts: FixedImportDraft[] = [];
@@ -325,11 +340,12 @@ async function stagePaths(paths: string[]): Promise<StagedPick> {
       // The dialog selection itself grants per-path read permission on Tauri
       // v2, so we don't need $HOME / $DOCUMENT in the fs scope.
       const bytes = await readFile(path);
-      if (/\.(pdf|docx)$/i.test(path)) {
+      const fixed = fixedKindFor(bytes, path);
+      if (fixed) {
         // Dynamic import avoids a static library ↔ staging cycle and keeps the
         // pdf.js / mammoth toolchains out of the initial bundle.
         const { stageFixedImport } = await import("./fixedImportStage");
-        drafts.push(await stageFixedImport(bytes, path));
+        drafts.push(await stageFixedImport(bytes, path, fixed));
       } else {
         autoImported.push(await importEpubBytes(bytes));
       }
@@ -367,6 +383,10 @@ export async function pickBooksForImport(): Promise<StagedPick | null> {
  *  English (or whatever-locale-was-active) literal into the book's own
  *  stored title. */
 export function filenameTitle(path: string): string {
+  // Android hands back content://…/document%3A19, whose last segment is an
+  // opaque provider id rather than a name. Empty (not the id) so the
+  // display-time `common.untitled` fallback localizes it.
+  if (isOpaqueUri(path)) return "";
   const base = path.split(/[\\/]/).pop() ?? path;
   const stem = base.replace(/\.(docx|pdf|epub)$/i, "");
   const cleaned = stem.replace(/[_-]+/g, " ").trim();

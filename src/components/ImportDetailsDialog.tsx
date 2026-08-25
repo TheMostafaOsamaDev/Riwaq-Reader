@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 import { Button } from "./Button";
 import { BookCover } from "./BookCover";
 import { paletteForId } from "../store/palette";
+import { isOpaqueUri } from "../store/bookFormat";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
@@ -172,18 +173,22 @@ export function ImportDetailsDialog({
             >
               {tr("dialog.importBook.title")}
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: theme.muted,
-                marginTop: 2,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {draft.filename}
-            </div>
+            {/* Android's picker gives a content:// URI, not a filename —
+                printing the raw provider id says nothing, so drop the line. */}
+            {!isOpaqueUri(draft.filename) && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: theme.muted,
+                  marginTop: 2,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {draft.filename}
+              </div>
+            )}
           </div>
           {total > 1 && (
             <div
