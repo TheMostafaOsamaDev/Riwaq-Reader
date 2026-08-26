@@ -828,7 +828,6 @@ export const FixedPageViewer = forwardRef<
           // NOT pan this axis for us. Drive it by hand, then rebase the origin
           // so the next move is measured from here (and a subsequent turn
           // starts from zero travel rather than inheriting the pan distance).
-          e.preventDefault();
           // Clamp against the layout-derived range for the same reason maxX is
           // read from layout — scrollLeft's own bounds move during a turn.
           const next = el.scrollLeft - dx;
@@ -841,10 +840,7 @@ export const FixedPageViewer = forwardRef<
           return;
         }
       }
-      if (turning.current || peekHold.current != null) {
-        e.preventDefault(); // still settling the previous turn
-        return;
-      }
+      if (turning.current || peekHold.current != null) return; // still settling
 
       // Dragging left advances an LTR book; RTL mirrors it.
       const d = ((dx < 0 ? 1 : -1) * (dir === "rtl" ? -1 : 1)) as 1 | -1;
@@ -859,7 +855,6 @@ export const FixedPageViewer = forwardRef<
         cancelPeek(); // dragged back past the origin
         return;
       }
-      e.preventDefault();
       suppressClick.current = true;
       s.samples.push({ x: t.clientX, t: e.timeStamp });
       while (s.samples.length > 2 && e.timeStamp - s.samples[0].t > VELOCITY_WINDOW_MS) {
@@ -890,8 +885,14 @@ export const FixedPageViewer = forwardRef<
       else cancelPeek();
     };
 
+    // Passive on purpose. A non-passive touchmove listener takes scrolling off
+    // the compositor — every frame then waits on JS before the page can move,
+    // which is exactly what makes a scroll feel heavy on a phone. Nothing here
+    // needs to cancel anything: `touch-action: pan-y` already stops the browser
+    // panning horizontally, so the page-turn drag is unopposed while vertical
+    // panning stays threaded.
     el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: true });
     el.addEventListener("touchend", onEnd, { passive: true });
     el.addEventListener("touchcancel", onEnd, { passive: true });
     return () => {
