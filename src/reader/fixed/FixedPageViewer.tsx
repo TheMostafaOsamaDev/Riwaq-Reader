@@ -58,6 +58,12 @@ const FLING_PX_MS = 0.45;
 // would drown the flick. (MobileSheet's sheetSnap does the same for its own
 // vertical axis; the two aren't shared because the axes and units differ.)
 const VELOCITY_WINDOW_MS = 100;
+// How long to let the current page settle before warming its neighbours.
+// Comfortably past ANIM_MS so the work can't land inside a turn's animation.
+// A plain timer rather than requestIdleCallback on purpose: idle callbacks fire
+// in the gaps *between* a drag's frames, so the rasterization lands mid-gesture
+// and costs more than it saves (measured: ~20 fewer frames delivered per drag).
+const PREFETCH_DELAY_MS = 450;
 
 /** Signed px/ms across the sample ring, measured over the most recent
  *  VELOCITY_WINDOW_MS. Returns 0 when there's nothing to measure. */
@@ -250,14 +256,27 @@ export const FixedPageViewer = forwardRef<
   // `reveal` (0→1) slides it in from the edge; `peekIdx` is the page shown in
   // that overlay (stable across reveal, so the pdf only renders once per turn);
   // `peekReady` flips true when that page has painted.
-  const [peek, setPeek] = useState<{ dir: 1 | -1; reveal: number } | null>(null);
-  const [peekAnimating, setPeekAnimating] = useState(false);
+  // Only the DISCRETE half of a turn lives in React: whether an overlay is up
+  // and which way it is going. The continuous part — how far along the turn is
+  // — is written straight to the DOM by `writeTurn`, because re-rendering this
+  // component once per animation frame is what made a drag feel heavy.
+  const [peek, setPeek] = useState<{ dir: 1 | -1 } | null>(null);
   const [peekIdx, setPeekIdx] = useState<number | null>(null);
   const [peekReady, setPeekReady] = useState(false);
-  // True from the moment the base layer swaps to the incoming page until the
-  // overlay is dropped. While it's set the base must sit untransformed (it is
-  // already showing the new page), otherwise it would slide a second time.
-  const [swapped, setSwapped] = useState(false);
+  // How far along the current turn is, 0..1. Mirrors what `writeTurn` last
+  // pushed to the DOM; never triggers a render.
+  const revealRef = useRef(0);
+  // Live turn geometry, refreshed each render so `writeTurn` can stay stable.
+  const turnGeom = useRef({ span: 1, mirror: 1, horizontal: true });
+  // True between a turn opening and its layers being released, so a stray
+  // write can't shove a settled page around.
+  const turnLive = useRef(false);
+  // The paged duotone overlay, which has to travel with the page it tints.
+  const duotoneRef = useRef<HTMLDivElement>(null);
+  // Offscreen hosts holding the pages either side of the current one, so a
+  // turn has its bitmap ready instead of rasterizing mid-animation.
+  const aheadRef = useRef<HTMLDivElement>(null);
+  const behindRef = useRef<HTMLDivElement>(null);
 
   // Where the swapped-in page lands (top normally; bottom when turning back).
   const pendingScroll = useRef<null | "top" | "bottom">(null);
@@ -539,6 +558,61 @@ export const FixedPageViewer = forwardRef<
     [pageCount],
   );
 
+  /** Push a turn position straight to the DOM. BOTH layers move as one: the
+   *  incoming page enters from the edge while the outgoing leaves by exactly
+   *  the distance the incoming covers, so the motion reads as the viewport
+   *  travelling along a filmstrip rather than a card being dealt on top.
+   *
+   *  Deliberately imperative. Driving this through React state re-rendered the
+   *  whole viewer once per frame; at a 20x CPU handicap that put p99 frame time
+   *  at ~196ms. `will-change` promotes the layers so the compositor moves them
+   *  without repainting the page bitmap underneath. */
+  const writeTurn = useCallback((reveal: number, animate: boolean) => {
+    if (!turnLive.current) return;
+    const { span, mirror, horizontal } = turnGeom.current;
+    const d = peekDir.current || 1;
+    const at = (px: number) =>
+      horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
+    const transition =
+      animate && !reducedRef.current
+        ? `transform ${ANIM_MS}ms ${TURN_EASE}`
+        : "none";
+    const basePx = -d * mirror * reveal * span;
+    const peekPx = d * mirror * (1 - reveal) * span;
+    const outgoing = hostRefs.current.get(currentRef.current);
+    for (const el of [outgoing, duotoneRef.current]) {
+      if (!el) continue;
+      el.style.willChange = "transform";
+      el.style.transition = transition;
+      el.style.transform = at(basePx);
+    }
+    const incoming = peekHostRef.current;
+    if (incoming) {
+      incoming.style.willChange = "transform";
+      incoming.style.transition = transition;
+      incoming.style.transform = at(peekPx);
+    }
+    revealRef.current = reveal;
+  }, []);
+
+  /** Release the layers once a turn is over — drop `will-change` so the
+   *  compositor can reclaim them, and clear the transform so a page that stays
+   *  mounted (a cancelled turn) sits exactly where it started. */
+  const releaseTurn = useCallback(() => {
+    turnLive.current = false;
+    revealRef.current = 0;
+    for (const el of [
+      hostRefs.current.get(currentRef.current),
+      duotoneRef.current,
+      peekHostRef.current,
+    ]) {
+      if (!el) continue;
+      el.style.willChange = "";
+      el.style.transition = "";
+      el.style.transform = "";
+    }
+  }, []);
+
   // Swap in the peeked page. The overlay is held (fully covering) until the base
   // layer has painted the new page, so a turn never flashes a skeleton.
   const finalize = useCallback((d: 1 | -1) => {
@@ -553,18 +627,21 @@ export const FixedPageViewer = forwardRef<
     turnLockUntil.current = performance.now() + POST_LOCK_MS;
     pendingScroll.current = d > 0 ? "top" : "bottom";
     peekHold.current = neighbor;
+    // The base host is keyed on `current`, so swapping pages hands us a fresh
+    // node with no transform — the outgoing page's travel doesn't have to be
+    // unwound, and the overlay is still covering while React commits.
+    turnLive.current = false;
+    revealRef.current = 0;
     setCurrent(neighbor);
-    setSwapped(true);
     if (holdTimer.current) window.clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(() => {
       holdTimer.current = null;
       peekHold.current = null;
+      releaseTurn();
       setPeek(null);
       setPeekIdx(null);
-      setPeekAnimating(false);
-      setSwapped(false);
     }, 500);
-  }, []);
+  }, [releaseTurn]);
 
   const commit = useCallback(
     (d: 1 | -1) => {
@@ -577,12 +654,11 @@ export const FixedPageViewer = forwardRef<
         finalize(d);
         return;
       }
-      setPeekAnimating(true);
-      setPeek({ dir: d, reveal: 1 });
+      writeTurn(1, true);
       if (turnTimer.current) window.clearTimeout(turnTimer.current);
       turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
     },
-    [finalize],
+    [finalize, writeTurn],
   );
 
   const cancelPeek = useCallback(() => {
@@ -592,23 +668,24 @@ export const FixedPageViewer = forwardRef<
     }
     turning.current = false;
     accum.current = 0;
-    peekDir.current = 0;
     if (reducedRef.current) {
+      peekDir.current = 0;
+      releaseTurn();
       setPeek(null);
       setPeekIdx(null);
-      setPeekAnimating(false);
       return;
     }
-    setPeekAnimating(true);
-    setPeek((p) => (p ? { ...p, reveal: 0 } : null));
+    // Spring back to 0 before clearing `peekDir`, which `writeTurn` reads.
+    writeTurn(0, true);
+    peekDir.current = 0;
     if (turnTimer.current) window.clearTimeout(turnTimer.current);
     turnTimer.current = window.setTimeout(() => {
       turnTimer.current = null;
+      releaseTurn();
       setPeek(null);
       setPeekIdx(null);
-      setPeekAnimating(false);
     }, CANCEL_MS);
-  }, []);
+  }, [writeTurn, releaseTurn]);
 
   const scheduleIdle = useCallback(() => {
     if (idleTimer.current) window.clearTimeout(idleTimer.current);
@@ -618,8 +695,8 @@ export const FixedPageViewer = forwardRef<
     }, IDLE_MS);
   }, [cancelPeek]);
 
-  // Push the accumulated overscroll into the overlay, coalesced to one state
-  // update per frame while the wheel streams events.
+  // Push the accumulated drag/overscroll into the layers, coalesced to one
+  // write per frame. No React state here — see `writeTurn`.
   const renderPeek = useCallback(() => {
     if (peekRaf.current) return;
     peekRaf.current = window.requestAnimationFrame(() => {
@@ -627,11 +704,10 @@ export const FixedPageViewer = forwardRef<
       const d = peekDir.current;
       if (!d) return;
       const reveal = Math.min(1, accum.current / TURN_PX);
-      setPeekAnimating(false);
-      setPeek({ dir: d, reveal });
+      writeTurn(reveal, false);
       if (reveal >= 1) commit(d);
     });
-  }, [commit]);
+  }, [commit, writeTurn]);
 
   // Programmatic turn (arrow keys / edge click): slide a full peek 0→1, swap.
   const animateTurn = useCallback(
@@ -646,21 +722,24 @@ export const FixedPageViewer = forwardRef<
         return;
       }
       turning.current = true;
+      turnLive.current = true;
       setPeekReady(false);
       setPeekIdx(dest);
-      setPeekAnimating(false);
-      setPeek({ dir: d, reveal: 0 });
+      setPeek({ dir: d });
       window.requestAnimationFrame(() => {
-        // Flush the reveal:0 mount (WKWebView otherwise coalesces the mount +
-        // the reveal:1 change and the slide snaps — see two-frame gotcha).
+        // Seat the layers at reveal 0, flush, then animate to 1 on the next
+        // frame. WKWebView otherwise coalesces the two writes and the slide
+        // snaps — see the two-frame gotcha.
+        writeTurn(0, false);
         void peekHostRef.current?.offsetHeight;
-        setPeekAnimating(true);
-        setPeek({ dir: d, reveal: 1 });
-        if (turnTimer.current) window.clearTimeout(turnTimer.current);
-        turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+        window.requestAnimationFrame(() => {
+          writeTurn(1, true);
+          if (turnTimer.current) window.clearTimeout(turnTimer.current);
+          turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+        });
       });
     },
-    [clampIdx, finalize],
+    [clampIdx, finalize, writeTurn],
   );
 
   const goToPage = useCallback(
@@ -749,8 +828,10 @@ export const FixedPageViewer = forwardRef<
         peekDir.current = d;
         peekNeighbor.current = dest;
         accum.current = Math.abs(e.deltaY);
+        turnLive.current = true;
         setPeekReady(false);
         setPeekIdx(dest);
+        setPeek({ dir: d });
         renderPeek();
         scheduleIdle();
         return;
@@ -849,8 +930,10 @@ export const FixedPageViewer = forwardRef<
         if (dest === currentRef.current) return; // first / last page
         peekDir.current = d;
         peekNeighbor.current = dest;
+        turnLive.current = true;
         setPeekReady(false);
         setPeekIdx(dest);
+        setPeek({ dir: d });
       } else if (peekDir.current !== d) {
         cancelPeek(); // dragged back past the origin
         return;
@@ -935,6 +1018,55 @@ export const FixedPageViewer = forwardRef<
     };
   }, [peekIdx, layout, sizes, tint, source, usableW]);
 
+  // Warm the neighbours. Rasterizing a PDF page costs tens of milliseconds on
+  // a phone, and doing it when the turn starts lands that cost squarely inside
+  // the animation — the single worst frame of a drag. Rendering ahead of time
+  // means `renderPage` finds the canvas already drawn at the right scale and
+  // just re-parents it (see PdfPageSource), which is free.
+  //
+  // Held off until the current page is on screen so it never competes with the
+  // page the reader is actually looking at, and skipped mid-turn because
+  // re-parenting a canvas would yank it out of the overlay using it.
+  useEffect(() => {
+    if (flow !== "paged" || !rendered.has(current)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      for (const [i, host] of [
+        [current + 1, aheadRef.current],
+        [current - 1, behindRef.current],
+      ] as const) {
+        if (cancelled || !host || i < 0 || i >= pageCount) continue;
+        if (turnLive.current) return; // a turn owns the canvases right now
+        let size = sizes[i];
+        if (!size) {
+          try {
+            size = await source.pageSize(i);
+          } catch {
+            continue;
+          }
+          if (cancelled) return;
+        }
+        try {
+          await source.renderPage(i, host, (layout.displayW[i] || usableW) / size.w);
+        } catch {
+          // a newer render superseded this one — nothing to do
+        }
+      }
+    }, PREFETCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [flow, current, rendered, sizes, layout, usableW, pageCount, source]);
+
+  // Seat a freshly-mounted overlay at the turn's current position before the
+  // browser paints it. Without this it would appear at the settled spot for one
+  // frame and flash. Layout effect so it lands in the same commit as the mount.
+  useLayoutEffect(() => {
+    if (!peek || !turnLive.current) return;
+    writeTurn(revealRef.current, false);
+  }, [peek, writeTurn]);
+
   // Drop the covering overlay once the base layer has painted the new page.
   useEffect(() => {
     const hold = peekHold.current;
@@ -944,15 +1076,12 @@ export const FixedPageViewer = forwardRef<
       window.clearTimeout(holdTimer.current);
       holdTimer.current = null;
     }
+    // MUST mirror the hold-timer's cleanup — this path fires first whenever
+    // the incoming page is already rasterized, i.e. almost always.
+    releaseTurn();
     setPeek(null);
     setPeekIdx(null);
-    setPeekAnimating(false);
-    // MUST mirror the hold-timer's cleanup. This path fires first whenever the
-    // incoming page is already rasterized — i.e. almost always — and leaving
-    // `swapped` set here pinned it true for the rest of the session, which
-    // froze the outgoing page in place on every subsequent turn.
-    setSwapped(false);
-  }, [rendered]);
+  }, [rendered, releaseTurn]);
 
   // ---- Floating scrollbar ---------------------------------------------------
 
@@ -1106,18 +1235,10 @@ export const FixedPageViewer = forwardRef<
   // (`swapped`) it sits at rest; the overlay still covers at that point, so
   // the reset is never visible.
   const horizontal = axis === "x";
-  const mirror = horizontal && dir === "rtl" ? -1 : 1;
-  const turnSpan = (horizontal ? container.w : container.h) || 1;
-  const translate = (px: number) =>
-    horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
-  const turnActive = flow === "paged" && peek && !swapped;
-  const baseShift = turnActive ? -peek.dir * mirror * peek.reveal * turnSpan : 0;
-  const baseTurnStyle: React.CSSProperties = {
-    transform: translate(baseShift),
-    transition:
-      peekAnimating && !swapped && !reducedMotion
-        ? `transform ${ANIM_MS}ms ${TURN_EASE}`
-        : "none",
+  turnGeom.current = {
+    horizontal,
+    mirror: horizontal && dir === "rtl" ? -1 : 1,
+    span: (horizontal ? container.w : container.h) || 1,
   };
 
   return (
@@ -1203,7 +1324,8 @@ export const FixedPageViewer = forwardRef<
                 margin: "auto",
                 flexShrink: 0,
                 filter: hostFilter,
-                ...baseTurnStyle,
+                // transform/transition intentionally absent — `writeTurn`
+                // owns them, and React must not fight it mid-turn.
                 ...skeletonStyle(
                   layout.displayW[current] || 0,
                   layout.displayH[current] || 0,
@@ -1211,18 +1333,45 @@ export const FixedPageViewer = forwardRef<
                 ),
               }}
             />
+            {/* Offscreen holders for the warmed neighbour pages. Kept out of
+                layout and out of the paint — they exist only to own a canvas
+                until a turn re-parents it. */}
+            <div
+              ref={aheadRef}
+              aria-hidden
+              style={{
+                position: "absolute",
+                width: 0,
+                height: 0,
+                overflow: "hidden",
+                visibility: "hidden",
+                pointerEvents: "none",
+              }}
+            />
+            <div
+              ref={behindRef}
+              aria-hidden
+              style={{
+                position: "absolute",
+                width: 0,
+                height: 0,
+                overflow: "hidden",
+                visibility: "hidden",
+                pointerEvents: "none",
+              }}
+            />
             {/* Paged duotone: mirror the host's flex-centered box exactly. */}
             {duotone && rendered.has(current) && (
               <div
+                ref={duotoneRef}
                 style={{
                   position: "absolute",
                   inset: 0,
                   display: "flex",
                   padding: `${PAD}px ${padX}px`,
                   pointerEvents: "none",
-                  // Travel with the page it tints, or the duotone would smear
-                  // across a moving page mid-turn.
-                  ...baseTurnStyle,
+                  // Travels with the page it tints (via `writeTurn`), or the
+                  // duotone would smear across a moving page mid-turn.
                 }}
               >
                 <div
@@ -1265,9 +1414,9 @@ export const FixedPageViewer = forwardRef<
             style={{
               margin: "auto",
               flexShrink: 0,
-              transform: translate(peek.dir * mirror * (1 - peek.reveal) * turnSpan),
-              transition:
-                peekAnimating && !reducedMotion ? `transform ${ANIM_MS}ms ${TURN_EASE}` : "none",
+              // transform/transition are written by `writeTurn`; a layout
+              // effect seats this at reveal 0 the moment it mounts so it never
+              // flashes at the settled position.
               // The sliding peek page keeps the same tonal filter as the settled
               // pages (grayscale/invert for a color duotone; else the tint), so
               // it doesn't flash its original colors mid-turn. The colored blend
