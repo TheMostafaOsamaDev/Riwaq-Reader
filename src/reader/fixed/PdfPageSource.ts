@@ -8,7 +8,11 @@ import { bookDir, type PdfBook } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
 
 const BASE = BaseDirectory.AppData;
-const MAX_MOUNTED = 8; // rendered canvases kept alive at once (bounds memory)
+// Rendered canvases kept alive at once (bounds memory). Has to comfortably
+// exceed the working set of a turn — the page on screen, the one sliding in,
+// and the warm window either side — or the LRU evicts a page moments before
+// the turn that needs it and it has to be rasterized again mid-animation.
+const MAX_MOUNTED = 10;
 
 /** A page we have already rasterized, plus the scale its pixels were drawn at.
  *  Keeping the scale lets `renderPage` re-mount a canvas somewhere else without

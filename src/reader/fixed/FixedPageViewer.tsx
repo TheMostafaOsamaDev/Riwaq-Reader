@@ -58,12 +58,17 @@ const FLING_PX_MS = 0.45;
 // would drown the flick. (MobileSheet's sheetSnap does the same for its own
 // vertical axis; the two aren't shared because the axes and units differ.)
 const VELOCITY_WINDOW_MS = 100;
-// How long to let the current page settle before warming its neighbours.
-// Comfortably past ANIM_MS so the work can't land inside a turn's animation.
+// How long to let the current page settle before warming its neighbours. Short
+// enough to keep ahead of quick successive turns — a turn that arrives before
+// its page is rasterized animates a blank sheet in and pops the content at the
+// end — but not so short that it competes with the page just landed.
 // A plain timer rather than requestIdleCallback on purpose: idle callbacks fire
 // in the gaps *between* a drag's frames, so the rasterization lands mid-gesture
 // and costs more than it saves (measured: ~20 fewer frames delivered per drag).
-const PREFETCH_DELAY_MS = 450;
+const PREFETCH_DELAY_MS = 80;
+// How many pages to keep warm on the side the reader is heading towards. Two
+// is enough to survive a burst of fast swipes without holding much memory.
+const PREFETCH_AHEAD = 2;
 
 /** Signed px/ms across the sample ring, measured over the most recent
  *  VELOCITY_WINDOW_MS. Returns 0 when there's nothing to measure. */
@@ -273,10 +278,23 @@ export const FixedPageViewer = forwardRef<
   const turnLive = useRef(false);
   // The paged duotone overlay, which has to travel with the page it tints.
   const duotoneRef = useRef<HTMLDivElement>(null);
+  // Set below, once the turn helpers exist. Held in a ref so the paged render
+  // effect — which is declared before them — can call it without a cycle.
+  const dropOverlayRef = useRef<(page: number) => void>(() => {});
+  // Live layout inputs for the prefetch effect. Read through refs so it can
+  // depend on the page number alone: `sizes` and `layout` change on every
+  // measurement, and depending on them restarted the timer faster than it
+  // could fire, so on quick page turns the neighbours were never warmed.
+  const prefetchInputs = useRef<{
+    sizes: Array<{ w: number; h: number } | undefined>;
+    layout: { displayW: number[] };
+    usableW: number;
+  }>({ sizes: [], layout: { displayW: [] }, usableW: 0 });
   // Offscreen hosts holding the pages either side of the current one, so a
   // turn has its bitmap ready instead of rasterizing mid-animation.
-  const aheadRef = useRef<HTMLDivElement>(null);
-  const behindRef = useRef<HTMLDivElement>(null);
+  const warmRefs = useRef<Array<HTMLDivElement | null>>([]);
+  // Which way the reader is travelling, so the warm window leans that way.
+  const lastDir = useRef<1 | -1>(1);
 
   // Where the swapped-in page lands (top normally; bottom when turning back).
   const pendingScroll = useRef<null | "top" | "bottom">(null);
@@ -373,6 +391,8 @@ export const FixedPageViewer = forwardRef<
     }
     return { displayW, displayH, top, totalH: y - GAP + PAD };
   }, [sizes, container.h, zoom, fit, usableW, fallbackRatio, pageCount]);
+
+  prefetchInputs.current = { sizes, layout, usableW };
 
   const emit = useCallback(
     (page: number) => {
@@ -543,6 +563,7 @@ export const FixedPageViewer = forwardRef<
       const cur = current;
       void source.renderPage(cur, host, sc).then(() => {
         setRendered((prev) => (prev.has(cur) ? prev : new Set(prev).add(cur)));
+        dropOverlayRef.current(cur);
       });
       emit(current);
     })();
@@ -621,6 +642,7 @@ export const FixedPageViewer = forwardRef<
       turnTimer.current = null;
     }
     const neighbor = peekNeighbor.current;
+    lastDir.current = d;
     turning.current = false;
     accum.current = 0;
     peekDir.current = 0;
@@ -1018,6 +1040,11 @@ export const FixedPageViewer = forwardRef<
     };
   }, [peekIdx, layout, sizes, tint, source, usableW]);
 
+  // Whether the page on screen has painted — the gate for warming its
+  // neighbours. A boolean, not the cumulative `rendered` Set, so it settles
+  // once per page instead of churning.
+  const currentRendered = rendered.has(current);
+
   // Warm the neighbours. Rasterizing a PDF page costs tens of milliseconds on
   // a phone, and doing it when the turn starts lands that cost squarely inside
   // the animation — the single worst frame of a drag. Rendering ahead of time
@@ -1028,16 +1055,22 @@ export const FixedPageViewer = forwardRef<
   // page the reader is actually looking at, and skipped mid-turn because
   // re-parenting a canvas would yank it out of the overlay using it.
   useEffect(() => {
-    if (flow !== "paged" || !rendered.has(current)) return;
+    if (flow !== "paged" || !currentRendered) return;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      for (const [i, host] of [
-        [current + 1, aheadRef.current],
-        [current - 1, behindRef.current],
-      ] as const) {
+      const { sizes: sz, layout: lay, usableW: uw } = prefetchInputs.current;
+      // Bias the window towards where the reader is going: the next pages
+      // first, then one behind for a change of mind.
+      const d = lastDir.current;
+      const wanted: number[] = [];
+      for (let n = 1; n <= PREFETCH_AHEAD; n++) wanted.push(current + n * d);
+      wanted.push(current - d);
+      for (let k = 0; k < wanted.length; k++) {
+        const i = wanted[k];
+        const host = warmRefs.current[k];
         if (cancelled || !host || i < 0 || i >= pageCount) continue;
         if (turnLive.current) return; // a turn owns the canvases right now
-        let size = sizes[i];
+        let size = sz[i];
         if (!size) {
           try {
             size = await source.pageSize(i);
@@ -1047,7 +1080,7 @@ export const FixedPageViewer = forwardRef<
           if (cancelled) return;
         }
         try {
-          await source.renderPage(i, host, (layout.displayW[i] || usableW) / size.w);
+          await source.renderPage(i, host, (lay.displayW[i] || uw) / size.w);
         } catch {
           // a newer render superseded this one — nothing to do
         }
@@ -1057,7 +1090,7 @@ export const FixedPageViewer = forwardRef<
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [flow, current, rendered, sizes, layout, usableW, pageCount, source]);
+  }, [flow, current, currentRendered, pageCount, source]);
 
   // Seat a freshly-mounted overlay at the turn's current position before the
   // browser paints it. Without this it would appear at the settled spot for one
@@ -1067,21 +1100,31 @@ export const FixedPageViewer = forwardRef<
     writeTurn(revealRef.current, false);
   }, [peek, writeTurn]);
 
-  // Drop the covering overlay once the base layer has painted the new page.
-  useEffect(() => {
-    const hold = peekHold.current;
-    if (hold == null || !rendered.has(hold)) return;
-    peekHold.current = null;
-    if (holdTimer.current) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-    // MUST mirror the hold-timer's cleanup — this path fires first whenever
-    // the incoming page is already rasterized, i.e. almost always.
-    releaseTurn();
-    setPeek(null);
-    setPeekIdx(null);
-  }, [rendered, releaseTurn]);
+  // Drop the covering overlay the moment the base layer has the page in hand.
+  //
+  // The overlay exists so a turn never flashes a skeleton, but with canvas
+  // reuse the base render RE-PARENTS the bitmap out of the overlay — so once
+  // that has happened the overlay is an empty box sitting on top of a page
+  // that is ready to show, and holding it is the flash. It must be released on
+  // the render completing, not on some derived state changing: this used to
+  // key off the cumulative `rendered` Set, which does not change when the page
+  // has been visited before, so the drop fell through to the 500ms fallback
+  // timer and left an empty overlay covering the reader for half a second.
+  const dropOverlayFor = useCallback(
+    (page: number) => {
+      if (peekHold.current !== page) return;
+      peekHold.current = null;
+      if (holdTimer.current) {
+        window.clearTimeout(holdTimer.current);
+        holdTimer.current = null;
+      }
+      releaseTurn();
+      setPeek(null);
+      setPeekIdx(null);
+    },
+    [releaseTurn],
+  );
+  dropOverlayRef.current = dropOverlayFor;
 
   // ---- Floating scrollbar ---------------------------------------------------
 
@@ -1336,30 +1379,23 @@ export const FixedPageViewer = forwardRef<
             {/* Offscreen holders for the warmed neighbour pages. Kept out of
                 layout and out of the paint — they exist only to own a canvas
                 until a turn re-parents it. */}
-            <div
-              ref={aheadRef}
-              aria-hidden
-              style={{
-                position: "absolute",
-                width: 0,
-                height: 0,
-                overflow: "hidden",
-                visibility: "hidden",
-                pointerEvents: "none",
-              }}
-            />
-            <div
-              ref={behindRef}
-              aria-hidden
-              style={{
-                position: "absolute",
-                width: 0,
-                height: 0,
-                overflow: "hidden",
-                visibility: "hidden",
-                pointerEvents: "none",
-              }}
-            />
+            {Array.from({ length: PREFETCH_AHEAD + 1 }, (_, k) => (
+              <div
+                key={`warm-${k}`}
+                ref={(el) => {
+                  warmRefs.current[k] = el;
+                }}
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  width: 0,
+                  height: 0,
+                  overflow: "hidden",
+                  visibility: "hidden",
+                  pointerEvents: "none",
+                }}
+              />
+            ))}
             {/* Paged duotone: mirror the host's flex-centered box exactly. */}
             {duotone && rendered.has(current) && (
               <div
