@@ -45,6 +45,18 @@ const ANIM_MS = 220;
 const CANCEL_MS = 190;
 const POST_LOCK_MS = 340;
 const TURN_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+// A turn released from a drag carries on from the speed the finger had and
+// decelerates to rest, so it needs a curve that leaves the gate at roughly
+// that speed rather than accelerating into it — the fast-start curve above is
+// right for a tap, but after a slow drag it reads as the page being snatched.
+const DRAG_SETTLE_EASE = "cubic-bezier(0, 0, 0.35, 1)";
+// Coasting to a stop from v0 covers v0*T/2, so reaching the far edge takes
+// about twice the distance-over-speed a constant pace would.
+const SETTLE_DECEL = 1.9;
+// Bounds on that settle. The floor stops a fast flick finishing so quickly the
+// eye can't follow it; the ceiling stops a barely-moving release from crawling.
+const SETTLE_MIN_MS = 130;
+const SETTLE_MAX_MS = 420;
 
 // Touch drag feel. AXIS_LOCK is the travel before a drag commits to an axis (so
 // a slightly-diagonal vertical pan isn't stolen as a page turn). On release a
@@ -588,7 +600,11 @@ export const FixedPageViewer = forwardRef<
    *  whole viewer once per frame; at a 20x CPU handicap that put p99 frame time
    *  at ~196ms. `will-change` promotes the layers so the compositor moves them
    *  without repainting the page bitmap underneath. */
-  const writeTurn = useCallback((reveal: number, animate: boolean) => {
+  const writeTurn = useCallback((
+    reveal: number,
+    animate: boolean,
+    settle?: { ms: number; ease: string },
+  ) => {
     if (!turnLive.current) return;
     const { span, mirror, horizontal } = turnGeom.current;
     const d = peekDir.current || 1;
@@ -596,7 +612,7 @@ export const FixedPageViewer = forwardRef<
       horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
     const transition =
       animate && !reducedRef.current
-        ? `transform ${ANIM_MS}ms ${TURN_EASE}`
+        ? `transform ${settle?.ms ?? ANIM_MS}ms ${settle?.ease ?? TURN_EASE}`
         : "none";
     const basePx = -d * mirror * reveal * span;
     const peekPx = d * mirror * (1 - reveal) * span;
@@ -665,8 +681,14 @@ export const FixedPageViewer = forwardRef<
     }, 500);
   }, [releaseTurn]);
 
+  /** Finish a turn. `releaseSpeed` (px/ms, unsigned) is the speed the finger
+   *  was travelling when it let go; given it, the remaining distance is covered
+   *  at roughly that pace so the strip carries on instead of jumping to a fixed
+   *  duration. Releasing 40% of the way in used to hand the last 60% to a flat
+   *  220ms — about twice the speed the finger had been moving, which is what
+   *  made a turn feel like it completed itself out from under you. */
   const commit = useCallback(
-    (d: 1 | -1) => {
+    (d: 1 | -1, releaseSpeed?: number) => {
       if (idleTimer.current) {
         window.clearTimeout(idleTimer.current);
         idleTimer.current = null;
@@ -676,9 +698,22 @@ export const FixedPageViewer = forwardRef<
         finalize(d);
         return;
       }
-      writeTurn(1, true);
+      let settle: { ms: number; ease: string } | undefined;
+      if (releaseSpeed && releaseSpeed > 0) {
+        const remaining = (1 - revealRef.current) * turnGeom.current.span;
+        settle = {
+          ms: Math.round(
+            Math.min(
+              SETTLE_MAX_MS,
+              Math.max(SETTLE_MIN_MS, (SETTLE_DECEL * remaining) / releaseSpeed),
+            ),
+          ),
+          ease: DRAG_SETTLE_EASE,
+        };
+      }
+      writeTurn(1, true, settle);
       if (turnTimer.current) window.clearTimeout(turnTimer.current);
-      turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+      turnTimer.current = window.setTimeout(() => finalize(d), settle?.ms ?? ANIM_MS);
     },
     [finalize, writeTurn],
   );
@@ -986,7 +1021,7 @@ export const FixedPageViewer = forwardRef<
       const flicked = Math.sign(vx) === Math.sign(towards) &&
         Math.abs(vx) >= FLING_PX_MS;
       s.samples = [];
-      if (dragged >= SNAP_FRACTION || flicked) commit(d);
+      if (dragged >= SNAP_FRACTION || flicked) commit(d, Math.abs(vx));
       else cancelPeek();
     };
 
