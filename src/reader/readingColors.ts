@@ -106,9 +106,24 @@ export interface PdfDuotone {
 }
 
 // Endpoints for the un-overridden side, so a single override still has two
-// anchors: text stays near-black, paper stays white.
-const PDF_DEFAULT_INK = "#1a1a1a";
-const PDF_DEFAULT_PAPER = "#ffffff";
+// anchors. There are two of each because the anchor has to sit on the OTHER
+// side of the polarity from whatever the reader actually picked: choose a dark
+// page and the implied text must be light, or the inverted recipe's `darken`
+// ink pass crushes the freshly-inverted text back into the page and the whole
+// thing renders as a black slab.
+const PDF_INK_ON_LIGHT = "#1a1a1a";
+const PDF_INK_ON_DARK = "#e6e6e6";
+const PDF_PAPER_FOR_DARK_INK = "#ffffff";
+const PDF_PAPER_FOR_LIGHT_INK = "#101010";
+
+/** Mid-grey's relative luminance — the dark/light split point for choosing
+ *  which anchor a single override implies. */
+const MID_LUMINANCE = relativeLuminance([128, 128, 128]);
+
+function isDarkColor(hex: string): boolean {
+  const rgb = parseHex(hex);
+  return rgb !== null && relativeLuminance(rgb) < MID_LUMINANCE;
+}
 
 /** Duotone recipe for the given overrides, or null when both are "auto" — in
  *  which case the PDF is left exactly as rendered (today's behavior). */
@@ -117,8 +132,17 @@ export function pdfDuotone(inkColor: string, paperColor: string): PdfDuotone | n
   const paperSet = isColorSet(paperColor);
   if (!inkSet && !paperSet) return null;
 
-  const ink = inkSet ? inkColor : PDF_DEFAULT_INK;
-  const paper = paperSet ? paperColor : PDF_DEFAULT_PAPER;
+  // Anchor the un-set side opposite the set one (see the constants above).
+  const ink = inkSet
+    ? inkColor
+    : isDarkColor(paperColor)
+      ? PDF_INK_ON_DARK
+      : PDF_INK_ON_LIGHT;
+  const paper = paperSet
+    ? paperColor
+    : isDarkColor(inkColor)
+      ? PDF_PAPER_FOR_DARK_INK
+      : PDF_PAPER_FOR_LIGHT_INK;
 
   // Compare endpoint luminance to pick polarity. parseHex is guaranteed non-null
   // here (both endpoints are either a set override or a hex default).

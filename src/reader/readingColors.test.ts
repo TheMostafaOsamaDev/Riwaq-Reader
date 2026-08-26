@@ -103,6 +103,24 @@ describe("pdfDuotone", () => {
     expect(d!.paper.color).toBe("#f4ecd8");
   });
 
+  it("anchors the ink endpoint to a LIGHT tone when only a dark paper is set", () => {
+    // Regression: the anchor used to be a fixed near-black. Picking a dark
+    // page colour flips polarity to inverted, whose `darken` ink pass then
+    // crushed the freshly-inverted (light) text back to black — the whole
+    // page rendered as an unreadable black slab.
+    const d = pdfDuotone("auto", "#000000");
+    expect(d).not.toBeNull();
+    expect(d!.paper.color).toBe("#000000");
+    expect(contrastRatio(d!.ink.color, "#000000")!).toBeGreaterThan(4.5);
+  });
+
+  it("anchors the paper endpoint to a DARK tone when only a light ink is set", () => {
+    const d = pdfDuotone("#ffffff", "auto");
+    expect(d).not.toBeNull();
+    expect(d!.ink.color).toBe("#ffffff");
+    expect(contrastRatio("#ffffff", d!.paper.color)!).toBeGreaterThan(4.5);
+  });
+
   it("uses both explicit endpoints when both are set", () => {
     const d = pdfDuotone("#eeddcc", "#221100");
     expect(d).not.toBeNull();
