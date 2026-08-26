@@ -53,10 +53,15 @@ const DRAG_SETTLE_EASE = "cubic-bezier(0, 0, 0.35, 1)";
 // Coasting to a stop from v0 covers v0*T/2, so reaching the far edge takes
 // about twice the distance-over-speed a constant pace would.
 const SETTLE_DECEL = 1.9;
-// Bounds on that settle. The floor stops a fast flick finishing so quickly the
-// eye can't follow it; the ceiling stops a barely-moving release from crawling.
+// The settle is never shorter than the distance it has to cover deserves: a
+// turn released early has most of the page still to travel, and letting a quick
+// flick's velocity shorten THAT into a whoosh is what made a short swipe feel
+// like the reader had to drag the page most of the way themselves to get a
+// smooth turn. So velocity can only ever lengthen the settle, never cut it
+// below this floor, which scales from a near-finished turn to a full-width one.
 const SETTLE_MIN_MS = 130;
-const SETTLE_MAX_MS = 420;
+const SETTLE_FULL_MS = 300;
+const SETTLE_MAX_MS = 460;
 
 // Touch drag feel. AXIS_LOCK is the travel before a drag commits to an axis (so
 // a slightly-diagonal vertical pan isn't stolen as a page turn). On release a
@@ -698,22 +703,24 @@ export const FixedPageViewer = forwardRef<
         finalize(d);
         return;
       }
-      let settle: { ms: number; ease: string } | undefined;
-      if (releaseSpeed && releaseSpeed > 0) {
-        const remaining = (1 - revealRef.current) * turnGeom.current.span;
-        settle = {
-          ms: Math.round(
-            Math.min(
-              SETTLE_MAX_MS,
-              Math.max(SETTLE_MIN_MS, (SETTLE_DECEL * remaining) / releaseSpeed),
-            ),
-          ),
-          ease: DRAG_SETTLE_EASE,
-        };
-      }
+      const span = turnGeom.current.span;
+      const left = Math.max(0, 1 - revealRef.current); // fraction still to travel
+      // Floor: a full-width settle always gets SETTLE_FULL_MS, a nearly-done one
+      // only SETTLE_MIN_MS, scaling between.
+      const floorMs = SETTLE_MIN_MS + left * (SETTLE_FULL_MS - SETTLE_MIN_MS);
+      // A slow release coasts longer so the strip carries on at the pace the
+      // finger set instead of being yanked the rest of the way.
+      const byVelocity =
+        releaseSpeed && releaseSpeed > 0
+          ? Math.min(SETTLE_MAX_MS, (SETTLE_DECEL * left * span) / releaseSpeed)
+          : 0;
+      const settle = {
+        ms: Math.round(Math.max(floorMs, byVelocity)),
+        ease: DRAG_SETTLE_EASE,
+      };
       writeTurn(1, true, settle);
       if (turnTimer.current) window.clearTimeout(turnTimer.current);
-      turnTimer.current = window.setTimeout(() => finalize(d), settle?.ms ?? ANIM_MS);
+      turnTimer.current = window.setTimeout(() => finalize(d), settle.ms);
     },
     [finalize, writeTurn],
   );
