@@ -376,6 +376,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             inkColor={t.inkColor}
             paperColor={t.paperColor}
             dir={contentDir}
+            // Turns follow the gesture that drives them: a sideways swipe on
+            // mobile, the wheel on desktop.
+            turnAxis={isMobile ? "x" : "y"}
             theme={theme}
             themeKey={themeKey}
             highlights={highlights}

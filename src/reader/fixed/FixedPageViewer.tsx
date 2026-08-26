@@ -98,6 +98,9 @@ export interface FixedPageViewerProps {
   inkColor: string;
   paperColor: string;
   dir: "ltr" | "rtl";
+  /** Which way a page turn travels. Mobile turns sideways to match the swipe
+   *  that drives it; desktop turns vertically to match the wheel. */
+  turnAxis: "x" | "y";
   theme: Theme;
   resume?: { page: number; pageOffset?: number };
   onProgress?: (p: ReaderProgress) => void;
@@ -141,6 +144,7 @@ export const FixedPageViewer = forwardRef<
     inkColor,
     paperColor,
     dir,
+    turnAxis: axis,
     theme,
     resume,
     onProgress,
@@ -942,6 +946,11 @@ export const FixedPageViewer = forwardRef<
     setPeek(null);
     setPeekIdx(null);
     setPeekAnimating(false);
+    // MUST mirror the hold-timer's cleanup. This path fires first whenever the
+    // incoming page is already rasterized — i.e. almost always — and leaving
+    // `swapped` set here pinned it true for the rest of the session, which
+    // froze the outgoing page in place on every subsequent turn.
+    setSwapped(false);
   }, [rendered]);
 
   // ---- Floating scrollbar ---------------------------------------------------
@@ -1083,20 +1092,27 @@ export const FixedPageViewer = forwardRef<
 
   const nIdx = peekIdx ?? 0;
 
-  // A turn pans horizontally across a filmstrip of pages: BOTH layers move as
-  // one, the incoming page entering from the edge while the outgoing leaves by
-  // exactly the distance the incoming covers. Nothing is dealt on top of a
-  // frozen page, so the motion reads as the viewport travelling along the strip.
-  // `turnAxis` mirrors the strip for RTL books, where the next page sits to the
-  // left — the same mapping edge-taps already use. Once the base has swapped to
-  // the new page (`swapped`) it sits at rest; the overlay still covers at that
-  // point, so the reset is never visible.
-  const turnAxis = dir === "rtl" ? -1 : 1;
-  const turnSpan = container.w || 1;
+  // A turn pans across a filmstrip of pages: BOTH layers move as one, the
+  // incoming page entering from the edge while the outgoing leaves by exactly
+  // the distance the incoming covers. Nothing is dealt on top of a frozen
+  // page, so the motion reads as the viewport travelling along the strip.
+  //
+  // The strip runs sideways on mobile (matching the swipe) and vertically on
+  // desktop (matching the wheel) — see the `turnAxis` prop. `mirror` flips a
+  // horizontal strip for RTL books, where the next page sits to the left; the
+  // same mapping edge-taps already use. A vertical strip is never mirrored:
+  // "next" is down in both scripts. Once the base has swapped to the new page
+  // (`swapped`) it sits at rest; the overlay still covers at that point, so
+  // the reset is never visible.
+  const horizontal = axis === "x";
+  const mirror = horizontal && dir === "rtl" ? -1 : 1;
+  const turnSpan = (horizontal ? container.w : container.h) || 1;
+  const translate = (px: number) =>
+    horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
   const turnActive = flow === "paged" && peek && !swapped;
-  const baseShift = turnActive ? -peek.dir * turnAxis * peek.reveal * turnSpan : 0;
+  const baseShift = turnActive ? -peek.dir * mirror * peek.reveal * turnSpan : 0;
   const baseTurnStyle: React.CSSProperties = {
-    transform: `translateX(${baseShift}px)`,
+    transform: translate(baseShift),
     transition:
       peekAnimating && !swapped && !reducedMotion
         ? `transform ${ANIM_MS}ms ${TURN_EASE}`
@@ -1248,7 +1264,7 @@ export const FixedPageViewer = forwardRef<
             style={{
               margin: "auto",
               flexShrink: 0,
-              transform: `translateX(${peek.dir * turnAxis * (1 - peek.reveal) * turnSpan}px)`,
+              transform: translate(peek.dir * mirror * (1 - peek.reveal) * turnSpan),
               transition:
                 peekAnimating && !reducedMotion ? `transform ${ANIM_MS}ms ${TURN_EASE}` : "none",
               // The sliding peek page keeps the same tonal filter as the settled
