@@ -81,8 +81,18 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
       }
       const page = await doc.getPage(i + 1);
       const vp = page.getViewport({ scale });
+      // A 2D context's `direction` defaults to `inherit`, which resolves from
+      // the canvas element's computed CSS. Mounted inside the reader's
+      // `dir="rtl"` shell that makes it "rtl", and every `fillText` pdf.js
+      // issues is then anchored from the opposite edge — glyph runs land in the
+      // wrong places, words collide, and runs pushed past the edge disappear
+      // entirely. A PDF carries its own text positions and must be drawn in a
+      // direction-neutral context, so pin it regardless of where the canvas
+      // hangs in the DOM.
+      canvas.style.direction = "ltr";
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      ctx.direction = "ltr";
       // Render at devicePixelRatio for crisp text, capped at 2× to bound memory.
       const outputScale = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(vp.width * outputScale);
