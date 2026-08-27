@@ -564,7 +564,7 @@ function SearchBar({
   onChange: (next: string) => void;
   onSubmit: () => void;
 }) {
-  const { tr } = useI18n();
+  const { tr, dir } = useI18n();
   return (
     // Sticks to the top of the scroll container so the search field
     // stays reachable while scanning a long table of contents. zIndex 1
@@ -616,9 +616,13 @@ function SearchBar({
             }
           }}
           placeholder={tr("toc.searchChapters")}
-          // dir=auto so Arabic / RTL queries lay out from the inline
-          // start — the placeholder stays LTR because it's pure English.
-          dir="auto"
+          // Follow the UI locale, NOT dir="auto". `auto` derives direction
+          // from the value's first strong character, and a search field is
+          // empty most of the time — so it fell back to LTR and put the
+          // caret and the (translated, Arabic) placeholder on the wrong side
+          // of an Arabic UI, then flipped mid-typing. Bidi still lays out a
+          // Latin query correctly inside an RTL field.
+          dir={dir}
           aria-label={tr("toc.searchChapters")}
           style={{
             flex: 1,
