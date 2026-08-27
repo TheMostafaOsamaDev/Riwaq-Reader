@@ -33,6 +33,9 @@ import type { FixedPageSource } from "./FixedPageSource";
 const PAD = 20;
 const GAP = 18;
 const MAX_W = 860; // cap page display width so wide screens stay readable + light
+// At or below this container width the page always spans the full width: a
+// phone has no spare room for a side gutter.
+const NARROW_VIEWPORT = 520;
 
 // Paged turn feel: TURN_PX is the overscroll (px, accumulated) needed to commit
 // a turn — the "strength" that guards against accidental flips. IDLE_MS springs
@@ -345,11 +348,12 @@ export const FixedPageViewer = forwardRef<
   }, []);
 
   // "Fit width" means exactly that: the page spans the viewport edge to edge,
-  // with no side gutter. Only "fit page" keeps the horizontal inset, where the
-  // page is height-bound anyway and the breathing room reads as a margin.
-  // MAX_W still caps very wide windows so a desktop page stays readable — on a
-  // phone the container is far narrower than the cap, so it never binds.
-  const padX = fit === "width" ? 0 : PAD;
+  // with no side gutter. "Fit page" keeps the inset on a roomy window, where
+  // the page is height-bound and the breathing room reads as a margin — but
+  // not on a phone, where a decorative gutter is width the words could have
+  // had. MAX_W still caps very wide windows so a desktop page stays readable;
+  // on a phone the container is far narrower than the cap, so it never binds.
+  const padX = fit === "width" || container.w <= NARROW_VIEWPORT ? 0 : PAD;
   const contentW = Math.max(0, container.w - padX * 2);
   const usableW = Math.min(contentW, MAX_W);
   const fallbackRatio = useMemo(() => {
