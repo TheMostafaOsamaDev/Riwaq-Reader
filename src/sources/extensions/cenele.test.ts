@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { extractNovelConfig } from "./cenele";
+import { extractNovelConfig, parseNovelPage } from "./cenele";
 
 const novelHtml = readFileSync(
   join(__dirname, "__fixtures__/cenele-novel.html"),
@@ -30,5 +30,68 @@ describe("extractNovelConfig", () => {
   it("returns null when chaptersNonce is missing", () => {
     const html = `<script>var nhvNovelV2 = {"postId":"1","nonce":"abc"};</script>`;
     expect(extractNovelConfig(html)).toBeNull();
+  });
+});
+
+const parse = () =>
+  parseNovelPage(
+    new DOMParser().parseFromString(novelHtml, "text/html"),
+    "https://cenele.com/cont/pursuit/",
+  );
+
+describe("parseNovelPage", () => {
+  it("reads title, original title and cover", () => {
+    const n = parse();
+    expect(n.title).toBe("السعي وراء الحقيقة");
+    expect(n.originalTitle).toBe("Pursuit of the Truth");
+    expect(n.coverUrl).toBe(
+      "https://cenele.com/wp-content/uploads/2021/12/cover-768x1024.webp",
+    );
+  });
+
+  it("keeps genres and tags as separate lists", () => {
+    const n = parse();
+    expect(n.tags).toEqual([
+      "أكشن", "زيانشيا", "غموض", "الزراعة", "الانتقام",
+    ]);
+  });
+
+  it("reads the site's own status text, which the badge renders verbatim", () => {
+    // NovelDetailView renders novel.status as-is (NovelDetailView.tsx:629),
+    // so this must stay the site's Arabic string — normalizing it to
+    // "ongoing" would print English into an Arabic UI.
+    expect(parse().status).toBe("مستمرة");
+  });
+
+  it("builds label/value meta rows and links them", () => {
+    const n = parse();
+    expect(n.meta).toContainEqual({ label: "النوع", value: "صينية" });
+    expect(n.meta).toContainEqual({
+      label: "المؤلف",
+      value: "Er Gen",
+      url: "https://cenele.com/cont-author/er-gen/",
+    });
+  });
+
+  it("lifts the author out of the meta rows", () => {
+    expect(parse().author).toBe("Er Gen");
+  });
+
+  it("reads the synopsis", () => {
+    expect(parse().description).toContain("سجن أبدي");
+  });
+
+  it("carries the chapter credentials through", () => {
+    const n = parse();
+    expect(n.mangaId).toBe("32235");
+    expect(n.chaptersNonce).toBe("6d7f45aa72");
+  });
+
+  it("throws a page-identifying error when the config is missing", () => {
+    const doc = new DOMParser().parseFromString(
+      "<html><body>nope</body></html>", "text/html");
+    expect(() => parseNovelPage(doc, "https://cenele.com/cont/x/")).toThrow(
+      /https:\/\/cenele\.com\/cont\/x\//,
+    );
   });
 });

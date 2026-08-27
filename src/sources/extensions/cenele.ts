@@ -698,63 +698,60 @@ interface ParsedNovelPage {
   volumeShells: VolumeShell[];
 }
 
-function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
+export function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
   const html = doc.documentElement.outerHTML;
-  const ajax = extractNovelConfig(html);
-  if (!ajax) {
+  const config = extractNovelConfig(html);
+  if (!config) {
     throw new Error(
       `Cenele: couldn't find nhvNovelV2 config on ${pageUrl}. The site layout may have changed, or this isn't a novel page.`,
     );
   }
 
-  // Empty (not "Untitled") when the scrape can't find a title — a blank
-  // title persists as "" so the display-time fallback (`common.untitled`)
-  // localizes it wherever the novel is rendered, instead of freezing a
-  // locale-frozen literal into the novel's own stored title (same
-  // rationale as the author-blank fix elsewhere in this file).
-  const title = sanitizeText(doc.querySelector(".manga-title h2")?.textContent);
+  const title = sanitizeText(doc.querySelector(".nhv-novel-title")?.textContent);
+
+  // The kicker reads "رواية <Original Title>". Strip the leading word so
+  // the stored originalTitle is just the name.
   const originalTitle =
-    sanitizeText(
-      doc.querySelector(".manga-alt-title .manga-alt-label")?.textContent,
-    ) || undefined;
+    sanitizeText(doc.querySelector(".nhv-novel-kicker")?.textContent)
+      .replace(/^رواية\s+/, "") || undefined;
 
   const coverImg = doc.querySelector(
-    ".summary_image img",
+    ".nhv-novel-cover img",
   ) as HTMLImageElement | null;
   const coverUrl = pickImageSrc(coverImg);
 
-  const tags = Array.from(doc.querySelectorAll(".nhv-genres-chips a.nhv-genre-chip"))
+  // Genres and tags are separate lists on the redesigned page. We flatten
+  // them into one `tags` array because SourceNovel models a single chip
+  // set, and the reader treats both the same way.
+  const tags = [
+    ...Array.from(doc.querySelectorAll(".nhv-novel-genres a")),
+    ...Array.from(doc.querySelectorAll(".nhv-novel-tags a")),
+  ]
     .map((a) => sanitizeText(a.textContent))
     .filter((s) => s.length > 0);
 
+  // The status row is one of the meta rows, distinguished by an
+  // `is-ongoing` / `is-completed` class. We take its <strong> text rather
+  // than deriving a normalized token from the class: SourceNovel.status is
+  // a display field rendered verbatim as a badge, so the site's own Arabic
+  // wording is what belongs in it.
   const status = sanitizeText(
-    doc.querySelector(".manga-status .nhv-meta-value")?.textContent,
+    doc.querySelector(".nhv-novel-status strong")?.textContent,
   );
 
-  // Definition-list metadata. The Madara theme uses two parallel
-  // structures: `.manga-data .nhv-meta-label/.nhv-meta-value` pairs
-  // (chapter count, status, views, type) AND `.row-2`'s author/translator
-  // rows. Walk them all and emit a SourceNovelMeta row each. `author`
-  // starts empty (not "Unknown author") — same rationale as the epub/docx
-  // author fix: a blank `Book.author` lets the display-time fallback
-  // (`common.unknownAuthor`) localize it, instead of freezing an English
-  // literal into the novel's persisted data.
+  // Each meta row is `<div><span>[svg] Label</span><strong>Value</strong></div>`.
+  // The svg contributes no textContent, so trimming the span is enough.
   const meta: SourceNovelMeta[] = [];
   let author = "";
-  const metaRows = doc.querySelectorAll(
-    ".manga-data > div, .manga-author, .manga-artists, .manga-type, .released-chapters, .manga-status, .manga-views",
-  );
   const seenLabels = new Set<string>();
-  for (const row of Array.from(metaRows)) {
-    const labelEl = row.querySelector(".nhv-meta-label");
-    const valueEl = row.querySelector(".nhv-meta-value");
-    if (!labelEl || !valueEl) continue;
-    const label = sanitizeText(labelEl.textContent).replace(/:\s*$/, "");
-    const value = sanitizeText(valueEl.textContent).replace(/^[:：]\s*/, "");
+  for (const row of Array.from(doc.querySelectorAll(".nhv-novel-meta > div"))) {
+    const label = sanitizeText(row.querySelector("span")?.textContent);
+    const valueEl = row.querySelector("strong");
+    const value = sanitizeText(valueEl?.textContent);
     if (!label || !value) continue;
     if (seenLabels.has(label)) continue;
     seenLabels.add(label);
-    const linkEl = valueEl.querySelector("a");
+    const linkEl = valueEl?.querySelector("a");
     meta.push({
       label,
       value,
@@ -762,9 +759,6 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
         ? absolutizeUrl(linkEl.getAttribute("href") || "", BASE_URL)
         : undefined,
     });
-    // Heuristic: the author row is labeled "المؤلف" in Arabic
-    // ("Author"). Capture the first value we see under that label so
-    // the EPUB's dc:creator gets a meaningful name.
     if (/مؤلف|كاتب|author|writer/i.test(label) && !author) {
       author = value;
     }
@@ -782,43 +776,27 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     description,
     tags,
     meta,
-    mangaId: ajax.postId,
-    chaptersNonce: ajax.chaptersNonce,
+    mangaId: config.postId,
+    chaptersNonce: config.chaptersNonce,
     volumeShells,
   };
 }
 
-/** Pull the synopsis excerpt from the novel page. The full synopsis
- *  loads via an additional AJAX call (button labeled "Read more"); the
- *  excerpt is enough for the detail view and for the imported EPUB's
- *  meta. */
 function extractDescription(doc: Document): string | undefined {
-  const el =
-    doc.querySelector(".nhv-synopsis-excerpt") ||
-    doc.querySelector(".manga-excerpt .excerpt-content");
+  const el = doc.querySelector(".nhv-novel-synopsis");
   if (!el) return undefined;
   const text = sanitizeText(el.textContent);
   if (!text) return undefined;
-  // Trim "Read more"-style trailing ellipses that the theme appends
-  // when the synopsis is truncated server-side.
   const cleaned = text.replace(/Read more$/i, "").trim();
   return cleaned.length > 1500 ? cleaned.slice(0, 1500).trim() + "…" : cleaned;
 }
 
-/** Read volume metadata embedded in the chapters-tab shell, if the
- *  theme rendered any. Empty array means the volume list will need to
- *  be fetched via the `meta_only=1` AJAX call. */
-function extractVolumeShells(doc: Document): VolumeShell[] {
-  const shells: VolumeShell[] = [];
-  for (const section of Array.from(doc.querySelectorAll(".nhv-volume-card"))) {
-    const numAttr = section.getAttribute("data-volume");
-    if (numAttr == null) continue;
-    const num = parseInt(numAttr, 10);
-    if (Number.isNaN(num)) continue;
-    const label = sanitizeText(section.querySelector(".nhv-volume-title")?.textContent);
-    shells.push({ num, label });
-  }
-  return shells;
+/** The redesigned novel page ships no volume markup — the chapters tab
+ *  loads volumes over AJAX. getNovel gets the canonical list from
+ *  fetchVolumeMeta's `meta_only=1` call, so there is nothing to scrape
+ *  here. Kept (returning empty) so ParsedNovelPage's shape is stable. */
+function extractVolumeShells(_doc: Document): VolumeShell[] {
+  return [];
 }
 
 // ── homepage parsing ───────────────────────────────────────────────────────
