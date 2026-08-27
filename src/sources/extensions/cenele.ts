@@ -260,13 +260,13 @@ export function createCeneleSource(host: SourceHost): Source {
         // call. Do both, then proceed.
         host.log("debug", "getVolumeChapters: cache miss, refetching");
         const resp = await host.fetch(novelUrl);
-        const ajax = extractMangaSingleAjax(resp.text);
+        const ajax = extractNovelConfig(resp.text);
         if (!ajax) {
           throw new Error(
-            "Cenele: couldn't find nhvMangaSingleAjax config — site layout may have changed.",
+            "Cenele: couldn't find nhvNovelV2 config — site layout may have changed.",
           );
         }
-        const meta = await fetchVolumeMeta(host, ajax.mangaId, ajax.nonce);
+        const meta = await fetchVolumeMeta(host, ajax.postId, ajax.chaptersNonce);
         const sorted = [...meta].sort((a, b) => {
           if (a.num === 0 && b.num !== 0) return 1;
           if (b.num === 0 && a.num !== 0) return -1;
@@ -287,8 +287,8 @@ export function createCeneleSource(host: SourceHost): Source {
           nextId += c;
         });
         cached = {
-          mangaId: ajax.mangaId,
-          chaptersNonce: ajax.nonce,
+          mangaId: ajax.postId,
+          chaptersNonce: ajax.chaptersNonce,
           volumeIndex,
           chapterIdByUrl: new Map(),
         };
@@ -400,31 +400,38 @@ function extractSuggestNonce(html: string): string | null {
   return null;
 }
 
-interface NhvMangaSingleAjax {
-  nonce: string;
-  mangaId: string;
+export interface NovelConfig {
+  /** Numeric WordPress post id of the novel. Sent as `manga_id`. */
+  postId: string;
+  /** Nonce for `nhv_manga_single_chapters_page` and
+   *  `nhv_search_manga_chapters`. Distinct from `nhvNovelV2.nonce`,
+   *  which belongs to the `nhv_novel_v2_section` tab-content action. */
+  chaptersNonce: string;
 }
 
-/** Extract the chapter-list nonce + manga_id from the novel page's inline
- *  config object: `var nhvMangaSingleAjax = {"ajaxurl":"…","nonce":"<HEX>",
- *  "manga_id":"<INT>","per_page":"<INT>"};`. */
-function extractMangaSingleAjax(html: string): NhvMangaSingleAjax | null {
-  const m = html.match(/var\s+nhvMangaSingleAjax\s*=\s*(\{[^}]+\})/);
+/** Extract the chapter-list credentials from the novel page's inline
+ *  config: `var nhvNovelV2 = {"ajaxurl":"…","nonce":"…","postId":"…",
+ *  "chaptersNonce":"…", …};`. Replaced `nhvMangaSingleAjax` when the
+ *  site redesigned its novel page (see docs/store-feature/cenele.md). */
+export function extractNovelConfig(html: string): NovelConfig | null {
+  const m = html.match(/var\s+nhvNovelV2\s*=\s*(\{[\s\S]*?\})\s*;/);
   if (!m) return null;
   try {
     const obj = JSON.parse(m[1]) as Record<string, unknown>;
-    const nonce = typeof obj.nonce === "string" ? obj.nonce : null;
-    const mangaId =
-      typeof obj.manga_id === "string"
-        ? obj.manga_id
-        : typeof obj.manga_id === "number"
-          ? String(obj.manga_id)
-          : null;
-    if (!nonce || !mangaId) return null;
-    return { nonce, mangaId };
+    const postId = asIdString(obj.postId);
+    const chaptersNonce =
+      typeof obj.chaptersNonce === "string" ? obj.chaptersNonce : null;
+    if (!postId || !chaptersNonce) return null;
+    return { postId, chaptersNonce };
   } catch {
     return null;
   }
+}
+
+function asIdString(v: unknown): string | null {
+  if (typeof v === "string" && v.length > 0) return v;
+  if (typeof v === "number") return String(v);
+  return null;
 }
 
 // ── suggest endpoint ───────────────────────────────────────────────────────
@@ -693,10 +700,10 @@ interface ParsedNovelPage {
 
 function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
   const html = doc.documentElement.outerHTML;
-  const ajax = extractMangaSingleAjax(html);
+  const ajax = extractNovelConfig(html);
   if (!ajax) {
     throw new Error(
-      `Cenele: couldn't find nhvMangaSingleAjax config on ${pageUrl}. The site layout may have changed, or this isn't a novel page.`,
+      `Cenele: couldn't find nhvNovelV2 config on ${pageUrl}. The site layout may have changed, or this isn't a novel page.`,
     );
   }
 
@@ -775,8 +782,8 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     description,
     tags,
     meta,
-    mangaId: ajax.mangaId,
-    chaptersNonce: ajax.nonce,
+    mangaId: ajax.postId,
+    chaptersNonce: ajax.chaptersNonce,
     volumeShells,
   };
 }
