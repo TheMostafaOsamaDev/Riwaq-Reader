@@ -49,8 +49,6 @@ function Harness() {
       theme: (q.get("theme") as Tweaks["theme"]) || "sepia",
       fixedFlow: (q.get("flow") as Tweaks["fixedFlow"]) || "scroll",
       fixedFit: (q.get("fit") as Tweaks["fixedFit"]) || "width",
-      inkColor: q.get("ink") || DEFAULT_TWEAKS.inkColor,
-      paperColor: q.get("paper") || DEFAULT_TWEAKS.paperColor,
     };
   });
   const [locale, setLocale] = useState<"ar" | "en">("ar");

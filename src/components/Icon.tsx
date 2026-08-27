@@ -35,6 +35,11 @@ export const ICONS = {
   plus: "M12 5v14M5 12h14",
   chevronR: "M9 18l6-6-6-6",
   chevronD: "M6 9l6 6 6-6",
+  /** Expand-all / collapse-all pair for accordion groups. */
+  chevronsD: "M7 7l5 5 5-5M7 13l5 5 5-5",
+  chevronsU: "M7 11l5-5 5 5M7 17l5-5 5 5",
+  /** Crosshair — "take me to where I am". */
+  locate: "M2 12h3M19 12h3M12 2v3M12 19v3M12 19a7 7 0 100-14 7 7 0 000 14z",
   type: "M4 7V5h16v2M9 20h6M12 5v15",
   // Solid-fillable triangle — pass fill="currentColor" for the hero's primary
   // Read action; renders as an outline under the set's default fill="none".

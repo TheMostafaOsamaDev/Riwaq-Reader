@@ -373,8 +373,6 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             fit={t.fixedFit}
             zoom={zoom}
             tint={t.fixedPageTint}
-            inkColor={t.inkColor}
-            paperColor={t.paperColor}
             dir={contentDir}
             // Turns follow the gesture that drives them: a sideways swipe on
             // mobile, the wheel on desktop.

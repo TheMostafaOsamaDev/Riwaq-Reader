@@ -12,7 +12,6 @@ import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconProps } from "./Icon";
 import { SystemThemeGlyph } from "./SystemThemeGlyph";
 import {
-  ACCENT,
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
@@ -23,11 +22,6 @@ import type { Tweaks } from "../types/reader";
 import { useI18n } from "../i18n/useI18n";
 import { formatNum } from "../i18n";
 import type { Locale, MsgKey, Tr, UiLangPref } from "../i18n";
-import {
-  isColorSet,
-  isLowContrast,
-  resolveReadingColors,
-} from "../reader/readingColors";
 
 type SetTweak = <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
 
@@ -437,209 +431,6 @@ export function ThemeField({
   );
 }
 
-// ── reading color controls (Text color / Page color) ───────────────────────
-
-/** Curated ink presets — near-black, grey, sepia-brown, warm off-white (for
- *  dark pages). "Auto" (theme) + a freeform picker flank them in the row. */
-const INK_PRESETS = ["#1b1b1b", "#5b5b5b", "#3a2f1f", "#d8cbb0"] as const;
-/** Curated paper presets — white, sepia, soft sage-grey, near-black. */
-const PAPER_PRESETS = ["#ffffff", "#f4ecd8", "#eae7dd", "#1a1614"] as const;
-
-const SWATCH = 30;
-
-/** Pick a legible glyph/icon color for a filled swatch: dark on light fills,
- *  light on dark. `isLowContrast(fill, white)` is true when the fill is light. */
-function onColorFor(fill: string): string {
-  return isLowContrast(fill, "#ffffff") ? "#111111" : "#ffffff";
-}
-
-function swatchBase(theme: Theme, selected: boolean): CSSProperties {
-  return {
-    width: SWATCH,
-    height: SWATCH,
-    flex: "0 0 auto",
-    padding: 0,
-    borderRadius: 999,
-    border: `1px solid ${theme.rule}`,
-    cursor: "pointer",
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    // Selected halo: a paper-colored gap ring, then an ink-colored ring.
-    boxShadow: selected ? `0 0 0 2px ${theme.paper}, 0 0 0 3.5px ${theme.ink}` : "none",
-  };
-}
-
-/** One "Text" or "Page" color row: an Auto chip, preset swatches, and a
- *  freeform picker. `value` is "auto" or a hex; `autoResolved` is the theme
- *  color Auto falls back to (shown as the Auto chip's fill). */
-function ColorSwatchRow({
-  theme,
-  caption,
-  value,
-  presets,
-  autoResolved,
-  onChange,
-}: {
-  theme: Theme;
-  caption: string;
-  value: string;
-  presets: readonly string[];
-  autoResolved: string;
-  onChange: (v: string) => void;
-}) {
-  const { tr } = useI18n();
-  const norm = value.trim().toLowerCase();
-  const isAuto = !isColorSet(value);
-  const isPreset = presets.some((p) => p.toLowerCase() === norm);
-  const isCustom = !isAuto && !isPreset;
-  const customSeed = isColorSet(value) ? value : autoResolved;
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span
-        style={{
-          width: 42,
-          flex: "0 0 auto",
-          fontSize: 11,
-          fontWeight: 500,
-          color: theme.muted,
-        }}
-      >
-        {caption}
-      </span>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, flex: 1 }}>
-        {/* Auto — reverts to the theme color */}
-        <button
-          type="button"
-          onClick={() => onChange("auto")}
-          aria-pressed={isAuto}
-          aria-label={`${caption} — ${tr("settings.colors.auto")}`}
-          title={tr("settings.colors.auto")}
-          style={{ ...swatchBase(theme, isAuto), background: autoResolved }}
-        >
-          <span style={{ fontSize: 11, fontWeight: 700, color: onColorFor(autoResolved) }}>
-            A
-          </span>
-        </button>
-
-        {/* Presets */}
-        {presets.map((p) => {
-          const selected = p.toLowerCase() === norm;
-          return (
-            <button
-              key={p}
-              type="button"
-              onClick={() => onChange(p)}
-              aria-pressed={selected}
-              aria-label={`${caption}: ${p}`}
-              title={p}
-              style={{ ...swatchBase(theme, selected), background: p }}
-            >
-              {selected && <Icon name="check" size={14} style={{ color: onColorFor(p) }} />}
-            </button>
-          );
-        })}
-
-        {/* Freeform picker */}
-        <label
-          aria-label={`${caption} — ${tr("settings.colors.custom")}`}
-          title={tr("settings.colors.custom")}
-          style={{
-            ...swatchBase(theme, isCustom),
-            background: isCustom
-              ? value
-              : "conic-gradient(from 90deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ef4444)",
-          }}
-        >
-          <Icon
-            name="pencil"
-            size={12}
-            style={{ color: isCustom ? onColorFor(value) : "#ffffff", pointerEvents: "none" }}
-          />
-          <input
-            type="color"
-            value={customSeed}
-            onChange={(e) => onChange(e.target.value)}
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              opacity: 0,
-              cursor: "pointer",
-              border: "none",
-              padding: 0,
-            }}
-          />
-        </label>
-      </div>
-    </div>
-  );
-}
-
-/** The Text-color + Page-color control. Shared by the reflow reader's reading
- *  settings and the fixed (PDF/DOCX) reader panel. Warns (icon + text, not
- *  color alone) when the effective ink/paper pair drops below WCAG AA. */
-export function ColorField({
-  theme,
-  inkColor,
-  paperColor,
-  onChangeInk,
-  onChangePaper,
-}: {
-  theme: Theme;
-  inkColor: string;
-  paperColor: string;
-  onChangeInk: (v: string) => void;
-  onChangePaper: (v: string) => void;
-}) {
-  const { tr } = useI18n();
-  const resolved = resolveReadingColors(theme, inkColor, paperColor);
-  const anyOverride = isColorSet(inkColor) || isColorSet(paperColor);
-  const lowContrast = anyOverride && isLowContrast(resolved.ink, resolved.paper);
-
-  return (
-    <Field label={tr("settings.colors")} theme={theme}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <ColorSwatchRow
-          theme={theme}
-          caption={tr("settings.colors.text")}
-          value={inkColor}
-          presets={INK_PRESETS}
-          autoResolved={theme.ink}
-          onChange={onChangeInk}
-        />
-        <ColorSwatchRow
-          theme={theme}
-          caption={tr("settings.colors.page")}
-          value={paperColor}
-          presets={PAPER_PRESETS}
-          autoResolved={theme.bg}
-          onChange={onChangePaper}
-        />
-      </div>
-      {lowContrast && (
-        <div
-          role="status"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginTop: 12,
-            color: ACCENT,
-          }}
-        >
-          <Icon name="info" size={14} style={{ flex: "0 0 auto" }} />
-          <span style={{ fontSize: 10.5, lineHeight: 1.4 }}>
-            {tr("settings.colors.lowContrast")}
-          </span>
-        </div>
-      )}
-    </Field>
-  );
-}
 
 /** The reading typography/layout controls as individually-searchable entries,
  *  shared by the reader quick-panel and the Settings page's Reading section.
@@ -752,19 +543,6 @@ export function readingItems(ctx: {
       ),
     },
     {
-      id: "readingColors",
-      label: tr("settings.colors"),
-      node: (
-        <ColorField
-          theme={theme}
-          inkColor={t.inkColor}
-          paperColor={t.paperColor}
-          onChangeInk={(v) => setTweak("inkColor", v)}
-          onChangePaper={(v) => setTweak("paperColor", v)}
-        />
-      ),
-    },
-    {
       id: "readingMode",
       label: tr("settings.readingMode"),
       node: (
@@ -864,19 +642,6 @@ export function fixedItems(ctx: {
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoom + delta).toFixed(2))),
     );
   return [
-    {
-      id: "readingColors",
-      label: tr("settings.colors"),
-      node: (
-        <ColorField
-          theme={theme}
-          inkColor={t.inkColor}
-          paperColor={t.paperColor}
-          onChangeInk={(v) => setTweak("inkColor", v)}
-          onChangePaper={(v) => setTweak("paperColor", v)}
-        />
-      ),
-    },
     {
       id: "fixedFlow",
       label: tr("settings.flow"),

@@ -57,7 +57,7 @@ import {
   type ThemeKey,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
-import type { ActivePanel, Tweaks } from "../types/reader";
+import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 import type { HighlightColor } from "../styles/tokens";
 
 interface Props {
@@ -132,6 +132,31 @@ export function SourceStreamReader({
     () => `leaflet:stream-state:${sourceId}:${novelUrl}`,
     [sourceId, novelUrl],
   );
+
+  // Volume ranges over the flattened spine, for the reader's Contents panel.
+  // `flat` is built by walking `novel.volumes` in order and buildVirtualBook
+  // numbers those chapters 0..N-1, so a running offset reproduces exactly the
+  // `order`s the reader works in. Volumes a lazy source hasn't fetched yet
+  // contribute no chapters and so get no range.
+  const tocVolumes = useMemo<TocVolume[] | undefined>(() => {
+    if (!novel) return undefined;
+    const out: TocVolume[] = [];
+    let offset = 0;
+    novel.volumes.forEach((v, i) => {
+      if (v.chapters.length === 0) return;
+      out.push({
+        id: `vol:${v.id}`,
+        title: v.title.trim() || tr("novel.volumeFallback", { n: i + 1 }),
+        start: offset,
+        end: offset + v.chapters.length - 1,
+      });
+      offset += v.chapters.length;
+    });
+    // Sources with no volumes of their own return one pseudo-volume covering
+    // everything. Grouping a whole novel under a single header just adds a row
+    // that can hide the entire book, so those fall back to an ungrouped list.
+    return out.length >= 2 ? out : undefined;
+  }, [novel, tr]);
 
   // Library entry id, if this novel is on the shelf. When set, the
   // reader prefers offline content from `chapters/<id>/content.json`
@@ -491,6 +516,7 @@ export function SourceStreamReader({
           onDeleteHighlight={onDeleteHighlight}
           onUpdateHighlightNote={onUpdateHighlightNote}
           onJumpToHighlight={onJumpToHighlight}
+          tocVolumes={tocVolumes}
           onBack={onClose}
         />
       ) : (
@@ -511,6 +537,7 @@ export function SourceStreamReader({
           onDeleteHighlight={onDeleteHighlight}
           onUpdateHighlightNote={onUpdateHighlightNote}
           onJumpToHighlight={onJumpToHighlight}
+          tocVolumes={tocVolumes}
           activePanel={activePanel}
           setActivePanel={setActivePanel}
           onBack={onClose}

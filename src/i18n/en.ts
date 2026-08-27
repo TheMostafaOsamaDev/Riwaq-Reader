@@ -38,12 +38,6 @@ export const en = {
   "settings.theme.sepia": "Sepia",
   "settings.theme.dark": "Dark",
   "settings.theme.oled": "OLED",
-  "settings.colors": "Colors",
-  "settings.colors.text": "Text",
-  "settings.colors.page": "Page",
-  "settings.colors.auto": "Auto",
-  "settings.colors.custom": "Custom",
-  "settings.colors.lowContrast": "Low contrast — text may be hard to read",
   "settings.fontSize": "Font size · {n}px",
   "settings.lineHeight": "Line height · {n}",
   "settings.letterSpacing": "Letter spacing · {n}em",
@@ -279,6 +273,9 @@ export const en = {
   "toc.clearSearch": "Clear search",
   "toc.noMatches": "No chapters match “{term}”.",
   "toc.now": "Now",
+  "toc.collapseAll": "Collapse all volumes",
+  "toc.expandAll": "Expand all volumes",
+  "toc.goToCurrent": "Go to current chapter",
 
   // Highlights panel
   "highlights.title": "Highlights",

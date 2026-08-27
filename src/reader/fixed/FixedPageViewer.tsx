@@ -19,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Theme, ThemeKey } from "../../styles/tokens";
+import { readingSurfaces, type Theme, type ThemeKey } from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
 import { resolveDocxSelection, type DocxSelectionAnchor } from "./docxHighlight";
 import type {
@@ -29,7 +29,6 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import type { FixedPageSource } from "./FixedPageSource";
-import { pdfDuotone, resolveReadingColors } from "../readingColors";
 
 const PAD = 20;
 const GAP = 18;
@@ -129,10 +128,6 @@ export interface FixedPageViewerProps {
   /** Multiplier on the fit scale (0.5–~2.5). */
   zoom: number;
   tint: FixedPageTint;
-  /** Reading color overrides ("auto" or a hex). DOCX cards take them as real
-   *  CSS via `--reading-ink`/`--reading-paper`; PDF pages get a GPU duotone. */
-  inkColor: string;
-  paperColor: string;
   dir: "ltr" | "rtl";
   /** Which way a page turn travels. Mobile turns sideways to match the swipe
    *  that drives it; desktop turns vertically to match the wheel. */
@@ -177,8 +172,6 @@ export const FixedPageViewer = forwardRef<
     fit,
     zoom,
     tint,
-    inkColor,
-    paperColor,
     dir,
     turnAxis: axis,
     theme,
@@ -232,39 +225,12 @@ export const FixedPageViewer = forwardRef<
     return () => scroller.removeEventListener("pointerup", onUp);
   }, [source, onSelect, onHighlightClick]);
 
-  // Reading colors, split by backend. PDF: a GPU duotone (or null → untouched,
-  // today's behavior), which supersedes the dim/invert tint filter. DOCX:
-  // resolved concrete colors handed to the cards through CSS vars, so "auto"
-  // makes DOCX follow the active theme instead of always rendering white.
-  const duotone = source.kind === "pdf" ? pdfDuotone(inkColor, paperColor) : null;
-  const hostFilter = duotone ? duotone.hostFilter : tintFilter(tint);
-  const docxColors =
-    source.kind === "docx" ? resolveReadingColors(theme, inkColor, paperColor) : null;
+  // Reading colours come straight from the theme now. The page is the theme's
+  // paper and the surround a shade behind it, so the sheet reads as a sheet
+  // without a border; DOCX cards take those through CSS vars.
+  const surfaces = readingSurfaces(theme);
+  const hostFilter = tintFilter(tint);
 
-  // The ink + paper blend layers for a single PDF page, positioned by `box`.
-  // A plain element factory (not a component) so it never remounts the hosts.
-  const duotoneOverlays = (
-    keyPrefix: string,
-    box: React.CSSProperties,
-  ): React.ReactElement[] => {
-    if (!duotone) return [];
-    return [
-      { key: `${keyPrefix}-ink`, layer: duotone.ink },
-      { key: `${keyPrefix}-paper`, layer: duotone.paper },
-    ].map(({ key, layer }) => (
-      <div
-        key={key}
-        aria-hidden
-        style={{
-          ...box,
-          borderRadius: 4,
-          background: layer.color,
-          mixBlendMode: layer.blend as React.CSSProperties["mixBlendMode"],
-          pointerEvents: "none",
-        }}
-      />
-    ));
-  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRefs = useRef(new Map<number, HTMLDivElement>());
@@ -1390,16 +1356,16 @@ export const FixedPageViewer = forwardRef<
         position: "absolute",
         inset: 0,
         overflow: "hidden",
-        background: theme.bg,
-        // Confine the PDF duotone's mix-blend overlays to this subtree.
-        isolation: duotone ? "isolate" : undefined,
-        // DOCX cards read these; unset for PDF (which uses the duotone instead).
-        ...(docxColors
-          ? ({
-              ["--reading-ink"]: docxColors.ink,
-              ["--reading-paper"]: docxColors.paper,
-            } as React.CSSProperties)
-          : null),
+        // The surround sits a shade behind the page so the sheet reads as a
+        // sheet — three of the four themes give `paper` and `bg` the same
+        // value, so without this the page vanished into its background once
+        // the border and the fit-width gutter were gone.
+        background: surfaces.surround,
+        // DOCX cards paint themselves from these.
+        ...({
+          ["--reading-ink"]: theme.ink,
+          ["--reading-paper"]: surfaces.page,
+        } as React.CSSProperties),
       }}
     >
       <div
@@ -1440,22 +1406,6 @@ export const FixedPageViewer = forwardRef<
                 }}
               />
             ))}
-            {/* PDF duotone: two GPU-composited mix-blend overlays per rendered
-                page, sized/positioned to match its host. `lighten`/`darken`
-                (order + modes chosen by pdfDuotone for polarity) remap the
-                grayscaled page's darks→ink and lights→paper. */}
-            {duotone &&
-              visible.flatMap((i) =>
-                rendered.has(i)
-                  ? duotoneOverlays(`s${i}`, {
-                      position: "absolute",
-                      top: layout.top[i],
-                      left: `calc(50% - ${layout.displayW[i] / 2}px)`,
-                      width: layout.displayW[i],
-                      height: layout.displayH[i],
-                    })
-                  : [],
-              )}
           </div>
         ) : (
           <>
@@ -1495,33 +1445,6 @@ export const FixedPageViewer = forwardRef<
                 }}
               />
             ))}
-            {/* Paged duotone: mirror the host's flex-centered box exactly. */}
-            {duotone && rendered.has(current) && (
-              <div
-                ref={duotoneRef}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  padding: `${PAD}px ${padX}px`,
-                  pointerEvents: "none",
-                  // Travels with the page it tints (via `writeTurn`), or the
-                  // duotone would smear across a moving page mid-turn.
-                }}
-              >
-                <div
-                  style={{
-                    position: "relative",
-                    margin: "auto",
-                    flexShrink: 0,
-                    width: layout.displayW[current] || 0,
-                    height: layout.displayH[current] || 0,
-                  }}
-                >
-                  {duotoneOverlays("p", { position: "absolute", inset: 0 })}
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>

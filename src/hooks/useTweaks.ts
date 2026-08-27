@@ -8,8 +8,6 @@ export const DEFAULT_TWEAKS: Tweaks = {
   uiLang: "system",
   theme: "sepia",
   fontFamily: "serif",
-  inkColor: "auto",
-  paperColor: "auto",
   fontSize: 17,
   lineHeight: 1.6,
   letterSpacing: 0,

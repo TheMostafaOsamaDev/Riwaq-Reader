@@ -257,3 +257,61 @@ export const FONT_ARABIC =
   '"Amiri", "Noto Naskh Arabic", "Scheherazade New", serif';
 
 export const ACCENT = "#c96442"; // warm copper amber, matches design
+
+// ── reading surfaces ────────────────────────────────────────────────────────
+
+/** Parse "#rgb"/"#rrggbb" to 8-bit RGB, or null if it isn't a hex colour. */
+function parseHexColor(hex: string): [number, number, number] | null {
+  let h = hex.trim();
+  if (h[0] !== "#") return null;
+  h = h.slice(1);
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+function toHex(rgb: [number, number, number]): string {
+  return "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+}
+
+/** Move a colour `amount` (0..1) of the way toward black (negative) or white. */
+function shade(hex: string, amount: number): string {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return hex;
+  const target = amount < 0 ? 0 : 255;
+  const k = Math.abs(amount);
+  return toHex(rgb.map((c) => c + (target - c) * k) as [number, number, number]);
+}
+
+/** How far the surround sits from the page. Small on purpose — enough to read
+ *  as a sheet, not so much that it becomes a frame competing with the text. */
+const SURFACE_STEP = 0.06;
+
+export interface ReadingSurfaces {
+  /** The sheet the words sit on. */
+  page: string;
+  /** What sits behind and around the sheet. */
+  surround: string;
+}
+
+/** Page and surround for a theme.
+ *
+ *  Three of the four themes set `paper` equal to `bg`, so a page rendered at
+ *  the theme's paper colour is indistinguishable from what's behind it — with
+ *  no border and no gutter at fit-width, the sheet simply disappears. These
+ *  derive a tonal step instead of relying on the tokens differing.
+ *
+ *  The page is always the more elevated of the two. Normally that means
+ *  recessing the surround; on a pure-black theme there is nothing below black
+ *  to recess to, so the page is lifted instead. */
+export function readingSurfaces(theme: Theme): ReadingSurfaces {
+  const rgb = parseHexColor(theme.paper);
+  const nearBlack = !rgb || (rgb[0] + rgb[1] + rgb[2]) / 3 < 24;
+  return nearBlack
+    ? { page: shade(theme.paper, SURFACE_STEP), surround: theme.paper }
+    : { page: theme.paper, surround: shade(theme.paper, -SURFACE_STEP) };
+}
