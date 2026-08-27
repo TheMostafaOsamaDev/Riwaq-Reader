@@ -785,7 +785,16 @@ export function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage 
 function extractDescription(doc: Document): string | undefined {
   const el = doc.querySelector(".nhv-novel-synopsis");
   if (!el) return undefined;
-  const text = sanitizeText(el.textContent);
+  // The container also holds an <h2> (the title, repeated) and a trailing
+  // <h3> of promotional copy. Take only the paragraphs, or the synopsis
+  // arrives with both glued to it.
+  const paragraphs = Array.from(el.querySelectorAll("p"))
+    .map((p) => sanitizeText(p.textContent))
+    .filter((t) => t.length > 0);
+  // Fall back to the whole container if the theme ever drops the <p> wrapping.
+  const text = paragraphs.length > 0
+    ? paragraphs.join("\n\n")
+    : sanitizeText(el.textContent);
   if (!text) return undefined;
   const cleaned = text.replace(/Read more$/i, "").trim();
   return cleaned.length > 1500 ? cleaned.slice(0, 1500).trim() + "…" : cleaned;

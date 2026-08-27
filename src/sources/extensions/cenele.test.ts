@@ -52,7 +52,8 @@ describe("parseNovelPage", () => {
   it("keeps genres and tags as separate lists", () => {
     const n = parse();
     expect(n.tags).toEqual([
-      "أكشن", "زيانشيا", "غموض", "الزراعة", "الانتقام",
+      "أكشن", "بالغ", "زيانشيا", "غموض", "فنون قتالية", "للكبار", "مأساة", "مظلمة", "نفسي",
+      "إنتقال العالم", "الانتقال الزمني", "الانتقام", "الزراعة", "الشخصية لا ترحم", "الكيمياء", "الوقت القديم", "تطور شخصية", "خلفية عائلة غامضة", "داو", "غدر الأحباء", "من ضعيف إلى قوي",
     ]);
   });
 
@@ -79,6 +80,16 @@ describe("parseNovelPage", () => {
 
   it("reads the synopsis", () => {
     expect(parse().description).toContain("سجن أبدي");
+  });
+
+  it("excludes heading boilerplate from the synopsis", () => {
+    // The synopsis container holds an <h2> (title repeated) and trailing
+    // <h3> (promotional copy). These must not appear in the stored description.
+    const n = parse();
+    expect(n.description).not.toContain("قصة رواية السعي وراء الحقيقة");
+    expect(n.description).not.toContain("الكتاب الثاني في سلسلة إير جين");
+    // The actual paragraph content should still be present
+    expect(n.description).toContain("سجن أبدي");
   });
 
   it("carries the chapter credentials through", () => {
