@@ -8,11 +8,28 @@ import { bookDir, type PdfBook } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
 
 const BASE = BaseDirectory.AppData;
-// Rendered canvases kept alive at once (bounds memory). Has to comfortably
-// exceed the working set of a turn — the page on screen, the one sliding in,
-// and the warm window either side — or the LRU evicts a page moments before
-// the turn that needs it and it has to be rasterized again mid-animation.
-const MAX_MOUNTED = 10;
+// Never evict below this: the page on screen, the one sliding in, and one
+// neighbour. Dropping any of those guarantees a rasterization mid-turn.
+const MIN_MOUNTED = 3;
+// Hard ceiling on the number of live canvases, independent of their size —
+// a backstop for pages small enough that the byte budget alone wouldn't bite.
+const MAX_MOUNTED = 14;
+
+/** How many bytes of canvas we're willing to hold.
+ *
+ *  Counting canvases is the wrong unit: a page at 100% on a phone is ~3MB
+ *  while the same page zoomed to 250% is ~20MB, so a fixed count either wastes
+ *  memory at low zoom or blows past a safe footprint at high zoom. Budget the
+ *  bytes instead and let the count fall out of it.
+ *
+ *  `deviceMemory` is coarse (rounded to a power of two, capped at 8) and absent
+ *  outside Chromium, which is fine — it only has to separate a 2GB phone from
+ *  an 8GB one. The clamp keeps both ends sane when it's missing or lying. */
+function canvasBudgetBytes(): number {
+  const gb = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
+  const guess = typeof gb === "number" && gb > 0 ? gb * 8 : 48; // MB
+  return Math.min(96, Math.max(24, guess)) * 1024 * 1024;
+}
 
 /** A page we have already rasterized, plus the scale its pixels were drawn at.
  *  Keeping the scale lets `renderPage` re-mount a canvas somewhere else without
@@ -20,6 +37,13 @@ const MAX_MOUNTED = 10;
 interface Mounted {
   canvas: HTMLCanvasElement;
   scale: number;
+  /** Backing-store bytes, so eviction can budget by memory rather than count. */
+  bytes: number;
+}
+
+/** RGBA backing store of a canvas, in bytes. */
+function canvasBytes(c: HTMLCanvasElement): number {
+  return c.width * c.height * 4;
 }
 
 /** Scale comparisons go through the same rounding the viewer uses, so a float
@@ -44,14 +68,38 @@ export async function createPdfPageSourceFromBytes(
   const sizeCache = new Map<number, { w: number; h: number }>();
   // Insertion-ordered so the first key is the oldest — cheap LRU.
   const mounted = new Map<number, Mounted>();
+  const budget = canvasBudgetBytes();
 
-  /** Drop the least-recently-used canvases past the window, never `keep`. */
+  function heldBytes(): number {
+    let n = 0;
+    for (const m of mounted.values()) n += m.bytes;
+    return n;
+  }
+
+  /** Drop least-recently-used canvases until we're inside both the byte budget
+   *  and the count ceiling, never touching `keep` and never going below
+   *  MIN_MOUNTED — a turn's working set outranks the budget. */
   function evict(keep: number) {
-    while (mounted.size > MAX_MOUNTED) {
-      const oldest = mounted.keys().next().value as number | undefined;
-      if (oldest === undefined || oldest === keep) break;
-      mounted.get(oldest)?.canvas.remove();
-      mounted.delete(oldest);
+    let bytes = heldBytes();
+    while (
+      mounted.size > MIN_MOUNTED &&
+      (mounted.size > MAX_MOUNTED || bytes > budget)
+    ) {
+      // Oldest first, but step over the page we were just asked to keep
+      // instead of giving up on it — otherwise one pinned entry at the head
+      // stalls eviction entirely and the budget is never enforced.
+      let victim: number | undefined;
+      for (const key of mounted.keys()) {
+        if (key !== keep) {
+          victim = key;
+          break;
+        }
+      }
+      if (victim === undefined) break;
+      const m = mounted.get(victim)!;
+      bytes -= m.bytes;
+      m.canvas.remove();
+      mounted.delete(victim);
     }
   }
 
@@ -90,6 +138,7 @@ export async function createPdfPageSourceFromBytes(
         if (entry.scale === want) return;
         entry.scale = want;
         await doc.renderPage(i, entry.canvas, scale);
+        entry.bytes = canvasBytes(entry.canvas); // scale changed the backing store
         evict(i);
         return;
       }
@@ -99,9 +148,10 @@ export async function createPdfPageSourceFromBytes(
       const canvas = document.createElement("canvas");
       canvas.style.display = "block";
       host.appendChild(canvas);
-      const created: Mounted = { canvas, scale: want };
+      const created: Mounted = { canvas, scale: want, bytes: 0 };
       mounted.set(i, created);
       await doc.renderPage(i, canvas, scale);
+      created.bytes = canvasBytes(canvas);
       evict(i);
     },
 

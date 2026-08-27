@@ -92,7 +92,8 @@ const PREFETCH_DELAY_MS = 80;
 // for the case where you land somewhere fresh (a jump from the contents) and
 // immediately turn back. Memory is bounded by the source's byte budget, not by
 // this number; see canvasBudgetBytes in PdfPageSource.
-const PREFETCH_AHEAD = 2;
+const PREFETCH_AHEAD = 3;
+const PREFETCH_BEHIND = 1;
 
 /** Signed px/ms across the sample ring, measured over the most recent
  *  VELOCITY_WINDOW_MS. Returns 0 when there's nothing to measure. */
@@ -1124,7 +1125,7 @@ export const FixedPageViewer = forwardRef<
       const d = lastDir.current;
       const wanted: number[] = [];
       for (let n = 1; n <= PREFETCH_AHEAD; n++) wanted.push(current + n * d);
-      wanted.push(current - d);
+      for (let n = 1; n <= PREFETCH_BEHIND; n++) wanted.push(current - n * d);
       for (let k = 0; k < wanted.length; k++) {
         const i = wanted[k];
         const host = warmRefs.current[k];
@@ -1448,7 +1449,7 @@ export const FixedPageViewer = forwardRef<
             {/* Offscreen holders for the warmed neighbour pages. Kept out of
                 layout and out of the paint — they exist only to own a canvas
                 until a turn re-parents it. */}
-            {Array.from({ length: PREFETCH_AHEAD + 1 }, (_, k) => (
+            {Array.from({ length: PREFETCH_AHEAD + PREFETCH_BEHIND }, (_, k) => (
               <div
                 key={`warm-${k}`}
                 ref={(el) => {
