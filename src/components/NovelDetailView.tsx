@@ -1091,7 +1091,7 @@ function ChapterSearch({
             </div>
           ) : state.results && state.results.length === 0 ? (
             <div style={{ padding: 14, color: theme.muted, fontSize: 12.5 }}>
-              {tr("store.noSuggestMatches", { query: state.query })}
+              {tr("novel.searchChaptersNoMatches", { query: state.query })}
             </div>
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
