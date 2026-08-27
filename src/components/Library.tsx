@@ -2489,6 +2489,11 @@ function PillScrollArrow({
         // arrow appeared on the right, pointing away from the content.
         [edge === "start" ? "insetInlineStart" : "insetInlineEnd"]: 0,
         transform: "translateY(-50%)",
+        // Above the pills, which carry z-index 1 of their own. Without this
+        // the arrow rendered *under* them: at the start edge it sat behind a
+        // half-scrolled pill and read as simply missing, which is why only the
+        // end-edge arrow was ever noticed.
+        zIndex: 2,
         width: 28,
         height: 28,
         borderRadius: 14,
