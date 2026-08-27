@@ -698,6 +698,16 @@ export const FixedPageViewer = forwardRef<
         window.clearTimeout(idleTimer.current);
         idleTimer.current = null;
       }
+      // A drag frame queued by `renderPeek` but not yet run would land AFTER
+      // the settle below and rewrite `transition: none` plus the old drag
+      // position, killing the animation outright — the turn would then sit
+      // still until `finalize` swapped the page, with no transition at all.
+      // Whether the last touchmove and the release share a frame is down to
+      // the pointer's timing, so this is only sometimes reachable.
+      if (peekRaf.current) {
+        window.cancelAnimationFrame(peekRaf.current);
+        peekRaf.current = 0;
+      }
       turning.current = true;
       if (reducedRef.current) {
         finalize(d);
@@ -729,6 +739,12 @@ export const FixedPageViewer = forwardRef<
     if (idleTimer.current) {
       window.clearTimeout(idleTimer.current);
       idleTimer.current = null;
+    }
+    // Same hazard as in `commit` — a queued drag frame would undo the
+    // spring-back the moment it starts.
+    if (peekRaf.current) {
+      window.cancelAnimationFrame(peekRaf.current);
+      peekRaf.current = 0;
     }
     turning.current = false;
     accum.current = 0;
