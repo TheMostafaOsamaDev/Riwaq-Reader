@@ -208,8 +208,8 @@ export const en = {
   "library.openStore": "Open store",
   "library.openDownloads": "Open downloads",
   "library.importEpub": "Import EPUB",
-  "library.scrollTabsLeft": "Scroll tabs left",
-  "library.scrollTabsRight": "Scroll tabs right",
+  "library.scrollTabsStart": "Scroll tabs back",
+  "library.scrollTabsEnd": "Scroll tabs forward",
 
   // shelves page + new-shelf dialog
   "shelves.title": "Shelves",

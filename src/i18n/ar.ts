@@ -181,8 +181,8 @@ export const ar: Messages = {
   "library.openStore": "فتح المتجر",
   "library.openDownloads": "فتح التنزيلات",
   "library.importEpub": "استيراد EPUB",
-  "library.scrollTabsLeft": "تمرير علامات التبويب لليسار",
-  "library.scrollTabsRight": "تمرير علامات التبويب لليمين",
+  "library.scrollTabsStart": "تمرير علامات التبويب للخلف",
+  "library.scrollTabsEnd": "تمرير علامات التبويب للأمام",
 
   "shelves.title": "الأرفف",
   "shelves.countOne": "{n} رف · مجموعاتك",
