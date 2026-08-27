@@ -2,10 +2,15 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { extractNovelConfig, parseNovelPage } from "./cenele";
+import { extractNovelConfig, parseNovelPage, searchUrl, parseSearchPage } from "./cenele";
 
 const novelHtml = readFileSync(
   join(__dirname, "__fixtures__/cenele-novel.html"),
+  "utf8",
+);
+
+const searchHtml = readFileSync(
+  join(__dirname, "__fixtures__/cenele-search.html"),
   "utf8",
 );
 
@@ -104,5 +109,76 @@ describe("parseNovelPage", () => {
     expect(() => parseNovelPage(doc, "https://cenele.com/cont/x/")).toThrow(
       /https:\/\/cenele\.com\/cont\/x\//,
     );
+  });
+});
+
+describe("searchUrl", () => {
+  it("omits the /page/ segment on page 1", () => {
+    expect(searchUrl("سيد", 1)).toBe(
+      "https://cenele.com/?s=%D8%B3%D9%8A%D8%AF&post_type=wp-manga",
+    );
+  });
+
+  it("uses the /page/N/ form beyond page 1", () => {
+    expect(searchUrl("سيد", 3)).toBe(
+      "https://cenele.com/page/3/?s=%D8%B3%D9%8A%D8%AF&post_type=wp-manga",
+    );
+  });
+
+  it("clamps non-positive pages to 1", () => {
+    expect(searchUrl("x", 0)).toBe(
+      "https://cenele.com/?s=x&post_type=wp-manga",
+    );
+  });
+});
+
+describe("parseSearchPage", () => {
+  const parsed = () =>
+    parseSearchPage(
+      new DOMParser().parseFromString(searchHtml, "text/html"),
+      "سيد",
+      1,
+    );
+
+  it("returns one card per result row", () => {
+    expect(parsed().cards).toHaveLength(2);
+  });
+
+  it("reads url, title, cover, original title and genres", () => {
+    expect(parsed().cards[0]).toEqual({
+      url: "https://cenele.com/cont/lord-of-wishes/",
+      title: "سيد التمني",
+      coverUrl:
+        "https://cenele.com/wp-content/uploads/2026/06/wishes-193x278.jpg",
+      subtitle: "رواية Lord of Wishes",
+      badges: ["أكشن", "فانتازيا"],
+    });
+  });
+
+  it("omits optional fields a row doesn't carry", () => {
+    const second = parsed().cards[1];
+    expect(second.subtitle).toBeUndefined();
+    expect(second.badges).toBeUndefined();
+  });
+
+  it("reports hasMore from the older-posts link", () => {
+    expect(parsed().hasMore).toBe(true);
+  });
+
+  it("reports hasMore false when there is no older-posts link", () => {
+    const doc = new DOMParser().parseFromString(
+      `<div class="row c-tabs-item__content">
+         <div class="post-title"><h3 class="h4"><a href="https://cenele.com/cont/a/">A</a></h3></div>
+       </div>`,
+      "text/html",
+    );
+    expect(parseSearchPage(doc, "q", 1).hasMore).toBe(false);
+  });
+
+  it("echoes query and page", () => {
+    const r = parseSearchPage(
+      new DOMParser().parseFromString(searchHtml, "text/html"), "سيد", 2);
+    expect(r.query).toBe("سيد");
+    expect(r.page).toBe(2);
   });
 });

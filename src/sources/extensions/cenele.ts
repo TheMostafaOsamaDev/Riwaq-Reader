@@ -10,21 +10,20 @@
 //      calls server-side via host.fetch + form-encoded bodies — no
 //      headless webview needed.
 //
-//   2. Search is "live suggestions only" — there's no /?s= results page.
-//      We implement `searchSuggest` and leave `search` undefined so the
-//      store UI renders a debounced dropdown next to the input.
+//   2. Search uses the site's WordPress results page at
+//      `/?s=<query>&post_type=wp-manga` (page 2+ takes a `/page/N/`
+//      prefix). The theme's live-suggest endpoint is deliberately unused
+//      — the app has one search interaction: type, Enter, results grid.
 //
 // AJAX nonces. WordPress nonces are user-session-scoped, generated server-
 // side and embedded in inline scripts on every page render. Different
 // actions get different nonces:
 //
-//   - `nhv_manga_suggest` nonce — inline-stringified next to the suggest
-//     JS on /cont/. Pattern: `nhv_manga_suggest[…]nonce=' + "<HEX>"`.
 //   - `nhv_manga_single_chapters_page` AND `nhv_search_manga_chapters`
-//     share one nonce, exposed as `var nhvMangaSingleAjax = {..., nonce:
-//     "<HEX>", manga_id: "<INT>"};` on the novel page.
+//     share one nonce, exposed as `nhvNovelV2.chaptersNonce` with the
+//     post id as `nhvNovelV2.postId` on the novel page.
 //
-// We scrape both lazily and cache them for the session. Nonces eventually
+// We scrape them lazily and cache them for the session. Nonces eventually
 // roll over (24h-ish on a default WP install), but if a request 4xxs we
 // re-fetch the carrier page and retry once.
 //
@@ -43,6 +42,7 @@ import type {
   SourceHost,
   SourceLine,
   SourceNovelMeta,
+  SourceSearchResult,
   SourceSection,
   SourceVolume,
 } from "../types";
@@ -64,9 +64,6 @@ function currentUiLocale(): Locale {
 const SOURCE_ID = "cenele";
 const BASE_URL = "https://cenele.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;
-/** Page we scrape to find the suggest nonce. /cont/ is the library
- *  index, always present, and inlines the suggest dropdown's JS. */
-const SUGGEST_NONCE_CARRIER = `${BASE_URL}/cont/`;
 const CHAPTERS_PER_PAGE = 50;
 /** Hard cap on the volume-chapter pagination loop. A real novel maxes
  *  out at a few thousand chapters per volume; this guard keeps a broken
@@ -99,25 +96,6 @@ export function createCeneleSource(host: SourceHost): Source {
   // Per-instance caches. These survive across getNovel/searchChapters
   // calls within one session but reset when the source is reconstructed.
   const novelCache = new Map<string, CachedNovel>();
-  let suggestNonceCache: string | null = null;
-
-  async function getSuggestNonce(): Promise<string> {
-    if (suggestNonceCache) return suggestNonceCache;
-    host.log("debug", "fetching suggest nonce");
-    const resp = await host.fetch(SUGGEST_NONCE_CARRIER);
-    const nonce = extractSuggestNonce(resp.text);
-    if (!nonce) {
-      throw new Error(
-        "Cenele: couldn't find suggest nonce on /cont/ — site layout may have changed.",
-      );
-    }
-    suggestNonceCache = nonce;
-    return nonce;
-  }
-
-  function clearSuggestNonceCache() {
-    suggestNonceCache = null;
-  }
 
   return {
     meta: {
@@ -150,24 +128,16 @@ export function createCeneleSource(host: SourceHost): Source {
       return parseHomeSections(doc);
     },
 
-    async searchSuggest(query) {
+    async search(query, page) {
       const trimmed = query.trim();
-      if (trimmed.length === 0) return [];
-      // One retry on failure: if the cached nonce has rolled over the
-      // server returns success:false; we drop the cache, refetch the
-      // carrier page, and try again. After the second failure we
-      // surface the error to the UI.
-      let nonce = await getSuggestNonce();
-      let result = await callSuggest(host, trimmed, nonce);
-      if (!result.success) {
-        clearSuggestNonceCache();
-        nonce = await getSuggestNonce();
-        result = await callSuggest(host, trimmed, nonce);
-        if (!result.success) {
-          throw new Error("Cenele: suggest endpoint rejected the request");
-        }
+      const pageNum = Math.max(1, page ?? 1);
+      if (trimmed.length === 0) {
+        return { cards: [], hasMore: false, query: trimmed, page: pageNum };
       }
-      return result.cards;
+      const url = searchUrl(trimmed, pageNum);
+      host.log("info", `search(${trimmed}, page=${pageNum}) → ${url}`);
+      const resp = await host.fetch(url);
+      return parseSearchPage(parseHtmlDocument(resp.text), trimmed, pageNum);
     },
 
     async getNovel(url) {
@@ -384,22 +354,6 @@ export function createCeneleSource(host: SourceHost): Source {
   };
 }
 
-// ── nonce extraction ───────────────────────────────────────────────────────
-
-/** Pull the suggest-nonce string literal out of an inline script. The
- *  theme JS builds the suggest URL with string concatenation:
- *  `'...?action=nhv_manga_suggest&term=' + encodeURIComponent(q) +
- *  '&nonce=' + "<NONCE>"`. We match the literal that follows
- *  `nonce=' + "`. Falls back to scanning for `nhv_manga_suggest` followed
- *  by a `nonce` field of the local Madara theme. */
-function extractSuggestNonce(html: string): string | null {
-  const re =
-    /nhv_manga_suggest[\s\S]{0,400}?nonce=['"]?\s*\+\s*['"]([a-f0-9]{6,})['"]/i;
-  const m = html.match(re);
-  if (m) return m[1];
-  return null;
-}
-
 export interface NovelConfig {
   /** Numeric WordPress post id of the novel. Sent as `manga_id`. */
   postId: string;
@@ -434,45 +388,60 @@ function asIdString(v: unknown): string | null {
   return null;
 }
 
-// ── suggest endpoint ───────────────────────────────────────────────────────
+// ── search-page parsing ────────────────────────────────────────────────────
+//
+// Cenele runs WordPress search over the `wp-manga` post type. Page 1 is
+// `/?s=…`; later pages take the `/page/N/` prefix. The `?s=&paged=N`
+// form is NOT used — WordPress serves it inconsistently on this host.
+// Results render with the stock Madara card markup.
 
-interface SuggestResult {
-  success: boolean;
-  cards: NovelCard[];
+/** Build the results-page URL for a query + 1-based page. */
+export function searchUrl(query: string, page: number): string {
+  const params = new URLSearchParams({ s: query, post_type: "wp-manga" });
+  const n = Math.max(1, page);
+  const prefix = n > 1 ? `${BASE_URL}/page/${n}/` : `${BASE_URL}/`;
+  return `${prefix}?${params.toString()}`;
 }
 
-async function callSuggest(
-  host: SourceHost,
+/** Parse one results page into cards. */
+export function parseSearchPage(
+  doc: Document,
   query: string,
-  nonce: string,
-): Promise<SuggestResult> {
-  const params = new URLSearchParams({
-    action: "nhv_manga_suggest",
-    term: query,
-    nonce,
-  });
-  const url = `${AJAX_URL}?${params.toString()}`;
-  const resp = await host.fetch(url);
-  let body: { success?: boolean; data?: { items?: SuggestItem[] } };
-  try {
-    body = JSON.parse(resp.text);
-  } catch {
-    return { success: false, cards: [] };
+  page: number,
+): SourceSearchResult {
+  const cards: NovelCard[] = [];
+  for (const row of Array.from(
+    doc.querySelectorAll(".row.c-tabs-item__content"),
+  )) {
+    const link = row.querySelector(
+      ".post-title h3.h4 > a, .post-title a",
+    ) as HTMLAnchorElement | null;
+    const href = link?.getAttribute("href") || "";
+    if (!isNovelHref(href)) continue;
+    const img = row.querySelector(".tab-thumb img") as HTMLImageElement | null;
+    const alt = sanitizeText(
+      row.querySelector(".mg_alternative .summary-content")?.textContent,
+    );
+    const genres = Array.from(
+      row.querySelectorAll(".mg_genres .summary-content a"),
+    )
+      .map((a) => sanitizeText(a.textContent))
+      .filter((s) => s.length > 0);
+    cards.push({
+      url: absolutizeUrl(href, BASE_URL),
+      title: sanitizeText(link?.textContent),
+      coverUrl: pickImageSrc(img),
+      subtitle: alt || undefined,
+      badges: genres.length > 0 ? genres : undefined,
+    });
   }
-  if (!body.success) return { success: false, cards: [] };
-  const items = body.data?.items ?? [];
-  const cards: NovelCard[] = items.map((it) => ({
-    url: absolutizeUrl(it.url, BASE_URL),
-    title: sanitizeText(it.title),
-    coverUrl: it.thumb ? absolutizeUrl(it.thumb, BASE_URL) : undefined,
-  }));
-  return { success: true, cards };
-}
 
-interface SuggestItem {
-  title: string;
-  url: string;
-  thumb?: string;
+  // The site is RTL, so its "previous" slot holds the *older* (next)
+  // page. Its presence is the only reliable more-pages signal — there is
+  // no numeric pager on this template.
+  const hasMore = !!doc.querySelector(".nav-links .nav-previous a");
+
+  return { cards, hasMore, query, page };
 }
 
 // ── chapter-list AJAX ──────────────────────────────────────────────────────
