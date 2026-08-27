@@ -36,3 +36,19 @@ export function appendPage(
     page: next.page,
   };
 }
+
+export type SearchView = "skeletons" | "error" | "empty" | "grid";
+
+/** Which body the search area shows. Extracted so the precedence rules are
+ *  testable without rendering: a load-more failure must NOT displace results
+ *  that are already on screen — only a first-page failure does. */
+export function searchView(state: {
+  loading: boolean;
+  error: string | null;
+  result: { cards: unknown[] } | null;
+}): SearchView {
+  if (state.loading) return "skeletons";
+  if (state.error && !state.result) return "error";
+  if (state.result && state.result.cards.length === 0) return "empty";
+  return "grid";
+}

@@ -21,7 +21,7 @@ import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelCard } from "./NovelCard";
-import { appendPage, type SearchPage } from "./searchPaging";
+import { appendPage, searchView, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
@@ -45,7 +45,12 @@ interface SearchState {
   /** True while a Load-more fetch is in flight — keeps the existing
    *  results on screen instead of swapping them for skeletons. */
   loadingMore: boolean;
+  /** First-page failure — there is nothing to show, so this replaces the
+   *  grid. */
   error: string | null;
+  /** Load-more failure — the grid is still valid, so this renders beside
+   *  the button instead of displacing the results already on screen. */
+  loadMoreError: string | null;
   result: SearchPage | null;
   query: string;
 }
@@ -69,10 +74,17 @@ export function SourceHomeView({
     loading: false,
     loadingMore: false,
     error: null,
+    loadMoreError: null,
     result: null,
     query: "",
   });
   const [searchInput, setSearchInput] = useState("");
+  // Monotonic counter identifying each search fetch. A response is applied
+  // only if this hasn't advanced since the fetch started — guards against
+  // two same-text fetches racing (e.g. a Load-more fetch in flight when the
+  // user presses Enter again on the identical, unchanged query), a case a
+  // query-text comparison alone can't detect.
+  const searchGeneration = useRef(0);
 
   // Load sections on mount (and whenever the source changes — though in
   // practice sourceId is stable until the user backs out and picks a
@@ -105,45 +117,57 @@ export function SourceHomeView({
       if (!source) return;
       const trimmed = query.trim();
       if (trimmed.length === 0) {
+        // Invalidate any fetch still in flight so it can't repopulate a
+        // search the user just cleared.
+        searchGeneration.current++;
         setSearchState({
           loading: false, loadingMore: false, error: null,
-          result: null, query: "",
+          loadMoreError: null, result: null, query: "",
         });
         return;
       }
+      const gen = ++searchGeneration.current;
       const appending = page > 1;
       setSearchState((s) => ({
         ...s,
         loading: !appending,
         loadingMore: appending,
         error: null,
+        loadMoreError: null,
         result: appending ? s.result : null,
         query: trimmed,
       }));
       try {
         const res = await source.search(trimmed, page);
         setSearchState((s) =>
-          // A newer query started while this was in flight — discard.
-          s.query !== trimmed
+          // A newer search — a fresh query, a cleared input, or another
+          // Load-more — started while this was in flight. Discard.
+          searchGeneration.current !== gen
             ? s
             : {
                 loading: false,
                 loadingMore: false,
                 error: null,
+                loadMoreError: null,
                 result: appendPage(appending ? s.result : null, res),
                 query: trimmed,
               },
         );
       } catch (e) {
         setSearchState((s) =>
-          s.query !== trimmed
+          searchGeneration.current !== gen
             ? s
-            : {
-                ...s,
-                loading: false,
-                loadingMore: false,
-                error: e instanceof Error ? e.message : String(e),
-              },
+            : appending
+              ? {
+                  ...s,
+                  loadingMore: false,
+                  loadMoreError: e instanceof Error ? e.message : String(e),
+                }
+              : {
+                  ...s,
+                  loading: false,
+                  error: e instanceof Error ? e.message : String(e),
+                },
         );
       }
     },
@@ -197,9 +221,10 @@ export function SourceHomeView({
             state={searchState}
             onClear={() => {
               setSearchInput("");
+              searchGeneration.current++;
               setSearchState({
                 loading: false, loadingMore: false, error: null,
-                result: null, query: "",
+                loadMoreError: null, result: null, query: "",
               });
             }}
             onLoadMore={() =>
@@ -534,6 +559,7 @@ function SearchResults({
   onOpenNovel,
 }: SearchResultsProps) {
   const { tr } = useI18n();
+  const view = searchView(state);
   return (
     <div style={{ marginTop: 18 }}>
       <div
@@ -560,7 +586,7 @@ function SearchResults({
           {tr("store.clear")}
         </Button>
       </div>
-      {state.loading ? (
+      {view === "skeletons" ? (
         <div
           style={{
             display: "grid",
@@ -572,7 +598,7 @@ function SearchResults({
             <NovelCardSkeleton key={i} theme={theme} />
           ))}
         </div>
-      ) : state.error ? (
+      ) : view === "error" ? (
         <div
           style={{
             padding: 24,
@@ -583,9 +609,9 @@ function SearchResults({
             fontSize: 13,
           }}
         >
-          {tr("store.searchFailed", { error: state.error })}
+          {tr("store.searchFailed", { error: state.error ?? "" })}
         </div>
-      ) : state.result && state.result.cards.length === 0 ? (
+      ) : view === "empty" ? (
         <div style={{ padding: 32, textAlign: "center", color: theme.muted }}>
           {tr("store.noResults")}
         </div>
@@ -597,7 +623,29 @@ function SearchResults({
         />
       )}
       {state.result?.hasMore && (
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 22 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            marginTop: 22,
+          }}
+        >
+          {state.loadMoreError && (
+            <div
+              style={{
+                padding: 24,
+                color: theme.ink,
+                background: "rgba(180,60,60,0.10)",
+                border: "0.5px solid rgba(180,60,60,0.4)",
+                borderRadius: 10,
+                fontSize: 13,
+              }}
+            >
+              {tr("store.searchFailed", { error: state.loadMoreError })}
+            </div>
+          )}
           <Button
             theme={theme}
             variant="secondary"
