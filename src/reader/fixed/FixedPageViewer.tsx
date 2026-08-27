@@ -93,6 +93,9 @@ const PREFETCH_DELAY_MS = 80;
 // this number; see canvasBudgetBytes in PdfPageSource.
 const PREFETCH_AHEAD = 3;
 const PREFETCH_BEHIND = 1;
+// How long to keep trying to place the scroller after a switch to scroll flow,
+// while the virtualized column grows to its full height underneath.
+const FLOW_RESTORE_MS = 2500;
 
 /** Signed px/ms across the sample ring, measured over the most recent
  *  VELOCITY_WINDOW_MS. Returns 0 when there's nothing to measure. */
@@ -275,6 +278,7 @@ export const FixedPageViewer = forwardRef<
   // depend on the page number alone: `sizes` and `layout` change on every
   // measurement, and depending on them restarted the timer faster than it
   // could fire, so on quick page turns the neighbours were never warmed.
+  const layoutRef = useRef<{ top: number[] }>({ top: [] });
   const prefetchInputs = useRef<{
     sizes: Array<{ w: number; h: number } | undefined>;
     layout: { displayW: number[] };
@@ -384,6 +388,8 @@ export const FixedPageViewer = forwardRef<
   }, [sizes, container.h, zoom, fit, usableW, fallbackRatio, pageCount]);
 
   prefetchInputs.current = { sizes, layout, usableW };
+  // Read by the flow-restore retry loop, which outlives the render it started in.
+  layoutRef.current = layout;
 
   const emit = useCallback(
     (page: number) => {
@@ -488,23 +494,41 @@ export const FixedPageViewer = forwardRef<
 
   // Keep your place when the flow changes.
   //
-  // Going the other way needs nothing: `recompute` tracks the current page from
+  // One direction needs nothing: `recompute` tracks the current page from
   // scroll position continuously, so paged mode opens on whatever was on
-  // screen. Coming back the other way, the scroll container starts at the top
-  // and the resume effect above has already fired once and latched, so without
-  // this the reader jumped to page one every time the flow was switched.
+  // screen. Coming back the other way the scroller starts at the top, and the
+  // resume effect above has already fired once and latched for the session, so
+  // there is nothing to place it — the reader landed on page one every time.
   //
-  // Only fires on an actual flow CHANGE — on first mount the resume effect owns
-  // the scroll position, and racing it would clobber a restored location.
+  // It has to keep trying rather than write the offset once. Switching to
+  // scroll mounts a virtualized column whose full height only exists a beat
+  // later — measured on device, `scrollHeight` was still one viewport 11ms in
+  // and only reached its real 150932px after 1.3s. A single write lands in that
+  // window and is clamped straight back to zero, which is exactly what a
+  // one-shot version of this did.
+  //
+  // Only fires on an actual flow CHANGE: on first mount the resume effect owns
+  // the scroll position and racing it would clobber a restored location.
   const prevFlow = useRef(flow);
   useLayoutEffect(() => {
-    const changed = prevFlow.current !== flow;
+    if (prevFlow.current === flow) return;
     prevFlow.current = flow;
-    if (!changed || flow !== "scroll") return;
-    const el = scrollRef.current;
-    const top = layout.top[currentRef.current];
-    if (el && top != null) el.scrollTop = top;
-  }, [flow, layout]);
+    if (flow !== "scroll") return;
+    const target = currentRef.current;
+    const deadline = performance.now() + FLOW_RESTORE_MS;
+    let raf = 0;
+    const place = () => {
+      const el = scrollRef.current;
+      const top = layoutRef.current.top[target];
+      if (el && top != null) {
+        el.scrollTop = top;
+        if (Math.abs(el.scrollTop - top) <= 2) return; // the column can hold it
+      }
+      if (performance.now() < deadline) raf = window.requestAnimationFrame(place);
+    };
+    raf = window.requestAnimationFrame(place);
+    return () => window.cancelAnimationFrame(raf);
+  }, [flow]);
 
   // Lazily measure + render the visible window (scroll).
   useEffect(() => {
