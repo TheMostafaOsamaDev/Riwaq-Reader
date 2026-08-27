@@ -39,6 +39,10 @@ export interface Tweaks {
       books, right in RTL books. The explicit values let the user override. */
   textAlign: "auto" | "left" | "justify" | "right";
   readingMode: ReadingMode;
+  /** Desktop only. Hides the reader chrome (top bar + bottom scrubber) so the
+      page fills the window; hovering either edge brings that bar back. The
+      phone reader has its own tap-to-hide chrome and ignores this. */
+  focusMode: boolean;
   /** Reading column width as a percentage of the available container width
       (50–100). Applies in every reading mode on both desktop and mobile,
       letting the user shrink or expand the text column to match their

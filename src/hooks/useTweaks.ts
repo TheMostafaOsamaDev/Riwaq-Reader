@@ -13,6 +13,7 @@ export const DEFAULT_TWEAKS: Tweaks = {
   letterSpacing: 0,
   textAlign: "auto",
   readingMode: "paginated-2",
+  focusMode: false,
   contentWidth: 100,
   mobileTapNav: true,
   mobileTapZoneWidth: 33,
