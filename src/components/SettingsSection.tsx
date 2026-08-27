@@ -10,14 +10,17 @@
 
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconProps } from "./Icon";
+import { FontSelect } from "./FontSelect";
 import { SystemThemeGlyph } from "./SystemThemeGlyph";
 import {
+  ACCENT,
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
   type ThemeKey,
   type ThemePref,
 } from "../styles/tokens";
+import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import type { Tweaks } from "../types/reader";
 import { useI18n } from "../i18n/useI18n";
 import { formatNum } from "../i18n";
@@ -183,7 +186,18 @@ interface SegOption<T extends string> {
   ariaLabel?: string;
 }
 
-/** Generic segmented control. */
+/** Accent wash behind the selected chip — ~8% of ACCENT. Deliberately faint:
+ *  it tints without competing with the accent BORDER, which is what actually
+ *  carries the selected state. */
+const SEG_SELECTED_TINT = `${ACCENT}14`;
+
+/** Generic segmented control, drawn as separate outlined chips.
+ *
+ *  Was a single recessed track with the selected item as a white pill. That
+ *  packed the options at ~31px tall — under the 44px touch minimum — and
+ *  leaned on fill alone to signal state. Chips give each option its own 44px
+ *  target with an 8px gap, mark selection with BOTH an accent border and a
+ *  weight change (not colour alone), and stay legible past three options. */
 export function SegRow<T extends string>({
   theme,
   value,
@@ -195,16 +209,9 @@ export function SegRow<T extends string>({
   onChange: (next: T) => void;
   options: SegOption<T>[];
 }) {
+  const reduced = useReducedMotion();
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 4,
-        background: theme.hover,
-        borderRadius: 8,
-        padding: 3,
-      }}
-    >
+    <div style={{ display: "flex", gap: 8 }}>
       {options.map((o) => {
         const selected = value === o.value;
         return (
@@ -215,16 +222,22 @@ export function SegRow<T extends string>({
             aria-label={o.ariaLabel}
             style={{
               flex: 1,
-              border: "none",
-              background: selected ? theme.paper : "transparent",
-              color: theme.ink,
-              padding: "8px 4px",
-              borderRadius: 6,
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "6px 4px",
+              borderRadius: 10,
+              border: `1.5px solid ${selected ? ACCENT : theme.rule}`,
+              background: selected ? SEG_SELECTED_TINT : "transparent",
+              color: selected ? theme.ink : theme.muted,
               cursor: "pointer",
               fontFamily: FONT_STACKS.sans,
               fontSize: 12,
-              fontWeight: 500,
-              boxShadow: selected ? `0 1px 2px ${theme.rule}` : "none",
+              fontWeight: selected ? 600 : 500,
+              transition: reduced
+                ? "none"
+                : `border-color ${MOTION.fast}ms ${EASE.out}, background-color ${MOTION.fast}ms ${EASE.out}, color ${MOTION.fast}ms ${EASE.out}`,
             }}
           >
             {o.label}
@@ -235,8 +248,18 @@ export function SegRow<T extends string>({
   );
 }
 
-/** A full-width range slider, styled to match the reader panel. */
-function Slider({
+/** Thumb diameter, mirrored from the `input[type="range"]` rule in global.css.
+ *  The tick row is inset by its radius so the end marks line up with where the
+ *  thumb's CENTRE can actually reach, not with its outer overhang. */
+const SLIDER_THUMB = 22;
+
+/** A full-width range slider: a 44px hit area over a 4px rail whose travelled
+ *  portion is filled in the accent, with evenly-spaced ticks beneath it.
+ *
+ *  The visual treatment lives in global.css under an `input[type="range"]`
+ *  selector (see the note there about specificity); everything theme- or
+ *  value-dependent is passed down as custom properties. */
+export function Slider({
   theme,
   min,
   max,
@@ -244,6 +267,7 @@ function Slider({
   value,
   onChange,
   ariaLabel,
+  ticks = 7,
 }: {
   theme: Theme;
   min: number;
@@ -252,18 +276,63 @@ function Slider({
   value: number;
   onChange: (n: number) => void;
   ariaLabel?: string;
+  /** Evenly-spaced marks under the rail; 0 hides them. They divide the range
+   *  into equal fractions rather than marking every step — at 14–42px that
+   *  would be 29 marks and read as noise. */
+  ticks?: number;
 }) {
+  const span = max - min;
+  const pct = span > 0 ? ((value - min) / span) * 100 : 0;
   return (
-    <input
-      type="range"
-      aria-label={ariaLabel}
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      onChange={(e) => onChange(+e.target.value)}
-      style={{ width: "100%", color: theme.ink }}
-    />
+    <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+      <input
+        type="range"
+        aria-label={ariaLabel}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(+e.target.value)}
+        style={
+          {
+            color: theme.ink,
+            "--rng-pct": `${pct}%`,
+            "--rng-fill": ACCENT,
+            "--rng-track": theme.rule,
+            "--rng-thumb": theme.ink,
+            "--rng-thumb-ring": theme.paper,
+            "--rng-thumb-shadow": theme.rule,
+          } as CSSProperties
+        }
+      />
+      {ticks > 0 && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            insetInline: SLIDER_THUMB / 2,
+            // The rail sits centred in the 44px box (20–24px); park the ticks
+            // just clear of its underside.
+            top: 27,
+            display: "flex",
+            justifyContent: "space-between",
+            pointerEvents: "none",
+          }}
+        >
+          {Array.from({ length: ticks }, (_, i) => (
+            <span
+              key={i}
+              style={{
+                width: 1,
+                height: 5,
+                borderRadius: 1,
+                background: theme.rule,
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -499,6 +568,22 @@ export function readingItems(ctx: {
   });
 
   const items: SettingEntry[] = [
+    {
+      id: "font",
+      label: tr("settings.font"),
+      node: (
+        // Goes through Field like every other row so it inherits the panel's
+        // 18px inset and bottom rule. A bespoke wrapper made it wider than its
+        // neighbours and hung its label inside the control instead of above it.
+        <Field label={tr("settings.font")} theme={theme}>
+          <FontSelect
+            theme={theme}
+            value={t.fontFamily}
+            onChange={(v) => setTweak("fontFamily", v)}
+          />
+        </Field>
+      ),
+    },
     {
       id: "fontSize",
       label: tr("settings.fontSize", { n: t.fontSize }),

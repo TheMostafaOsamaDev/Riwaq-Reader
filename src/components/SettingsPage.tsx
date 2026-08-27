@@ -25,6 +25,7 @@ import {
   LanguageField,
   SectionHeader,
   SegRow,
+  Slider,
   ThemeField,
   readingItems,
   renderEntries,
@@ -232,15 +233,16 @@ export function SettingsPage({
             label={tr("settings.maxConcurrentDownloads", { n: t.maxConcurrentDownloads })}
             theme={theme}
           >
-            <input
-              type="range"
-              aria-label={tr("settings.maxConcurrentDownloads", { n: t.maxConcurrentDownloads })}
+            <Slider
+              theme={theme}
+              ariaLabel={tr("settings.maxConcurrentDownloads", { n: t.maxConcurrentDownloads })}
               min={1}
               max={5}
               step={1}
               value={t.maxConcurrentDownloads}
-              onChange={(e) => setTweak("maxConcurrentDownloads", +e.target.value)}
-              style={{ width: "100%", color: theme.ink }}
+              onChange={(n) => setTweak("maxConcurrentDownloads", n)}
+              // One tick per selectable value — the range is only 1–5.
+              ticks={5}
             />
           </Field>
         ),

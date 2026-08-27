@@ -1,4 +1,4 @@
-import type { ThemePref, UiFontKey } from "../styles/tokens";
+import type { FontFamilyKey, ThemePref, UiFontKey } from "../styles/tokens";
 import type { UiLangPref } from "../i18n";
 
 export type ActivePanel =
@@ -31,7 +31,10 @@ export interface Tweaks {
       four concrete values pin a specific theme. Resolved to a concrete
       ThemeKey at render time via resolveTheme(). */
   theme: ThemePref;
-  fontFamily: "serif" | "sans" | "dyslexic" | "cairo" | "lateef" | "tajawal";
+  /** Reuses the token union so the reading library has ONE source of truth —
+   *  this was a duplicated inline literal and drifted the moment fonts were
+   *  added. */
+  fontFamily: FontFamilyKey;
   fontSize: number;
   lineHeight: number;
   letterSpacing: number;

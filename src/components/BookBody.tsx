@@ -11,6 +11,7 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { useFontScale } from "../hooks/useFontScale";
 
 interface Props {
   /** Book id — needed to resolve image item `src` to an asset:// URL. */
@@ -104,19 +105,6 @@ export function BookBody({
   const clampedPercent = Math.max(50, Math.min(100, widthPercent));
   const resolvedAlign =
     textAlign === "auto" ? (rtl ? "right" : "justify") : textAlign;
-  // BookBody renders a flat linear flow. Multi-column layout (paginated or
-  // otherwise) is now the wrapper's job — that lets DesktopReader switch
-  // between scroll and paginated modes by changing only the container,
-  // without BookBody having to know which one it's inside.
-  const common: CSSProperties = {
-    fontSize,
-    lineHeight,
-    letterSpacing: `${letterSpacing}em`,
-    color: theme.ink,
-    width: `${clampedPercent}%`,
-    margin: "0 auto",
-  };
-
   // Honour the user's font choice in both LTR and RTL. Each FONT_STACKS
   // entry already lists an Arabic-capable fallback (Readex Pro for the
   // Latin-first stacks; Cairo/Lateef/Tajawal are Arabic-primary), so the
@@ -124,6 +112,27 @@ export function BookBody({
   // ignoring the user's selection in RTL mode.
   const bodyFont =
     fontFamily === "sans" ? FONT_READING_SANS : FONT_STACKS[fontFamily];
+
+  // Normalize apparent size across the reading fonts, measured off the face
+  // that actually resolved. Without it the same slider value reads ~28%
+  // smaller in Lateef than in Readex Pro, and the size control stops meaning
+  // one thing. Measured against the script the book is actually set in — a
+  // face's Latin and Arabic need different corrections.
+  const fontScale = useFontScale(bodyFont, rtl ? "arabic" : "latin");
+  const scaledFontSize = Math.round(fontSize * fontScale * 100) / 100;
+
+  // BookBody renders a flat linear flow. Multi-column layout (paginated or
+  // otherwise) is now the wrapper's job — that lets DesktopReader switch
+  // between scroll and paginated modes by changing only the container,
+  // without BookBody having to know which one it's inside.
+  const common: CSSProperties = {
+    fontSize: scaledFontSize,
+    lineHeight,
+    letterSpacing: `${letterSpacing}em`,
+    color: theme.ink,
+    width: `${clampedPercent}%`,
+    margin: "0 auto",
+  };
 
   const imageUrls = useChapterImageUrls(bookId, chapter.paragraphs);
 
@@ -202,7 +211,7 @@ export function BookBody({
             // jump to a different typeface than the paragraphs. In LTR,
             // keep the italic display serif for the editorial look.
             fontFamily: rtl ? bodyFont : FONT_SERIF_DISPLAY,
-            fontSize: fontSize * 1.7,
+            fontSize: (rtl ? scaledFontSize : fontSize) * 1.7,
             fontWeight: 500,
             fontStyle: "normal",
             margin: 0,

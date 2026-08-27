@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Tweaks } from "../types/reader";
-import { UI_FONT_STACKS } from "../styles/tokens";
+import {
+  FONT_STACKS,
+  LEGACY_FONT_FAMILY,
+  UI_FONT_STACKS,
+  type FontFamilyKey,
+} from "../styles/tokens";
 
 const STORAGE_KEY = "leaflet:tweaks:v1";
 
 export const DEFAULT_TWEAKS: Tweaks = {
   uiLang: "system",
   theme: "sepia",
-  fontFamily: "serif",
+  fontFamily: "readex",
   fontSize: 17,
   lineHeight: 1.6,
   letterSpacing: 0,
@@ -59,6 +64,17 @@ function load(): Tweaks {
       delete parsed.pageWidth;
     }
     const merged = { ...DEFAULT_TWEAKS, ...parsed };
+    // The reading library replaced the old three-option picker. `serif`,
+    // `sans` and `dyslexic` named faces that were never bundled, so they were
+    // already resolving to Readex Pro (or a system fallback) — point them at
+    // real families instead. Anything unrecognised falls back to the default
+    // so a corrupt or hand-edited value can't leave the reader unstyled.
+    const legacy =
+      LEGACY_FONT_FAMILY[merged.fontFamily as FontFamilyKey];
+    if (legacy) merged.fontFamily = legacy;
+    if (!(merged.fontFamily in FONT_STACKS)) {
+      merged.fontFamily = DEFAULT_TWEAKS.fontFamily;
+    }
     // Cairo/Tajawal were removed as UI (chrome) fonts — coerce a stale
     // persisted value (or any unknown one) back to the default so the picker
     // and the chrome font stay valid.

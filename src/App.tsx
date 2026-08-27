@@ -52,6 +52,7 @@ import {
   type PdfHighlightAnchor,
 } from "./store/library";
 import { MOTION, setReduceMotionOverride, useReducedMotion } from "./styles/motion";
+import { installScrollbarAutoHide } from "./styles/scrollbarAutoHide";
 import type { HighlightColor } from "./styles/tokens";
 import {
   FONT_READING_SANS,
@@ -191,6 +192,11 @@ function App() {
     const darkIcons = themeKey === "light" || themeKey === "sepia";
     void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
   }, [theme.bg, theme.ink, theme.muted, theme.ruleStrong, themeKey]);
+
+  // Overlay-scrollbar behaviour for every scroll area in the app: the thumb
+  // paints while scrolling and fades once it stops. One delegated listener,
+  // installed once — see styles/scrollbarAutoHide.ts.
+  useEffect(() => installScrollbarAutoHide(), []);
 
   // Apply the selectable UI (chrome) font through a CSS variable that
   // FONT_STACKS.sans falls back through. Set on documentElement so any
