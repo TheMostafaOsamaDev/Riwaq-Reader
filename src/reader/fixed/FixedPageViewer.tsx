@@ -486,6 +486,26 @@ export const FixedPageViewer = forwardRef<
     emit(resume.page);
   }, [resume, container.h, layout, flow, emit]);
 
+  // Keep your place when the flow changes.
+  //
+  // Going the other way needs nothing: `recompute` tracks the current page from
+  // scroll position continuously, so paged mode opens on whatever was on
+  // screen. Coming back the other way, the scroll container starts at the top
+  // and the resume effect above has already fired once and latched, so without
+  // this the reader jumped to page one every time the flow was switched.
+  //
+  // Only fires on an actual flow CHANGE — on first mount the resume effect owns
+  // the scroll position, and racing it would clobber a restored location.
+  const prevFlow = useRef(flow);
+  useLayoutEffect(() => {
+    const changed = prevFlow.current !== flow;
+    prevFlow.current = flow;
+    if (!changed || flow !== "scroll") return;
+    const el = scrollRef.current;
+    const top = layout.top[currentRef.current];
+    if (el && top != null) el.scrollTop = top;
+  }, [flow, layout]);
+
   // Lazily measure + render the visible window (scroll).
   useEffect(() => {
     if (flow !== "scroll") return;
