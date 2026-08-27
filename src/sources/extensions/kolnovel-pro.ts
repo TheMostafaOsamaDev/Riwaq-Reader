@@ -60,7 +60,16 @@ export function createKolNovelProSource(host: SourceHost): Source {
       const url = `${BASE_URL}/?${new URLSearchParams({ s: query })}`;
       host.log("info", `search(${query}) → ${url}`);
       const resp = await host.fetch(url);
-      return parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, 1);
+      // KolNovel renders every match on one page, and both ?s=&paged=N and
+      // /page/N/?s= return HTTP 500 on this host. parseSearchResults derives
+      // hasMore from the theme's .pagination block, which can be populated on
+      // broad queries — so force it false here rather than trusting the DOM.
+      // A true value would render a Load more button whose click can only
+      // refetch page 1 and be deduped away.
+      return {
+        ...parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, 1),
+        hasMore: false,
+      };
     },
 
     async getNovel(url) {

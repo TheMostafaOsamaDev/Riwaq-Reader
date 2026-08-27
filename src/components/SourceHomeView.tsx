@@ -6,8 +6,9 @@
 //     returned from getHomeSections(). Each section is a header + a
 //     horizontally-scrollable row of NovelCards.
 //   - search mode: kicked off when the user submits the search input.
-//     Renders a single grid of result cards. Hitting Esc / clearing the
-//     query returns to sections mode without re-fetching them.
+//     Renders a single grid of result cards. Search mode ends when the
+//     user presses the Clear button, or submits an empty query — either
+//     way, sections mode underneath is not re-fetched.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
@@ -86,9 +87,9 @@ export function SourceHomeView({
   // query-text comparison alone can't detect.
   const searchGeneration = useRef(0);
 
-  // Load sections on mount (and whenever the source changes — though in
-  // practice sourceId is stable until the user backs out and picks a
-  // different source).
+  // Load sections on mount, and again whenever sourceId changes — e.g.
+  // uiIntents.openStoreSource can swap sourceId in place without
+  // unmounting this component.
   useEffect(() => {
     if (!source) return;
     let cancelled = false;

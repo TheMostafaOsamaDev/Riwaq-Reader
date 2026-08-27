@@ -12,7 +12,8 @@ src/
 ├── components/
 │   ├── Store.tsx                  # tab shell — switches Sources / Source-home / Detail / Reader
 │   ├── SourcesListView.tsx        # one card per installed source
-│   ├── SourceHomeView.tsx         # one source's homepage + search dropdown
+│   ├── SourceHomeView.tsx         # one source's homepage + search (type, Enter, results grid)
+│   ├── searchPaging.ts            # search-result pagination: merge/dedupe cards, pick which body to show
 │   ├── NovelDetailView.tsx        # one novel — header, action row, chapter search, volumes accordion
 │   ├── SourceStreamReader.tsx     # streaming inline reader (no import needed)
 │   ├── NovelCard.tsx              # cover-art card with thumbnail/full fallback
@@ -24,7 +25,9 @@ src/
 │   ├── importer.ts                # scrape → EPUB → library pipeline
 │   ├── images.ts                  # thumbnail derivation + missing-cover detection
 │   └── extensions/
-│       ├── kolnovel.ts            # free.kolnovel.com
+│       ├── kolnovel.ts            # kolnovel.com (free.kolnovel.com redirects here)
+│       ├── kolnovel-pro.ts        # kolnovel.com "Pro" — HTML-first chapters, PDF fallback
+│       ├── kolnovel-theme.ts      # DOM parsers shared by kolnovel.ts and kolnovel-pro.ts
 │       └── cenele.ts              # cenele.com (فضاء الروايات)
 └── src-tauri/src/sources.rs       # source_fetch / source_fetch_bytes /
                                    # source_render_and_extract Tauri commands
@@ -32,9 +35,10 @@ src/
 
 ## Files in this folder
 
-- [`sources.md`](./sources.md) — how the Source interface works, including
-  the optional capabilities (`search`, `searchSuggest`, `searchChapters`)
-  and how the store UI adapts to which ones a source declares.
+- [`sources.md`](./sources.md) — how the Source interface works,
+  including the required `search` method and the optional capability
+  (`searchChapters`), and how the store UI adapts to which ones a
+  source declares.
 - [`offline-and-queue.md`](./offline-and-queue.md) — how source-backed
   library entries persist their snapshot, what's offline-available,
   the per-chapter download flow, the download queue, and read-state

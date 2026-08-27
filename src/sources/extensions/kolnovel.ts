@@ -1,4 +1,6 @@
-// KolNovel source — browse + scrape implementation for free.kolnovel.com.
+// KolNovel source — browse + scrape implementation for kolnovel.com.
+// free.kolnovel.com 301-redirects here now; canHandle still matches it so
+// URLs already saved in a user's library continue to resolve.
 //
 // Discovery (home, search, novel page) AND chapter-body extraction are all
 // delegated to kolnovel-theme.ts, the shared WordPress-theme DOM parsers
@@ -58,13 +60,19 @@ export function createKolNovelSource(host: SourceHost): Source {
     },
 
     async search(query) {
-      // No pagination: the theme renders every match on one page, and
-      // both `?s=…&paged=N` and `/page/N/?s=…` return HTTP 500 on this
-      // host. parseSearchResults reports hasMore false accordingly.
       const url = `${BASE_URL}/?${new URLSearchParams({ s: query })}`;
       host.log("info", `search(${query}) → ${url}`);
       const resp = await host.fetch(url);
-      return parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, 1);
+      // KolNovel renders every match on one page, and both ?s=&paged=N and
+      // /page/N/?s= return HTTP 500 on this host. parseSearchResults derives
+      // hasMore from the theme's .pagination block, which can be populated on
+      // broad queries — so force it false here rather than trusting the DOM.
+      // A true value would render a Load more button whose click can only
+      // refetch page 1 and be deduped away.
+      return {
+        ...parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, 1),
+        hasMore: false,
+      };
     },
 
     async getNovel(url) {

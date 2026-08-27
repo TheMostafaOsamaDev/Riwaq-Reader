@@ -16,16 +16,15 @@
 //      — the app has one search interaction: type, Enter, results grid.
 //
 // AJAX nonces. WordPress nonces are user-session-scoped, generated server-
-// side and embedded in inline scripts on every page render. Different
-// actions get different nonces:
+// side and embedded in inline scripts on every page render.
+// `nhv_manga_single_chapters_page` and `nhv_search_manga_chapters` share one
+// nonce, exposed as `nhvNovelV2.chaptersNonce` alongside the post id
+// (`nhvNovelV2.postId`) on the novel page.
 //
-//   - `nhv_manga_single_chapters_page` AND `nhv_search_manga_chapters`
-//     share one nonce, exposed as `nhvNovelV2.chaptersNonce` with the
-//     post id as `nhvNovelV2.postId` on the novel page.
-//
-// We scrape them lazily and cache them for the session. Nonces eventually
-// roll over (24h-ish on a default WP install), but if a request 4xxs we
-// re-fetch the carrier page and retry once.
+// We scrape the nonce lazily and cache it for the session. Nonces
+// eventually roll over (24h-ish on a default WP install); we don't retry
+// on a stale one today. (The site exposes an `nhv_refresh_front_nonces`
+// action we don't currently use for that.)
 //
 // Chapter body anti-piracy. Cenele intersperses real paragraphs with
 // "stolen-chapters" decoys hidden via inline CSS (`position:absolute`,

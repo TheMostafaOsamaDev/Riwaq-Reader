@@ -17,13 +17,15 @@ export interface SearchPage {
  *  moves between pages while the user is reading would otherwise appear
  *  twice and collide on its React key.
  *
- *  An empty page ends pagination regardless of the source's `hasMore`:
- *  a source that always reports true would otherwise loop forever. */
+ *  Pagination ends once a page merges nothing new, regardless of the
+ *  source's `hasMore`: a source that keeps returning the same page (or
+ *  always reports `hasMore: true`) would otherwise loop forever. */
 export function appendPage(
   prev: SearchPage | null,
   next: SourceSearchResult,
 ): SearchPage {
   const cards = prev ? [...prev.cards] : [];
+  const before = cards.length;
   const seen = new Set(cards.map((c) => c.url));
   for (const card of next.cards) {
     if (seen.has(card.url)) continue;
@@ -32,7 +34,10 @@ export function appendPage(
   }
   return {
     cards,
-    hasMore: next.hasMore && next.cards.length > 0,
+    // Pagination ends when a page merges nothing new — not merely when the
+    // response was empty. A source that keeps returning the same page would
+    // otherwise loop forever behind a button that never goes away.
+    hasMore: next.hasMore && cards.length > before,
     page: next.page,
   };
 }

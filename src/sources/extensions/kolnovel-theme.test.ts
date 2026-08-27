@@ -47,6 +47,17 @@ describe("parseSearchResults", () => {
       .toBe(false);
   });
 
+  it("reports hasMore true when the theme emits a real pager", () => {
+    // This is why kolnovel.ts and kolnovel-pro.ts override hasMore to false:
+    // the shared parser trusts the DOM, and on broad queries the theme does
+    // emit a pager — but every KolNovel pagination URL returns HTTP 500.
+    const withPager = resultsHtml +
+      '<div class="pagination"><span class="page-numbers current">1</span>' +
+      '<a class="page-numbers" href="#">2</a>' +
+      '<a class="next page-numbers" href="#">›</a></div>';
+    expect(parse(withPager).hasMore).toBe(true);
+  });
+
   it("returns no cards for an empty result set", () => {
     expect(parse('<div class="listupd"></div>').cards).toEqual([]);
   });

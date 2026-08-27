@@ -36,6 +36,12 @@ describe("appendPage", () => {
     const first = appendPage(null, result(["a"], true, 1));
     expect(appendPage(first, result([], true, 2)).hasMore).toBe(false);
   });
+
+  it("stops when a page merges nothing new, even if hasMore was true", () => {
+    const first = appendPage(null, result(["a", "b"], true, 1));
+    // Same cards again — a source that ignores the page argument.
+    expect(appendPage(first, result(["a", "b"], true, 2)).hasMore).toBe(false);
+  });
 });
 
 const page = (n: number) => ({ cards: Array.from({ length: n }, (_, i) => ({ url: `u${i}`, title: `t${i}` })) });
