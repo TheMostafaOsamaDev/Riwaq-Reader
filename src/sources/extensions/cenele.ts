@@ -10,23 +10,21 @@
 //      calls server-side via host.fetch + form-encoded bodies — no
 //      headless webview needed.
 //
-//   2. Search is "live suggestions only" — there's no /?s= results page.
-//      We implement `searchSuggest` and leave `search` undefined so the
-//      store UI renders a debounced dropdown next to the input.
+//   2. Search uses the site's WordPress results page at
+//      `/?s=<query>&post_type=wp-manga` (page 2+ takes a `/page/N/`
+//      prefix). The theme's live-suggest endpoint is deliberately unused
+//      — the app has one search interaction: type, Enter, results grid.
 //
 // AJAX nonces. WordPress nonces are user-session-scoped, generated server-
-// side and embedded in inline scripts on every page render. Different
-// actions get different nonces:
+// side and embedded in inline scripts on every page render.
+// `nhv_manga_single_chapters_page` and `nhv_search_manga_chapters` share one
+// nonce, exposed as `nhvNovelV2.chaptersNonce` alongside the post id
+// (`nhvNovelV2.postId`) on the novel page.
 //
-//   - `nhv_manga_suggest` nonce — inline-stringified next to the suggest
-//     JS on /cont/. Pattern: `nhv_manga_suggest[…]nonce=' + "<HEX>"`.
-//   - `nhv_manga_single_chapters_page` AND `nhv_search_manga_chapters`
-//     share one nonce, exposed as `var nhvMangaSingleAjax = {..., nonce:
-//     "<HEX>", manga_id: "<INT>"};` on the novel page.
-//
-// We scrape both lazily and cache them for the session. Nonces eventually
-// roll over (24h-ish on a default WP install), but if a request 4xxs we
-// re-fetch the carrier page and retry once.
+// We scrape the nonce lazily and cache it for the session. Nonces
+// eventually roll over (24h-ish on a default WP install); we don't retry
+// on a stale one today. (The site exposes an `nhv_refresh_front_nonces`
+// action we don't currently use for that.)
 //
 // Chapter body anti-piracy. Cenele intersperses real paragraphs with
 // "stolen-chapters" decoys hidden via inline CSS (`position:absolute`,
@@ -43,6 +41,7 @@ import type {
   SourceHost,
   SourceLine,
   SourceNovelMeta,
+  SourceSearchResult,
   SourceSection,
   SourceVolume,
 } from "../types";
@@ -64,9 +63,6 @@ function currentUiLocale(): Locale {
 const SOURCE_ID = "cenele";
 const BASE_URL = "https://cenele.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;
-/** Page we scrape to find the suggest nonce. /cont/ is the library
- *  index, always present, and inlines the suggest dropdown's JS. */
-const SUGGEST_NONCE_CARRIER = `${BASE_URL}/cont/`;
 const CHAPTERS_PER_PAGE = 50;
 /** Hard cap on the volume-chapter pagination loop. A real novel maxes
  *  out at a few thousand chapters per volume; this guard keeps a broken
@@ -99,25 +95,6 @@ export function createCeneleSource(host: SourceHost): Source {
   // Per-instance caches. These survive across getNovel/searchChapters
   // calls within one session but reset when the source is reconstructed.
   const novelCache = new Map<string, CachedNovel>();
-  let suggestNonceCache: string | null = null;
-
-  async function getSuggestNonce(): Promise<string> {
-    if (suggestNonceCache) return suggestNonceCache;
-    host.log("debug", "fetching suggest nonce");
-    const resp = await host.fetch(SUGGEST_NONCE_CARRIER);
-    const nonce = extractSuggestNonce(resp.text);
-    if (!nonce) {
-      throw new Error(
-        "Cenele: couldn't find suggest nonce on /cont/ — site layout may have changed.",
-      );
-    }
-    suggestNonceCache = nonce;
-    return nonce;
-  }
-
-  function clearSuggestNonceCache() {
-    suggestNonceCache = null;
-  }
 
   return {
     meta: {
@@ -150,24 +127,16 @@ export function createCeneleSource(host: SourceHost): Source {
       return parseHomeSections(doc);
     },
 
-    async searchSuggest(query) {
+    async search(query, page) {
       const trimmed = query.trim();
-      if (trimmed.length === 0) return [];
-      // One retry on failure: if the cached nonce has rolled over the
-      // server returns success:false; we drop the cache, refetch the
-      // carrier page, and try again. After the second failure we
-      // surface the error to the UI.
-      let nonce = await getSuggestNonce();
-      let result = await callSuggest(host, trimmed, nonce);
-      if (!result.success) {
-        clearSuggestNonceCache();
-        nonce = await getSuggestNonce();
-        result = await callSuggest(host, trimmed, nonce);
-        if (!result.success) {
-          throw new Error("Cenele: suggest endpoint rejected the request");
-        }
+      const pageNum = Math.max(1, page ?? 1);
+      if (trimmed.length === 0) {
+        return { cards: [], hasMore: false, query: trimmed, page: pageNum };
       }
-      return result.cards;
+      const url = searchUrl(trimmed, pageNum);
+      host.log("info", `search(${trimmed}, page=${pageNum}) → ${url}`);
+      const resp = await host.fetch(url);
+      return parseSearchPage(parseHtmlDocument(resp.text), trimmed, pageNum);
     },
 
     async getNovel(url) {
@@ -260,13 +229,13 @@ export function createCeneleSource(host: SourceHost): Source {
         // call. Do both, then proceed.
         host.log("debug", "getVolumeChapters: cache miss, refetching");
         const resp = await host.fetch(novelUrl);
-        const ajax = extractMangaSingleAjax(resp.text);
+        const ajax = extractNovelConfig(resp.text);
         if (!ajax) {
           throw new Error(
-            "Cenele: couldn't find nhvMangaSingleAjax config — site layout may have changed.",
+            "Cenele: couldn't find nhvNovelV2 config — site layout may have changed.",
           );
         }
-        const meta = await fetchVolumeMeta(host, ajax.mangaId, ajax.nonce);
+        const meta = await fetchVolumeMeta(host, ajax.postId, ajax.chaptersNonce);
         const sorted = [...meta].sort((a, b) => {
           if (a.num === 0 && b.num !== 0) return 1;
           if (b.num === 0 && a.num !== 0) return -1;
@@ -287,8 +256,8 @@ export function createCeneleSource(host: SourceHost): Source {
           nextId += c;
         });
         cached = {
-          mangaId: ajax.mangaId,
-          chaptersNonce: ajax.nonce,
+          mangaId: ajax.postId,
+          chaptersNonce: ajax.chaptersNonce,
           volumeIndex,
           chapterIdByUrl: new Map(),
         };
@@ -384,88 +353,94 @@ export function createCeneleSource(host: SourceHost): Source {
   };
 }
 
-// ── nonce extraction ───────────────────────────────────────────────────────
-
-/** Pull the suggest-nonce string literal out of an inline script. The
- *  theme JS builds the suggest URL with string concatenation:
- *  `'...?action=nhv_manga_suggest&term=' + encodeURIComponent(q) +
- *  '&nonce=' + "<NONCE>"`. We match the literal that follows
- *  `nonce=' + "`. Falls back to scanning for `nhv_manga_suggest` followed
- *  by a `nonce` field of the local Madara theme. */
-function extractSuggestNonce(html: string): string | null {
-  const re =
-    /nhv_manga_suggest[\s\S]{0,400}?nonce=['"]?\s*\+\s*['"]([a-f0-9]{6,})['"]/i;
-  const m = html.match(re);
-  if (m) return m[1];
-  return null;
+export interface NovelConfig {
+  /** Numeric WordPress post id of the novel. Sent as `manga_id`. */
+  postId: string;
+  /** Nonce for `nhv_manga_single_chapters_page` and
+   *  `nhv_search_manga_chapters`. Distinct from `nhvNovelV2.nonce`,
+   *  which belongs to the `nhv_novel_v2_section` tab-content action. */
+  chaptersNonce: string;
 }
 
-interface NhvMangaSingleAjax {
-  nonce: string;
-  mangaId: string;
-}
-
-/** Extract the chapter-list nonce + manga_id from the novel page's inline
- *  config object: `var nhvMangaSingleAjax = {"ajaxurl":"…","nonce":"<HEX>",
- *  "manga_id":"<INT>","per_page":"<INT>"};`. */
-function extractMangaSingleAjax(html: string): NhvMangaSingleAjax | null {
-  const m = html.match(/var\s+nhvMangaSingleAjax\s*=\s*(\{[^}]+\})/);
+/** Extract the chapter-list credentials from the novel page's inline
+ *  config: `var nhvNovelV2 = {"ajaxurl":"…","nonce":"…","postId":"…",
+ *  "chaptersNonce":"…", …};`. Replaced `nhvMangaSingleAjax` when the
+ *  site redesigned its novel page (see docs/store-feature/cenele.md). */
+export function extractNovelConfig(html: string): NovelConfig | null {
+  const m = html.match(/var\s+nhvNovelV2\s*=\s*(\{[\s\S]*?\})\s*;/);
   if (!m) return null;
   try {
     const obj = JSON.parse(m[1]) as Record<string, unknown>;
-    const nonce = typeof obj.nonce === "string" ? obj.nonce : null;
-    const mangaId =
-      typeof obj.manga_id === "string"
-        ? obj.manga_id
-        : typeof obj.manga_id === "number"
-          ? String(obj.manga_id)
-          : null;
-    if (!nonce || !mangaId) return null;
-    return { nonce, mangaId };
+    const postId = asIdString(obj.postId);
+    const chaptersNonce =
+      typeof obj.chaptersNonce === "string" ? obj.chaptersNonce : null;
+    if (!postId || !chaptersNonce) return null;
+    return { postId, chaptersNonce };
   } catch {
     return null;
   }
 }
 
-// ── suggest endpoint ───────────────────────────────────────────────────────
-
-interface SuggestResult {
-  success: boolean;
-  cards: NovelCard[];
+function asIdString(v: unknown): string | null {
+  if (typeof v === "string" && v.length > 0) return v;
+  if (typeof v === "number") return String(v);
+  return null;
 }
 
-async function callSuggest(
-  host: SourceHost,
+// ── search-page parsing ────────────────────────────────────────────────────
+//
+// Cenele runs WordPress search over the `wp-manga` post type. Page 1 is
+// `/?s=…`; later pages take the `/page/N/` prefix. The `?s=&paged=N`
+// form is NOT used — WordPress serves it inconsistently on this host.
+// Results render with the stock Madara card markup.
+
+/** Build the results-page URL for a query + 1-based page. */
+export function searchUrl(query: string, page: number): string {
+  const params = new URLSearchParams({ s: query, post_type: "wp-manga" });
+  const n = Math.max(1, page);
+  const prefix = n > 1 ? `${BASE_URL}/page/${n}/` : `${BASE_URL}/`;
+  return `${prefix}?${params.toString()}`;
+}
+
+/** Parse one results page into cards. */
+export function parseSearchPage(
+  doc: Document,
   query: string,
-  nonce: string,
-): Promise<SuggestResult> {
-  const params = new URLSearchParams({
-    action: "nhv_manga_suggest",
-    term: query,
-    nonce,
-  });
-  const url = `${AJAX_URL}?${params.toString()}`;
-  const resp = await host.fetch(url);
-  let body: { success?: boolean; data?: { items?: SuggestItem[] } };
-  try {
-    body = JSON.parse(resp.text);
-  } catch {
-    return { success: false, cards: [] };
+  page: number,
+): SourceSearchResult {
+  const cards: NovelCard[] = [];
+  for (const row of Array.from(
+    doc.querySelectorAll(".row.c-tabs-item__content"),
+  )) {
+    const link = row.querySelector(
+      ".post-title h3.h4 > a, .post-title a",
+    ) as HTMLAnchorElement | null;
+    const href = link?.getAttribute("href") || "";
+    if (!isNovelHref(href)) continue;
+    const img = row.querySelector(".tab-thumb img") as HTMLImageElement | null;
+    const alt = sanitizeText(
+      row.querySelector(".mg_alternative .summary-content")?.textContent,
+    );
+    const genres = Array.from(
+      row.querySelectorAll(".mg_genres .summary-content a"),
+    )
+      .map((a) => sanitizeText(a.textContent))
+      .filter((s) => s.length > 0);
+    cards.push({
+      url: absolutizeUrl(href, BASE_URL),
+      title: sanitizeText(link?.textContent),
+      coverUrl: pickImageSrc(img),
+      subtitle: alt || undefined,
+      badges: genres.length > 0 ? genres : undefined,
+    });
   }
-  if (!body.success) return { success: false, cards: [] };
-  const items = body.data?.items ?? [];
-  const cards: NovelCard[] = items.map((it) => ({
-    url: absolutizeUrl(it.url, BASE_URL),
-    title: sanitizeText(it.title),
-    coverUrl: it.thumb ? absolutizeUrl(it.thumb, BASE_URL) : undefined,
-  }));
-  return { success: true, cards };
-}
 
-interface SuggestItem {
-  title: string;
-  url: string;
-  thumb?: string;
+  // The site is RTL, so its "previous" slot holds the *older* (next)
+  // page. Its presence is the only reliable more-pages signal — there is
+  // no numeric pager on this template.
+  const hasMore = !!doc.querySelector(".nav-links .nav-previous a");
+
+  return { cards, hasMore, query, page };
 }
 
 // ── chapter-list AJAX ──────────────────────────────────────────────────────
@@ -691,63 +666,60 @@ interface ParsedNovelPage {
   volumeShells: VolumeShell[];
 }
 
-function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
+export function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
   const html = doc.documentElement.outerHTML;
-  const ajax = extractMangaSingleAjax(html);
-  if (!ajax) {
+  const config = extractNovelConfig(html);
+  if (!config) {
     throw new Error(
-      `Cenele: couldn't find nhvMangaSingleAjax config on ${pageUrl}. The site layout may have changed, or this isn't a novel page.`,
+      `Cenele: couldn't find nhvNovelV2 config on ${pageUrl}. The site layout may have changed, or this isn't a novel page.`,
     );
   }
 
-  // Empty (not "Untitled") when the scrape can't find a title — a blank
-  // title persists as "" so the display-time fallback (`common.untitled`)
-  // localizes it wherever the novel is rendered, instead of freezing a
-  // locale-frozen literal into the novel's own stored title (same
-  // rationale as the author-blank fix elsewhere in this file).
-  const title = sanitizeText(doc.querySelector(".manga-title h2")?.textContent);
+  const title = sanitizeText(doc.querySelector(".nhv-novel-title")?.textContent);
+
+  // The kicker reads "رواية <Original Title>". Strip the leading word so
+  // the stored originalTitle is just the name.
   const originalTitle =
-    sanitizeText(
-      doc.querySelector(".manga-alt-title .manga-alt-label")?.textContent,
-    ) || undefined;
+    sanitizeText(doc.querySelector(".nhv-novel-kicker")?.textContent)
+      .replace(/^رواية\s+/, "") || undefined;
 
   const coverImg = doc.querySelector(
-    ".summary_image img",
+    ".nhv-novel-cover img",
   ) as HTMLImageElement | null;
   const coverUrl = pickImageSrc(coverImg);
 
-  const tags = Array.from(doc.querySelectorAll(".nhv-genres-chips a.nhv-genre-chip"))
+  // Genres and tags are separate lists on the redesigned page. We flatten
+  // them into one `tags` array because SourceNovel models a single chip
+  // set, and the reader treats both the same way.
+  const tags = [
+    ...Array.from(doc.querySelectorAll(".nhv-novel-genres a")),
+    ...Array.from(doc.querySelectorAll(".nhv-novel-tags a")),
+  ]
     .map((a) => sanitizeText(a.textContent))
     .filter((s) => s.length > 0);
 
+  // The status row is one of the meta rows, distinguished by an
+  // `is-ongoing` / `is-completed` class. We take its <strong> text rather
+  // than deriving a normalized token from the class: SourceNovel.status is
+  // a display field rendered verbatim as a badge, so the site's own Arabic
+  // wording is what belongs in it.
   const status = sanitizeText(
-    doc.querySelector(".manga-status .nhv-meta-value")?.textContent,
+    doc.querySelector(".nhv-novel-status strong")?.textContent,
   );
 
-  // Definition-list metadata. The Madara theme uses two parallel
-  // structures: `.manga-data .nhv-meta-label/.nhv-meta-value` pairs
-  // (chapter count, status, views, type) AND `.row-2`'s author/translator
-  // rows. Walk them all and emit a SourceNovelMeta row each. `author`
-  // starts empty (not "Unknown author") — same rationale as the epub/docx
-  // author fix: a blank `Book.author` lets the display-time fallback
-  // (`common.unknownAuthor`) localize it, instead of freezing an English
-  // literal into the novel's persisted data.
+  // Each meta row is `<div><span>[svg] Label</span><strong>Value</strong></div>`.
+  // The svg contributes no textContent, so trimming the span is enough.
   const meta: SourceNovelMeta[] = [];
   let author = "";
-  const metaRows = doc.querySelectorAll(
-    ".manga-data > div, .manga-author, .manga-artists, .manga-type, .released-chapters, .manga-status, .manga-views",
-  );
   const seenLabels = new Set<string>();
-  for (const row of Array.from(metaRows)) {
-    const labelEl = row.querySelector(".nhv-meta-label");
-    const valueEl = row.querySelector(".nhv-meta-value");
-    if (!labelEl || !valueEl) continue;
-    const label = sanitizeText(labelEl.textContent).replace(/:\s*$/, "");
-    const value = sanitizeText(valueEl.textContent).replace(/^[:：]\s*/, "");
+  for (const row of Array.from(doc.querySelectorAll(".nhv-novel-meta > div"))) {
+    const label = sanitizeText(row.querySelector("span")?.textContent);
+    const valueEl = row.querySelector("strong");
+    const value = sanitizeText(valueEl?.textContent);
     if (!label || !value) continue;
     if (seenLabels.has(label)) continue;
     seenLabels.add(label);
-    const linkEl = valueEl.querySelector("a");
+    const linkEl = valueEl?.querySelector("a");
     meta.push({
       label,
       value,
@@ -755,9 +727,6 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
         ? absolutizeUrl(linkEl.getAttribute("href") || "", BASE_URL)
         : undefined,
     });
-    // Heuristic: the author row is labeled "المؤلف" in Arabic
-    // ("Author"). Capture the first value we see under that label so
-    // the EPUB's dc:creator gets a meaningful name.
     if (/مؤلف|كاتب|author|writer/i.test(label) && !author) {
       author = value;
     }
@@ -775,43 +744,36 @@ function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
     description,
     tags,
     meta,
-    mangaId: ajax.mangaId,
-    chaptersNonce: ajax.nonce,
+    mangaId: config.postId,
+    chaptersNonce: config.chaptersNonce,
     volumeShells,
   };
 }
 
-/** Pull the synopsis excerpt from the novel page. The full synopsis
- *  loads via an additional AJAX call (button labeled "Read more"); the
- *  excerpt is enough for the detail view and for the imported EPUB's
- *  meta. */
 function extractDescription(doc: Document): string | undefined {
-  const el =
-    doc.querySelector(".nhv-synopsis-excerpt") ||
-    doc.querySelector(".manga-excerpt .excerpt-content");
+  const el = doc.querySelector(".nhv-novel-synopsis");
   if (!el) return undefined;
-  const text = sanitizeText(el.textContent);
+  // The container also holds an <h2> (the title, repeated) and a trailing
+  // <h3> of promotional copy. Take only the paragraphs, or the synopsis
+  // arrives with both glued to it.
+  const paragraphs = Array.from(el.querySelectorAll("p"))
+    .map((p) => sanitizeText(p.textContent))
+    .filter((t) => t.length > 0);
+  // Fall back to the whole container if the theme ever drops the <p> wrapping.
+  const text = paragraphs.length > 0
+    ? paragraphs.join("\n\n")
+    : sanitizeText(el.textContent);
   if (!text) return undefined;
-  // Trim "Read more"-style trailing ellipses that the theme appends
-  // when the synopsis is truncated server-side.
   const cleaned = text.replace(/Read more$/i, "").trim();
   return cleaned.length > 1500 ? cleaned.slice(0, 1500).trim() + "…" : cleaned;
 }
 
-/** Read volume metadata embedded in the chapters-tab shell, if the
- *  theme rendered any. Empty array means the volume list will need to
- *  be fetched via the `meta_only=1` AJAX call. */
-function extractVolumeShells(doc: Document): VolumeShell[] {
-  const shells: VolumeShell[] = [];
-  for (const section of Array.from(doc.querySelectorAll(".nhv-volume-card"))) {
-    const numAttr = section.getAttribute("data-volume");
-    if (numAttr == null) continue;
-    const num = parseInt(numAttr, 10);
-    if (Number.isNaN(num)) continue;
-    const label = sanitizeText(section.querySelector(".nhv-volume-title")?.textContent);
-    shells.push({ num, label });
-  }
-  return shells;
+/** The redesigned novel page ships no volume markup — the chapters tab
+ *  loads volumes over AJAX. getNovel gets the canonical list from
+ *  fetchVolumeMeta's `meta_only=1` call, so there is nothing to scrape
+ *  here. Kept (returning empty) so ParsedNovelPage's shape is stable. */
+function extractVolumeShells(_doc: Document): VolumeShell[] {
+  return [];
 }
 
 // ── homepage parsing ───────────────────────────────────────────────────────

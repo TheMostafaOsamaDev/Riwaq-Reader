@@ -7,13 +7,12 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "vitest run",
     "tauri": "tauri",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build --apk --target aarch64",
     "android:build:universal": "tauri android build --apk",
     "android:build:debug": "tauri android build --apk --debug --target aarch64",
-    "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -34,6 +33,7 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "happy-dom": "^20.11.6",
     "typescript": "~6.0.3",
     "vite": "^8.0.14",
     "vitest": "^4.1.11"

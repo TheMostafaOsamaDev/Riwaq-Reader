@@ -4,39 +4,40 @@ Site: <https://cenele.com> (فضاء الروايات)
 
 Theme: Madara WordPress theme with a custom **novelhub** child theme.
 The novelhub child theme replaces the chapter listing with a JS-driven
-accordion that loads each volume over AJAX, and replaces the search
-input with a live-suggest dropdown.
+accordion that loads each volume over AJAX. Search runs through the
+site's normal WordPress results page — not a live-suggest dropdown; the
+app has one search interaction: type, Enter, results grid.
 
 ## Capabilities
 
 | Method                | Supported | Endpoint |
 |-----------------------|-----------|----------|
 | `getHomeSections`     | ✓         | GET `/` — parse `section.nhv-section` blocks |
-| `search`              | —         | site has no `/?s=<q>` results page |
-| `searchSuggest`       | ✓         | GET admin-ajax `nhv_manga_suggest` |
+| `search`              | ✓         | GET `/?s=<q>&post_type=wp-manga` (page 1) or `/page/<N>/?s=<q>&post_type=wp-manga` (page N>1) — 12 results/page; `hasMore` from `.nav-links .nav-previous a` |
 | `getNovel`            | ✓ + AJAX  | GET `/cont/<slug>/` + POST admin-ajax `nhv_manga_single_chapters_page` per volume |
 | `searchChapters`      | ✓         | POST admin-ajax `nhv_search_manga_chapters` |
 | `getChapterContent`   | ✓         | static GET; decoys stripped |
 
+## Search
+
+Page 1 is `GET https://cenele.com/?s=<q>&post_type=wp-manga`; page N>1
+takes a `/page/<N>/` prefix in front of the same query string
+(`searchUrl` in `cenele.ts`). The site returns 12 results per page.
+`parseSearchPage` reads each `.row.c-tabs-item__content` row for its
+title, cover, original-title subtitle ("رواية …") and genre badges, and
+derives `hasMore` from the presence of `.nav-links .nav-previous a` — the
+theme is RTL, so the "previous" slot holds the *older* (i.e. next) page
+link, and there is no numeric pager on this template.
+
 ## AJAX endpoints
 
-All four custom endpoints live under `wp-admin/admin-ajax.php` and
+All three custom endpoints live under `wp-admin/admin-ajax.php` and
 follow the WordPress AJAX convention:
 
 ```
 POST /wp-admin/admin-ajax.php
 Content-Type: application/x-www-form-urlencoded
 action=<NAME>&nonce=<NONCE>&… other args
-```
-
-### `nhv_manga_suggest`
-
-GET, not POST. Used by the homepage search input for the live
-dropdown.
-
-```
-?action=nhv_manga_suggest&term=<q>&nonce=<SUGGEST_NONCE>
-→ { success: true, data: { items: [{title, url, thumb}, …] } }
 ```
 
 ### `nhv_manga_single_chapters_page`
@@ -89,24 +90,27 @@ We use `items` (the structured array) rather than `html`.
 
 ## Nonces
 
-WordPress generates per-session, per-action nonces. They are
-embedded in inline scripts on every page render.
+WordPress generates per-session, per-action nonces. They are embedded
+in inline scripts on every page render.
 
-| Action                                | Nonce variable | Where it lives |
-|---------------------------------------|----------------|----------------|
-| `nhv_manga_suggest`                   | inline literal | `/cont/` page — the suggest JS does `'&nonce=' + "<HEX>"` |
-| `nhv_manga_single_chapters_page` and `nhv_search_manga_chapters` | `nhvMangaSingleAjax.nonce` | every novel page — `var nhvMangaSingleAjax = {nonce:"<HEX>", manga_id:"<INT>", …}` |
+The novel page exposes `var nhvNovelV2 = {ajaxurl:"…", nonce:"<HEX>",
+postId:"<INT>", chaptersNonce:"<HEX>", …}`. This replaced
+`nhvMangaSingleAjax` when the site redesigned its novel page — the
+`extractNovelConfig` doc comment in `cenele.ts` points here by name, so
+keep this table in sync with that function. A stale version of this
+contract (still describing `nhvMangaSingleAjax`) is exactly what broke
+chapter fetching and caused the regression this branch fixes.
 
-The two endpoints share one nonce because they share one WP action
-prefix. The suggest action's nonce is separate because it lives
-behind a different WP nonce key.
+| Field                      | Belongs to | Used for |
+|----------------------------|------------|----------|
+| `nhvNovelV2.chaptersNonce` | `nhv_manga_single_chapters_page` and `nhv_search_manga_chapters` (they share it) | sent as `nonce` on both chapter actions |
+| `nhvNovelV2.postId`        | same two actions | sent as `manga_id` |
+| `nhvNovelV2.nonce`         | `nhv_novel_v2_section` (tab-content action) | **not used by this extension** — a different nonce; never send it as `chaptersNonce` |
 
-We cache both: `suggestNonceCache` per source-instance (any /cont/
-fetch refills it), and the chapter nonce lives inside the per-novel
-`CachedNovel` entry built during `getNovel`. The suggest call has
-one retry on `success: false` (re-fetches /cont/ and re-tries the
-query); the chapters call doesn't retry because at the time we issue
-it we have fresh nonces from the just-loaded page.
+We cache `postId` and `chaptersNonce` inside the per-novel `CachedNovel`
+entry built during `getNovel`; `extractNovelConfig` re-derives both from
+the novel page on a cache miss (e.g. `getVolumeChapters` called after an
+app restart, before `getNovel` has re-run for this session).
 
 ## Homepage section shapes
 
@@ -126,18 +130,22 @@ silently — `parseHomeSections` filters anything that returns no cards.
 
 ## Novel-page selectors
 
+The site redesigned its novel-page markup; these are the current
+selectors (see `parseNovelPage` in `cenele.ts`).
+
 | Field           | Selector |
 |-----------------|----------|
-| Title           | `.manga-title h2` |
-| Original title  | `.manga-alt-title .manga-alt-label` |
-| Cover image     | `.summary_image img[src]` |
-| Tags / genres   | `.nhv-genres-chips a.nhv-genre-chip` |
-| Status          | `.manga-status .nhv-meta-value` |
-| Meta rows       | `.manga-data > div, .manga-author, .manga-artists, .manga-type, .released-chapters, .manga-status, .manga-views` — each has `.nhv-meta-label` + `.nhv-meta-value` |
+| Title           | `.nhv-novel-title` |
+| Original title  | `.nhv-novel-kicker`, stripped of its leading "رواية " prefix |
+| Cover image     | `.nhv-novel-cover img` |
+| Genres          | `.nhv-novel-genres a` |
+| Tags            | `.nhv-novel-tags a` (genres + tags are flattened into one `tags` array — the reader treats both the same way) |
+| Status          | `.nhv-novel-status strong` |
+| Meta rows       | `.nhv-novel-meta > div`, each `<div><span>label</span><strong>value</strong></div>` |
 | Author          | meta row labeled `مؤلف` / `كاتب` / `author` / `writer` |
-| Description     | `.nhv-synopsis-excerpt` (full synopsis loads via separate AJAX; the excerpt is enough) |
-| Volume shells   | `.nhv-volume-card[data-volume]` — pre-rendered ones; if none, fall back to `meta_only=1` AJAX |
-| Manga config    | inline `var nhvMangaSingleAjax = {…}` (regex-extracted) |
+| Synopsis        | `.nhv-novel-synopsis` — only its `<p>` children; the container also holds an `<h2>` title repeat and a trailing `<h3>` of promo copy that must not leak into the description |
+| Volume shells   | none — the redesigned page ships no volume markup; `extractVolumeShells` always returns `[]` and `getNovel` gets the canonical volume list from the `meta_only=1` AJAX call instead |
+| Manga config    | inline `var nhvNovelV2 = {…}` (regex-extracted) — see Nonces above |
 
 ## Chapter-body decoy stripping
 

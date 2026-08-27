@@ -1,6 +1,8 @@
 # KolNovel — `src/sources/extensions/kolnovel.ts`
 
-Site: <https://free.kolnovel.com> (also `kolnovel.com`)
+Site: <https://kolnovel.com> (`free.kolnovel.com` 301-redirects here;
+kept as an alias in `canHandle` only so URLs already saved in a user's
+library still resolve)
 
 Theme: custom WordPress build; relatively static — most data lives in
 the initial HTML.
@@ -10,8 +12,7 @@ the initial HTML.
 | Method                | Supported | Notes |
 |-----------------------|-----------|-------|
 | `getHomeSections`     | ✓         | parses `.trendarea`, `.homehot`, `.bixbox + .listupd` |
-| `search`              | ✓         | `/?s=<q>&paged=<n>` — full WordPress search |
-| `searchSuggest`       | —         | site has no live-suggest endpoint |
+| `search`              | ✓ (unpaginated) | `GET /?s=<q>` only — the theme renders every match on one page; `?s=<q>&paged=<n>` and `/page/<n>/?s=<q>` both return HTTP 500 on this host, so `search` always reports `hasMore: false` |
 | `getNovel`            | ✓         | `/series/<slug>/` — `.sertobig` + `.ts-chl-collapsible` |
 | `searchChapters`      | —         | no in-novel search on the site |
 | `getChapterContent`   | ✓         | **pure static fetch** — body is in the initial HTML |

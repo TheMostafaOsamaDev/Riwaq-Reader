@@ -224,9 +224,10 @@ export interface SourceMetadata {
  * The Source interface. Every method may throw; the store UI translates
  * exceptions into inline error states.
  *
- * Capabilities are advisory: a source may not implement search if its site
- * has none. The UI checks via `typeof source.search === "function"` rather
- * than via a separate flag.
+ * Most methods are required; a few capabilities are advisory (e.g.
+ * `hasLazyVolumes`, `searchChapters`, `resolveImage`) and the UI checks
+ * for them via `typeof source.<method> === "function"` rather than a
+ * separate flag.
  */
 export interface Source {
   readonly meta: SourceMetadata;
@@ -238,19 +239,14 @@ export interface Source {
    *  one section per element in the returned array, in order. */
   getHomeSections(): Promise<SourceSection[]>;
 
-  /** Search for novels matching `query`. Page is 1-based. Implementations
-   *  may ignore the `page` argument when the site doesn't paginate, in
-   *  which case `hasMore` should be false. */
-  search?(query: string, page?: number): Promise<SourceSearchResult>;
-
-  /** Live as-you-type suggestion search. Sources that surface only an
-   *  inline-dropdown search (no separate results page) implement this and
-   *  leave `search` undefined — the store UI then runs a debounced
-   *  `searchSuggest` while the user types and shows results as a dropdown
-   *  beneath the input. Sources with both can drive the dropdown via
-   *  suggest and the full grid via search. Result count is whatever the
-   *  source returns (typically 5-10). */
-  searchSuggest?(query: string): Promise<NovelCard[]>;
+  /** Search for novels matching `query`. Page is 1-based. Sources whose
+   *  site renders all matches on one page ignore `page` and return
+   *  `hasMore: false`.
+   *
+   *  Required. The store has exactly one search interaction — the user
+   *  types and presses Enter, and this fills the results grid. There is
+   *  no as-you-type suggestion path. */
+  search(query: string, page?: number): Promise<SourceSearchResult>;
 
   /** True when this source's chapter listing is loaded per-volume on
    *  demand: `getNovel` returns volumes with empty `chapters[]` arrays

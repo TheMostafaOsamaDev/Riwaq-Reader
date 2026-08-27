@@ -52,7 +52,7 @@ const BUILTINS: RegistryEntry[] = [
       // Site's own title; the site publishes no description meta, so we
       // leave `description` unset (the card renders none).
       name: "ملوك الروايات",
-      baseUrl: "https://free.kolnovel.com",
+      baseUrl: "https://kolnovel.com",
       language: "ar",
       iconUrl: kolnovelIcon,
       version: "0.1.0",

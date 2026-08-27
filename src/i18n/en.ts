@@ -438,8 +438,6 @@ export const en = {
   "store.backToSources": "Back to sources",
   "store.searchPlaceholder": "Search…",
   "store.searching": "Searching…",
-  "store.suggestError": "Couldn't load suggestions — {error}",
-  "store.noSuggestMatches": "No matches for “{query}”.",
   "store.loadSourceError": "Couldn't load this source — {error}",
   "store.noSections": "No sections found.",
   "store.itemsCountOne": "{n} item",
@@ -448,6 +446,8 @@ export const en = {
   "store.clear": "Clear",
   "store.searchFailed": "Search failed — {error}",
   "store.noResults": "No matches.",
+  "store.loadMore": "Load more",
+  "store.loadingMore": "Loading more…",
   "store.notInstalled": "Source “{sourceId}” isn't installed.",
   // Section carousel (SectionCarousel.tsx) arrow buttons on a source's home
   // page. "left"/"right" name the button's fixed physical position on
@@ -489,6 +489,7 @@ export const en = {
   "novel.clearChapterSearch": "Clear chapter search",
   "novel.searchingChapters": "Searching chapters…",
   "novel.searchChaptersError": "Couldn't search chapters — {error}",
+  "novel.searchChaptersNoMatches": "No matches for “{query}”.",
   "novel.chaptersHeading": "Chapters",
   "novel.chapterCountShort": "{n} ch.",
   "novel.chaptersLoadError": "Couldn't load chapters — {error}",

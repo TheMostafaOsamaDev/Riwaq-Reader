@@ -6,8 +6,9 @@
 //     returned from getHomeSections(). Each section is a header + a
 //     horizontally-scrollable row of NovelCards.
 //   - search mode: kicked off when the user submits the search input.
-//     Renders a single grid of result cards. Hitting Esc / clearing the
-//     query returns to sections mode without re-fetching them.
+//     Renders a single grid of result cards. Search mode ends when the
+//     user presses the Clear button, or submits an empty query — either
+//     way, sections mode underneath is not re-fetched.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
@@ -15,13 +16,13 @@ import { getSource, getSourceMeta } from "../sources/registry";
 import type {
   NovelCard as NovelCardData,
   Source,
-  SourceSearchResult,
   SourceSection,
 } from "../sources/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelCard } from "./NovelCard";
+import { appendPage, searchView, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
@@ -42,26 +43,18 @@ interface SectionsState {
 
 interface SearchState {
   loading: boolean;
+  /** True while a Load-more fetch is in flight — keeps the existing
+   *  results on screen instead of swapping them for skeletons. */
+  loadingMore: boolean;
+  /** First-page failure — there is nothing to show, so this replaces the
+   *  grid. */
   error: string | null;
-  result: SourceSearchResult | null;
+  /** Load-more failure — the grid is still valid, so this renders beside
+   *  the button instead of displacing the results already on screen. */
+  loadMoreError: string | null;
+  result: SearchPage | null;
   query: string;
 }
-
-interface SuggestState {
-  loading: boolean;
-  error: string | null;
-  /** null while no query is in flight; empty array means "searched, zero
-   *  matches" (so the dropdown can render an empty-state row). */
-  items: NovelCardData[] | null;
-  query: string;
-}
-
-/** Debounce window for live-suggestion calls. 220ms ≈ Cenele's own
- *  in-page debounce (180-250ms) and below the typical inter-keystroke
- *  interval for ordinary typing, so we don't fire a request per
- *  keystroke but still feel instant. */
-const SUGGEST_DEBOUNCE_MS = 220;
-const SUGGEST_MIN_CHARS = 2;
 
 export function SourceHomeView({
   theme,
@@ -80,24 +73,23 @@ export function SourceHomeView({
   });
   const [searchState, setSearchState] = useState<SearchState>({
     loading: false,
+    loadingMore: false,
     error: null,
+    loadMoreError: null,
     result: null,
     query: "",
   });
   const [searchInput, setSearchInput] = useState("");
-  const [suggestState, setSuggestState] = useState<SuggestState>({
-    loading: false,
-    error: null,
-    items: null,
-    query: "",
-  });
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  const canSuggest = typeof source?.searchSuggest === "function";
-  const canSearch = typeof source?.search === "function";
+  // Monotonic counter identifying each search fetch. A response is applied
+  // only if this hasn't advanced since the fetch started — guards against
+  // two same-text fetches racing (e.g. a Load-more fetch in flight when the
+  // user presses Enter again on the identical, unchanged query), a case a
+  // query-text comparison alone can't detect.
+  const searchGeneration = useRef(0);
 
-  // Load sections on mount (and whenever the source changes — though in
-  // practice sourceId is stable until the user backs out and picks a
-  // different source).
+  // Load sections on mount, and again whenever sourceId changes — e.g.
+  // uiIntents.openStoreSource can swap sourceId in place without
+  // unmounting this component.
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
@@ -122,101 +114,71 @@ export function SourceHomeView({
   }, [source]);
 
   const runSearch = useCallback(
-    async (query: string) => {
-      if (!source || !source.search) return;
+    async (query: string, page = 1) => {
+      if (!source) return;
       const trimmed = query.trim();
       if (trimmed.length === 0) {
-        // Clearing the input returns the user to sections mode without
-        // re-fetching; the previous result stays cached in state so the
-        // next non-empty query feels instant if it matches.
-        setSearchState((s) => ({ ...s, result: null, query: "" }));
+        // Invalidate any fetch still in flight so it can't repopulate a
+        // search the user just cleared.
+        searchGeneration.current++;
+        setSearchState({
+          loading: false, loadingMore: false, error: null,
+          loadMoreError: null, result: null, query: "",
+        });
         return;
       }
-      setSearchState({
-        loading: true,
+      const gen = ++searchGeneration.current;
+      const appending = page > 1;
+      setSearchState((s) => ({
+        ...s,
+        loading: !appending,
+        loadingMore: appending,
         error: null,
-        result: null,
+        loadMoreError: null,
+        result: appending ? s.result : null,
         query: trimmed,
-      });
+      }));
       try {
-        const result = await source.search(trimmed, 1);
-        setSearchState({ loading: false, error: null, result, query: trimmed });
+        const res = await source.search(trimmed, page);
+        setSearchState((s) =>
+          // A newer search — a fresh query, a cleared input, or another
+          // Load-more — started while this was in flight. Discard.
+          searchGeneration.current !== gen
+            ? s
+            : {
+                loading: false,
+                loadingMore: false,
+                error: null,
+                loadMoreError: null,
+                result: appendPage(appending ? s.result : null, res),
+                query: trimmed,
+              },
+        );
       } catch (e) {
-        setSearchState({
-          loading: false,
-          error: e instanceof Error ? e.message : String(e),
-          result: null,
-          query: trimmed,
-        });
+        setSearchState((s) =>
+          searchGeneration.current !== gen
+            ? s
+            : appending
+              ? {
+                  ...s,
+                  loadingMore: false,
+                  loadMoreError: e instanceof Error ? e.message : String(e),
+                }
+              : {
+                  ...s,
+                  loading: false,
+                  error: e instanceof Error ? e.message : String(e),
+                },
+        );
       }
     },
     [source],
   );
 
-  // Debounced live suggestion fetch. Fires `SUGGEST_DEBOUNCE_MS` after the
-  // user stops typing, and only when the source advertises `searchSuggest`.
-  // We track the inflight query against the current input so a stale
-  // response from an older keystroke can't overwrite a fresh one.
-  useEffect(() => {
-    if (!source || !canSuggest) return;
-    const trimmed = searchInput.trim();
-    if (trimmed.length < SUGGEST_MIN_CHARS) {
-      // Below the minimum: clear any previous result + close dropdown,
-      // but don't call the source (the typical site behavior).
-      setSuggestState({ loading: false, error: null, items: null, query: "" });
-      setSuggestOpen(false);
-      return;
-    }
-    setSuggestOpen(true);
-    setSuggestState((s) => ({ ...s, loading: true, error: null, query: trimmed }));
-    const handle = setTimeout(async () => {
-      try {
-        const items = await source.searchSuggest!(trimmed);
-        // Drop the response if the user typed something else while we
-        // were waiting — the latest keystroke wins.
-        setSuggestState((s) =>
-          s.query === trimmed
-            ? { loading: false, error: null, items, query: trimmed }
-            : s,
-        );
-      } catch (e) {
-        setSuggestState((s) =>
-          s.query === trimmed
-            ? {
-                loading: false,
-                error: e instanceof Error ? e.message : String(e),
-                items: null,
-                query: trimmed,
-              }
-            : s,
-        );
-      }
-    }, SUGGEST_DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [source, canSuggest, searchInput]);
-
-  // Enter on the search input. Behavior depends on which capabilities
-  // the source declares:
-  //   - has search() → submit to the full-results grid (existing flow).
-  //   - has only searchSuggest → there's no results page; open the first
-  //     suggestion as if the user had clicked it (per the design choice
-  //     for cenele).
-  //   - has neither → noop (the input is hidden in this case so we
-  //     shouldn't see this path).
+  // Enter on the search input submits to the results grid.
   const onSubmitSearch = useCallback(() => {
-    if (canSearch) {
-      void runSearch(searchInput);
-      setSuggestOpen(false);
-      return;
-    }
-    if (canSuggest) {
-      const items = suggestState.items;
-      if (items && items.length > 0) {
-        setSuggestOpen(false);
-        onOpenNovel(items[0].url);
-      }
-    }
-  }, [canSearch, canSuggest, runSearch, searchInput, suggestState.items, onOpenNovel]);
+    void runSearch(searchInput);
+  }, [runSearch, searchInput]);
 
   if (!source) {
     return (
@@ -251,15 +213,6 @@ export function SourceHomeView({
         setSearchInput={setSearchInput}
         onBack={onBack}
         onSubmitSearch={onSubmitSearch}
-        canSearch={canSearch}
-        canSuggest={canSuggest}
-        suggestOpen={suggestOpen && canSuggest && searchInput.trim().length >= SUGGEST_MIN_CHARS}
-        onCloseSuggest={() => setSuggestOpen(false)}
-        suggestState={suggestState}
-        onOpenSuggestion={(url) => {
-          setSuggestOpen(false);
-          onOpenNovel(url);
-        }}
       />
 
       <div style={{ padding: layout === "mobile" ? "8px 18px 40px" : "8px 40px 40px" }}>
@@ -269,13 +222,15 @@ export function SourceHomeView({
             state={searchState}
             onClear={() => {
               setSearchInput("");
+              searchGeneration.current++;
               setSearchState({
-                loading: false,
-                error: null,
-                result: null,
-                query: "",
+                loading: false, loadingMore: false, error: null,
+                loadMoreError: null, result: null, query: "",
               });
             }}
+            onLoadMore={() =>
+              void runSearch(searchState.query, (searchState.result?.page ?? 1) + 1)
+            }
             onOpenNovel={onOpenNovel}
           />
         ) : (
@@ -300,12 +255,6 @@ interface HomeHeaderProps {
   setSearchInput: (v: string) => void;
   onBack: () => void;
   onSubmitSearch: () => void;
-  canSearch: boolean;
-  canSuggest: boolean;
-  suggestOpen: boolean;
-  onCloseSuggest: () => void;
-  suggestState: SuggestState;
-  onOpenSuggestion: (url: string) => void;
 }
 
 function HomeHeader({
@@ -316,12 +265,6 @@ function HomeHeader({
   setSearchInput,
   onBack,
   onSubmitSearch,
-  canSearch,
-  canSuggest,
-  suggestOpen,
-  onCloseSuggest,
-  suggestState,
-  onOpenSuggestion,
 }: HomeHeaderProps) {
   const { tr } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -410,75 +353,41 @@ function HomeHeader({
         </div>
       </div>
       {!isMobile && <div style={{ flex: 1 }} />}
-      {(canSearch || canSuggest) && (
-        <SearchInputWithSuggest
-          theme={theme}
-          isMobile={isMobile}
-          inputRef={inputRef}
-          searchInput={searchInput}
-          setSearchInput={setSearchInput}
-          onSubmitSearch={onSubmitSearch}
-          canSuggest={canSuggest}
-          suggestOpen={suggestOpen}
-          onCloseSuggest={onCloseSuggest}
-          suggestState={suggestState}
-          onOpenSuggestion={onOpenSuggestion}
-        />
-      )}
+      <SearchInput
+        theme={theme}
+        isMobile={isMobile}
+        inputRef={inputRef}
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        onSubmitSearch={onSubmitSearch}
+      />
     </div>
   );
 }
 
-// ── search input + live-suggest dropdown ───────────────────────────────────
+// ── search input ────────────────────────────────────────────────────────────
 
-interface SearchInputWithSuggestProps {
+interface SearchInputProps {
   theme: Theme;
   isMobile: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
   searchInput: string;
   setSearchInput: (v: string) => void;
   onSubmitSearch: () => void;
-  canSuggest: boolean;
-  suggestOpen: boolean;
-  onCloseSuggest: () => void;
-  suggestState: SuggestState;
-  onOpenSuggestion: (url: string) => void;
 }
 
-function SearchInputWithSuggest({
+function SearchInput({
   theme,
   isMobile,
   inputRef,
   searchInput,
   setSearchInput,
   onSubmitSearch,
-  canSuggest,
-  suggestOpen,
-  onCloseSuggest,
-  suggestState,
-  onOpenSuggestion,
-}: SearchInputWithSuggestProps) {
+}: SearchInputProps) {
   const { tr } = useI18n();
-  // Click-outside dismissal. Walk composedPath instead of contains() so
-  // dropdown clicks on portals or shadow-DOM children would still count
-  // as inside (we don't use any here yet but it future-proofs cheaply).
-  const containerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!suggestOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      const root = containerRef.current;
-      if (!root) return;
-      const path = (e.composedPath?.() ?? []) as Node[];
-      if (path.includes(root) || root.contains(e.target as Node)) return;
-      onCloseSuggest();
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [suggestOpen, onCloseSuggest]);
 
   return (
     <div
-      ref={containerRef}
       style={{
         position: "relative",
         width: isMobile ? "100%" : 320,
@@ -507,8 +416,6 @@ function SearchInputWithSuggest({
             if (e.key === "Enter") {
               e.preventDefault();
               onSubmitSearch();
-            } else if (e.key === "Escape") {
-              onCloseSuggest();
             }
           }}
           placeholder={tr("store.searchPlaceholder")}
@@ -525,128 +432,6 @@ function SearchInputWithSuggest({
           }}
         />
       </div>
-      {canSuggest && suggestOpen && (
-        <SuggestDropdown
-          theme={theme}
-          state={suggestState}
-          onPick={onOpenSuggestion}
-        />
-      )}
-    </div>
-  );
-}
-
-interface SuggestDropdownProps {
-  theme: Theme;
-  state: SuggestState;
-  onPick: (url: string) => void;
-}
-
-function SuggestDropdown({ theme, state, onPick }: SuggestDropdownProps) {
-  const { tr } = useI18n();
-  return (
-    <div
-      // Float over the page content; absolute is enough because the
-      // parent positioned itself relatively.
-      className="leaflet-scroll-hidden"
-      style={{
-        position: "absolute",
-        top: "calc(100% + 4px)",
-        insetInlineStart: 0,
-        insetInlineEnd: 0,
-        zIndex: 50,
-        background: theme.bg,
-        border: `0.5px solid ${theme.rule}`,
-        borderRadius: 10,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-        overflow: "hidden",
-        maxHeight: 360,
-        overflowY: "auto",
-      }}
-    >
-      {state.loading && state.items === null ? (
-        <div
-          style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
-        >
-          {tr("store.searching")}
-        </div>
-      ) : state.error ? (
-        <div
-          style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
-        >
-          {tr("store.suggestError", { error: state.error })}
-        </div>
-      ) : state.items && state.items.length === 0 ? (
-        <div
-          style={{ padding: "12px 14px", color: theme.muted, fontSize: 12.5 }}
-        >
-          {tr("store.noSuggestMatches", { query: state.query })}
-        </div>
-      ) : (
-        (state.items ?? []).map((card, i) => (
-          <button
-            key={card.url}
-            onMouseDown={(e) => {
-              // mousedown (not click) so we fire before the input's
-              // blur dismisses us via the click-outside listener.
-              e.preventDefault();
-              onPick(card.url);
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              width: "100%",
-              padding: "8px 12px",
-              border: "none",
-              background: i === 0 ? theme.hover : "transparent",
-              color: theme.ink,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              fontSize: 13,
-              textAlign: "start",
-              borderBottom: `0.5px solid ${theme.rule}`,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = theme.hover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = i === 0 ? theme.hover : "transparent";
-            }}
-          >
-            {card.coverUrl && (
-              <img
-                src={card.coverUrl}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-                style={{
-                  width: 34,
-                  height: 48,
-                  objectFit: "cover",
-                  borderRadius: 4,
-                  flexShrink: 0,
-                  background: theme.chrome,
-                }}
-              />
-            )}
-            <span
-              style={{
-                flex: 1,
-                minWidth: 0,
-                lineHeight: 1.35,
-                display: "-webkit-box",
-                WebkitBoxOrient: "vertical" as const,
-                WebkitLineClamp: 2 as const,
-                overflow: "hidden",
-              }}
-            >
-              {card.title}
-            </span>
-          </button>
-        ))
-      )}
     </div>
   );
 }
@@ -763,6 +548,7 @@ interface SearchResultsProps {
   theme: Theme;
   state: SearchState;
   onClear: () => void;
+  onLoadMore: () => void;
   onOpenNovel: (url: string) => void;
 }
 
@@ -770,9 +556,11 @@ function SearchResults({
   theme,
   state,
   onClear,
+  onLoadMore,
   onOpenNovel,
 }: SearchResultsProps) {
   const { tr } = useI18n();
+  const view = searchView(state);
   return (
     <div style={{ marginTop: 18 }}>
       <div
@@ -799,7 +587,7 @@ function SearchResults({
           {tr("store.clear")}
         </Button>
       </div>
-      {state.loading ? (
+      {view === "skeletons" ? (
         <div
           style={{
             display: "grid",
@@ -811,7 +599,7 @@ function SearchResults({
             <NovelCardSkeleton key={i} theme={theme} />
           ))}
         </div>
-      ) : state.error ? (
+      ) : view === "error" ? (
         <div
           style={{
             padding: 24,
@@ -822,9 +610,9 @@ function SearchResults({
             fontSize: 13,
           }}
         >
-          {tr("store.searchFailed", { error: state.error })}
+          {tr("store.searchFailed", { error: state.error ?? "" })}
         </div>
-      ) : state.result && state.result.cards.length === 0 ? (
+      ) : view === "empty" ? (
         <div style={{ padding: 32, textAlign: "center", color: theme.muted }}>
           {tr("store.noResults")}
         </div>
@@ -834,6 +622,40 @@ function SearchResults({
           cards={state.result?.cards ?? []}
           onOpenNovel={onOpenNovel}
         />
+      )}
+      {state.result?.hasMore && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            marginTop: 22,
+          }}
+        >
+          {state.loadMoreError && (
+            <div
+              style={{
+                padding: 24,
+                color: theme.ink,
+                background: "rgba(180,60,60,0.10)",
+                border: "0.5px solid rgba(180,60,60,0.4)",
+                borderRadius: 10,
+                fontSize: 13,
+              }}
+            >
+              {tr("store.searchFailed", { error: state.loadMoreError })}
+            </div>
+          )}
+          <Button
+            theme={theme}
+            variant="secondary"
+            onClick={onLoadMore}
+            disabled={state.loadingMore}
+          >
+            {state.loadingMore ? tr("store.loadingMore") : tr("store.loadMore")}
+          </Button>
+        </div>
       )}
     </div>
   );

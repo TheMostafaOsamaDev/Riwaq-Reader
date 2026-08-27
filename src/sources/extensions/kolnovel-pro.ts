@@ -8,17 +8,19 @@
 //             → { error:0, url: "https://kolnovel.com/<chapter>/pdf/?tspdftoken=<token>" }
 //   bytes:  GET <token url>  → application/pdf
 //
-// Search uses the theme's live autocomplete API (ts_ac_do_search). Anonymous
-// access only.
+// Search uses the site's WordPress results page (`/?s=`). The theme's
+// ts_ac_do_search autocomplete is unused — it returns thinner cards and
+// the app has one search interaction.
 
 import { parseHtmlDocument } from "../host";
 import {
   parseChapterContent,
   parseHomeSections,
   parseNovelPage,
+  parseSearchResults,
 } from "./kolnovel-theme";
 import { extractPdfLines, type ExtractedImage } from "../pdf/pdfChapter";
-import type { NovelCard, Source, SourceHost, SourceLine } from "../types";
+import type { Source, SourceHost, SourceLine } from "../types";
 
 const BASE_URL = "https://kolnovel.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;
@@ -55,14 +57,19 @@ export function createKolNovelProSource(host: SourceHost): Source {
     },
 
     async search(query) {
-      host.log("info", `search(${query}) via ts_ac_do_search`);
-      const cards = await liveSearch(host, query);
-      return { cards, hasMore: false, query, page: 1 };
-    },
-
-    async searchSuggest(query) {
-      host.log("info", `searchSuggest(${query})`);
-      return liveSearch(host, query);
+      const url = `${BASE_URL}/?${new URLSearchParams({ s: query })}`;
+      host.log("info", `search(${query}) → ${url}`);
+      const resp = await host.fetch(url);
+      // KolNovel renders every match on one page, and both ?s=&paged=N and
+      // /page/N/?s= return HTTP 500 on this host. parseSearchResults derives
+      // hasMore from the theme's .pagination block, which can be populated on
+      // broad queries — so force it false here rather than trusting the DOM.
+      // A true value would render a Load more button whose click can only
+      // refetch page 1 and be deduped away.
+      return {
+        ...parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, 1),
+        hasMore: false,
+      };
     },
 
     async getNovel(url) {
@@ -117,77 +124,6 @@ export function createKolNovelProSource(host: SourceHost): Source {
       return imageStore.get(ref) ?? null;
     },
   };
-}
-
-// ── live search (ts_ac_do_search) ───────────────────────────────────────────
-
-interface TsAcItem {
-  post_title?: string;
-  post_link?: string;
-  post_image?: string;
-  post_genres?: string;
-  post_status?: string;
-}
-interface TsAcResponse {
-  series?: Array<{ all?: TsAcItem[] }>;
-}
-
-/** Query the site's live autocomplete — the only working search on the pro
- *  site (the `?s=` results page returns a WordPress error). Must be POST: the
- *  GET variant is served from the page cache and returns stale, query-agnostic
- *  results (verified live), whereas POST runs the real query. Returns [] on an
- *  empty query or an unparseable response.
- *
- *    POST /wp-admin/admin-ajax.php  action=ts_ac_do_search&ts_ac_query=<q>  → JSON */
-async function liveSearch(host: SourceHost, query: string): Promise<NovelCard[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const resp = await host.fetch(AJAX_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "X-Requested-With": "XMLHttpRequest",
-    },
-    body: `action=ts_ac_do_search&ts_ac_query=${encodeURIComponent(q)}`,
-  });
-  let json: TsAcResponse;
-  try {
-    json = JSON.parse(resp.text) as TsAcResponse;
-  } catch {
-    return [];
-  }
-  return liveSearchCards(json);
-}
-
-/** Flatten the ts_ac JSON (`series[].all[]`) into NovelCards. Links + images
- *  come back as absolute kolnovel.com URLs. */
-function liveSearchCards(json: TsAcResponse): NovelCard[] {
-  const out: NovelCard[] = [];
-  for (const group of json.series ?? []) {
-    for (const item of group.all ?? []) {
-      const url = (item.post_link ?? "").trim();
-      const title = (item.post_title ?? "").replace(/\s+/g, " ").trim();
-      // Only surface series pages — the store UI assumes a card click opens a
-      // novel detail view. Defensive: ts_ac only returns series, but guard
-      // against author/category/archive links if the API ever broadens.
-      if (!url || !title || !/\/series\//.test(url)) continue;
-      const genres = (item.post_genres ?? "")
-        .split(",")
-        .map((g) => g.trim())
-        .filter((g) => g.length > 0)
-        .slice(0, 3);
-      const status = (item.post_status ?? "").trim();
-      const badges = [...genres];
-      if (status) badges.push(status);
-      out.push({
-        url,
-        title,
-        coverUrl: item.post_image ? item.post_image.trim() : undefined,
-        badges: badges.length > 0 ? badges : undefined,
-      });
-    }
-  }
-  return out;
 }
 
 /** The WordPress post id is the trailing number in the chapter permalink,

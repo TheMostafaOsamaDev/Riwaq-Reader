@@ -37,13 +37,14 @@ Why the split:
 
 ## The required interface
 
-Every source must implement four methods:
+Every source must implement five methods:
 
 ```ts
 interface Source {
   readonly meta: SourceMetadata;
   canHandle(url: string): boolean;
   getHomeSections(): Promise<SourceSection[]>;
+  search(query: string, page?: number): Promise<SourceSearchResult>;
   getNovel(url: string): Promise<SourceNovel>;
   getChapterContent(chapter: SourceChapter): Promise<SourceLine[]>;
 }
@@ -55,36 +56,21 @@ lines for a single chapter — text paragraphs and image URLs the
 importer downloads inline. The two-step shape lets the detail view
 render the volumes accordion before any chapter has been fetched.
 
-## Optional capabilities
-
-Methods declared optional on the interface mean **"this source may or
-may not support it"**. The UI checks `typeof source.X === "function"`
-to decide whether to surface the feature.
-
 ### `search(query, page) → SourceSearchResult`
 
 Pagination-style search: takes a query, returns a result grid + a
 `hasMore` flag. The store UI fires this on Enter from the search
 input and renders a grid below the homepage sections.
 
-KolNovel implements this. Cenele does not — the site has no full
-search page.
+Every source implements this. Sources whose site renders all matches on
+one page ignore `page` and return `hasMore: false` — KolNovel does.
+Cenele paginates and reports `hasMore` from its older-posts link.
 
-### `searchSuggest(query) → NovelCard[]`
+## Optional capabilities
 
-Live as-you-type suggestion search. The store UI:
-
-- debounces calls (~220ms) so it fires once after the user stops typing
-- hides them behind a `SUGGEST_MIN_CHARS` (2) threshold
-- renders results as a dropdown anchored to the search input
-- highlights the first suggestion and, when the source has **only**
-  `searchSuggest` (no `search`), opens that first suggestion on Enter
-
-Cenele implements this. KolNovel doesn't — keystroke-driven calls
-against KolNovel's heavyweight search page would be too slow.
-
-A source can implement both: the dropdown is the immediate feedback
-loop, and Enter still drops the user into the full results grid.
+Methods declared optional on the interface mean **"this source may or
+may not support it"**. The UI checks `typeof source.X === "function"`
+to decide whether to surface the feature.
 
 ### `searchChapters(novelUrl, query) → SourceChapter[]`
 
@@ -144,7 +130,7 @@ fetch + AJAX endpoints.
 
 1. Create `src/sources/extensions/<id>.ts` exporting a
    `createXSource(host: SourceHost): Source` factory.
-2. Implement the four required methods. Skip optional ones the site
+2. Implement the five required methods. Skip optional ones the site
    doesn't support.
 3. Add a `{meta, factory}` entry to `BUILTINS` in
    `src/sources/registry.ts`.
