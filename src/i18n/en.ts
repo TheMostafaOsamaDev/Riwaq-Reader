@@ -446,6 +446,8 @@ export const en = {
   "store.clear": "Clear",
   "store.searchFailed": "Search failed — {error}",
   "store.noResults": "No matches.",
+  "store.loadMore": "Load more",
+  "store.loadingMore": "Loading more…",
   "store.notInstalled": "Source “{sourceId}” isn't installed.",
   // Section carousel (SectionCarousel.tsx) arrow buttons on a source's home
   // page. "left"/"right" name the button's fixed physical position on

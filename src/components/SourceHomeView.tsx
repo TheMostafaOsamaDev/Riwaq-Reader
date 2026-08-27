@@ -15,13 +15,13 @@ import { getSource, getSourceMeta } from "../sources/registry";
 import type {
   NovelCard as NovelCardData,
   Source,
-  SourceSearchResult,
   SourceSection,
 } from "../sources/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelCard } from "./NovelCard";
+import { appendPage, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
@@ -42,8 +42,11 @@ interface SectionsState {
 
 interface SearchState {
   loading: boolean;
+  /** True while a Load-more fetch is in flight — keeps the existing
+   *  results on screen instead of swapping them for skeletons. */
+  loadingMore: boolean;
   error: string | null;
-  result: SourceSearchResult | null;
+  result: SearchPage | null;
   query: string;
 }
 
@@ -64,6 +67,7 @@ export function SourceHomeView({
   });
   const [searchState, setSearchState] = useState<SearchState>({
     loading: false,
+    loadingMore: false,
     error: null,
     result: null,
     query: "",
@@ -97,32 +101,50 @@ export function SourceHomeView({
   }, [source]);
 
   const runSearch = useCallback(
-    async (query: string) => {
-      if (!source || !source.search) return;
+    async (query: string, page = 1) => {
+      if (!source) return;
       const trimmed = query.trim();
       if (trimmed.length === 0) {
-        // Clearing the input returns the user to sections mode without
-        // re-fetching; the previous result stays cached in state so the
-        // next non-empty query feels instant if it matches.
-        setSearchState((s) => ({ ...s, result: null, query: "" }));
+        setSearchState({
+          loading: false, loadingMore: false, error: null,
+          result: null, query: "",
+        });
         return;
       }
-      setSearchState({
-        loading: true,
+      const appending = page > 1;
+      setSearchState((s) => ({
+        ...s,
+        loading: !appending,
+        loadingMore: appending,
         error: null,
-        result: null,
+        result: appending ? s.result : null,
         query: trimmed,
-      });
+      }));
       try {
-        const result = await source.search(trimmed, 1);
-        setSearchState({ loading: false, error: null, result, query: trimmed });
+        const res = await source.search(trimmed, page);
+        setSearchState((s) =>
+          // A newer query started while this was in flight — discard.
+          s.query !== trimmed
+            ? s
+            : {
+                loading: false,
+                loadingMore: false,
+                error: null,
+                result: appendPage(appending ? s.result : null, res),
+                query: trimmed,
+              },
+        );
       } catch (e) {
-        setSearchState({
-          loading: false,
-          error: e instanceof Error ? e.message : String(e),
-          result: null,
-          query: trimmed,
-        });
+        setSearchState((s) =>
+          s.query !== trimmed
+            ? s
+            : {
+                ...s,
+                loading: false,
+                loadingMore: false,
+                error: e instanceof Error ? e.message : String(e),
+              },
+        );
       }
     },
     [source],
@@ -176,12 +198,13 @@ export function SourceHomeView({
             onClear={() => {
               setSearchInput("");
               setSearchState({
-                loading: false,
-                error: null,
-                result: null,
-                query: "",
+                loading: false, loadingMore: false, error: null,
+                result: null, query: "",
               });
             }}
+            onLoadMore={() =>
+              void runSearch(searchState.query, (searchState.result?.page ?? 1) + 1)
+            }
             onOpenNovel={onOpenNovel}
           />
         ) : (
@@ -499,6 +522,7 @@ interface SearchResultsProps {
   theme: Theme;
   state: SearchState;
   onClear: () => void;
+  onLoadMore: () => void;
   onOpenNovel: (url: string) => void;
 }
 
@@ -506,6 +530,7 @@ function SearchResults({
   theme,
   state,
   onClear,
+  onLoadMore,
   onOpenNovel,
 }: SearchResultsProps) {
   const { tr } = useI18n();
@@ -570,6 +595,18 @@ function SearchResults({
           cards={state.result?.cards ?? []}
           onOpenNovel={onOpenNovel}
         />
+      )}
+      {state.result?.hasMore && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 22 }}>
+          <Button
+            theme={theme}
+            variant="secondary"
+            onClick={onLoadMore}
+            disabled={state.loadingMore}
+          >
+            {state.loadingMore ? tr("store.loadingMore") : tr("store.loadMore")}
+          </Button>
+        </div>
       )}
     </div>
   );

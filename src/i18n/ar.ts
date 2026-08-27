@@ -395,6 +395,8 @@ export const ar: Messages = {
   "store.clear": "مسح",
   "store.searchFailed": "فشل البحث — {error}",
   "store.noResults": "لا نتائج.",
+  "store.loadMore": "تحميل المزيد",
+  "store.loadingMore": "جارٍ تحميل المزيد…",
   "store.notInstalled": "المصدر “{sourceId}” غير مثبَّت.",
   "carousel.scrollLeft": "التمرير لليسار",
   "carousel.scrollRight": "التمرير لليمين",
