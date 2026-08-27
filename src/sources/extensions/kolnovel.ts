@@ -24,7 +24,7 @@ import type {
 } from "../types";
 
 const SOURCE_ID = "kolnovel";
-const BASE_URL = "https://free.kolnovel.com";
+const BASE_URL = "https://kolnovel.com";
 
 export function createKolNovelSource(host: SourceHost): Source {
   return {
@@ -38,7 +38,14 @@ export function createKolNovelSource(host: SourceHost): Source {
 
     canHandle(url) {
       try {
-        return new URL(url).hostname.toLowerCase() === "free.kolnovel.com";
+        const h = new URL(url).hostname.toLowerCase();
+        // free.kolnovel.com 301s to kolnovel.com; keep matching it so
+        // URLs already saved in a user's library still resolve.
+        return (
+          h === "kolnovel.com" ||
+          h === "www.kolnovel.com" ||
+          h === "free.kolnovel.com"
+        );
       } catch {
         return false;
       }
@@ -50,14 +57,14 @@ export function createKolNovelSource(host: SourceHost): Source {
       return parseHomeSections(parseHtmlDocument(resp.text), BASE_URL);
     },
 
-    async search(query, page) {
-      const pageNum = Math.max(1, page ?? 1);
-      const params = new URLSearchParams({ s: query });
-      if (pageNum > 1) params.set("paged", String(pageNum));
-      const url = `${BASE_URL}/?${params.toString()}`;
-      host.log("info", `search(${query}, page=${pageNum}) → ${url}`);
+    async search(query) {
+      // No pagination: the theme renders every match on one page, and
+      // both `?s=…&paged=N` and `/page/N/?s=…` return HTTP 500 on this
+      // host. parseSearchResults reports hasMore false accordingly.
+      const url = `${BASE_URL}/?${new URLSearchParams({ s: query })}`;
+      host.log("info", `search(${query}) → ${url}`);
       const resp = await host.fetch(url);
-      return parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, pageNum);
+      return parseSearchResults(parseHtmlDocument(resp.text), BASE_URL, query, 1);
     },
 
     async getNovel(url) {
