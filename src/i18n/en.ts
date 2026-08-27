@@ -477,8 +477,8 @@ export const en = {
   // screen, not a scroll direction — the carousel already reverses the
   // underlying scroll math under RTL so the visible arrow always moves
   // content the way it looks like it should.
-  "carousel.scrollLeft": "Scroll left",
-  "carousel.scrollRight": "Scroll right",
+  "carousel.scrollStart": "Scroll back",
+  "carousel.scrollEnd": "Scroll forward",
 
   // source — app-authored copy shipped with the bundled source extensions.
   // Card titles/descriptions now come from each site's own metadata (see

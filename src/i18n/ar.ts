@@ -418,8 +418,8 @@ export const ar: Messages = {
   "store.loadMore": "تحميل المزيد",
   "store.loadingMore": "جارٍ تحميل المزيد…",
   "store.notInstalled": "المصدر “{sourceId}” غير مثبَّت.",
-  "carousel.scrollLeft": "التمرير لليسار",
-  "carousel.scrollRight": "التمرير لليمين",
+  "carousel.scrollStart": "التمرير للخلف",
+  "carousel.scrollEnd": "التمرير للأمام",
 
   "source.section.trendingFallback": "الرائج",
   "source.section.hotUpdatesFallback": "تحديثات رائجة",
