@@ -400,6 +400,18 @@ export function MobileSheet({
     translateY = baselineTranslateY(snap, dims) + dragOffset;
   }
 
+  // How far the sheet's own box sits BELOW the visible viewport at this snap.
+  // The sheet is rendered at full height and pushed down to reach a partial
+  // snap, so that many pixels of it — including the tail of any scroll region
+  // inside — are off-screen. Content scrolled to the very end lands down
+  // there, out of reach, which is why the last control looked unreachable.
+  // Published as a CSS variable so the scrollable region (see PanelShell) can
+  // pad past it without either component needing to know about the other's
+  // layout. Deliberately the SNAP baseline, not the live `translateY`: using
+  // the dragging value would change the padding — and reflow the list — on
+  // every frame of a drag.
+  const snapOverhang = Math.max(0, Math.round(baselineTranslateY(snap, dims)));
+
   // Settle / enter / exit all use the same `transform 240ms enter`
   // transition. Drag itself is direct manipulation, no transition.
   const transition = dragging
@@ -472,6 +484,7 @@ export function MobileSheet({
           transition,
           willChange: "transform",
           overscrollBehavior: "contain",
+          ["--sheet-overhang" as string]: `${snapOverhang}px`,
         }}
       >
         <div

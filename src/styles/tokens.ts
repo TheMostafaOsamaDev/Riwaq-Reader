@@ -129,13 +129,40 @@ export function hlBg(color: HighlightColor, themeKey: ThemeKey): string {
   return HIGHLIGHT_COLORS[color][isDark ? "dark" : "light"];
 }
 
+/** Every value `Tweaks.fontFamily` can hold.
+ *
+ *  `serif` / `sans` / `dyslexic` are LEGACY. They predate the font library and
+ *  are no longer offered in the picker (see READING_FONTS), but they stay in
+ *  the union for two reasons: `FONT_STACKS.sans` is the app-chrome stack used
+ *  by ~100 call sites, and `FONT_STACKS.serif` is what the fixed DOCX
+ *  paginator sets its pages in. Persisted values are migrated away on load
+ *  (see hooks/useTweaks). */
 export type FontFamilyKey =
   | "serif"
   | "sans"
   | "dyslexic"
+  // ── the reading library ──
+  | "readex"
   | "cairo"
+  | "tajawal"
+  | "almarai"
+  | "ibmplex"
+  | "alexandria"
+  | "vazirmatn"
+  | "elmessiri"
+  | "notonaskh"
+  | "scheherazade"
+  | "markazi"
+  | "mirza"
   | "lateef"
-  | "tajawal";
+  | "notokufi"
+  | "changa"
+  | "lalezar"
+  | "thmanyah";
+
+/** Typographic style, used to group the picker. One selector drives both
+ *  scripts, so grouping by script would be meaningless. */
+export type FontGroup = "naskh" | "modern" | "kufi" | "display";
 
 // UI sans is Readex Pro — a variable Latin+Arabic family, so Arabic glyphs
 // render in the same family instead of falling through to an OS default.
@@ -153,26 +180,112 @@ export type FontFamilyKey =
 export const FONT_READING_SANS =
   '"Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
 
-// Single-font mode: the reading- and UI-font pickers were removed, so every
-// entry resolves to the one Readex Pro stack. Kept as a map so existing call
-// sites and any persisted `fontFamily` value keep resolving unchanged.
+// The reading-font picker is live again (the UI/chrome font stays Readex Pro
+// — that picker is gone). `sans` is the odd one out: it is the CHROME stack,
+// resolved through `--ui-font`, and is what every app surface uses via
+// `FONT_STACKS.sans`. Book content asking for "Sans" goes through
+// FONT_READING_SANS instead, so reading text never rides on the chrome font.
+// Every reading stack ends in Readex Pro before the generic family: one
+// selector drives BOTH scripts, so a family carrying only Arabic still needs
+// somewhere sane for Latin runs to land (and vice versa). The picker's
+// two-script preview makes that fallback visible rather than hiding it.
 export const FONT_STACKS: Record<FontFamilyKey, string> = {
-  serif: FONT_READING_SANS,
-  sans: FONT_READING_SANS,
-  dyslexic: FONT_READING_SANS,
-  cairo: FONT_READING_SANS,
-  lateef: FONT_READING_SANS,
-  tajawal: FONT_READING_SANS,
+  serif:
+    '"Literata", "Iowan Old Style", "Source Serif Pro", "Readex Pro", Georgia, serif',
+  // Chrome/UI sans — resolves to `--ui-font`, which App sets from
+  // UI_FONT_STACKS and which defaults to Readex Pro when unset.
+  sans: 'var(--ui-font, "Readex Pro", -apple-system, BlinkMacSystemFont, system-ui, sans-serif)',
+  dyslexic:
+    '"Atkinson Hyperlegible", "Lexend", "Readex Pro", system-ui, sans-serif',
+
+  readex: FONT_READING_SANS,
+  cairo: '"Cairo", "Readex Pro", system-ui, sans-serif',
+  tajawal: '"Tajawal", "Readex Pro", system-ui, sans-serif',
+  almarai: '"Almarai", "Readex Pro", system-ui, sans-serif',
+  ibmplex: '"IBM Plex Sans Arabic", "Readex Pro", system-ui, sans-serif',
+  alexandria: '"Alexandria", "Readex Pro", system-ui, sans-serif',
+  vazirmatn: '"Vazirmatn", "Readex Pro", system-ui, sans-serif',
+  elmessiri: '"El Messiri", "Readex Pro", system-ui, sans-serif',
+  notonaskh: '"Noto Naskh Arabic", "Readex Pro", serif',
+  scheherazade: '"Scheherazade New", "Readex Pro", serif',
+  markazi: '"Markazi Text", "Readex Pro", serif',
+  mirza: '"Mirza", "Readex Pro", serif',
+  lateef: '"Lateef", "Amiri", "Readex Pro", serif',
+  notokufi: '"Noto Kufi Arabic", "Readex Pro", sans-serif',
+  changa: '"Changa", "Readex Pro", system-ui, sans-serif',
+  lalezar: '"Lalezar", "Readex Pro", system-ui, sans-serif',
+  thmanyah: '"Thmanyah Serif Display", "Readex Pro", Georgia, serif',
 };
 
 export const FONT_FAMILY_LABELS: Record<FontFamilyKey, string> = {
   serif: "Serif",
   sans: "Sans",
   dyslexic: "Dyslexic",
+  readex: "Readex Pro",
   cairo: "Cairo",
-  lateef: "Lateef",
   tajawal: "Tajawal",
+  almarai: "Almarai",
+  ibmplex: "IBM Plex Sans Arabic",
+  alexandria: "Alexandria",
+  vazirmatn: "Vazirmatn",
+  elmessiri: "El Messiri",
+  notonaskh: "Noto Naskh Arabic",
+  scheherazade: "Scheherazade New",
+  markazi: "Markazi Text",
+  mirza: "Mirza",
+  lateef: "Lateef",
+  notokufi: "Noto Kufi Arabic",
+  changa: "Changa",
+  lalezar: "Lalezar",
+  thmanyah: "Thmanyah",
 };
+
+/** The pickable reading library, in picker order. Excludes the legacy
+ *  serif/sans/dyslexic keys, which name faces that were never bundled (they
+ *  silently resolved to Readex Pro or a system fallback). */
+export const READING_FONTS: ReadonlyArray<{
+  key: FontFamilyKey;
+  group: FontGroup;
+}> = [
+  { key: "notonaskh", group: "naskh" },
+  { key: "scheherazade", group: "naskh" },
+  { key: "markazi", group: "naskh" },
+  { key: "mirza", group: "naskh" },
+  { key: "lateef", group: "naskh" },
+
+  { key: "readex", group: "modern" },
+  { key: "cairo", group: "modern" },
+  { key: "tajawal", group: "modern" },
+  { key: "almarai", group: "modern" },
+  { key: "ibmplex", group: "modern" },
+  { key: "alexandria", group: "modern" },
+  { key: "vazirmatn", group: "modern" },
+  { key: "elmessiri", group: "modern" },
+
+  { key: "notokufi", group: "kufi" },
+
+  { key: "changa", group: "display" },
+  { key: "lalezar", group: "display" },
+  { key: "thmanyah", group: "display" },
+];
+
+export const FONT_GROUP_ORDER: ReadonlyArray<FontGroup> = [
+  "naskh",
+  "modern",
+  "kufi",
+  "display",
+];
+
+/** Legacy `fontFamily` values → the closest bundled family. `serif` and
+ *  `dyslexic` named faces that were never shipped, so they were already
+ *  rendering as Readex Pro on Android; `markazi` gives `serif` a real serif
+ *  for the first time. */
+export const LEGACY_FONT_FAMILY: Partial<Record<FontFamilyKey, FontFamilyKey>> =
+  {
+    sans: "readex",
+    dyslexic: "readex",
+    serif: "markazi",
+  };
 
 /** Selectable UI (app-chrome) font — distinct from the per-book reading
  *  `FontFamilyKey`. Applied through the `--ui-font` CSS variable that
