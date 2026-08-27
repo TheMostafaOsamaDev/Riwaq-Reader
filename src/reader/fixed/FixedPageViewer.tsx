@@ -340,6 +340,7 @@ export const FixedPageViewer = forwardRef<
     y: 0,
     t: 0,
     axis: "" as "" | "x" | "y",
+    pointerId: -1,
     samples: [] as Array<{ x: number; t: number }>,
   });
   // Set while a drag is turning pages, so the trailing click doesn't turn again.
@@ -947,15 +948,16 @@ export const FixedPageViewer = forwardRef<
     const el = scrollRef.current;
     if (!el) return;
 
-    const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
+    const onStart = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (touch.current.pointerId !== -1) return; // a second finger — ignore
       touch.current = {
-        x: t.clientX,
-        y: t.clientY,
+        x: e.clientX,
+        y: e.clientY,
         t: e.timeStamp,
         axis: "",
-        samples: [{ x: t.clientX, t: e.timeStamp }],
+        pointerId: e.pointerId,
+        samples: [{ x: e.clientX, t: e.timeStamp }],
       };
       suppressClick.current = false;
       // A held finger must not be sprung back by the wheel path's idle timer.
@@ -965,16 +967,26 @@ export const FixedPageViewer = forwardRef<
       }
     };
 
-    const onMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
+    const onMove = (e: PointerEvent) => {
       const s = touch.current;
-      const t = e.touches[0];
-      const dx = t.clientX - s.x;
-      const dy = t.clientY - s.y;
+      if (e.pointerId !== s.pointerId) return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
 
       if (s.axis === "") {
         if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
         s.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (s.axis === "x") {
+          // Once this is a page turn, pin the gesture to the scroller so the
+          // rest of it arrives here no matter what happens to the node under
+          // the finger. Not done at pointerdown: before the axis is known the
+          // gesture may still be a text selection, and capturing would steal it.
+          try {
+            el.setPointerCapture(e.pointerId);
+          } catch {
+            // capture refused — pointer events still hit-test to the scroller
+          }
+        }
       }
       if (s.axis === "y") return; // let the scroller pan a tall page
 
@@ -1000,9 +1012,9 @@ export const FixedPageViewer = forwardRef<
           el.scrollLeft = el.scrollLeft < 0 || next < 0
             ? Math.max(-maxX, Math.min(0, next))
             : Math.max(0, Math.min(maxX, next));
-          s.x = t.clientX;
+          s.x = e.clientX;
           s.samples.length = 0;
-          s.samples.push({ x: t.clientX, t: e.timeStamp });
+          s.samples.push({ x: e.clientX, t: e.timeStamp });
           return;
         }
       }
@@ -1023,7 +1035,7 @@ export const FixedPageViewer = forwardRef<
         return;
       }
       suppressClick.current = true;
-      s.samples.push({ x: t.clientX, t: e.timeStamp });
+      s.samples.push({ x: e.clientX, t: e.timeStamp });
       while (s.samples.length > 2 && e.timeStamp - s.samples[0].t > VELOCITY_WINDOW_MS) {
         s.samples.shift();
       }
@@ -1033,11 +1045,20 @@ export const FixedPageViewer = forwardRef<
       renderPeek();
     };
 
-    const onEnd = () => {
+    const onEnd = (e: PointerEvent) => {
       const s = touch.current;
+      if (e.pointerId !== s.pointerId) return;
       const d = peekDir.current;
       const wasDrag = s.axis === "x";
       s.axis = "";
+      s.pointerId = -1;
+      if (el.hasPointerCapture?.(e.pointerId)) {
+        try {
+          el.releasePointerCapture(e.pointerId);
+        } catch {
+          // already released
+        }
+      }
       if (!wasDrag || d === 0 || turning.current) return;
       const dragged = accum.current / TURN_PX; // 0..1 of a viewport
       // A flick only counts toward the turn it was already heading into —
@@ -1052,21 +1073,29 @@ export const FixedPageViewer = forwardRef<
       else cancelPeek();
     };
 
-    // Passive on purpose. A non-passive touchmove listener takes scrolling off
-    // the compositor — every frame then waits on JS before the page can move,
-    // which is exactly what makes a scroll feel heavy on a phone. Nothing here
-    // needs to cancel anything: `touch-action: pan-y` already stops the browser
-    // panning horizontally, so the page-turn drag is unopposed while vertical
-    // panning stays threaded.
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: true });
-    el.addEventListener("touchend", onEnd, { passive: true });
-    el.addEventListener("touchcancel", onEnd, { passive: true });
+    // Pointer events rather than touch events, because a touch event is
+    // delivered to whatever node the gesture STARTED on for its whole life. A
+    // DOCX page is a DOM subtree that gets rebuilt on every render, so that
+    // node is routinely torn out mid-drag — and the touchend then dispatches
+    // into a detached tree and never reaches this listener. The drag was left
+    // half-open and the next swipe inherited it, which is why turning a DOCX
+    // page took two swipes. Pointer events hit-test each event on its own, and
+    // capture (taken at the axis lock above) pins the rest of the gesture here
+    // regardless.
+    //
+    // Passive on purpose: a non-passive move listener takes scrolling off the
+    // compositor, and nothing here cancels anything — `touch-action: pan-y`
+    // already stops the browser panning horizontally, so the page-turn drag is
+    // unopposed while vertical panning stays threaded.
+    el.addEventListener("pointerdown", onStart, { passive: true });
+    el.addEventListener("pointermove", onMove, { passive: true });
+    el.addEventListener("pointerup", onEnd, { passive: true });
+    el.addEventListener("pointercancel", onEnd, { passive: true });
     return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("touchcancel", onEnd);
+      el.removeEventListener("pointerdown", onStart);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onEnd);
+      el.removeEventListener("pointercancel", onEnd);
     };
   }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit]);
 
