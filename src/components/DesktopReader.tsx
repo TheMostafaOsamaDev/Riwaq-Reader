@@ -24,18 +24,20 @@ import {
 import {
   FONT_STACKS,
   isRtlLanguage,
+  readingSurfaces,
   titleFontFor,
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
-import { resolveReadingColors } from "../reader/readingColors";
 import { useI18n } from "../i18n/useI18n";
 import type { Tr } from "../i18n";
+import { EASE, MOTION, useReducedMotion } from "../styles/motion";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
-import type { ActivePanel, Tweaks } from "../types/reader";
+import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 
 interface Props {
   theme: Theme;
@@ -70,11 +72,44 @@ interface Props {
   onDeleteHighlight: (id: string) => void;
   onUpdateHighlightNote: (id: string, note: string) => void;
   onJumpToHighlight: (h: Highlight) => void;
+  /** Volume ranges for the Contents panel, when the book's origin knows them
+   *  (source novels). Omit for local EPUBs — Contents stays ungrouped. */
+  tocVolumes?: TocVolume[];
   activePanel: ActivePanel;
   setActivePanel: (next: ActivePanel) => void;
   /** Navigate to the top-level Settings page (from the quick-panel link). */
   onOpenFullSettings?: () => void;
   onBack: () => void;
+}
+
+/** Width of a docked side panel. Passed to the panel AND used to inset the
+ *  floating chrome past it, so the two can never drift apart. */
+const DOCK_WIDTH = 340;
+/** How close to an edge the pointer must come to summon that bar, in px. */
+const CHROME_EDGE_PX = 72;
+/** How long a revealed bar lingers after the pointer leaves its edge, in ms. */
+const CHROME_LINGER_MS = 450;
+/** How long the first-run hint stays up. Matches `.leaflet-focus-hint`. */
+const FOCUS_HINT_MS = 3200;
+/** Set once the first-run focus-mode hint has been shown. */
+const FOCUS_HINT_KEY = "leaflet:focus-hint-seen";
+
+function focusHintSeen(): boolean {
+  // Private-mode / blocked-storage browsers throw on access; treating that as
+  // "already seen" is the quiet failure — better a missing hint than a crash.
+  try {
+    return localStorage.getItem(FOCUS_HINT_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function markFocusHintSeen(): void {
+  try {
+    localStorage.setItem(FOCUS_HINT_KEY, "1");
+  } catch {
+    // Nothing to do — the hint simply shows again next time.
+  }
 }
 
 export function DesktopReader({
@@ -94,6 +129,7 @@ export function DesktopReader({
   onDeleteHighlight,
   onUpdateHighlightNote,
   onJumpToHighlight,
+  tocVolumes,
   activePanel,
   setActivePanel,
   onOpenFullSettings,
@@ -112,8 +148,178 @@ export function DesktopReader({
   // Effective reading colors: the user's ink/paper overrides layered over the
   // active theme ("auto" falls back to theme.ink / theme.bg). `contentTheme`
   // recolors only the reading surface + text, leaving the chrome on `theme`.
-  const readingColors = resolveReadingColors(theme, t.inkColor, t.paperColor);
-  const contentTheme: Theme = { ...theme, ink: readingColors.ink };
+  const surfaces = readingSurfaces(theme);
+  const contentTheme: Theme = theme;
+
+  // Contents docks beside the reading column instead of covering it, so you
+  // can see where you are in the book and keep reading at the same time.
+  // Below ~1000px there isn't room for both: this reader starts at 721px
+  // wide, where a 340px panel would leave the text a ~380px gutter, so
+  // narrow windows keep the overlay. The other panels always overlay —
+  // they're tools you dismiss, not a place you navigate from.
+  const roomToDock = useMediaQuery("(min-width: 1000px)");
+  const tocDocked = activePanel === "toc" && roomToDock;
+
+  // ── Focus mode ────────────────────────────────────────────────────────────
+  // The chrome leaves the layout entirely so the page fills the window, and
+  // comes back when the pointer nears the edge it lives on.
+  //
+  // It stays out of the layout while a panel is open, too. Letting it back in
+  // meant that opening a sheet grew the flow by both bar heights and reflowed
+  // the page underneath — the text jumped and re-wrapped when all the reader
+  // asked for was the one sheet they clicked. Opening a sheet now changes
+  // nothing but the sheet.
+  const reduced = useReducedMotion();
+  const panelOpen = activePanel !== null;
+  const chromeFloats = t.focusMode;
+  const [revealTop, setRevealTop] = useState(false);
+  const [revealBottom, setRevealBottom] = useState(false);
+  // Bumped once, ever, to play the first-run hint. Counter rather than a
+  // boolean so the toast remounts (and its keyframe restarts) if it ever fires
+  // more than once in a session.
+  const [focusHint, setFocusHint] = useState(0);
+  const showTop = !chromeFloats || revealTop;
+  const showBottom = !chromeFloats || revealBottom;
+  // Which edge zone the pointer is currently inside. Kept in a ref so the
+  // move handler only touches state when the pointer *crosses* a boundary —
+  // re-arming the hide timer on every mousemove would keep a revealed bar up
+  // forever as long as the pointer kept moving anywhere in the window.
+  const inEdge = useRef({ top: false, bottom: false });
+  const hideTimers = useRef({ top: 0, bottom: 0 });
+  const hintTimer = useRef(0);
+  const setEdgeShown = (edge: "top" | "bottom", shown: boolean) =>
+    (edge === "top" ? setRevealTop : setRevealBottom)(shown);
+  const revealEdge = useCallback((edge: "top" | "bottom") => {
+    window.clearTimeout(hideTimers.current[edge]);
+    setEdgeShown(edge, true);
+  }, []);
+  const hideEdgeSoon = useCallback((edge: "top" | "bottom") => {
+    window.clearTimeout(hideTimers.current[edge]);
+    // A grace period so brushing past the edge on the way somewhere else
+    // doesn't snatch the bar away mid-reach.
+    hideTimers.current[edge] = window.setTimeout(
+      () => setEdgeShown(edge, false),
+      CHROME_LINGER_MS,
+    );
+  }, []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(hideTimers.current.top);
+      window.clearTimeout(hideTimers.current.bottom);
+      window.clearTimeout(hintTimer.current);
+    },
+    [],
+  );
+  // Entering or leaving focus mode invalidates where the pointer was last known
+  // to be relative to the edges, so forget it and retire both bars after the
+  // usual grace. Any pointer movement re-reveals through the normal path.
+  useEffect(() => {
+    inEdge.current = { top: false, bottom: false };
+    if (!chromeFloats) return;
+    hideEdgeSoon("top");
+    hideEdgeSoon("bottom");
+  }, [chromeFloats, hideEdgeSoon]);
+  // Pointer proximity is measured on the reader root rather than with two
+  // hover strips: an element covering the top and bottom bands would swallow
+  // clicks and drag-selection over the text underneath it.
+  const trackPointer = (clientY: number, height: number) => {
+    if (!chromeFloats) return;
+    const near = {
+      top: clientY <= CHROME_EDGE_PX,
+      bottom: clientY >= height - CHROME_EDGE_PX,
+    };
+    for (const edge of ["top", "bottom"] as const) {
+      if (near[edge] === inEdge.current[edge]) continue;
+      inEdge.current[edge] = near[edge];
+      if (near[edge]) revealEdge(edge);
+      else hideEdgeSoon(edge);
+    }
+  };
+  const toggleFocusMode = () => {
+    const next = !t.focusMode;
+    setTweak("focusMode", next);
+    if (!next) return;
+    // Entering: this is "just the book", so any open panel goes with the
+    // chrome, and the bars start hidden rather than mid-reveal.
+    setActivePanel(null);
+    inEdge.current = { top: false, bottom: false };
+    setRevealTop(false);
+    setRevealBottom(false);
+    if (!focusHintSeen()) {
+      markFocusHintSeen();
+      setFocusHint((n) => n + 1);
+      // Unmount once the keyframe has finished — `forwards` would otherwise
+      // leave an invisible pill in the tree (and in the a11y tree) for good.
+      window.clearTimeout(hintTimer.current);
+      hintTimer.current = window.setTimeout(
+        () => setFocusHint(0),
+        FOCUS_HINT_MS,
+      );
+    }
+  };
+  // Escape leaves focus mode — the keyboard route back to the chrome, since a
+  // hidden bar is `visibility: hidden` and so out of the tab order. While a
+  // panel is open SideSheet owns Escape (it closes the panel), so stay out.
+  useEffect(() => {
+    if (!t.focusMode || panelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTweak("focusMode", false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [t.focusMode, panelOpen, setTweak]);
+  const chromeTransition = reduced
+    ? "none"
+    : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
+  // Chrome that floats over the page, in two layers.
+  //
+  // The OUTER layer is a fixed window at the edge, `overflow: hidden`, sized by
+  // the bar inside it. It exists because a transformed box still counts toward
+  // its container's scrollable overflow: sliding a bar to `translateY(±100%)`
+  // directly in the reader root grew that root's scrollHeight past its
+  // clientHeight, quietly making the whole reader scrollable. `overflow:
+  // hidden` there only suppresses the scrollbar — the element stays
+  // programmatically scrollable, and the Contents panel's `scrollIntoView`
+  // (which walks up every scrollable ancestor) then dragged the entire page
+  // out of position. Clipping the slide inside this window keeps the
+  // translate from ever reaching the root's overflow region.
+  //
+  // `visibility` on the outer flips only after the fade finishes: it keeps the
+  // exit smooth and takes a hidden bar's buttons out of the tab order instead
+  // of leaving invisible focus stops behind.
+  const floatingChromeClip = (edge: "top" | "bottom", shown: boolean) =>
+    ({
+      position: "absolute",
+      [edge]: 0,
+      // Logical, so the inset lands on whichever physical side the docked
+      // panel occupies (leading edge: left in LTR, right in RTL). A revealed
+      // bar stops at the sheet's inner edge instead of covering the sheet's
+      // own title row and close button.
+      insetInlineStart: tocDocked ? DOCK_WIDTH : 0,
+      insetInlineEnd: 0,
+      overflow: "hidden",
+      // Above SideSheet's overlay (40) so a revealed bar is never dimmed by, or
+      // buried under, a panel's scrim; below the toasts at 50.
+      zIndex: 45,
+      visibility: shown ? "visible" : "hidden",
+      pointerEvents: shown ? "auto" : "none",
+      transition: reduced
+        ? "none"
+        : `visibility 0s linear ${shown ? "0s" : `${MOTION.med}ms`}`,
+      // Chrome is never part of a text selection dragged across the page.
+      userSelect: "none",
+      WebkitUserSelect: "none",
+    }) as const;
+  // The INNER layer is what actually moves.
+  const floatingChromeSlide = (edge: "top" | "bottom", shown: boolean) =>
+    ({
+      transform: shown
+        ? "translateY(0)"
+        : `translateY(${edge === "top" ? "-100%" : "100%"})`,
+      opacity: shown ? 1 : 0,
+      transition: chromeTransition,
+      background: theme.bg,
+    }) as const;
 
   // The live paragraph for the current chapter — updated by both the
   // scroll listener and PaginatedView. Used so that switching reading
@@ -639,6 +845,25 @@ export function DesktopReader({
       // book's language on their own elements below, which overrides this
       // cascade for their subtree regardless of what `dir` resolves to here.
       dir={dir}
+      onMouseMove={(e) => {
+        if (!chromeFloats) return;
+        // Measure against the reader's OWN box, not the viewport: clientY and
+        // the root's height are only the same coordinate space when the reader
+        // starts at y=0, which is true of the app but not of anything that
+        // embeds it. One rect read per move, on an element whose layout is
+        // already clean.
+        const box = e.currentTarget.getBoundingClientRect();
+        trackPointer(e.clientY - box.top, box.height);
+      }}
+      // Pointer gone from the window entirely: let both bars retire.
+      onMouseLeave={() => {
+        if (!chromeFloats) return;
+        for (const edge of ["top", "bottom"] as const) {
+          if (!inEdge.current[edge]) continue;
+          inEdge.current[edge] = false;
+          hideEdgeSoon(edge);
+        }
+      }}
       style={{
         width: "100%",
         height: "100%",
@@ -647,10 +872,22 @@ export function DesktopReader({
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        // Anchors the chrome bars when focus mode lifts them out of the flow.
+        position: "relative",
         fontFamily: FONT_STACKS.sans,
       }}
     >
-      <ReaderTopBar
+      {/* Wrapper carries the focus-mode float. Out of focus mode it adds
+          nothing but a flex row, so the bar sits in the layout as before. */}
+      <div
+        style={
+          chromeFloats
+            ? floatingChromeClip("top", showTop)
+            : { flexShrink: 0 }
+        }
+      >
+        <div style={chromeFloats ? floatingChromeSlide("top", showTop) : undefined}>
+        <ReaderTopBar
         theme={theme}
         onBack={onBack}
         backLabel={tr("reader.backToLibrary")}
@@ -686,6 +923,15 @@ export function DesktopReader({
           <>
             <ReaderIconButton
               theme={theme}
+              icon="focus"
+              label={
+                t.focusMode ? tr("reader.exitFocusMode") : tr("reader.focusMode")
+              }
+              onClick={toggleFocusMode}
+              active={t.focusMode}
+            />
+            <ReaderIconButton
+              theme={theme}
               icon="clock"
               label={tr("reader.progress")}
               onClick={() => toggle("progress")}
@@ -700,138 +946,22 @@ export function DesktopReader({
             />
           </>
         }
-      />
-
-      {/* Content region is the positioning context for the overlay SideSheet:
-          the reading column stays full-width and the panel floats over it. */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            position: "relative",
-            minWidth: 0,
-          }}
-        >
-          {isPaginated ? (
-            <div
-              ref={paginatedWrapRef}
-              style={{
-                flex: 1,
-                padding: "60px 80px 30px",
-                position: "relative",
-                minHeight: 0,
-                minWidth: 0,
-                background: readingColors.paper,
-              }}
-            >
-              <PaginatedView
-                columnsPerPage={paginatedColumns}
-                rtl={rtl}
-                initialParagraph={livePara.current}
-                onParagraphChange={handleParagraphChange}
-                onApi={onPaginatedApi}
-                onChapterProgress={onPaginatedProgress}
-                pageTurnAnimation={t.pageTurnAnimation}
-              >
-                <div key={chapter.id} className="leaflet-chapter-enter">
-                  <BookBody
-                    bookId={book.id}
-                    chapter={chapter}
-                    chapterCount={chapterCount}
-                    theme={contentTheme}
-                    themeKey={themeKey}
-                    fontFamily={t.fontFamily}
-                    fontSize={t.fontSize}
-                    lineHeight={t.lineHeight}
-                    letterSpacing={t.letterSpacing}
-                    textAlign={t.textAlign}
-                    rtl={rtl}
-                    paragraphSpacing={t.paragraphSpacing}
-                    hyphenation={t.hyphenation}
-                    language={book.language}
-                    highlights={state.highlights}
-                  />
-                </div>
-              </PaginatedView>
-            </div>
-          ) : (
-            <div
-              ref={scrollRef}
-              style={{
-                flex: 1,
-                overflow: "auto",
-                padding: "60px 80px 30px",
-                position: "relative",
-                background: readingColors.paper,
-                // overscroll-behavior: contain stops the browser's own
-                // chrome bounce so our wheel preventDefault is the
-                // authority on what happens past the edge.
-                overscrollBehavior: "contain",
-              }}
-              className="no-scrollbar"
-            >
-              <div key={chapter.id} className="leaflet-chapter-enter">
-                <BookBody
-                  bookId={book.id}
-                  chapter={chapter}
-                  chapterCount={chapterCount}
-                  theme={contentTheme}
-                  themeKey={themeKey}
-                  fontFamily={t.fontFamily}
-                  fontSize={t.fontSize}
-                  lineHeight={t.lineHeight}
-                  letterSpacing={t.letterSpacing}
-                  textAlign={t.textAlign}
-                  rtl={rtl}
-                  paragraphSpacing={t.paragraphSpacing}
-                  hyphenation={t.hyphenation}
-                  language={book.language}
-                  widthPercent={t.contentWidth}
-                  highlights={state.highlights}
-                />
-              </div>
-            </div>
-          )}
-          {overscroll && (
-            <OverscrollIndicator theme={theme} state={overscroll} tr={tr} />
-          )}
-          {chapterToast && (
-            <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} tr={tr} isAr={dir === "rtl"} />
-          )}
-
-          <ReaderScrubBar
-            theme={theme}
-            rtl={dir === "rtl"}
-            fraction={(currentChapter + 1) / Math.max(1, chapterCount)}
-            pctLabel={`${pct}%`}
-            label={chapter.title}
-            ticks={ticks}
-            prevLabel={tr("reader.prevChapter")}
-            nextLabel={tr("reader.nextChapter")}
-            onPrev={prevChapter}
-            onNext={nextChapter}
-            prevDisabled={currentChapter === 0}
-            nextDisabled={currentChapter >= chapterCount - 1}
-            onSeek={(f) => {
-              const next = Math.min(
-                chapterCount - 1,
-                Math.floor(f * chapterCount),
-              );
-              if (next !== currentChapter) onChapterChange(next);
-            }}
-            ariaLabel={tr("reader.chapterProgress")}
-            valueMin={1}
-            valueMax={Math.max(1, chapterCount)}
-            valueNow={currentChapter + 1}
-            valueText={chapter.title}
-          />
+        />
         </div>
+      </div>
 
+      {/* Content region. It's the positioning context for the overlay
+          SideSheet — panels float over a full-width reading column — and the
+          flex row a DOCKED sheet joins, where the reading column shrinks
+          beside it instead. The sheet comes first so the docked panel lands on
+          the leading edge in flow (and under RTL, on the trailing one) with
+          tab order following what the eye sees. The overlay variant is
+          absolutely positioned, so its DOM position here costs it nothing. */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
         <SideSheet
           open={activePanel !== null}
           onClose={() => setActivePanel(null)}
+          dock={tocDocked}
           // Navigation panels rest on the leading edge; tool panels (settings,
           // progress) on the trailing edge. SideSheet flips these under RTL.
           side={
@@ -858,9 +988,15 @@ export function DesktopReader({
               bookTitle={book.title}
               chapters={book.chapters}
               currentChapter={currentChapter}
+              volumes={tocVolumes}
+              width={DOCK_WIDTH}
               onJump={(order) => {
                 onChapterChange(order);
-                setActivePanel(null);
+                // A docked panel isn't in the way, so it stays open: you can
+                // pick a chapter, read it, and pick the next one without
+                // reopening Contents each time. The overlay still closes —
+                // leaving it up would hide the chapter you just jumped to.
+                if (!tocDocked) setActivePanel(null);
               }}
             />
           )}
@@ -924,7 +1060,165 @@ export function DesktopReader({
             </div>
           )}
         </SideSheet>
+
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+            minWidth: 0,
+          }}
+        >
+          {isPaginated ? (
+            <div
+              ref={paginatedWrapRef}
+              style={{
+                flex: 1,
+                padding: "60px 80px 30px",
+                position: "relative",
+                minHeight: 0,
+                minWidth: 0,
+                background: surfaces.page,
+              }}
+            >
+              <PaginatedView
+                columnsPerPage={paginatedColumns}
+                rtl={rtl}
+                initialParagraph={livePara.current}
+                onParagraphChange={handleParagraphChange}
+                onApi={onPaginatedApi}
+                onChapterProgress={onPaginatedProgress}
+                pageTurnAnimation={t.pageTurnAnimation}
+              >
+                <div key={chapter.id} className="leaflet-chapter-enter">
+                  <BookBody
+                    bookId={book.id}
+                    chapter={chapter}
+                    chapterCount={chapterCount}
+                    theme={contentTheme}
+                    themeKey={themeKey}
+                    fontFamily={t.fontFamily}
+                    fontSize={t.fontSize}
+                    lineHeight={t.lineHeight}
+                    letterSpacing={t.letterSpacing}
+                    textAlign={t.textAlign}
+                    rtl={rtl}
+                    paragraphSpacing={t.paragraphSpacing}
+                    hyphenation={t.hyphenation}
+                    language={book.language}
+                    highlights={state.highlights}
+                  />
+                </div>
+              </PaginatedView>
+            </div>
+          ) : (
+            <div
+              ref={scrollRef}
+              style={{
+                flex: 1,
+                overflow: "auto",
+                padding: "60px 80px 30px",
+                position: "relative",
+                background: surfaces.page,
+                // overscroll-behavior: contain stops the browser's own
+                // chrome bounce so our wheel preventDefault is the
+                // authority on what happens past the edge.
+                overscrollBehavior: "contain",
+              }}
+              className="no-scrollbar"
+            >
+              <div key={chapter.id} className="leaflet-chapter-enter">
+                <BookBody
+                  bookId={book.id}
+                  chapter={chapter}
+                  chapterCount={chapterCount}
+                  theme={contentTheme}
+                  themeKey={themeKey}
+                  fontFamily={t.fontFamily}
+                  fontSize={t.fontSize}
+                  lineHeight={t.lineHeight}
+                  letterSpacing={t.letterSpacing}
+                  textAlign={t.textAlign}
+                  rtl={rtl}
+                  paragraphSpacing={t.paragraphSpacing}
+                  hyphenation={t.hyphenation}
+                  language={book.language}
+                  widthPercent={t.contentWidth}
+                  highlights={state.highlights}
+                />
+              </div>
+            </div>
+          )}
+          {overscroll && (
+            <OverscrollIndicator theme={theme} state={overscroll} tr={tr} />
+          )}
+          {chapterToast && (
+            <ChapterToast key={chapterToast.seq} theme={theme} info={chapterToast} tr={tr} isAr={dir === "rtl"} />
+          )}
+        </div>
       </div>
+
+      {/* Bottom scrubber spans the whole window, below BOTH the docked
+          panel and the reading column — it reports progress through the
+          book, which is not a property of either pane. Keeping it inside
+          the reading column made it start at the panel's inner edge and
+          left the panel running past it to the window floor. */}
+      <div
+        style={
+          chromeFloats
+            ? floatingChromeClip("bottom", showBottom)
+            : { flexShrink: 0 }
+        }
+      >
+        <div
+          style={
+            chromeFloats
+              ? {
+                  ...floatingChromeSlide("bottom", showBottom),
+                  borderTop: `0.5px solid ${theme.rule}`,
+                }
+              : undefined
+          }
+        >
+        <ReaderScrubBar
+        theme={theme}
+        rtl={dir === "rtl"}
+        fraction={(currentChapter + 1) / Math.max(1, chapterCount)}
+        pctLabel={`${pct}%`}
+        label={chapter.title}
+        ticks={ticks}
+        prevLabel={tr("reader.prevChapter")}
+        nextLabel={tr("reader.nextChapter")}
+        onPrev={prevChapter}
+        onNext={nextChapter}
+        prevDisabled={currentChapter === 0}
+        nextDisabled={currentChapter >= chapterCount - 1}
+        onSeek={(f) => {
+          const next = Math.min(
+            chapterCount - 1,
+            Math.floor(f * chapterCount),
+          );
+          if (next !== currentChapter) onChapterChange(next);
+        }}
+        ariaLabel={tr("reader.chapterProgress")}
+        valueMin={1}
+        valueMax={Math.max(1, chapterCount)}
+        valueNow={currentChapter + 1}
+        valueText={chapter.title}
+        />
+        </div>
+      </div>
+
+      {focusHint > 0 && (
+        <FocusHint
+          key={focusHint}
+          theme={theme}
+          title={tr("reader.focusMode")}
+          body={tr("reader.focusHintBody")}
+          isAr={dir === "rtl"}
+        />
+      )}
       {selAnchor && (
         <SelectionPopover
           theme={theme}
@@ -960,6 +1254,63 @@ export function DesktopReader({
  * the chrome bar. Animation timing is owned by CSS (.leaflet-chapter-toast),
  * the host just renders + unmounts.
  */
+/** One-time focus-mode hint. Same pill as ChapterToast, held longer because
+ *  it's a sentence to read rather than a title to glance at — an empty window
+ *  on a later launch should never be a mystery. */
+function FocusHint({
+  theme,
+  title,
+  body,
+  isAr,
+}: {
+  theme: Theme;
+  title: string;
+  body: string;
+  isAr: boolean;
+}) {
+  return (
+    <div
+      className="leaflet-focus-hint"
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "none",
+        zIndex: 50,
+        padding: "16px 28px",
+        borderRadius: 14,
+        background: theme.chrome,
+        color: theme.ink,
+        border: `0.5px solid ${theme.rule}`,
+        boxShadow: "0 16px 44px rgba(0,0,0,0.22)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        fontFamily: FONT_STACKS.sans,
+        textAlign: "center",
+        minWidth: 240,
+        maxWidth: 340,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: isAr ? "normal" : "0.14em",
+          textTransform: isAr ? "none" : "uppercase",
+          color: theme.muted,
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ fontSize: 13, lineHeight: 1.5, color: theme.ink }}>
+        {body}
+      </div>
+    </div>
+  );
+}
+
 function ChapterToast({
   theme,
   info,

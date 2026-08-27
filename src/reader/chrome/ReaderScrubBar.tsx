@@ -65,7 +65,8 @@ export function ReaderScrubBar({
   valueMax,
   valueNow,
   valueText,
-  padding = "14px 80px 22px",
+  // Bottom inset keeps the scrubber clear of Android's gesture pill; 0 on desktop.
+  padding = "14px 80px calc(22px + env(safe-area-inset-bottom, 0px))",
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);

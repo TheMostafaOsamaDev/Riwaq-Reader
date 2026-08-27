@@ -38,12 +38,6 @@ export const en = {
   "settings.theme.sepia": "Sepia",
   "settings.theme.dark": "Dark",
   "settings.theme.oled": "OLED",
-  "settings.colors": "Colors",
-  "settings.colors.text": "Text",
-  "settings.colors.page": "Page",
-  "settings.colors.auto": "Auto",
-  "settings.colors.custom": "Custom",
-  "settings.colors.lowContrast": "Low contrast — text may be hard to read",
   "settings.fontSize": "Font size · {n}px",
   "settings.lineHeight": "Line height · {n}",
   "settings.letterSpacing": "Letter spacing · {n}em",
@@ -62,6 +56,24 @@ export const en = {
   "settings.off": "Off",
   "settings.tapZoneWidth": "Tap zone width · {n}%",
   "settings.tapStride": "Tap scroll length · {n}%",
+
+  // fixed-layout (PDF / DOCX) page controls. These live beside the reflow
+  // controls above because both readers render them through the same
+  // SettingsPanel — see `fixedItems()` in components/SettingsSection.tsx.
+  "settings.subtitle.fixed": "Appearance & page layout",
+  "settings.flow": "Flow",
+  "settings.flow.scroll": "Scroll",
+  "settings.flow.paged": "Page",
+  "settings.fit": "Fit",
+  "settings.fit.width": "Width",
+  "settings.fit.page": "Page",
+  "settings.pageTint": "Page tint",
+  "settings.pageTint.none": "None",
+  "settings.pageTint.dim": "Dim",
+  "settings.pageTint.invert": "Invert",
+  "settings.zoom": "Zoom",
+  "settings.zoom.in": "Zoom in",
+  "settings.zoom.out": "Zoom out",
 
   // reader quick-panel → full settings page
   "settings.openFull": "All settings",
@@ -261,6 +273,12 @@ export const en = {
   "toc.clearSearch": "Clear search",
   "toc.noMatches": "No chapters match “{term}”.",
   "toc.now": "Now",
+  "reader.focusMode": "Focus mode",
+  "reader.exitFocusMode": "Exit focus mode",
+  "reader.focusHintBody": "Move the pointer to the top or bottom edge to bring the controls back.",
+  "toc.collapseAll": "Collapse all volumes",
+  "toc.expandAll": "Expand all volumes",
+  "toc.goToCurrent": "Go to current chapter",
 
   // Highlights panel
   "highlights.title": "Highlights",

@@ -387,6 +387,15 @@ input:focus-visible,
     forwards;
 }
 
+/* Focus-mode hint: the same in/hold/out sequence, held longer because it's a
+   sentence to read rather than a chapter title to glance at. Shown once, the
+   first time focus mode hides the chrome, so an empty window is never a
+   mystery on a later launch. */
+.leaflet-focus-hint {
+  animation: leaflet-chapter-toast 3200ms cubic-bezier(0.22, 0.61, 0.36, 1)
+    forwards;
+}
+
 /* Mobile tap-zone preview: a transparent tinted strip on each side
    that fades in, holds, then fades out over ~3s so the user can see
    how wide the new tap zones are when they adjust the width slider. */

@@ -32,14 +32,6 @@ export interface Tweaks {
       ThemeKey at render time via resolveTheme(). */
   theme: ThemePref;
   fontFamily: "serif" | "sans" | "dyslexic" | "cairo" | "lateef" | "tajawal";
-  /** Reading text (ink) color. "auto" follows the active theme's ink; any CSS
-      hex color overrides it across reflow text, DOCX cards, and (approximated
-      via a GPU duotone) PDF pages. Kept a string so the Import Settings guard,
-      which type-checks with `typeof`, accepts an imported color. */
-  inkColor: string;
-  /** Reading page (background) color. "auto" follows the active theme's bg;
-      any CSS hex color overrides it, same coverage as `inkColor`. */
-  paperColor: string;
   fontSize: number;
   lineHeight: number;
   letterSpacing: number;
@@ -47,6 +39,10 @@ export interface Tweaks {
       books, right in RTL books. The explicit values let the user override. */
   textAlign: "auto" | "left" | "justify" | "right";
   readingMode: ReadingMode;
+  /** Desktop only. Hides the reader chrome (top bar + bottom scrubber) so the
+      page fills the window; hovering either edge brings that bar back. The
+      phone reader has its own tap-to-hide chrome and ignores this. */
+  focusMode: boolean;
   /** Reading column width as a percentage of the available container width
       (50–100). Applies in every reading mode on both desktop and mobile,
       letting the user shrink or expand the text column to match their
@@ -115,12 +111,31 @@ export interface TocEntry {
   level: number;
 }
 
+/** One collapsible volume in the Contents list, over a contiguous run of
+ *  chapter `order`s. Only sources that publish volumes can supply these —
+ *  local EPUBs flatten to a single spine with no grouping metadata, so the
+ *  Contents panel falls back to an ungrouped list when they're absent. */
+export interface TocVolume {
+  /** Stable key within the book. */
+  id: string;
+  title: string;
+  /** First chapter `order` in the volume. */
+  start: number;
+  /** Last chapter `order` in the volume, inclusive. */
+  end: number;
+}
+
 /** Progress the shell renders in the header bar + counter + Progress panel. */
 export interface ReaderProgress {
   /** 0..1. */
   fraction: number;
   /** Localized, e.g. "٧ / ٢٩٨" or "Ch. 3 · 24%". */
   label: string;
+  /** Fixed-layout only: the 0-based page this progress refers to. Carried
+   *  explicitly because `fraction` cannot be inverted back to a page — it is
+   *  `(page + 1) / pageCount`, so recovering the index from it lands a page
+   *  ahead and the counter reads one too high on every page. */
+  page?: number;
 }
 
 /** Fixed-page (PDF/DOCX) flow: continuous stacked pages, or one page at a time. */

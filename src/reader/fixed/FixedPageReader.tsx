@@ -5,6 +5,12 @@
 // shell is identical. The page source is created via a `createSource` factory
 // so this component is agnostic to disk-vs-bytes loading (App passes a disk
 // source; the dev harness passes an in-memory one).
+//
+// Panel presentation matches the EPUB readers exactly: desktop slides a
+// SideSheet in over the viewer, mobile raises the same MobileSheet bottom
+// sheet the reflow reader uses (drag handle, snap points, drag-to-dismiss).
+// Both readers therefore share one panel surface AND one settings body
+// (panels/SettingsPanel.tsx) — see its `variant` prop.
 
 import {
   useCallback,
@@ -12,12 +18,10 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
-  FONT_STACKS,
   titleFontFor,
   type HighlightColor,
   type Theme,
@@ -40,11 +44,13 @@ import { SelectionPopover } from "../../components/SelectionPopover";
 import { HighlightActionPopover } from "../../components/HighlightActionPopover";
 import type { DocxSelectionAnchor } from "./docxHighlight";
 import { SideSheet } from "../../components/SideSheet";
+import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
 import { ReaderScrubBar } from "../chrome/ReaderScrubBar";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
-import { ColorField, Field, SegRow, ThemeField } from "../../components/SettingsSection";
+import { SettingsPanel } from "../../panels/SettingsPanel";
 import { useI18n } from "../../i18n/useI18n";
+import { formatNum } from "../../i18n";
 
 type SetTweak = <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
 type Panel = null | "toc" | "highlights" | "progress" | "settings";
@@ -83,27 +89,6 @@ export interface FixedPageReaderProps {
   onLocationChange?: (page: number, pageOffset: number, pageCount: number) => void;
   onOpenFullSettings?: () => void;
   onBack: () => void;
-}
-
-function toArabicDigits(s: string): string {
-  return s.replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
-}
-
-/** Bordered +/- stepper button used by the settings Zoom row. */
-function zoomStepStyle(theme: Theme): CSSProperties {
-  return {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    border: `1px solid ${theme.rule}`,
-    background: theme.hover,
-    color: theme.ink,
-    cursor: "pointer",
-    fontSize: 18,
-    lineHeight: 1,
-    display: "grid",
-    placeItems: "center",
-  };
 }
 
 export function FixedPageReader(props: FixedPageReaderProps) {
@@ -182,7 +167,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   }, [book.id]);
 
   const fmt = useCallback(
-    (n: number) => (locale === "ar" ? toArabicDigits(String(n)) : String(n)),
+    (n: number) => formatNum(n, locale),
     [locale],
   );
   const formatCounter = useCallback(
@@ -213,22 +198,21 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     if (page != null) jumpToPage(page);
   };
 
-  // Logical edge for a panel. Desktop follows the shared convention
-  // (navigation panels lead, tool panels trail); mobile keeps its single
-  // leading-edge overlay. SideSheet / PanelShell handle the RTL flip.
-  const panelSide = (p: Panel): "left" | "right" =>
-    isMobile
-      ? uiDir === "rtl"
-        ? "right"
-        : "left"
-      : p === "settings" || p === "progress"
-        ? "right"
-        : "left";
+  // Logical edge a desktop panel's border faces: navigation panels lead,
+  // tool panels trail (SideSheet / PanelShell handle the RTL flip). On mobile
+  // there is no edge — the bottom sheet renders its own rounded chrome
+  // edge-to-edge — so panels get `side: undefined` and a fluid width, exactly
+  // as MobileReader passes them.
+  const panelSide = (p: Panel): "left" | "right" | undefined =>
+    isMobile ? undefined : p === "settings" || p === "progress" ? "right" : "left";
 
   // Body for the currently-open panel, reused by the desktop SideSheet and the
-  // mobile overlay so the panel content lives in exactly one place.
+  // mobile bottom sheet so the panel content lives in exactly one place.
   const renderPanelBody = () => {
     const side = panelSide(panel);
+    // Phone widths vary (360-430px+); the desktop 340px column would leave
+    // dead space beside the sheet.
+    const width = isMobile ? "100%" : undefined;
     switch (panel) {
       case "toc":
         return (
@@ -240,6 +224,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             onJump={jumpToPage}
             onClose={closePanel}
             side={side}
+            width={width}
           />
         );
       case "highlights":
@@ -253,6 +238,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             onDelete={onDeleteHighlight}
             onUpdateNote={onUpdateHighlightNote}
             side={side}
+            width={width}
           />
         );
       case "progress":
@@ -262,6 +248,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             title={tr("reader.readingProgress")}
             onClose={closePanel}
             side={side}
+            width={width}
           >
             <PageProgressBody
               theme={theme}
@@ -273,106 +260,24 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           </PanelShell>
         );
       case "settings":
+        // Same component the reflow readers render — only the control set
+        // differs (`variant="fixed"`), so the shell, language row, theme row
+        // and "All settings" footer stay identical across formats.
         return (
-          <PanelShell
+          <SettingsPanel
+            variant="fixed"
             theme={theme}
-            title={tr("settings.title")}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
             onClose={closePanel}
             side={side}
-          >
-            <ThemeField theme={theme} pref={t.theme} onChange={(p) => setTweak("theme", p)} />
-            <ColorField
-              theme={theme}
-              inkColor={t.inkColor}
-              paperColor={t.paperColor}
-              onChangeInk={(v) => setTweak("inkColor", v)}
-              onChangePaper={(v) => setTweak("paperColor", v)}
-            />
-            <Field label={locale === "ar" ? "طريقة العرض" : "Flow"} theme={theme}>
-              <SegRow<Tweaks["fixedFlow"]>
-                theme={theme}
-                value={t.fixedFlow}
-                onChange={(v) => setTweak("fixedFlow", v)}
-                options={[
-                  { value: "scroll", label: locale === "ar" ? "تمرير" : "Scroll" },
-                  { value: "paged", label: locale === "ar" ? "صفحة" : "Page" },
-                ]}
-              />
-            </Field>
-            <Field label={locale === "ar" ? "الملاءمة" : "Fit"} theme={theme}>
-              <SegRow<Tweaks["fixedFit"]>
-                theme={theme}
-                value={t.fixedFit}
-                onChange={(v) => setTweak("fixedFit", v)}
-                options={[
-                  { value: "width", label: locale === "ar" ? "العرض" : "Width" },
-                  { value: "page", label: locale === "ar" ? "الصفحة" : "Page" },
-                ]}
-              />
-            </Field>
-            <Field label={locale === "ar" ? "تدرّج الصفحة" : "Page tint"} theme={theme}>
-              <SegRow<Tweaks["fixedPageTint"]>
-                theme={theme}
-                value={t.fixedPageTint}
-                onChange={(v) => setTweak("fixedPageTint", v)}
-                options={[
-                  { value: "none", label: locale === "ar" ? "بلا" : "None" },
-                  { value: "dim", label: locale === "ar" ? "تعتيم" : "Dim" },
-                  { value: "invert", label: locale === "ar" ? "عكس" : "Invert" },
-                ]}
-              />
-            </Field>
-            {/* Zoom lives here (fixed-page only) — the reflow reader has no zoom. */}
-            <Field label={locale === "ar" ? "التكبير" : "Zoom"} theme={theme}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button
-                  onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}
-                  aria-label={locale === "ar" ? "تصغير" : "Zoom out"}
-                  style={zoomStepStyle(theme)}
-                >
-                  −
-                </button>
-                <span
-                  style={{
-                    minWidth: 52,
-                    textAlign: "center",
-                    fontVariantNumeric: "tabular-nums",
-                    color: theme.ink,
-                    fontSize: 13,
-                  }}
-                >
-                  {fmt(Math.round(zoom * 100))}%
-                </span>
-                <button
-                  onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.1).toFixed(2)))}
-                  aria-label={locale === "ar" ? "تكبير" : "Zoom in"}
-                  style={zoomStepStyle(theme)}
-                >
-                  +
-                </button>
-              </div>
-            </Field>
-            {onOpenFullSettings && (
-              <div style={{ padding: 12 }}>
-                <button
-                  onClick={onOpenFullSettings}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: 10,
-                    border: `1px solid ${theme.rule}`,
-                    background: theme.hover,
-                    color: theme.ink,
-                    cursor: "pointer",
-                    fontFamily: FONT_STACKS.sans,
-                    fontSize: 13,
-                  }}
-                >
-                  {tr("settings.title")}
-                </button>
-              </div>
-            )}
-          </PanelShell>
+            width={width}
+            mobile={isMobile}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onOpenFullSettings={onOpenFullSettings}
+          />
         );
       default:
         return null;
@@ -387,7 +292,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         : panel === "progress"
           ? tr("reader.readingProgress")
           : panel === "settings"
-            ? tr("settings.title")
+            ? tr("reader.readingSettings")
             : undefined;
 
   const title = book.title || tr("common.untitled");
@@ -468,9 +373,10 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             fit={t.fixedFit}
             zoom={zoom}
             tint={t.fixedPageTint}
-            inkColor={t.inkColor}
-            paperColor={t.paperColor}
             dir={contentDir}
+            // Turns follow the gesture that drives them: a sideways swipe on
+            // mobile, the wheel on desktop.
+            turnAxis={isMobile ? "x" : "y"}
             theme={theme}
             themeKey={themeKey}
             highlights={highlights}
@@ -484,8 +390,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             formatCounter={formatCounter}
             onProgress={(p) =>
               setProgress((prev) => {
-                const page = Math.round(p.fraction * (sourcePageCount(source) - 1));
-                return prev.label === p.label ? prev : { page, fraction: p.fraction, label: p.label };
+                // Take the page the viewer reports; `fraction` is not
+                // invertible (see ReaderProgress.page).
+                const page = p.page ?? prev.page;
+                return prev.label === p.label
+                  ? prev
+                  : { page, fraction: p.fraction, label: p.label };
               })
             }
             onLocationChange={(page, off) =>
@@ -548,33 +458,22 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         padding={isMobile ? "10px 14px 14px" : "14px 80px 22px"}
       />
 
-      {/* Mobile panels: bottom-anchored overlay + scrim. Desktop uses the
-          SideSheet mounted inside the viewer above. */}
-      {isMobile && panel && (
-        <>
-          <div
-            onClick={closePanel}
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 8,
-              background: "rgba(0,0,0,0.42)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              zIndex: 9,
-              top: "38%",
-              bottom: 0,
-              insetInlineStart: 0,
-              insetInlineEnd: 0,
-              width: "100%",
-            }}
-          >
+      {/* Mobile panels: the same bottom sheet the reflow reader raises, at the
+          same default snap. It stays mounted while it animates out, so `open`
+          drives the exit rather than an unmount. Desktop uses the SideSheet
+          mounted inside the viewer above. */}
+      {isMobile && (
+        <MobileSheet
+          theme={theme}
+          open={panel !== null}
+          onClose={closePanel}
+          height="82%"
+          label={panelLabel}
+        >
+          <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             {renderPanelBody()}
           </div>
-        </>
+        </MobileSheet>
       )}
 
       {/* Highlighting popovers (DOCX). Positioned from viewport-coordinate rects. */}
@@ -623,6 +522,7 @@ function OutlinePanel({
   onJump,
   onClose,
   side,
+  width,
 }: {
   theme: Theme;
   outline: TocEntry[];
@@ -630,11 +530,19 @@ function OutlinePanel({
   current: number;
   onJump: (page: number) => void;
   onClose: () => void;
-  side: "left" | "right";
+  side?: "left" | "right";
+  width?: number | string;
 }) {
   const { tr, locale } = useI18n();
   return (
-    <PanelShell theme={theme} title={tr("reader.toc")} subtitle={title || tr("common.untitled")} onClose={onClose} side={side}>
+    <PanelShell
+      theme={theme}
+      title={tr("reader.toc")}
+      subtitle={title || tr("common.untitled")}
+      onClose={onClose}
+      side={side}
+      width={width}
+    >
       <div style={{ padding: "8px 6px" }}>
         {outline.length === 0 && (
           <div style={{ padding: "32px 18px", textAlign: "center", color: theme.muted, fontSize: 12.5, lineHeight: 1.5 }}>

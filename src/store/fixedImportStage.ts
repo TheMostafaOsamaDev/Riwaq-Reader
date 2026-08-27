@@ -6,6 +6,7 @@
 // large images (or a long PDF) doesn't decode everything up front.
 
 import { openPdfDocument } from "../pdf/pdfjs";
+import { detectBookFormat } from "./bookFormat";
 import { commitDocxBook, commitPdfBook, type ChosenCover } from "./fixedImport";
 import { filenameTitle, type BookIndexEntry } from "./library";
 
@@ -54,8 +55,12 @@ const THUMB_MAX_W = 240;
 export async function stageFixedImport(
   bytes: Uint8Array,
   filename: string,
+  /** Format the caller already sniffed. Omitted by callers holding a real
+   *  filename (the dev harness), where the bytes still decide. */
+  kind?: "pdf" | "docx",
 ): Promise<FixedImportDraft> {
-  return /\.pdf$/i.test(filename)
+  const format = kind ?? detectBookFormat(bytes);
+  return format === "pdf"
     ? stagePdf(bytes, filename)
     : stageDocx(bytes, filename);
 }

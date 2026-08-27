@@ -19,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Theme, ThemeKey } from "../../styles/tokens";
+import { readingSurfaces, type Theme, type ThemeKey } from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
 import { resolveDocxSelection, type DocxSelectionAnchor } from "./docxHighlight";
 import type {
@@ -29,7 +29,6 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import type { FixedPageSource } from "./FixedPageSource";
-import { pdfDuotone, resolveReadingColors } from "../readingColors";
 
 const PAD = 20;
 const GAP = 18;
@@ -45,6 +44,71 @@ const ANIM_MS = 220;
 const CANCEL_MS = 190;
 const POST_LOCK_MS = 340;
 const TURN_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+// A turn released from a drag carries on from the speed the finger had and
+// decelerates to rest, so it needs a curve that leaves the gate at roughly
+// that speed rather than accelerating into it — the fast-start curve above is
+// right for a tap, but after a slow drag it reads as the page being snatched.
+const DRAG_SETTLE_EASE = "cubic-bezier(0, 0, 0.35, 1)";
+// Coasting to a stop from v0 covers v0*T/2, so reaching the far edge takes
+// about twice the distance-over-speed a constant pace would.
+const SETTLE_DECEL = 1.9;
+// The settle is never shorter than the distance it has to cover deserves: a
+// turn released early has most of the page still to travel, and letting a quick
+// flick's velocity shorten THAT into a whoosh is what made a short swipe feel
+// like the reader had to drag the page most of the way themselves to get a
+// smooth turn. So velocity can only ever lengthen the settle, never cut it
+// below this floor, which scales from a near-finished turn to a full-width one.
+const SETTLE_MIN_MS = 130;
+const SETTLE_FULL_MS = 300;
+const SETTLE_MAX_MS = 460;
+
+// Touch drag feel. AXIS_LOCK is the travel before a drag commits to an axis (so
+// a slightly-diagonal vertical pan isn't stolen as a page turn). On release a
+// turn completes if the strip was dragged past SNAP_FRACTION of the viewport OR
+// flicked faster than FLING — a quick flick shouldn't need a long drag.
+const AXIS_LOCK_PX = 10;
+const SNAP_FRACTION = 0.25;
+const FLING_PX_MS = 0.45;
+// Only the tail of a drag counts toward the fling test, so a long slow pan that
+// ends in a flick still throws the page — averaging over the whole gesture
+// would drown the flick. (MobileSheet's sheetSnap does the same for its own
+// vertical axis; the two aren't shared because the axes and units differ.)
+const VELOCITY_WINDOW_MS = 100;
+// How long to let the current page settle before warming its neighbours. Short
+// enough to keep ahead of quick successive turns — a turn that arrives before
+// its page is rasterized animates a blank sheet in and pops the content at the
+// end — but not so short that it competes with the page just landed.
+// A plain timer rather than requestIdleCallback on purpose: idle callbacks fire
+// in the gaps *between* a drag's frames, so the rasterization lands mid-gesture
+// and costs more than it saves (measured: ~20 fewer frames delivered per drag).
+const PREFETCH_DELAY_MS = 80;
+// How many pages to keep warm ahead of the reader. Three covers a burst of
+// quick swipes without the incoming page ever arriving unrasterized.
+//
+// Only ONE is warmed behind, deliberately. Pages you have just come from are
+// still in the source's cache — going back is a re-parent, not a render — so
+// spending rasterization on them would be work for nothing. The single one is
+// for the case where you land somewhere fresh (a jump from the contents) and
+// immediately turn back. Memory is bounded by the source's byte budget, not by
+// this number; see canvasBudgetBytes in PdfPageSource.
+const PREFETCH_AHEAD = 3;
+const PREFETCH_BEHIND = 1;
+
+/** Signed px/ms across the sample ring, measured over the most recent
+ *  VELOCITY_WINDOW_MS. Returns 0 when there's nothing to measure. */
+function releaseVelocity(samples: Array<{ x: number; t: number }>): number {
+  if (samples.length < 2) return 0;
+  const last = samples[samples.length - 1];
+  let first = samples[0];
+  for (const s of samples) {
+    if (last.t - s.t <= VELOCITY_WINDOW_MS) {
+      first = s;
+      break;
+    }
+  }
+  const dt = last.t - first.t;
+  return dt > 0 ? (last.x - first.x) / dt : 0;
+}
 
 export function tintFilter(tint: FixedPageTint): string {
   switch (tint) {
@@ -64,11 +128,10 @@ export interface FixedPageViewerProps {
   /** Multiplier on the fit scale (0.5–~2.5). */
   zoom: number;
   tint: FixedPageTint;
-  /** Reading color overrides ("auto" or a hex). DOCX cards take them as real
-   *  CSS via `--reading-ink`/`--reading-paper`; PDF pages get a GPU duotone. */
-  inkColor: string;
-  paperColor: string;
   dir: "ltr" | "rtl";
+  /** Which way a page turn travels. Mobile turns sideways to match the swipe
+   *  that drives it; desktop turns vertically to match the wheel. */
+  turnAxis: "x" | "y";
   theme: Theme;
   resume?: { page: number; pageOffset?: number };
   onProgress?: (p: ReaderProgress) => void;
@@ -109,9 +172,8 @@ export const FixedPageViewer = forwardRef<
     fit,
     zoom,
     tint,
-    inkColor,
-    paperColor,
     dir,
+    turnAxis: axis,
     theme,
     resume,
     onProgress,
@@ -163,39 +225,12 @@ export const FixedPageViewer = forwardRef<
     return () => scroller.removeEventListener("pointerup", onUp);
   }, [source, onSelect, onHighlightClick]);
 
-  // Reading colors, split by backend. PDF: a GPU duotone (or null → untouched,
-  // today's behavior), which supersedes the dim/invert tint filter. DOCX:
-  // resolved concrete colors handed to the cards through CSS vars, so "auto"
-  // makes DOCX follow the active theme instead of always rendering white.
-  const duotone = source.kind === "pdf" ? pdfDuotone(inkColor, paperColor) : null;
-  const hostFilter = duotone ? duotone.hostFilter : tintFilter(tint);
-  const docxColors =
-    source.kind === "docx" ? resolveReadingColors(theme, inkColor, paperColor) : null;
+  // Reading colours come straight from the theme now. The page is the theme's
+  // paper and the surround a shade behind it, so the sheet reads as a sheet
+  // without a border; DOCX cards take those through CSS vars.
+  const surfaces = readingSurfaces(theme);
+  const hostFilter = tintFilter(tint);
 
-  // The ink + paper blend layers for a single PDF page, positioned by `box`.
-  // A plain element factory (not a component) so it never remounts the hosts.
-  const duotoneOverlays = (
-    keyPrefix: string,
-    box: React.CSSProperties,
-  ): React.ReactElement[] => {
-    if (!duotone) return [];
-    return [
-      { key: `${keyPrefix}-ink`, layer: duotone.ink },
-      { key: `${keyPrefix}-paper`, layer: duotone.paper },
-    ].map(({ key, layer }) => (
-      <div
-        key={key}
-        aria-hidden
-        style={{
-          ...box,
-          borderRadius: 4,
-          background: layer.color,
-          mixBlendMode: layer.blend as React.CSSProperties["mixBlendMode"],
-          pointerEvents: "none",
-        }}
-      />
-    ));
-  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRefs = useRef(new Map<number, HTMLDivElement>());
@@ -213,14 +248,43 @@ export const FixedPageViewer = forwardRef<
   const [win, setWin] = useState({ start: 0, end: Math.min(pageCount - 1, 2) });
   const [rendered, setRendered] = useState<Set<number>>(() => new Set());
 
-  // Paged turn state. `peek` mounts the incoming page as an overlay and its
-  // `reveal` (0→1) slides it in from the edge; `peekIdx` is the page shown in
-  // that overlay (stable across reveal, so the pdf only renders once per turn);
-  // `peekReady` flips true when that page has painted.
-  const [peek, setPeek] = useState<{ dir: 1 | -1; reveal: number } | null>(null);
-  const [peekAnimating, setPeekAnimating] = useState(false);
+  // Paged turn state. `peek` mounts the incoming page as an overlay and slides
+  // it in from the edge; `peekIdx` is the page shown there (stable for the whole
+  // turn, so the pdf only renders once).
+  //
+  // Only the DISCRETE half of a turn lives in React: whether an overlay is up
+  // and which way it is going. The continuous part — how far along the turn is
+  // — is written straight to the DOM by `writeTurn`, because re-rendering this
+  // component once per animation frame is what made a drag feel heavy.
+  const [peek, setPeek] = useState<{ dir: 1 | -1 } | null>(null);
   const [peekIdx, setPeekIdx] = useState<number | null>(null);
-  const [peekReady, setPeekReady] = useState(false);
+  // How far along the current turn is, 0..1. Mirrors what `writeTurn` last
+  // pushed to the DOM; never triggers a render.
+  const revealRef = useRef(0);
+  // Live turn geometry, refreshed each render so `writeTurn` can stay stable.
+  const turnGeom = useRef({ span: 1, mirror: 1, horizontal: true });
+  // True between a turn opening and its layers being released, so a stray
+  // write can't shove a settled page around.
+  const turnLive = useRef(false);
+  // The paged duotone overlay, which has to travel with the page it tints.
+  const duotoneRef = useRef<HTMLDivElement>(null);
+  // Set below, once the turn helpers exist. Held in a ref so the paged render
+  // effect — which is declared before them — can call it without a cycle.
+  const dropOverlayRef = useRef<(page: number) => void>(() => {});
+  // Live layout inputs for the prefetch effect. Read through refs so it can
+  // depend on the page number alone: `sizes` and `layout` change on every
+  // measurement, and depending on them restarted the timer faster than it
+  // could fire, so on quick page turns the neighbours were never warmed.
+  const prefetchInputs = useRef<{
+    sizes: Array<{ w: number; h: number } | undefined>;
+    layout: { displayW: number[] };
+    usableW: number;
+  }>({ sizes: [], layout: { displayW: [] }, usableW: 0 });
+  // Offscreen hosts holding the pages either side of the current one, so a
+  // turn has its bitmap ready instead of rasterizing mid-animation.
+  const warmRefs = useRef<Array<HTMLDivElement | null>>([]);
+  // Which way the reader is travelling, so the warm window leans that way.
+  const lastDir = useRef<1 | -1>(1);
 
   // Where the swapped-in page lands (top normally; bottom when turning back).
   const pendingScroll = useRef<null | "top" | "bottom">(null);
@@ -234,6 +298,25 @@ export const FixedPageViewer = forwardRef<
   const turnTimer = useRef<number | null>(null);
   const holdTimer = useRef<number | null>(null);
   const peekRaf = useRef(0);
+  // Live touch-drag origin + the axis it locked onto ("" until it commits).
+  // `samples` is a short ring of recent positions — a flick is judged on the
+  // last few milliseconds, not on the whole gesture (see releaseVelocity).
+  const touch = useRef({
+    x: 0,
+    y: 0,
+    t: 0,
+    axis: "" as "" | "x" | "y",
+    pointerId: -1,
+    samples: [] as Array<{ x: number; t: number }>,
+  });
+  // Set while a drag is turning pages, so the trailing click doesn't turn again.
+  const suppressClick = useRef(false);
+  // How far the current page overflows the viewport horizontally, in px.
+  // Derived from LAYOUT, never from `scrollWidth - clientWidth`: a turn
+  // translates the base layer, and a transformed child counts toward its
+  // scroll container's scrollable overflow — so mid-turn the scroller reports
+  // a page-wide overflow and the drag gets mistaken for panning a zoomed page.
+  const overflowX = useRef(0);
   const peekHostRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const barIdle = useRef<number | null>(null);
@@ -257,7 +340,13 @@ export const FixedPageViewer = forwardRef<
     return () => ro.disconnect();
   }, []);
 
-  const contentW = Math.max(0, container.w - PAD * 2);
+  // "Fit width" means exactly that: the page spans the viewport edge to edge,
+  // with no side gutter. Only "fit page" keeps the horizontal inset, where the
+  // page is height-bound anyway and the breathing room reads as a margin.
+  // MAX_W still caps very wide windows so a desktop page stays readable — on a
+  // phone the container is far narrower than the cap, so it never binds.
+  const padX = fit === "width" ? 0 : PAD;
+  const contentW = Math.max(0, container.w - padX * 2);
   const usableW = Math.min(contentW, MAX_W);
   const fallbackRatio = useMemo(() => {
     const m = sizes.find(Boolean);
@@ -294,11 +383,14 @@ export const FixedPageViewer = forwardRef<
     return { displayW, displayH, top, totalH: y - GAP + PAD };
   }, [sizes, container.h, zoom, fit, usableW, fallbackRatio, pageCount]);
 
+  prefetchInputs.current = { sizes, layout, usableW };
+
   const emit = useCallback(
     (page: number) => {
       if (page === lastEmitted.current) return;
       lastEmitted.current = page;
       onProgress?.({
+        page,
         fraction: pageCount > 0 ? (page + 1) / pageCount : 0,
         label: formatCounter
           ? formatCounter(page + 1, pageCount)
@@ -394,6 +486,26 @@ export const FixedPageViewer = forwardRef<
     emit(resume.page);
   }, [resume, container.h, layout, flow, emit]);
 
+  // Keep your place when the flow changes.
+  //
+  // Going the other way needs nothing: `recompute` tracks the current page from
+  // scroll position continuously, so paged mode opens on whatever was on
+  // screen. Coming back the other way, the scroll container starts at the top
+  // and the resume effect above has already fired once and latched, so without
+  // this the reader jumped to page one every time the flow was switched.
+  //
+  // Only fires on an actual flow CHANGE — on first mount the resume effect owns
+  // the scroll position, and racing it would clobber a restored location.
+  const prevFlow = useRef(flow);
+  useLayoutEffect(() => {
+    const changed = prevFlow.current !== flow;
+    prevFlow.current = flow;
+    if (!changed || flow !== "scroll") return;
+    const el = scrollRef.current;
+    const top = layout.top[currentRef.current];
+    if (el && top != null) el.scrollTop = top;
+  }, [flow, layout]);
+
   // Lazily measure + render the visible window (scroll).
   useEffect(() => {
     if (flow !== "scroll") return;
@@ -462,6 +574,7 @@ export const FixedPageViewer = forwardRef<
       const cur = current;
       void source.renderPage(cur, host, sc).then(() => {
         setRendered((prev) => (prev.has(cur) ? prev : new Set(prev).add(cur)));
+        dropOverlayRef.current(cur);
       });
       emit(current);
     })();
@@ -477,6 +590,65 @@ export const FixedPageViewer = forwardRef<
     [pageCount],
   );
 
+  /** Push a turn position straight to the DOM. BOTH layers move as one: the
+   *  incoming page enters from the edge while the outgoing leaves by exactly
+   *  the distance the incoming covers, so the motion reads as the viewport
+   *  travelling along a filmstrip rather than a card being dealt on top.
+   *
+   *  Deliberately imperative. Driving this through React state re-rendered the
+   *  whole viewer once per frame; at a 20x CPU handicap that put p99 frame time
+   *  at ~196ms. `will-change` promotes the layers so the compositor moves them
+   *  without repainting the page bitmap underneath. */
+  const writeTurn = useCallback((
+    reveal: number,
+    animate: boolean,
+    settle?: { ms: number; ease: string },
+  ) => {
+    if (!turnLive.current) return;
+    const { span, mirror, horizontal } = turnGeom.current;
+    const d = peekDir.current || 1;
+    const at = (px: number) =>
+      horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
+    const transition =
+      animate && !reducedRef.current
+        ? `transform ${settle?.ms ?? ANIM_MS}ms ${settle?.ease ?? TURN_EASE}`
+        : "none";
+    const basePx = -d * mirror * reveal * span;
+    const peekPx = d * mirror * (1 - reveal) * span;
+    const outgoing = hostRefs.current.get(currentRef.current);
+    for (const el of [outgoing, duotoneRef.current]) {
+      if (!el) continue;
+      el.style.willChange = "transform";
+      el.style.transition = transition;
+      el.style.transform = at(basePx);
+    }
+    const incoming = peekHostRef.current;
+    if (incoming) {
+      incoming.style.willChange = "transform";
+      incoming.style.transition = transition;
+      incoming.style.transform = at(peekPx);
+    }
+    revealRef.current = reveal;
+  }, []);
+
+  /** Release the layers once a turn is over — drop `will-change` so the
+   *  compositor can reclaim them, and clear the transform so a page that stays
+   *  mounted (a cancelled turn) sits exactly where it started. */
+  const releaseTurn = useCallback(() => {
+    turnLive.current = false;
+    revealRef.current = 0;
+    for (const el of [
+      hostRefs.current.get(currentRef.current),
+      duotoneRef.current,
+      peekHostRef.current,
+    ]) {
+      if (!el) continue;
+      el.style.willChange = "";
+      el.style.transition = "";
+      el.style.transform = "";
+    }
+  }, []);
+
   // Swap in the peeked page. The overlay is held (fully covering) until the base
   // layer has painted the new page, so a turn never flashes a skeleton.
   const finalize = useCallback((d: 1 | -1) => {
@@ -485,40 +657,76 @@ export const FixedPageViewer = forwardRef<
       turnTimer.current = null;
     }
     const neighbor = peekNeighbor.current;
+    lastDir.current = d;
     turning.current = false;
     accum.current = 0;
     peekDir.current = 0;
     turnLockUntil.current = performance.now() + POST_LOCK_MS;
     pendingScroll.current = d > 0 ? "top" : "bottom";
     peekHold.current = neighbor;
+    // The base host is keyed on `current`, so swapping pages hands us a fresh
+    // node with no transform — the outgoing page's travel doesn't have to be
+    // unwound, and the overlay is still covering while React commits.
+    turnLive.current = false;
+    revealRef.current = 0;
     setCurrent(neighbor);
     if (holdTimer.current) window.clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(() => {
       holdTimer.current = null;
       peekHold.current = null;
+      releaseTurn();
       setPeek(null);
       setPeekIdx(null);
-      setPeekAnimating(false);
     }, 500);
-  }, []);
+  }, [releaseTurn]);
 
+  /** Finish a turn. `releaseSpeed` (px/ms, unsigned) is the speed the finger
+   *  was travelling when it let go; given it, the remaining distance is covered
+   *  at roughly that pace so the strip carries on instead of jumping to a fixed
+   *  duration. Releasing 40% of the way in used to hand the last 60% to a flat
+   *  220ms — about twice the speed the finger had been moving, which is what
+   *  made a turn feel like it completed itself out from under you. */
   const commit = useCallback(
-    (d: 1 | -1) => {
+    (d: 1 | -1, releaseSpeed?: number) => {
       if (idleTimer.current) {
         window.clearTimeout(idleTimer.current);
         idleTimer.current = null;
+      }
+      // A drag frame queued by `renderPeek` but not yet run would land AFTER
+      // the settle below and rewrite `transition: none` plus the old drag
+      // position, killing the animation outright — the turn would then sit
+      // still until `finalize` swapped the page, with no transition at all.
+      // Whether the last touchmove and the release share a frame is down to
+      // the pointer's timing, so this is only sometimes reachable.
+      if (peekRaf.current) {
+        window.cancelAnimationFrame(peekRaf.current);
+        peekRaf.current = 0;
       }
       turning.current = true;
       if (reducedRef.current) {
         finalize(d);
         return;
       }
-      setPeekAnimating(true);
-      setPeek({ dir: d, reveal: 1 });
+      const span = turnGeom.current.span;
+      const left = Math.max(0, 1 - revealRef.current); // fraction still to travel
+      // Floor: a full-width settle always gets SETTLE_FULL_MS, a nearly-done one
+      // only SETTLE_MIN_MS, scaling between.
+      const floorMs = SETTLE_MIN_MS + left * (SETTLE_FULL_MS - SETTLE_MIN_MS);
+      // A slow release coasts longer so the strip carries on at the pace the
+      // finger set instead of being yanked the rest of the way.
+      const byVelocity =
+        releaseSpeed && releaseSpeed > 0
+          ? Math.min(SETTLE_MAX_MS, (SETTLE_DECEL * left * span) / releaseSpeed)
+          : 0;
+      const settle = {
+        ms: Math.round(Math.max(floorMs, byVelocity)),
+        ease: DRAG_SETTLE_EASE,
+      };
+      writeTurn(1, true, settle);
       if (turnTimer.current) window.clearTimeout(turnTimer.current);
-      turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+      turnTimer.current = window.setTimeout(() => finalize(d), settle.ms);
     },
-    [finalize],
+    [finalize, writeTurn],
   );
 
   const cancelPeek = useCallback(() => {
@@ -526,25 +734,32 @@ export const FixedPageViewer = forwardRef<
       window.clearTimeout(idleTimer.current);
       idleTimer.current = null;
     }
+    // Same hazard as in `commit` — a queued drag frame would undo the
+    // spring-back the moment it starts.
+    if (peekRaf.current) {
+      window.cancelAnimationFrame(peekRaf.current);
+      peekRaf.current = 0;
+    }
     turning.current = false;
     accum.current = 0;
-    peekDir.current = 0;
     if (reducedRef.current) {
+      peekDir.current = 0;
+      releaseTurn();
       setPeek(null);
       setPeekIdx(null);
-      setPeekAnimating(false);
       return;
     }
-    setPeekAnimating(true);
-    setPeek((p) => (p ? { ...p, reveal: 0 } : null));
+    // Spring back to 0 before clearing `peekDir`, which `writeTurn` reads.
+    writeTurn(0, true);
+    peekDir.current = 0;
     if (turnTimer.current) window.clearTimeout(turnTimer.current);
     turnTimer.current = window.setTimeout(() => {
       turnTimer.current = null;
+      releaseTurn();
       setPeek(null);
       setPeekIdx(null);
-      setPeekAnimating(false);
     }, CANCEL_MS);
-  }, []);
+  }, [writeTurn, releaseTurn]);
 
   const scheduleIdle = useCallback(() => {
     if (idleTimer.current) window.clearTimeout(idleTimer.current);
@@ -554,8 +769,8 @@ export const FixedPageViewer = forwardRef<
     }, IDLE_MS);
   }, [cancelPeek]);
 
-  // Push the accumulated overscroll into the overlay, coalesced to one state
-  // update per frame while the wheel streams events.
+  // Push the accumulated drag/overscroll into the layers, coalesced to one
+  // write per frame. No React state here — see `writeTurn`.
   const renderPeek = useCallback(() => {
     if (peekRaf.current) return;
     peekRaf.current = window.requestAnimationFrame(() => {
@@ -563,11 +778,10 @@ export const FixedPageViewer = forwardRef<
       const d = peekDir.current;
       if (!d) return;
       const reveal = Math.min(1, accum.current / TURN_PX);
-      setPeekAnimating(false);
-      setPeek({ dir: d, reveal });
+      writeTurn(reveal, false);
       if (reveal >= 1) commit(d);
     });
-  }, [commit]);
+  }, [commit, writeTurn]);
 
   // Programmatic turn (arrow keys / edge click): slide a full peek 0→1, swap.
   const animateTurn = useCallback(
@@ -582,21 +796,23 @@ export const FixedPageViewer = forwardRef<
         return;
       }
       turning.current = true;
-      setPeekReady(false);
+      turnLive.current = true;
       setPeekIdx(dest);
-      setPeekAnimating(false);
-      setPeek({ dir: d, reveal: 0 });
+      setPeek({ dir: d });
       window.requestAnimationFrame(() => {
-        // Flush the reveal:0 mount (WKWebView otherwise coalesces the mount +
-        // the reveal:1 change and the slide snaps — see two-frame gotcha).
+        // Seat the layers at reveal 0, flush, then animate to 1 on the next
+        // frame. WKWebView otherwise coalesces the two writes and the slide
+        // snaps — see the two-frame gotcha.
+        writeTurn(0, false);
         void peekHostRef.current?.offsetHeight;
-        setPeekAnimating(true);
-        setPeek({ dir: d, reveal: 1 });
-        if (turnTimer.current) window.clearTimeout(turnTimer.current);
-        turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+        window.requestAnimationFrame(() => {
+          writeTurn(1, true);
+          if (turnTimer.current) window.clearTimeout(turnTimer.current);
+          turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
+        });
       });
     },
-    [clampIdx, finalize],
+    [clampIdx, finalize, writeTurn],
   );
 
   const goToPage = useCallback(
@@ -685,8 +901,9 @@ export const FixedPageViewer = forwardRef<
         peekDir.current = d;
         peekNeighbor.current = dest;
         accum.current = Math.abs(e.deltaY);
-        setPeekReady(false);
+        turnLive.current = true;
         setPeekIdx(dest);
+        setPeek({ dir: d });
         renderPeek();
         scheduleIdle();
         return;
@@ -707,6 +924,166 @@ export const FixedPageViewer = forwardRef<
       el.style.cursor = "";
     };
   }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek]);
+
+  // Paged mode on touch: a horizontal drag pans the filmstrip 1:1 with the
+  // finger and snaps on release. The wheel path above never fires from a finger,
+  // so without this a touch device could only turn pages by tapping an edge.
+  // Vertical drags are left alone so the native scroller still pans a tall page.
+  useEffect(() => {
+    if (flow !== "paged") return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onStart = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (touch.current.pointerId !== -1) return; // a second finger — ignore
+      touch.current = {
+        x: e.clientX,
+        y: e.clientY,
+        t: e.timeStamp,
+        axis: "",
+        pointerId: e.pointerId,
+        samples: [{ x: e.clientX, t: e.timeStamp }],
+      };
+      suppressClick.current = false;
+      // A held finger must not be sprung back by the wheel path's idle timer.
+      if (idleTimer.current) {
+        window.clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const s = touch.current;
+      if (e.pointerId !== s.pointerId) return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+
+      if (s.axis === "") {
+        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+        s.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (s.axis === "x") {
+          // Once this is a page turn, pin the gesture to the scroller so the
+          // rest of it arrives here no matter what happens to the node under
+          // the finger. Not done at pointerdown: before the axis is known the
+          // gesture may still be a text selection, and capturing would steal it.
+          try {
+            el.setPointerCapture(e.pointerId);
+          } catch {
+            // capture refused — pointer events still hit-test to the scroller
+          }
+        }
+      }
+      if (s.axis === "y") return; // let the scroller pan a tall page
+
+      // Zoomed in: pan the page horizontally first, only turn at the edge. The
+      // same 4px tolerance the wheel path uses — a page fit to the viewport
+      // routinely overflows by a pixel or two, which must not read as "zoomed"
+      // and swallow every drag. RTL engines report scrollLeft negative, so
+      // compare on distance from the origin edge.
+      const TOL = 4;
+      const maxX = overflowX.current;
+      if (maxX > TOL) {
+        const from = Math.abs(el.scrollLeft);
+        const atEdge = dx > 0 ? from <= TOL : from >= maxX - TOL;
+        if (!atEdge) {
+          // We asked for `touch-action: pan-y` so the page-turn drag could
+          // claim horizontal gestures, which also means the compositor will
+          // NOT pan this axis for us. Drive it by hand, then rebase the origin
+          // so the next move is measured from here (and a subsequent turn
+          // starts from zero travel rather than inheriting the pan distance).
+          // Clamp against the layout-derived range for the same reason maxX is
+          // read from layout — scrollLeft's own bounds move during a turn.
+          const next = el.scrollLeft - dx;
+          el.scrollLeft = el.scrollLeft < 0 || next < 0
+            ? Math.max(-maxX, Math.min(0, next))
+            : Math.max(0, Math.min(maxX, next));
+          s.x = e.clientX;
+          s.samples.length = 0;
+          s.samples.push({ x: e.clientX, t: e.timeStamp });
+          return;
+        }
+      }
+      if (turning.current || peekHold.current != null) return; // still settling
+
+      // Dragging left advances an LTR book; RTL mirrors it.
+      const d = ((dx < 0 ? 1 : -1) * (dir === "rtl" ? -1 : 1)) as 1 | -1;
+      if (peekDir.current === 0) {
+        const dest = clampIdx(currentRef.current + d);
+        if (dest === currentRef.current) return; // first / last page
+        peekDir.current = d;
+        peekNeighbor.current = dest;
+        turnLive.current = true;
+        setPeekIdx(dest);
+        setPeek({ dir: d });
+      } else if (peekDir.current !== d) {
+        cancelPeek(); // dragged back past the origin
+        return;
+      }
+      suppressClick.current = true;
+      s.samples.push({ x: e.clientX, t: e.timeStamp });
+      while (s.samples.length > 2 && e.timeStamp - s.samples[0].t > VELOCITY_WINDOW_MS) {
+        s.samples.shift();
+      }
+      // renderPeek derives reveal as accum/TURN_PX, so expressing the travelled
+      // fraction of a viewport in that unit makes the strip follow the finger.
+      accum.current = Math.min(1, Math.abs(dx) / (el.clientWidth || 1)) * TURN_PX;
+      renderPeek();
+    };
+
+    const onEnd = (e: PointerEvent) => {
+      const s = touch.current;
+      if (e.pointerId !== s.pointerId) return;
+      const d = peekDir.current;
+      const wasDrag = s.axis === "x";
+      s.axis = "";
+      s.pointerId = -1;
+      if (el.hasPointerCapture?.(e.pointerId)) {
+        try {
+          el.releasePointerCapture(e.pointerId);
+        } catch {
+          // already released
+        }
+      }
+      if (!wasDrag || d === 0 || turning.current) return;
+      const dragged = accum.current / TURN_PX; // 0..1 of a viewport
+      // A flick only counts toward the turn it was already heading into —
+      // `d` is the direction the peek opened in, so require the tail velocity
+      // to point the same way before treating it as a throw.
+      const vx = releaseVelocity(s.samples);
+      const towards = dir === "rtl" ? d : -d; // strip travel sign for this turn
+      const flicked = Math.sign(vx) === Math.sign(towards) &&
+        Math.abs(vx) >= FLING_PX_MS;
+      s.samples = [];
+      if (dragged >= SNAP_FRACTION || flicked) commit(d, Math.abs(vx));
+      else cancelPeek();
+    };
+
+    // Pointer events rather than touch events, because a touch event is
+    // delivered to whatever node the gesture STARTED on for its whole life. A
+    // DOCX page is a DOM subtree that gets rebuilt on every render, so that
+    // node is routinely torn out mid-drag — and the touchend then dispatches
+    // into a detached tree and never reaches this listener. The drag was left
+    // half-open and the next swipe inherited it, which is why turning a DOCX
+    // page took two swipes. Pointer events hit-test each event on its own, and
+    // capture (taken at the axis lock above) pins the rest of the gesture here
+    // regardless.
+    //
+    // Passive on purpose: a non-passive move listener takes scrolling off the
+    // compositor, and nothing here cancels anything — `touch-action: pan-y`
+    // already stops the browser panning horizontally, so the page-turn drag is
+    // unopposed while vertical panning stays threaded.
+    el.addEventListener("pointerdown", onStart, { passive: true });
+    el.addEventListener("pointermove", onMove, { passive: true });
+    el.addEventListener("pointerup", onEnd, { passive: true });
+    el.addEventListener("pointercancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", onStart);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onEnd);
+      el.removeEventListener("pointercancel", onEnd);
+    };
+  }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit]);
 
   // Render the peeked page into the overlay host (once per turn — keyed on the
   // page index, not the reveal, so dragging doesn't re-render the pdf).
@@ -733,26 +1110,97 @@ export const FixedPageViewer = forwardRef<
       }
       const sc = (layout.displayW[peekIdx] || usableW) / s.w;
       await source.renderPage(peekIdx, host, sc);
-      if (!cancelled) setPeekReady(true);
     })();
     return () => {
       cancelled = true;
     };
   }, [peekIdx, layout, sizes, tint, source, usableW]);
 
-  // Drop the covering overlay once the base layer has painted the new page.
+  // Whether the page on screen has painted — the gate for warming its
+  // neighbours. A boolean, not the cumulative `rendered` Set, so it settles
+  // once per page instead of churning.
+  const currentRendered = rendered.has(current);
+
+  // Warm the neighbours. Rasterizing a PDF page costs tens of milliseconds on
+  // a phone, and doing it when the turn starts lands that cost squarely inside
+  // the animation — the single worst frame of a drag. Rendering ahead of time
+  // means `renderPage` finds the canvas already drawn at the right scale and
+  // just re-parents it (see PdfPageSource), which is free.
+  //
+  // Held off until the current page is on screen so it never competes with the
+  // page the reader is actually looking at, and skipped mid-turn because
+  // re-parenting a canvas would yank it out of the overlay using it.
   useEffect(() => {
-    const hold = peekHold.current;
-    if (hold == null || !rendered.has(hold)) return;
-    peekHold.current = null;
-    if (holdTimer.current) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-    setPeek(null);
-    setPeekIdx(null);
-    setPeekAnimating(false);
-  }, [rendered]);
+    if (flow !== "paged" || !currentRendered) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const { sizes: sz, layout: lay, usableW: uw } = prefetchInputs.current;
+      // Bias the window towards where the reader is going: the next pages
+      // first, then one behind for a change of mind.
+      const d = lastDir.current;
+      const wanted: number[] = [];
+      for (let n = 1; n <= PREFETCH_AHEAD; n++) wanted.push(current + n * d);
+      for (let n = 1; n <= PREFETCH_BEHIND; n++) wanted.push(current - n * d);
+      for (let k = 0; k < wanted.length; k++) {
+        const i = wanted[k];
+        const host = warmRefs.current[k];
+        if (cancelled || !host || i < 0 || i >= pageCount) continue;
+        if (turnLive.current) return; // a turn owns the canvases right now
+        let size = sz[i];
+        if (!size) {
+          try {
+            size = await source.pageSize(i);
+          } catch {
+            continue;
+          }
+          if (cancelled) return;
+        }
+        try {
+          await source.renderPage(i, host, (lay.displayW[i] || uw) / size.w);
+        } catch {
+          // a newer render superseded this one — nothing to do
+        }
+      }
+    }, PREFETCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [flow, current, currentRendered, pageCount, source]);
+
+  // Seat a freshly-mounted overlay at the turn's current position before the
+  // browser paints it. Without this it would appear at the settled spot for one
+  // frame and flash. Layout effect so it lands in the same commit as the mount.
+  useLayoutEffect(() => {
+    if (!peek || !turnLive.current) return;
+    writeTurn(revealRef.current, false);
+  }, [peek, writeTurn]);
+
+  // Drop the covering overlay the moment the base layer has the page in hand.
+  //
+  // The overlay exists so a turn never flashes a skeleton, but with canvas
+  // reuse the base render RE-PARENTS the bitmap out of the overlay — so once
+  // that has happened the overlay is an empty box sitting on top of a page
+  // that is ready to show, and holding it is the flash. It must be released on
+  // the render completing, not on some derived state changing: this used to
+  // key off the cumulative `rendered` Set, which does not change when the page
+  // has been visited before, so the drop fell through to the 500ms fallback
+  // timer and left an empty overlay covering the reader for half a second.
+  const dropOverlayFor = useCallback(
+    (page: number) => {
+      if (peekHold.current !== page) return;
+      peekHold.current = null;
+      if (holdTimer.current) {
+        window.clearTimeout(holdTimer.current);
+        holdTimer.current = null;
+      }
+      releaseTurn();
+      setPeek(null);
+      setPeekIdx(null);
+    },
+    [releaseTurn],
+  );
+  dropOverlayRef.current = dropOverlayFor;
 
   // ---- Floating scrollbar ---------------------------------------------------
 
@@ -847,6 +1295,11 @@ export const FixedPageViewer = forwardRef<
   }, []);
   const onPagedClick = useCallback(
     (e: React.MouseEvent) => {
+      if (suppressClick.current) {
+        // Trailing click of a drag that already turned the page.
+        suppressClick.current = false;
+        return;
+      }
       const edge = edgeSideAt(e.clientX);
       if (edge !== 0) flip(edge * (dir === "rtl" ? -1 : 1));
     },
@@ -867,13 +1320,24 @@ export const FixedPageViewer = forwardRef<
   ): React.CSSProperties => ({
     width: w,
     height: h,
-    borderRadius: 4,
-    border: `1px solid ${theme.rule}`,
-    boxShadow: "0 8px 30px rgba(0,0,0,0.22)",
+    // No outline on the page itself — the sheet of paper is the content, and a
+    // rule around it just reads as chrome. The drop shadow is what separates
+    // the page from the background, so it's kept wherever there's a gutter for
+    // it to fall into; full-bleed (fit: width) has none, so it's dropped too.
+    boxShadow: padX > 0 ? "0 8px 30px rgba(0,0,0,0.22)" : "none",
     backgroundColor: theme.chrome,
-    backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
-    backgroundSize: "200% 100%",
-    animation: animate && !reducedMotion ? "fx-shimmer 1.3s linear infinite" : "none",
+    // The shimmer is a loading affordance, so it is only ever painted while
+    // there is genuinely nothing to show. A page host is sized from the
+    // ESTIMATED layout while its canvas is sized from the real render, and the
+    // two disagree by a pixel or two — so an animated gradient underneath a
+    // mounted canvas leaks around the edges as a travelling band.
+    ...(animate && !reducedMotion
+      ? {
+          backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
+          backgroundSize: "200% 100%",
+          animation: "fx-shimmer 1.3s linear infinite",
+        }
+      : null),
   });
 
   const visible: number[] = [];
@@ -881,7 +1345,29 @@ export const FixedPageViewer = forwardRef<
     for (let i = win.start; i <= win.end; i++) visible.push(i);
   }
 
+  // Keep the touch handler's overflow measure in sync (see `overflowX`).
+  overflowX.current = Math.max(0, (layout.displayW[current] || 0) - contentW);
+
   const nIdx = peekIdx ?? 0;
+
+  // A turn pans across a filmstrip of pages: BOTH layers move as one, the
+  // incoming page entering from the edge while the outgoing leaves by exactly
+  // the distance the incoming covers. Nothing is dealt on top of a frozen
+  // page, so the motion reads as the viewport travelling along the strip.
+  //
+  // The strip runs sideways on mobile (matching the swipe) and vertically on
+  // desktop (matching the wheel) — see the `turnAxis` prop. `mirror` flips a
+  // horizontal strip for RTL books, where the next page sits to the left; the
+  // same mapping edge-taps already use. A vertical strip is never mirrored:
+  // "next" is down in both scripts. Once the base has swapped to the new page
+  // (`swapped`) it sits at rest; the overlay still covers at that point, so
+  // the reset is never visible.
+  const horizontal = axis === "x";
+  turnGeom.current = {
+    horizontal,
+    mirror: horizontal && dir === "rtl" ? -1 : 1,
+    span: (horizontal ? container.w : container.h) || 1,
+  };
 
   return (
     <div
@@ -890,16 +1376,16 @@ export const FixedPageViewer = forwardRef<
         position: "absolute",
         inset: 0,
         overflow: "hidden",
-        background: theme.bg,
-        // Confine the PDF duotone's mix-blend overlays to this subtree.
-        isolation: duotone ? "isolate" : undefined,
-        // DOCX cards read these; unset for PDF (which uses the duotone instead).
-        ...(docxColors
-          ? ({
-              ["--reading-ink"]: docxColors.ink,
-              ["--reading-paper"]: docxColors.paper,
-            } as React.CSSProperties)
-          : null),
+        // The surround sits a shade behind the page so the sheet reads as a
+        // sheet — three of the four themes give `paper` and `bg` the same
+        // value, so without this the page vanished into its background once
+        // the border and the fit-width gutter were gone.
+        background: surfaces.surround,
+        // DOCX cards paint themselves from these.
+        ...({
+          ["--reading-ink"]: theme.ink,
+          ["--reading-paper"]: surfaces.page,
+        } as React.CSSProperties),
       }}
     >
       <div
@@ -913,10 +1399,16 @@ export const FixedPageViewer = forwardRef<
           overflow: "auto",
           overscrollBehavior: "contain",
           background: theme.bg,
+          // Paged: claim horizontal gestures for the page-turn drag. Without
+          // this the compositor can take the pan before the touch handler sees
+          // it, and the strip never follows the finger.
+          touchAction: flow === "paged" ? "pan-y" : undefined,
           // Paged: a scrollable flex box. The page uses margin:auto, so it
           // centers when it fits and pins to the top-start (fully scrollable,
           // head never clipped) when it's taller / wider than the viewport.
-          ...(flow === "paged" ? { display: "flex", padding: PAD } : null),
+          ...(flow === "paged"
+            ? { display: "flex", padding: `${PAD}px ${padX}px` }
+            : null),
         }}
       >
         {flow === "scroll" ? (
@@ -934,22 +1426,6 @@ export const FixedPageViewer = forwardRef<
                 }}
               />
             ))}
-            {/* PDF duotone: two GPU-composited mix-blend overlays per rendered
-                page, sized/positioned to match its host. `lighten`/`darken`
-                (order + modes chosen by pdfDuotone for polarity) remap the
-                grayscaled page's darks→ink and lights→paper. */}
-            {duotone &&
-              visible.flatMap((i) =>
-                rendered.has(i)
-                  ? duotoneOverlays(`s${i}`, {
-                      position: "absolute",
-                      top: layout.top[i],
-                      left: `calc(50% - ${layout.displayW[i] / 2}px)`,
-                      width: layout.displayW[i],
-                      height: layout.displayH[i],
-                    })
-                  : [],
-              )}
           </div>
         ) : (
           <>
@@ -960,6 +1436,8 @@ export const FixedPageViewer = forwardRef<
                 margin: "auto",
                 flexShrink: 0,
                 filter: hostFilter,
+                // transform/transition intentionally absent — `writeTurn`
+                // owns them, and React must not fight it mid-turn.
                 ...skeletonStyle(
                   layout.displayW[current] || 0,
                   layout.displayH[current] || 0,
@@ -967,30 +1445,26 @@ export const FixedPageViewer = forwardRef<
                 ),
               }}
             />
-            {/* Paged duotone: mirror the host's flex-centered box exactly. */}
-            {duotone && rendered.has(current) && (
+            {/* Offscreen holders for the warmed neighbour pages. Kept out of
+                layout and out of the paint — they exist only to own a canvas
+                until a turn re-parents it. */}
+            {Array.from({ length: PREFETCH_AHEAD + PREFETCH_BEHIND }, (_, k) => (
               <div
+                key={`warm-${k}`}
+                ref={(el) => {
+                  warmRefs.current[k] = el;
+                }}
+                aria-hidden
                 style={{
                   position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  padding: PAD,
+                  width: 0,
+                  height: 0,
+                  overflow: "hidden",
+                  visibility: "hidden",
                   pointerEvents: "none",
                 }}
-              >
-                <div
-                  style={{
-                    position: "relative",
-                    margin: "auto",
-                    flexShrink: 0,
-                    width: layout.displayW[current] || 0,
-                    height: layout.displayH[current] || 0,
-                  }}
-                >
-                  {duotoneOverlays("p", { position: "absolute", inset: 0 })}
-                </div>
-              </div>
-            )}
+              />
+            ))}
           </>
         )}
       </div>
@@ -1007,18 +1481,28 @@ export const FixedPageViewer = forwardRef<
             pointerEvents: "none",
             zIndex: 5,
             display: "flex",
-            padding: PAD,
-            justifyContent: "center",
-            alignItems: peek.dir > 0 ? "flex-start" : "flex-end",
+            // Mirror the base scroller's box exactly (flex + PAD + margin:auto
+            // on the child) so the page lands where the settled page sits and
+            // the swap is invisible.
+            padding: `${PAD}px ${padX}px`,
           }}
         >
           <div
             ref={peekHostRef}
             style={{
+              margin: "auto",
               flexShrink: 0,
-              transform: `translateY(${peek.dir * (1 - peek.reveal) * (container.h || 1)}px)`,
-              transition:
-                peekAnimating && !reducedMotion ? `transform ${ANIM_MS}ms ${TURN_EASE}` : "none",
+              // transform/transition are written by `writeTurn`; a layout
+              // effect seats this at reveal 0 the moment it mounts so it never
+              // flashes at the settled position.
+              //
+              // Never shimmers. The canvas is re-parented into this host
+              // synchronously while any React state saying so would land frames
+              // later, so a shimmer here ran underneath a page that was already
+              // there — leaking round its edges for as long as 450ms. A turn is
+              // far too short to want a loading affordance anyway: an
+              // unrendered page reads better as a plain sheet than a flashing
+              // one.
               // The sliding peek page keeps the same tonal filter as the settled
               // pages (grayscale/invert for a color duotone; else the tint), so
               // it doesn't flash its original colors mid-turn. The colored blend
@@ -1027,7 +1511,7 @@ export const FixedPageViewer = forwardRef<
               ...skeletonStyle(
                 layout.displayW[nIdx] || 0,
                 layout.displayH[nIdx] || 0,
-                !peekReady,
+                false,
               ),
             }}
           />

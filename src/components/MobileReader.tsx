@@ -23,8 +23,8 @@ import {
   type HighlightColor,
   type Theme,
   type ThemeKey,
+  readingSurfaces,
 } from "../styles/tokens";
-import { resolveReadingColors } from "../reader/readingColors";
 import {
   anchorFromRange,
   type SelectionAnchor,
@@ -34,7 +34,7 @@ import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
-import type { ActivePanel, Tweaks } from "../types/reader";
+import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 
 // ---- Custom selection helpers --------------------------------------
 // We replace native text selection on mobile with a hand-rolled
@@ -207,6 +207,9 @@ interface Props {
   onDeleteHighlight: (id: string) => void;
   onUpdateHighlightNote: (id: string, note: string) => void;
   onJumpToHighlight: (h: Highlight) => void;
+  /** Volume ranges for the Contents sheet, when the book's origin knows them
+   *  (source novels). Omit for local EPUBs — Contents stays ungrouped. */
+  tocVolumes?: TocVolume[];
   /** Navigate to the top-level Settings page (from the quick-panel link). */
   onOpenFullSettings?: () => void;
   onBack: () => void;
@@ -244,6 +247,7 @@ export function MobileReader({
   onDeleteHighlight,
   onUpdateHighlightNote,
   onJumpToHighlight,
+  tocVolumes,
   onOpenFullSettings,
   onBack,
 }: Props) {
@@ -280,11 +284,11 @@ export function MobileReader({
   // element, so it never inherits from the chrome wrapper below.
   const rtl = isRtlLanguage(book.language);
 
-  // Effective reading colors: ink/paper overrides over the active theme.
-  // `contentTheme` recolors only the reading text; the paper color paints the
-  // scroll surface below. Chrome stays on `theme`.
-  const readingColors = resolveReadingColors(theme, t.inkColor, t.paperColor);
-  const contentTheme: Theme = { ...theme, ink: readingColors.ink };
+  // Reading colours come from the theme, full stop. The page sits on the
+  // theme's paper with the surround a shade behind it, so the sheet reads as a
+  // sheet without needing a border.
+  const surfaces = readingSurfaces(theme);
+  const contentTheme: Theme = theme;
 
   // Read by the scroll-to-resume effect so it knows whether the chrome is
   // currently occluding the top of the scroll area. Tracked via a ref so a
@@ -945,7 +949,7 @@ export function MobileReader({
         style={{
           flex: 1,
           overflow: "auto",
-          background: readingColors.paper,
+          background: surfaces.page,
           // Padding stays constant whether chrome is shown or hidden —
           // the chrome bars are absolutely positioned and act as a
           // translucent overlay (iOS Books / Kindle style). Swapping
@@ -1240,6 +1244,7 @@ export function MobileReader({
                 bookTitle={book.title}
                 chapters={book.chapters}
                 currentChapter={currentChapter}
+                volumes={tocVolumes}
                 onJump={(order) => {
                   onChapterChange(order);
                   setSheet(null);
