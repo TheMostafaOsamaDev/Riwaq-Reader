@@ -116,7 +116,36 @@ export function PanelShell({
       </div>
       <div
         data-sheet-scrollable="true"
-        style={{ flex: 1, overflowY: "auto", minHeight: 0 }}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          minHeight: 0,
+          // Clearance for the phone's gesture bar. The sheet is drawn
+          // edge-to-edge, so without this the last control sits under the
+          // system navigation — barely tappable, and a mis-tap leaves the app.
+          //
+          // The `max()` floor is load-bearing, not belt-and-braces: this
+          // WebView reports safe-area-inset-TOP correctly (52px) but
+          // safe-area-inset-BOTTOM as 0 despite the gesture bar being there,
+          // so relying on env() alone would add nothing on Android. Note the
+          // env() fallback argument cannot help either — a fallback applies
+          // only when env() is unsupported, not when it resolves to 0.
+          // `--sheet-overhang` is how far the enclosing bottom sheet hangs
+          // below the visible viewport at its current snap (MobileSheet sets
+          // it; it is 0/absent for docked desktop panels). Without it the tail
+          // of this list scrolls into the off-screen part of the sheet and the
+          // last control cannot be reached at all — which no amount of
+          // safe-area padding fixes, because the space it needs is below the
+          // screen rather than behind the system bar.
+          paddingBottom:
+            "calc(var(--sheet-overhang, 0px) + max(40px, calc(env(safe-area-inset-bottom, 0px) + 24px)))",
+          // Stop the inner list from chaining its overscroll into the sheet /
+          // page, which is what made hitting the end feel like a stutter.
+          // MobileSheet's drag handoff reads scrollTop in JS rather than
+          // relying on chaining, so drag-to-dismiss is unaffected.
+          overscrollBehaviorY: "contain",
+          WebkitOverflowScrolling: "touch",
+        }}
       >
         {children}
       </div>
