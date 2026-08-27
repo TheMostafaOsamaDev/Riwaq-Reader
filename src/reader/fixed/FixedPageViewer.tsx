@@ -83,8 +83,15 @@ const VELOCITY_WINDOW_MS = 100;
 // in the gaps *between* a drag's frames, so the rasterization lands mid-gesture
 // and costs more than it saves (measured: ~20 fewer frames delivered per drag).
 const PREFETCH_DELAY_MS = 80;
-// How many pages to keep warm on the side the reader is heading towards. Two
-// is enough to survive a burst of fast swipes without holding much memory.
+// How many pages to keep warm ahead of the reader. Three covers a burst of
+// quick swipes without the incoming page ever arriving unrasterized.
+//
+// Only ONE is warmed behind, deliberately. Pages you have just come from are
+// still in the source's cache — going back is a re-parent, not a render — so
+// spending rasterization on them would be work for nothing. The single one is
+// for the case where you land somewhere fresh (a jump from the contents) and
+// immediately turn back. Memory is bounded by the source's byte budget, not by
+// this number; see canvasBudgetBytes in PdfPageSource.
 const PREFETCH_AHEAD = 2;
 
 /** Signed px/ms across the sample ring, measured over the most recent
@@ -274,17 +281,16 @@ export const FixedPageViewer = forwardRef<
   const [win, setWin] = useState({ start: 0, end: Math.min(pageCount - 1, 2) });
   const [rendered, setRendered] = useState<Set<number>>(() => new Set());
 
-  // Paged turn state. `peek` mounts the incoming page as an overlay and its
-  // `reveal` (0→1) slides it in from the edge; `peekIdx` is the page shown in
-  // that overlay (stable across reveal, so the pdf only renders once per turn);
-  // `peekReady` flips true when that page has painted.
+  // Paged turn state. `peek` mounts the incoming page as an overlay and slides
+  // it in from the edge; `peekIdx` is the page shown there (stable for the whole
+  // turn, so the pdf only renders once).
+  //
   // Only the DISCRETE half of a turn lives in React: whether an overlay is up
   // and which way it is going. The continuous part — how far along the turn is
   // — is written straight to the DOM by `writeTurn`, because re-rendering this
   // component once per animation frame is what made a drag feel heavy.
   const [peek, setPeek] = useState<{ dir: 1 | -1 } | null>(null);
   const [peekIdx, setPeekIdx] = useState<number | null>(null);
-  const [peekReady, setPeekReady] = useState(false);
   // How far along the current turn is, 0..1. Mirrors what `writeTurn` last
   // pushed to the DOM; never triggers a render.
   const revealRef = useRef(0);
@@ -803,7 +809,6 @@ export const FixedPageViewer = forwardRef<
       }
       turning.current = true;
       turnLive.current = true;
-      setPeekReady(false);
       setPeekIdx(dest);
       setPeek({ dir: d });
       window.requestAnimationFrame(() => {
@@ -909,7 +914,6 @@ export const FixedPageViewer = forwardRef<
         peekNeighbor.current = dest;
         accum.current = Math.abs(e.deltaY);
         turnLive.current = true;
-        setPeekReady(false);
         setPeekIdx(dest);
         setPeek({ dir: d });
         renderPeek();
@@ -1011,7 +1015,6 @@ export const FixedPageViewer = forwardRef<
         peekDir.current = d;
         peekNeighbor.current = dest;
         turnLive.current = true;
-        setPeekReady(false);
         setPeekIdx(dest);
         setPeek({ dir: d });
       } else if (peekDir.current !== d) {
@@ -1091,7 +1094,6 @@ export const FixedPageViewer = forwardRef<
       }
       const sc = (layout.displayW[peekIdx] || usableW) / s.w;
       await source.renderPage(peekIdx, host, sc);
-      if (!cancelled) setPeekReady(true);
     })();
     return () => {
       cancelled = true;
@@ -1308,9 +1310,18 @@ export const FixedPageViewer = forwardRef<
     // it to fall into; full-bleed (fit: width) has none, so it's dropped too.
     boxShadow: padX > 0 ? "0 8px 30px rgba(0,0,0,0.22)" : "none",
     backgroundColor: theme.chrome,
-    backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
-    backgroundSize: "200% 100%",
-    animation: animate && !reducedMotion ? "fx-shimmer 1.3s linear infinite" : "none",
+    // The shimmer is a loading affordance, so it is only ever painted while
+    // there is genuinely nothing to show. A page host is sized from the
+    // ESTIMATED layout while its canvas is sized from the real render, and the
+    // two disagree by a pixel or two — so an animated gradient underneath a
+    // mounted canvas leaks around the edges as a travelling band.
+    ...(animate && !reducedMotion
+      ? {
+          backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
+          backgroundSize: "200% 100%",
+          animation: "fx-shimmer 1.3s linear infinite",
+        }
+      : null),
   });
 
   const visible: number[] = [];
@@ -1511,6 +1522,14 @@ export const FixedPageViewer = forwardRef<
               // transform/transition are written by `writeTurn`; a layout
               // effect seats this at reveal 0 the moment it mounts so it never
               // flashes at the settled position.
+              //
+              // Never shimmers. The canvas is re-parented into this host
+              // synchronously while any React state saying so would land frames
+              // later, so a shimmer here ran underneath a page that was already
+              // there — leaking round its edges for as long as 450ms. A turn is
+              // far too short to want a loading affordance anyway: an
+              // unrendered page reads better as a plain sheet than a flashing
+              // one.
               // The sliding peek page keeps the same tonal filter as the settled
               // pages (grayscale/invert for a color duotone; else the tint), so
               // it doesn't flash its original colors mid-turn. The colored blend
@@ -1519,7 +1538,7 @@ export const FixedPageViewer = forwardRef<
               ...skeletonStyle(
                 layout.displayW[nIdx] || 0,
                 layout.displayH[nIdx] || 0,
-                !peekReady,
+                false,
               ),
             }}
           />
