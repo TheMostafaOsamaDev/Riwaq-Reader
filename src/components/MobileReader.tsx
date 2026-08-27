@@ -911,6 +911,15 @@ export function MobileReader({
               {tr("reader.chapterOfTotal", { n: currentChapter + 1, total: chapterCount })}
             </div>
           </div>
+          {/* Mirrors the back button so the title block is centred on the BAR
+              rather than on the space left over beside the button. Without it
+              the flex row is asymmetric — button + gap on one side, nothing on
+              the other — and the title sits 22px off-centre (toward the left
+              in RTL, where the button is on the right). */}
+          <div
+            aria-hidden
+            style={{ width: 36, height: 36, flexShrink: 0, pointerEvents: "none" }}
+          />
         </div>
 
       <div
