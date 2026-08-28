@@ -79,8 +79,33 @@ function parseHeightPx(heightProp: string, viewportH: number): number {
     const px = parseFloat(trimmed.slice(0, -2));
     if (Number.isFinite(px)) return px;
   }
-  // Unknown unit — fall back to 82 % so the sheet still works.
+  // Anything else — `min(70%, 460px)`, `clamp(...)`, `40vh` — is resolved by
+  // the browser off a throwaway element, the same trick readSafeAreaInsetTop
+  // uses. A short form sheet wants "as tall as its content, but never more
+  // than N% of the screen", which no single unit can express.
+  const measured = measureCssLengthPx(trimmed, viewportH);
+  if (measured !== null) return measured;
+  // Unresolvable — fall back to 82 % so the sheet still works.
   return 0.82 * viewportH;
+}
+
+/** Resolve an arbitrary CSS length to pixels by letting the browser compute
+ *  it. Percentages resolve against a parent pinned to the viewport height so
+ *  `min(70%, 460px)` means what it looks like it means. Returns null when
+ *  there's no DOM or the value is not a valid length. */
+function measureCssLengthPx(value: string, viewportH: number): number | null {
+  if (typeof document === "undefined" || !document.body) return null;
+  const parent = document.createElement("div");
+  parent.style.cssText =
+    "position:absolute;visibility:hidden;pointer-events:none;left:-9999px;top:0;width:0;";
+  parent.style.height = `${viewportH}px`;
+  const probe = document.createElement("div");
+  probe.style.height = value;
+  parent.appendChild(probe);
+  document.body.appendChild(parent);
+  const px = probe.getBoundingClientRect().height;
+  document.body.removeChild(parent);
+  return Number.isFinite(px) && px > 0 ? px : null;
 }
 
 export function MobileSheet({

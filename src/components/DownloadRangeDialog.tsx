@@ -87,6 +87,14 @@ export function DownloadRangeDialog({
         open={open}
         onClose={onCancel}
         label={tr("downloads.range.title")}
+        // This form is two pickers and a count line. At the 82% default the
+        // sheet opened with a screen of empty space between the fields and the
+        // button; the cap keeps it near its content on tall phones while the
+        // percentage still bounds it on short ones. The px figure is sized for
+        // the tallest normal case — the count line wrapping to two lines once
+        // the "(N already on disk)" suffix appears. Longer content scrolls in
+        // the body, and dragging up to full still works.
+        height="min(80%, 500px)"
       >
         {content}
       </MobileSheet>
@@ -401,19 +409,26 @@ function DownloadRangeContent({
   );
 
   if (isMobile) {
-    // One scrollable column filling the sheet. Actions live inline at the
-    // end (a bottom-pinned footer would sit below the sheet's default snap).
+    // Header / scrolling body / pinned footer.
+    //
+    // The action button used to be the last inline child of one big scroll
+    // column. MobileSheet renders the sheet at FULL height and translates it
+    // down to reach a partial snap, so that column's tail — the button —
+    // physically sat below the screen: the user had to drag the sheet to full
+    // before they could queue anything. Reserving `--sheet-overhang` (the
+    // published distance the sheet hangs off-screen at the current snap) on
+    // this container puts the footer exactly on the visible bottom edge at
+    // every snap, so the primary action is always in reach.
     return (
       <div
         role="dialog"
         aria-modal="true"
-        data-sheet-scrollable
-        className="leaflet-scroll-hidden"
         style={{
           height: "100%",
-          overflowY: "auto",
           display: "flex",
           flexDirection: "column",
+          boxSizing: "border-box",
+          paddingBottom: "var(--sheet-overhang, 0px)",
           fontFamily: FONT_STACKS.sans,
           color: theme.ink,
         }}
@@ -463,17 +478,35 @@ function DownloadRangeContent({
           </button>
         </div>
         <div
+          data-sheet-scrollable
+          className="leaflet-scroll-hidden"
           style={{
             padding: "14px 18px 8px",
             display: "flex",
             flexDirection: "column",
             gap: 14,
+            // flex + minHeight:0 is what keeps this the ONLY scrolling region:
+            // it absorbs the leftover height and scrolls internally instead of
+            // pushing the footer past the sheet's visible edge. MobileSheet's
+            // drag handoff reads scrollTop off [data-sheet-scrollable], so the
+            // attribute has to travel with the overflow.
             flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehaviorY: "contain",
           }}
         >
           {body}
         </div>
-        <div style={{ padding: "10px 18px 20px" }}>
+        <div
+          style={{
+            // The env() floor is deliberate: this WebView reports
+            // safe-area-inset-bottom as 0 on Android even with a gesture bar
+            // present, so max() supplies the clearance env() won't.
+            padding: "10px 18px max(20px, env(safe-area-inset-bottom, 0px))",
+            flexShrink: 0,
+          }}
+        >
           <Button
             theme={theme}
             variant="primary"
