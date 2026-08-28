@@ -141,7 +141,8 @@ export function createCeneleSource(host: SourceHost): Source {
 
     async getNovel(url) {
       host.log("info", `getNovel(${url})`);
-      const resp = await host.fetch(url);
+      const resp = await host.sessionFetch(url);
+      if (isChallengeResponse(resp)) throw challengeError(url);
       const doc = parseHtmlDocument(resp.text);
       const parsed = parseNovelPage(doc, url);
 
@@ -228,7 +229,8 @@ export function createCeneleSource(host: SourceHost): Source {
         // can't recover the volume's startId without the meta_only
         // call. Do both, then proceed.
         host.log("debug", "getVolumeChapters: cache miss, refetching");
-        const resp = await host.fetch(novelUrl);
+        const resp = await host.sessionFetch(novelUrl);
+        if (isChallengeResponse(resp)) throw challengeError(novelUrl);
         const ajax = extractNovelConfig(resp.text);
         if (!ajax) {
           throw new Error(
@@ -346,7 +348,8 @@ export function createCeneleSource(host: SourceHost): Source {
 
     async getChapterContent(chapter) {
       host.log("debug", `getChapterContent(#${chapter.id} ${chapter.title})`);
-      const resp = await host.fetch(chapter.url);
+      const resp = await host.sessionFetch(chapter.url);
+      if (isChallengeResponse(resp)) throw challengeError(chapter.url);
       const doc = parseHtmlDocument(resp.text);
       return extractChapterLines(doc);
     },
@@ -379,6 +382,56 @@ export function extractNovelConfig(html: string): NovelConfig | null {
   } catch {
     return null;
   }
+}
+
+// ── Cloudflare challenge detection ─────────────────────────────────────────
+//
+// Since 2026-08-28 cenele.com serves a Cloudflare *managed challenge* for
+// every `/cont/*` URL — both the novel index and the chapter pages. The
+// response is HTTP 403 with `cf-mitigated: challenge` and a fixed
+// "Just a moment..." interstitial body; none of the site's own markup is
+// in it.
+//
+// The homepage, the `/?s=…&post_type=wp-manga` search results and
+// `wp-admin/admin-ajax.php` are NOT challenged, which is exactly why the
+// store grid still populates and only opening a novel fails.
+//
+// We detect this explicitly because the interstitial reaches
+// `parseNovelPage` as a config-less document, and its "the site layout may
+// have changed" error sends whoever reads it chasing a selector regression
+// that does not exist.
+
+export interface MaybeChallenge {
+  status: number;
+  /** Response headers with lowercased keys, as `host.fetch` returns them. */
+  headers: Record<string, string>;
+  text: string;
+}
+
+/** True when a response is Cloudflare's anti-bot interstitial rather than
+ *  the page we asked for. */
+export function isChallengeResponse(resp: MaybeChallenge): boolean {
+  if ((resp.headers["cf-mitigated"] || "").toLowerCase() === "challenge") {
+    return true;
+  }
+  // Header-less fallback: the interstitial is identifiable by its fixed
+  // title plus the challenge-platform origin it must load. Both are
+  // required so a site page that merely 403s is not mistaken for one.
+  return (
+    (resp.status === 403 || resp.status === 503) &&
+    /<title>\s*Just a moment/i.test(resp.text) &&
+    resp.text.includes("challenges.cloudflare.com")
+  );
+}
+
+/** Message for a challenged fetch. Names the real cause and the fact that
+ *  it is site-side, so the failure is not read as a parser bug. */
+export function challengeError(pageUrl: string): Error {
+  return new Error(
+    `Cenele is blocking automated access to ${pageUrl} (Cloudflare ` +
+      `challenge). This is a site-side anti-bot measure on /cont/ pages, ` +
+      `not a change to the page layout.`,
+  );
 }
 
 function asIdString(v: unknown): string | null {
@@ -479,7 +532,11 @@ async function fetchVolumeMeta(
     manga_id: mangaId,
     meta_only: "1",
   }).toString();
-  const resp = await host.fetch(AJAX_URL, {
+  // Through the session too, not because admin-ajax.php is challenged
+  // (it isn't) but because the nonce and cookies we send were minted for
+  // the session webview's jar. Splitting them across two clients is how
+  // you get intermittent 403s from WordPress.
+  const resp = await host.sessionFetch(AJAX_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -513,7 +570,8 @@ async function fetchVolumeChapters(
       page: String(page),
       per_page: String(CHAPTERS_PER_PAGE),
     }).toString();
-    const resp = await host.fetch(AJAX_URL, {
+    // Session transport, for the nonce/cookie-coherence reason above.
+    const resp = await host.sessionFetch(AJAX_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
@@ -613,7 +671,11 @@ async function callChapterSearch(
     query,
     limit: "80",
   }).toString();
-  const resp = await host.fetch(AJAX_URL, {
+  // Through the session too, not because admin-ajax.php is challenged
+  // (it isn't) but because the nonce and cookies we send were minted for
+  // the session webview's jar. Splitting them across two clients is how
+  // you get intermittent 403s from WordPress.
+  const resp = await host.sessionFetch(AJAX_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,

@@ -38,6 +38,10 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 url = "2"
 urlencoding = "2"
+# Session-webview bridge: page-side payloads cross the document.title
+# channel base64-encoded (see sources.rs), so they survive a channel that
+# only carries text.
+base64 = "0.22"
 tokio = { version = "1", features = ["time", "macros", "rt-multi-thread", "sync"] }
 
 # Android-only: JNI bridge into the Kotlin DownloadNotifier class (see

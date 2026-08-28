@@ -32,6 +32,18 @@ export function createHost(sourceId: string): SourceHost {
       return resp as FetchResponse;
     },
 
+    async sessionFetch(url, options) {
+      const resp = await invoke<TauriFetchResponse>("source_session_fetch", {
+        input: {
+          url,
+          ...normalizeFetchOptions(options),
+          revealAfterMs: options?.revealAfterMs,
+          clearTimeoutMs: options?.clearTimeoutMs,
+        },
+      });
+      return resp as FetchResponse;
+    },
+
     async fetchBytes(url, options) {
       const bytes = await invoke<number[]>("source_fetch_bytes", {
         url,

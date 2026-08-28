@@ -2039,6 +2039,7 @@ dependencies = [
 name = "leaflet"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "jni",
  "ndk-context",
  "reqwest 0.12.28",

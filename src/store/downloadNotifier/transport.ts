@@ -28,6 +28,11 @@ export const DOWNLOAD_NOTIFICATION_ID = 1001;
  *  notification (id 1001), which the service removes on stop. */
 export const DOWNLOAD_SUMMARY_ID = 1002;
 
+/** Separate id again for the "verify your browser again" prompt. It must
+ *  outlive the progress notification and must not replace the terminal
+ *  summary, since both can be on screen at once when a batch stalls. */
+export const DOWNLOAD_REAUTH_ID = 1003;
+
 export interface NotificationPayload {
   /** Stable id. Defaults to DOWNLOAD_NOTIFICATION_ID. */
   id?: number;

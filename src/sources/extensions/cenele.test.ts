@@ -2,7 +2,13 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { extractNovelConfig, parseNovelPage, searchUrl, parseSearchPage } from "./cenele";
+import {
+  extractNovelConfig,
+  isChallengeResponse,
+  parseNovelPage,
+  searchUrl,
+  parseSearchPage,
+} from "./cenele";
 
 const novelHtml = readFileSync(
   join(__dirname, "__fixtures__/cenele-novel.html"),
@@ -180,5 +186,47 @@ describe("parseSearchPage", () => {
       new DOMParser().parseFromString(searchHtml, "text/html"), "سيد", 2);
     expect(r.query).toBe("سيد");
     expect(r.page).toBe(2);
+  });
+});
+
+describe("isChallengeResponse", () => {
+  // Captured 2026-08-28 from GET https://cenele.com/cont/kingm-bline/ —
+  // cenele put a Cloudflare managed challenge on /cont/* while leaving
+  // the homepage, /?s=… search and admin-ajax.php open.
+  const interstitial =
+    `<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title>` +
+    `<meta http-equiv="content-security-policy" content="script-src 'nonce-x' ` +
+    `https://challenges.cloudflare.com"></head><body></body></html>`;
+
+  it("detects the challenge from the cf-mitigated header", () => {
+    expect(
+      isChallengeResponse({
+        status: 403,
+        headers: { "cf-mitigated": "challenge", server: "cloudflare" },
+        text: interstitial,
+      }),
+    ).toBe(true);
+  });
+
+  it("detects the interstitial body when the header is absent", () => {
+    expect(
+      isChallengeResponse({ status: 403, headers: {}, text: interstitial }),
+    ).toBe(true);
+  });
+
+  it("does not flag a normal novel page", () => {
+    expect(
+      isChallengeResponse({ status: 200, headers: {}, text: novelHtml }),
+    ).toBe(false);
+  });
+
+  it("does not flag an ordinary 404 from the site itself", () => {
+    expect(
+      isChallengeResponse({
+        status: 404,
+        headers: { server: "cloudflare" },
+        text: "<html><title>Page not found</title></html>",
+      }),
+    ).toBe(false);
   });
 });

@@ -509,6 +509,9 @@ export const ar: Messages = {
   "error.sourceNotInstalledDownload":
     "المصدر “{sourceId}” غير مثبَّت — يتعذّر تنزيل هذا الفصل.",
 
+  "status.notif.reauthTitle": "مطلوب التحقق",
+  "status.notif.reauthBody":
+    "يحتاج {host} إلى إكمال فحص المتصفح مرة أخرى. افتح التطبيق وأعد فتح الرواية لمتابعة التنزيل.",
   "status.notif.channelName": "التنزيلات",
   "status.notif.channelDescription": "تنزيلات الفصول وتحويلات الكتب غير المتصلة",
   "status.notif.convertingTitle": "جارٍ تحويل {novel}",
