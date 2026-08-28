@@ -57,6 +57,26 @@ Outputs:
 
 You'll need to sign release builds. Tauri honours `keystore.properties` in `src-tauri/gen/android/` — see the Tauri mobile docs.
 
+## Launcher icon
+
+Android draws the launcher icon from an adaptive icon: a background layer (a flat
+cream, `values/ic_launcher_background.xml`) and a foreground layer
+(`mipmap-*/ic_launcher_foreground.png`). Both layers are 108dp, but the launcher
+only shows the central 72dp and only guarantees the middle 66dp circle — the rest
+is headroom for the mask shape and for parallax.
+
+`pnpm tauri icon` scales the source across the whole 108dp canvas, which leaves no
+headroom at all, so every mask clips the phoenix's wingtips. After running it,
+rebuild the foreground with its own padding:
+
+```bash
+./scripts/android-launcher-icon.sh
+```
+
+The script needs ImageMagick (`brew install imagemagick`). The legacy
+pre-API-26 bitmaps (`ic_launcher.png`, `ic_launcher_round.png`) are drawn
+unmasked and `tauri icon` already pads them, so they're left alone.
+
 ## Permissions
 
 Leaflet needs read access to pick EPUBs:
