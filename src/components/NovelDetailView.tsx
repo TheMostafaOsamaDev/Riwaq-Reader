@@ -65,6 +65,8 @@ import { Hero } from "./Hero";
 import { SourceBadge } from "./SourceBadge";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "./Skeleton";
 import { SaveAsOfflineBookDialog } from "./SaveAsOfflineBookDialog";
+import { AnimatedDialog } from "./AnimatedDialog";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ShelfChecklist } from "./ShelfChecklist";
 import type { Shelf } from "../store/shelves";
 
@@ -1600,6 +1602,18 @@ function VolumesAccordion({
   const [downloadingVol, setDownloadingVol] = useState<Set<number>>(
     () => new Set(),
   );
+  /** Volume awaiting the user's go-ahead. One tap on the volume's download
+   *  icon used to queue every chapter in it immediately — dozens of network
+   *  fetches from a 42px target sitting right next to the expand/collapse
+   *  row, with no way to take it back. The icon now only stages the intent;
+   *  `downloadVolume` runs on confirm. `pending`/`skipped` are captured at
+   *  tap time so the dialog can state exactly what it is about to queue. */
+  const [volumeConfirm, setVolumeConfirm] = useState<{
+    id: number;
+    title: string;
+    pending: number;
+    skipped: number;
+  } | null>(null);
   const downloadVolume = useCallback(
     async (volumeId: number) => {
       if (!libraryEntryId) return;
@@ -1835,9 +1849,16 @@ function VolumesAccordion({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!volAllDownloaded && !volDownloading) {
-                      void downloadVolume(v.id);
-                    }
+                    if (volAllDownloaded || volDownloading) return;
+                    // A lazy volume has no chapter list yet, so volPending is
+                    // the source's reported count and nothing is known to be
+                    // on disk — the fetch happens after the user confirms.
+                    setVolumeConfirm({
+                      id: v.id,
+                      title: v.title,
+                      pending: volPending,
+                      skipped: volLoaded ? count - volPending : 0,
+                    });
                   }}
                   disabled={volAllDownloaded || volDownloading}
                   title={
@@ -2026,6 +2047,55 @@ function VolumesAccordion({
           </div>
         );
       })}
+      {/* AnimatedDialog stays mounted and takes `open` as a prop — it keeps the
+          last children around to play the exit animation. Unmounting the whole
+          thing on cancel would snap it off-screen instead. */}
+      <AnimatedDialog
+        open={volumeConfirm !== null}
+        onScrimClick={() => setVolumeConfirm(null)}
+        zIndex={9700}
+      >
+        {volumeConfirm && (
+          <ConfirmDialog
+              theme={theme}
+              title={tr("novel.downloadVolumeConfirmTitle")}
+              // Queuing downloads is additive and cancellable from the queue
+              // page, so this is a primary action, not a destructive one.
+              confirmVariant="primary"
+              confirmLabel={tr("downloads.range.queueButton", {
+                n: volumeConfirm.pending,
+              })}
+              cancelLabel={tr("common.cancel")}
+              message={
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                    {volumeConfirm.title}
+                  </div>
+                  {tr(
+                    volumeConfirm.pending === 1
+                      ? "downloads.range.queueCountOne"
+                      : "downloads.range.queueCountOther",
+                    {
+                      n: volumeConfirm.pending,
+                      extra:
+                        volumeConfirm.skipped > 0
+                          ? tr("downloads.range.alreadyOnDisk", {
+                              n: volumeConfirm.skipped,
+                            })
+                          : "",
+                    },
+                  )}
+                </>
+              }
+              onConfirm={() => {
+                const id = volumeConfirm.id;
+                setVolumeConfirm(null);
+                void downloadVolume(id);
+              }}
+              onCancel={() => setVolumeConfirm(null)}
+          />
+        )}
+      </AnimatedDialog>
     </div>
   );
 }

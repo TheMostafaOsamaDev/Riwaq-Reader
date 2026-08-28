@@ -450,6 +450,7 @@ export const ar: Messages = {
   "novel.downloadingClickCancel": "جارٍ التنزيل ({pct}٪) — اضغط للإلغاء",
   "novel.downloadChapter": "تنزيل الفصل",
   "novel.downloadVolume": "تنزيل المجلد",
+  "novel.downloadVolumeConfirmTitle": "تنزيل هذا المجلد؟",
   "novel.downloadingVolume": "جارٍ إضافة المجلد…",
   "novel.volumeAllDownloaded": "تم تنزيل كل الفصول",
   "novel.volumeFallback": "المجلد {n}",

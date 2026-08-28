@@ -50,3 +50,18 @@
 -keepclasseswithmembernames class com.leaflet.reader.MainActivity {
     native <methods>;
 }
+
+# Rust -> Kotlin: TaskService.start(Context) / stop(Context), the @JvmStatic
+# companion methods that drive the foreground keep-alive service. The class
+# itself survives via the manifest's <service> entry, but these two statics have
+# no bytecode call sites — JS -> Rust -> JNI is their only caller — so R8 pruned
+# them from release builds. Every download then died on
+# `NoSuchMethodError: no static method "...TaskService;.start(...)"`, which took
+# the whole process with it.
+#
+# Signatures MUST mirror the JNI descriptor in notify.rs
+# (`(Landroid/content/Context;)V`); see the MainActivity note above.
+-keepclassmembers class com.leaflet.reader.TaskService {
+    public static void start(android.content.Context);
+    public static void stop(android.content.Context);
+}
