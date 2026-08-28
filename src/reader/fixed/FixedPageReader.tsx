@@ -46,7 +46,8 @@ import type { DocxSelectionAnchor } from "./docxHighlight";
 import { SideSheet } from "../../components/SideSheet";
 import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
-import { ReaderScrubBar } from "../chrome/ReaderScrubBar";
+import { ReaderProgressBar } from "../chrome/ReaderProgressBar";
+import { ReaderTabBar } from "../chrome/ReaderTabBar";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
 import { SettingsPanel } from "../../panels/SettingsPanel";
 import { useI18n } from "../../i18n/useI18n";
@@ -116,6 +117,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
 
   const [source, setSource] = useState<FixedPageSource | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  // Same affordance the EPUB reader has: the scrubber can be folded away when
+  // you want the page and nothing else.
+  const [showProgress, setShowProgress] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [progress, setProgress] = useState<{ page: number; fraction: number; label: string }>(
     () => ({ page: state.currentPage ?? 0, fraction: 0, label: "" }),
@@ -297,10 +301,67 @@ export function FixedPageReader(props: FixedPageReaderProps) {
 
   const title = book.title || tr("common.untitled");
   const total = sourcePageCount(source);
-  const pageCounter =
-    locale === "ar"
-      ? `صفحة ${fmt(progress.page + 1)} من ${fmt(total)}`
-      : `Page ${progress.page + 1} of ${total}`;
+  const pageCounterFor = useCallback(
+    (page: number) =>
+      locale === "ar"
+        ? `صفحة ${fmt(page + 1)} من ${fmt(total)}`
+        : `Page ${page + 1} of ${total}`,
+    [locale, fmt, total],
+  );
+  const pageCounter = pageCounterFor(progress.page);
+
+  // The progress bar runs on its own fraction, not `progress.fraction`.
+  //
+  // The viewer reports (page + 1) / pageCount, which is the right shape for the
+  // top bar's fill but is NOT invertible: feeding it back through a seek lands
+  // a page late. The bar needs a position it can round-trip — page 0 at the
+  // start, the last page at the end — so that the counter under a dragged
+  // handle names the page the release will actually go to.
+  const pageAt = useCallback(
+    (f: number) => Math.min(total - 1, Math.max(0, Math.round(f * Math.max(0, total - 1)))),
+    [total],
+  );
+  const barFraction = total > 1 ? progress.page / (total - 1) : 0;
+  // Landmarks come from the file's own outline. Top level only — a deep PDF
+  // outline would stipple the whole track and say nothing.
+  const barTicks = useMemo(() => {
+    if (!source || total <= 1) return [];
+    return source.outline
+      .filter((e) => e.level === 0 && e.dest.fmt === "page")
+      .map((e) => (e.dest as { page: number }).page / (total - 1))
+      .filter((f) => f > 0 && f < 1);
+  }, [source, total]);
+
+  const progressBar = (
+    <ReaderProgressBar
+      theme={theme}
+      rtl={uiDir === "rtl"}
+      fraction={barFraction}
+      formatPct={(f) => `${fmt(Math.round(f * 100))}%`}
+      formatLabel={(f) => pageCounterFor(pageAt(f))}
+      ticks={barTicks}
+      prevLabel={locale === "ar" ? "الصفحة السابقة" : "Previous page"}
+      nextLabel={locale === "ar" ? "الصفحة التالية" : "Next page"}
+      onPrev={() => viewerRef.current?.goToPage(Math.max(0, progress.page - 1))}
+      onNext={() =>
+        viewerRef.current?.goToPage(Math.min(total - 1, progress.page + 1))
+      }
+      prevDisabled={progress.page <= 0}
+      nextDisabled={progress.page >= total - 1}
+      // No `onScrub`: rasterising every page the finger sweeps past would
+      // thrash the renderer for pages nobody looks at. The handle and the
+      // counter preview the target; release commits the one jump.
+      onSeek={(f) => viewerRef.current?.goToPage(pageAt(f))}
+      ariaLabel={tr("reader.readingProgress")}
+      valueMin={1}
+      valueMax={Math.max(1, total)}
+      valueNow={progress.page + 1}
+      valueText={progress.label || pageCounter}
+      reducedMotion={reduced}
+      labelWidth={isMobile ? 0 : 200}
+      padding={isMobile ? "0 6px 6px" : "6px 80px 14px"}
+    />
+  );
 
   return (
     <div
@@ -325,6 +386,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         progressFraction={progress.fraction}
         fillRtl={contentDir === "rtl"}
         navButtons={
+          isMobile ? undefined : (
           <>
             <ReaderIconButton
               theme={theme}
@@ -341,8 +403,10 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               active={panel === "highlights"}
             />
           </>
+          )
         }
         trailing={
+          isMobile ? undefined : (
           <>
             <ReaderIconButton
               theme={theme}
@@ -359,6 +423,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               active={panel === "settings"}
             />
           </>
+          )
         }
       />
 
@@ -433,30 +498,33 @@ export function FixedPageReader(props: FixedPageReaderProps) {
       </div>
 
       {/* bottom scrubber — shared with the reflow reader (seeks pages) */}
-      <ReaderScrubBar
-        theme={theme}
-        rtl={uiDir === "rtl"}
-        fraction={progress.fraction}
-        pctLabel={`${Math.round(progress.fraction * 100)}%`}
-        label={title}
-        prevLabel={locale === "ar" ? "الصفحة السابقة" : "Previous page"}
-        nextLabel={locale === "ar" ? "الصفحة التالية" : "Next page"}
-        onPrev={() => viewerRef.current?.goToPage(Math.max(0, progress.page - 1))}
-        onNext={() =>
-          viewerRef.current?.goToPage(Math.min(total - 1, progress.page + 1))
-        }
-        prevDisabled={progress.page <= 0}
-        nextDisabled={progress.page >= total - 1}
-        onSeek={(f) =>
-          viewerRef.current?.goToPage(Math.round(f * Math.max(0, total - 1)))
-        }
-        ariaLabel={tr("reader.readingProgress")}
-        valueMin={1}
-        valueMax={Math.max(1, total)}
-        valueNow={progress.page + 1}
-        valueText={progress.label || pageCounter}
-        padding={isMobile ? "10px 14px 14px" : "14px 80px 22px"}
-      />
+      {/* Bottom chrome. On a phone the panel tabs live down here with the
+          scrubber — the EPUB reader has always put them within thumb reach and
+          the fixed-page reader kept its four in the top bar, which is the main
+          reason the two formats felt like different readers. Desktop keeps the
+          tabs up top, where there is room and no thumb involved. */}
+      {isMobile ? (
+        <div
+          style={{
+            background: theme.chrome,
+            borderTop: `0.5px solid ${theme.ruleStrong}`,
+            color: theme.chromeInk,
+            padding: "8px 14px calc(env(safe-area-inset-bottom, 0px) + 6px)",
+            flexShrink: 0,
+          }}
+        >
+          {showProgress && progressBar}
+          <ReaderTabBar
+            theme={theme}
+            active={panel}
+            onOpen={openPanel}
+            showProgress={showProgress}
+            onToggleProgress={() => setShowProgress((v) => !v)}
+          />
+        </div>
+      ) : (
+        progressBar
+      )}
 
       {/* Mobile panels: the same bottom sheet the reflow reader raises, at the
           same default snap. It stays mounted while it animates out, so `open`

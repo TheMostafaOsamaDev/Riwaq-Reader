@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SideSheet } from "./SideSheet";
 import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
-import { ReaderScrubBar } from "../reader/chrome/ReaderScrubBar";
+import { MAX_TICKS, ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
 import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
@@ -30,7 +30,7 @@ import {
   type ThemeKey,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
-import type { Tr } from "../i18n";
+import { formatNum, type Tr } from "../i18n";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
@@ -135,7 +135,7 @@ export function DesktopReader({
   onOpenFullSettings,
   onBack,
 }: Props) {
-  const { tr, dir } = useI18n();
+  const { tr, dir, locale } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const mode = t.readingMode;
   const isPaginated = mode !== "scroll";
@@ -375,9 +375,6 @@ export function DesktopReader({
   onParagraphChangeRef.current = handleParagraphChange;
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
-  const pct = chapterCount > 0
-    ? Math.round(((currentChapter + 1) / chapterCount) * 100)
-    : 0;
   const toggle = (panel: ActivePanel) =>
     setActivePanel(activePanel === panel ? null : panel);
 
@@ -717,11 +714,17 @@ export function DesktopReader({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Chapter ticks on the bottom progress bar — skip current position so
-  // the scrubber sits cleanly on top.
+  // Chapter landmarks on the bottom progress bar. The bar's fraction is
+  // `chapter / (count - 1)` — chapter 0 at the start, the last chapter at the
+  // end — so it round-trips through a seek and a landmark sits exactly where
+  // its chapter begins. The first and last are the track's own ends, so they
+  // are dropped rather than drawn under the caps.
+  const chapterAt = (f: number) =>
+    Math.min(chapterCount - 1, Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))));
+  const barFraction = chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
   const ticks =
-    chapterCount > 1
-      ? Array.from({ length: chapterCount - 1 }, (_, i) => (i + 1) / chapterCount)
+    chapterCount > 2 && chapterCount - 2 <= MAX_TICKS
+      ? Array.from({ length: chapterCount - 2 }, (_, i) => (i + 1) / (chapterCount - 1))
       : [];
 
   // Two mutually-exclusive popovers:
@@ -1181,31 +1184,39 @@ export function DesktopReader({
               : undefined
           }
         >
-        <ReaderScrubBar
-        theme={theme}
-        rtl={dir === "rtl"}
-        fraction={(currentChapter + 1) / Math.max(1, chapterCount)}
-        pctLabel={`${pct}%`}
-        label={chapter.title}
-        ticks={ticks}
-        prevLabel={tr("reader.prevChapter")}
-        nextLabel={tr("reader.nextChapter")}
-        onPrev={prevChapter}
-        onNext={nextChapter}
-        prevDisabled={currentChapter === 0}
-        nextDisabled={currentChapter >= chapterCount - 1}
-        onSeek={(f) => {
-          const next = Math.min(
-            chapterCount - 1,
-            Math.floor(f * chapterCount),
-          );
-          if (next !== currentChapter) onChapterChange(next);
-        }}
-        ariaLabel={tr("reader.chapterProgress")}
-        valueMin={1}
-        valueMax={Math.max(1, chapterCount)}
-        valueNow={currentChapter + 1}
-        valueText={chapter.title}
+        <ReaderProgressBar
+          theme={theme}
+          rtl={dir === "rtl"}
+          fraction={barFraction}
+          formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
+          formatLabel={(f) =>
+            tr("reader.chapterDash", {
+              n: formatNum(chapterAt(f) + 1, locale),
+              title: book.chapters[chapterAt(f)]?.title ?? "",
+            })
+          }
+          ticks={ticks}
+          prevLabel={tr("reader.prevChapter")}
+          nextLabel={tr("reader.nextChapter")}
+          onPrev={prevChapter}
+          onNext={nextChapter}
+          prevDisabled={currentChapter === 0}
+          nextDisabled={currentChapter >= chapterCount - 1}
+          // No `onScrub`: a chapter change is a load, and firing one per
+          // pointermove made the reader thrash through every chapter the finger
+          // crossed. The handle previews; release commits the one jump.
+          onSeek={(f) => {
+            const next = chapterAt(f);
+            if (next !== currentChapter) onChapterChange(next);
+          }}
+          ariaLabel={tr("reader.chapterProgress")}
+          valueMin={1}
+          valueMax={Math.max(1, chapterCount)}
+          valueNow={currentChapter + 1}
+          valueText={chapter.title}
+          reducedMotion={reduced}
+          labelWidth={200}
+          padding="6px 80px 14px"
         />
         </div>
       </div>
