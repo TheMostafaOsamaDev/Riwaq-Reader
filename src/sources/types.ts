@@ -168,6 +168,15 @@ export interface FetchOptions {
   body?: string;
 }
 
+export interface SessionFetchOptions extends FetchOptions {
+  /** How long to let the origin's bot check clear on its own before the
+   *  session window is shown so the user can solve it. Default 6s. */
+  revealAfterMs?: number;
+  /** Ceiling on clearing the check, including the user's own time.
+   *  Default 180s. */
+  clearTimeoutMs?: number;
+}
+
 export interface RenderExtractOptions {
   /** JS expression body returning a boolean, polled at 150ms intervals
    *  until it returns true or timeoutMs elapses. */
@@ -184,6 +193,16 @@ export interface RenderExtractOptions {
 
 export interface SourceHost {
   fetch(url: string, options?: FetchOptions): Promise<FetchResponse>;
+  /** Fetch from inside a persistent browser session pinned to the URL's
+   *  origin, instead of over plain HTTP. For origins behind a bot
+   *  challenge that a plain client cannot satisfy — the request runs as
+   *  same-origin `fetch` in a real webview that has already cleared it.
+   *  Same response shape as `fetch`, so it is a drop-in transport swap.
+   *  Desktop only for now; rejects on mobile. */
+  sessionFetch(
+    url: string,
+    options?: SessionFetchOptions,
+  ): Promise<FetchResponse>;
   fetchBytes(url: string, options?: FetchOptions): Promise<Uint8Array>;
   renderAndExtract<T = unknown>(
     url: string,

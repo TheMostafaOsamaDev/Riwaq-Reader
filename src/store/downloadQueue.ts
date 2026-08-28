@@ -35,6 +35,11 @@
 // in-session view (plus enough to recover from a crash).
 
 import {
+  isSessionExpiredError,
+  notifySessionExpired,
+  resetSessionExpiredNotices,
+} from "./sessionExpiry";
+import {
   BaseDirectory,
   exists,
   mkdir,
@@ -577,6 +582,9 @@ async function runJob(job: DownloadJob): Promise<void> {
       setStatus(job, "cancelled");
       return;
     }
+    // A job got through, so the session is healthy again — let a later
+    // lapse raise a fresh notification.
+    resetSessionExpiredNotices();
     setStatus(job, "done", { progress: 1 });
   } catch (e) {
     if (e instanceof CancelledError) {
@@ -584,9 +592,14 @@ async function runJob(job: DownloadJob): Promise<void> {
       setStatus(job, "cancelled");
       return;
     }
-    setStatus(job, "error", {
-      error: e instanceof Error ? e.message : String(e),
-    });
+    const message = e instanceof Error ? e.message : String(e);
+    // A lapsed browser session isn't a normal failure: nothing retries
+    // its way out of it, the user has to complete the check. Tell them,
+    // since downloads usually run with the app in the background.
+    if (isSessionExpiredError(message)) {
+      void notifySessionExpired(message);
+    }
+    setStatus(job, "error", { error: message });
   }
 }
 

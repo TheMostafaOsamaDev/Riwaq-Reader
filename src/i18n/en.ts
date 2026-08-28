@@ -629,6 +629,9 @@ export const en = {
   // Android notification-channel metadata (registered once, lazily, on the
   // first permitted notification — see ensureChannel() in
   // downloadNotifier.ts). Resolved the same way as the rest of this file.
+  "status.notif.reauthTitle": "Verification needed",
+  "status.notif.reauthBody":
+    "{host} needs its browser check completed again. Open the app and reopen the novel to continue downloading.",
   "status.notif.channelName": "Downloads",
   "status.notif.channelDescription":
     "Chapter downloads and offline-book conversions",
