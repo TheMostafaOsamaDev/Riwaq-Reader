@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Icon } from "./Icon";
-import { BookBody } from "./BookBody";
+import { BookBody, readingGutter } from "./BookBody";
 import { ChapterProgressBar } from "./ChapterProgressBar";
 import {
   chapterScrollFraction,
@@ -932,7 +932,10 @@ export function MobileReader({
           // translucent overlay (iOS Books / Kindle style). Swapping
           // padding on toggle was reflowing the visible lines and
           // moving the user's reading position.
-          padding: "44px 28px 44px",
+          // Horizontal inset scales with the content-width setting so 100%
+          // actually reaches the edges — see readingGutter. Vertical padding
+          // stays constant per the note above.
+          padding: `44px ${readingGutter(t.contentWidth, 8, 28)}px 44px`,
           position: "relative",
         }}
         className="no-scrollbar"

@@ -13,6 +13,24 @@ import {
 } from "../styles/tokens";
 import { useFontScale } from "../hooks/useFontScale";
 
+/** Horizontal gutter for the reading surface, derived from the content-width
+ *  setting.
+ *
+ *  The readers used to impose a fixed gutter and then size the text column to a
+ *  percentage of what was left, so "100%" was never the screen: on a 412px
+ *  phone a 28px gutter left 356px, or 86% — visibly short of the edges while
+ *  the control claimed to be maxed out. Scaling the gutter instead gives the
+ *  setting its full range: `min` at 100% (a hairline, so text never touches the
+ *  bezel) widening to `max` at 50%. */
+export function readingGutter(
+  widthPercent: number,
+  min: number,
+  max: number,
+): number {
+  const pct = Math.max(50, Math.min(100, widthPercent));
+  return Math.round(min + (max - min) * ((100 - pct) / 50));
+}
+
 interface Props {
   /** Book id — needed to resolve image item `src` to an asset:// URL. */
   bookId: string;

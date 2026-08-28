@@ -4,7 +4,7 @@ import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
 import { MAX_TICKS, ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
 import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
 import { Icon } from "./Icon";
-import { BookBody } from "./BookBody";
+import { BookBody, readingGutter } from "./BookBody";
 import { PaginatedView, type PaginatedAPI } from "./PaginatedView";
 import {
   chapterScrollFraction,
@@ -1078,7 +1078,7 @@ export function DesktopReader({
               ref={paginatedWrapRef}
               style={{
                 flex: 1,
-                padding: "60px 80px 30px",
+                padding: `60px ${readingGutter(t.contentWidth, 24, 80)}px 30px`,
                 position: "relative",
                 minHeight: 0,
                 minWidth: 0,
@@ -1121,7 +1121,7 @@ export function DesktopReader({
               style={{
                 flex: 1,
                 overflow: "auto",
-                padding: "60px 80px 30px",
+                padding: `60px ${readingGutter(t.contentWidth, 24, 80)}px 30px`,
                 position: "relative",
                 background: surfaces.page,
                 // overscroll-behavior: contain stops the browser's own

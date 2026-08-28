@@ -447,7 +447,16 @@ export function MobileSheet({
         : `opacity ${MOTION.med}ms ${EASE.enter}`;
 
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 20 }}>
+    // `overflow: hidden` is load-bearing, not cosmetic. The sheet below is
+    // absolutely positioned at bottom:0 and then TRANSLATED down to reach a
+    // partial snap, and a transformed box still contributes to its ancestor's
+    // scrollable overflow. Without this the reader root — which is itself
+    // overflow:hidden, and so still scrollable programmatically — grew a
+    // scroll area exactly as tall as the sheet's off-screen tail (measured:
+    // scrollHeight 1028 against a 915 viewport) and got scrolled to it,
+    // dragging the header and the page up by 113px as the sheet opened. The
+    // sheet is meant to float over the reader, not shove it.
+    <div style={{ position: "absolute", inset: 0, zIndex: 20, overflow: "hidden" }}>
       <div
         onClick={onClose}
         style={{
