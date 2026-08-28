@@ -208,8 +208,8 @@ export const en = {
   "library.openStore": "Open store",
   "library.openDownloads": "Open downloads",
   "library.importEpub": "Import EPUB",
-  "library.scrollTabsLeft": "Scroll tabs left",
-  "library.scrollTabsRight": "Scroll tabs right",
+  "library.scrollTabsStart": "Scroll tabs back",
+  "library.scrollTabsEnd": "Scroll tabs forward",
 
   // shelves page + new-shelf dialog
   "shelves.title": "Shelves",
@@ -477,8 +477,8 @@ export const en = {
   // screen, not a scroll direction — the carousel already reverses the
   // underlying scroll math under RTL so the visible arrow always moves
   // content the way it looks like it should.
-  "carousel.scrollLeft": "Scroll left",
-  "carousel.scrollRight": "Scroll right",
+  "carousel.scrollStart": "Scroll back",
+  "carousel.scrollEnd": "Scroll forward",
 
   // source — app-authored copy shipped with the bundled source extensions.
   // Card titles/descriptions now come from each site's own metadata (see

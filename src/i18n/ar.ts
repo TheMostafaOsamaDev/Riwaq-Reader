@@ -181,8 +181,8 @@ export const ar: Messages = {
   "library.openStore": "فتح المتجر",
   "library.openDownloads": "فتح التنزيلات",
   "library.importEpub": "استيراد EPUB",
-  "library.scrollTabsLeft": "تمرير علامات التبويب لليسار",
-  "library.scrollTabsRight": "تمرير علامات التبويب لليمين",
+  "library.scrollTabsStart": "تمرير علامات التبويب للخلف",
+  "library.scrollTabsEnd": "تمرير علامات التبويب للأمام",
 
   "shelves.title": "الأرفف",
   "shelves.countOne": "{n} رف · مجموعاتك",
@@ -418,8 +418,8 @@ export const ar: Messages = {
   "store.loadMore": "تحميل المزيد",
   "store.loadingMore": "جارٍ تحميل المزيد…",
   "store.notInstalled": "المصدر “{sourceId}” غير مثبَّت.",
-  "carousel.scrollLeft": "التمرير لليسار",
-  "carousel.scrollRight": "التمرير لليمين",
+  "carousel.scrollStart": "التمرير للخلف",
+  "carousel.scrollEnd": "التمرير للأمام",
 
   "source.section.trendingFallback": "الرائج",
   "source.section.hotUpdatesFallback": "تحديثات رائجة",

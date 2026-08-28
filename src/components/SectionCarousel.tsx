@@ -46,8 +46,9 @@ export function SectionCarousel({
   children,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+  // Logical, not physical: "start" is the right-hand edge under RTL.
+  const [canScrollToStart, setCanScrollToStart] = useState(false);
+  const [canScrollToEnd, setCanScrollToEnd] = useState(false);
   const stepPx = step ?? (cardWidth + gap) * 3;
 
   // Recompute arrow visibility on scroll + on mount + on resize. The
@@ -66,8 +67,8 @@ export function SectionCarousel({
     const distFromEnd = max - distFromStart;
     // Tiny floating-point tolerance — scrolling to the absolute edge
     // can land at e.g. 0.5px due to subpixel layout.
-    setCanScrollLeft(distFromStart > 2);
-    setCanScrollRight(distFromEnd > 2);
+    setCanScrollToStart(distFromStart > 2);
+    setCanScrollToEnd(distFromEnd > 2);
   }, [rtl]);
 
   // Run the first measure in a layout effect so we read scrollWidth
@@ -114,14 +115,13 @@ export function SectionCarousel({
   }, [recompute]);
 
   const scrollByDir = useCallback(
-    (dir: "left" | "right") => {
+    (edge: "start" | "end") => {
       const el = scrollerRef.current;
       if (!el) return;
-      // In RTL the visual "right" means a more-negative (or
-      // ahead-in-flow) scrollLeft. We translate the user-visual
-      // intent into the right axis automatically.
-      const signed =
-        (dir === "right" ? 1 : -1) * stepPx * (rtl ? -1 : 1);
+      // The edges are logical; scrollLeft runs the other way in an RTL
+      // container (0 at the start, negative toward the end), so the sign
+      // flips with the direction.
+      const signed = (edge === "end" ? 1 : -1) * stepPx * (rtl ? -1 : 1);
       el.scrollBy({ left: signed, behavior: "smooth" });
     },
     [rtl, stepPx],
@@ -131,15 +131,15 @@ export function SectionCarousel({
     <div style={{ position: "relative" }}>
       <ArrowButton
         theme={theme}
-        side="left"
-        visible={canScrollLeft}
-        onClick={() => scrollByDir("left")}
+        edge="start"
+        visible={canScrollToStart}
+        onClick={() => scrollByDir("start")}
       />
       <ArrowButton
         theme={theme}
-        side="right"
-        visible={canScrollRight}
-        onClick={() => scrollByDir("right")}
+        edge="end"
+        visible={canScrollToEnd}
+        onClick={() => scrollByDir("end")}
       />
       <div
         ref={scrollerRef}
@@ -166,23 +166,31 @@ export function SectionCarousel({
 
 interface ArrowProps {
   theme: Theme;
-  side: "left" | "right";
+  /** Which end of the row this arrow sits at, in reading order — not a
+   *  physical side. Under RTL "start" is the right-hand edge. */
+  edge: "start" | "end";
   visible: boolean;
   onClick: () => void;
 }
 
-function ArrowButton({ theme, side, visible, onClick }: ArrowProps) {
+function ArrowButton({ theme, edge, visible, onClick }: ArrowProps) {
   const { tr } = useI18n();
   return (
     <button
       onClick={onClick}
-      aria-label={side === "left" ? tr("carousel.scrollLeft") : tr("carousel.scrollRight")}
+      aria-label={
+        edge === "start" ? tr("carousel.scrollStart") : tr("carousel.scrollEnd")
+      }
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       style={{
         position: "absolute",
         top: "50%",
-        [side]: 4,
+        // Logical inset: whether there is more row to reach is decided in
+        // reading order, so the arrow announcing it has to sit on the matching
+        // edge. Pinned physically, both arrows landed on the wrong side of an
+        // RTL row and scrolled away from the cards they pointed at.
+        [edge === "start" ? "insetInlineStart" : "insetInlineEnd"]: 4,
         transform: "translateY(-50%)",
         width: 32,
         height: 32,
@@ -206,7 +214,13 @@ function ArrowButton({ theme, side, visible, onClick }: ArrowProps) {
         userSelect: "none",
       }}
     >
-      <Icon name={side === "left" ? "arrowL" : "arrowR"} size={14} />
+      {/* `rtl-flip-x` mirrors the glyph under RTL, so "toward the start" still
+          points at the start rather than away from it. */}
+      <Icon
+        name={edge === "start" ? "arrowL" : "arrowR"}
+        size={14}
+        className="rtl-flip-x"
+      />
     </button>
   );
 }

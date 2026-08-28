@@ -2271,8 +2271,8 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
   const indicatorRef = useRef<HTMLDivElement>(null);
   const indicatorInitialized = useRef(false);
 
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [canScrollToStart, setCanScrollToStart] = useState(false);
+  const [canScrollToEnd, setCanScrollToEnd] = useState(false);
 
   // Recompute the scroll-edge state. Called on scroll, mount, and on
   // active-pill change (in case the pill widths drove a layout shift).
@@ -2288,8 +2288,8 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
     const sl = el.scrollLeft;
     const distFromStart = rtl ? Math.abs(sl) : sl;
     const distFromEnd = max - distFromStart;
-    setCanScrollLeft(distFromStart > 1);
-    setCanScrollRight(distFromEnd > 1);
+    setCanScrollToStart(distFromStart > 1);
+    setCanScrollToEnd(distFromEnd > 1);
   }, [rtl]);
 
   useEffect(() => {
@@ -2342,15 +2342,14 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
   }, [tab]);
 
   const scrollBy = useCallback(
-    (direction: "left" | "right") => {
+    (edge: "start" | "end") => {
       const el = scrollerRef.current;
       if (!el) return;
       const step = Math.max(el.clientWidth * 0.7, 120);
-      // Same RTL sign-flip as SectionCarousel.tsx's `scrollByDir()` — in an
-      // RTL container the "left"/"right" arrow's *visual* meaning stays
-      // fixed (previous/next), but the underlying scrollLeft axis it needs
-      // to move along is mirrored.
-      const signed = (direction === "left" ? -1 : 1) * step * (rtl ? -1 : 1);
+      // Same RTL sign-flip as SectionCarousel.tsx's `scrollByDir()`: the edges
+      // are logical, but scrollLeft runs the other way in an RTL container
+      // (0 at the start, negative toward the end).
+      const signed = (edge === "start" ? -1 : 1) * step * (rtl ? -1 : 1);
       el.scrollBy({ left: signed, behavior: "smooth" });
     },
     [rtl],
@@ -2436,15 +2435,15 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
       </div>
       <PillScrollArrow
         theme={theme}
-        side="left"
-        visible={canScrollLeft}
-        onClick={() => scrollBy("left")}
+        edge="start"
+        visible={canScrollToStart}
+        onClick={() => scrollBy("start")}
       />
       <PillScrollArrow
         theme={theme}
-        side="right"
-        visible={canScrollRight}
-        onClick={() => scrollBy("right")}
+        edge="end"
+        visible={canScrollToEnd}
+        onClick={() => scrollBy("end")}
       />
     </div>
   );
@@ -2452,7 +2451,9 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
 
 interface PillScrollArrowProps {
   theme: Theme;
-  side: "left" | "right";
+  /** Which end of the strip this arrow sits at, in reading order — not a
+   *  physical side. Under RTL "start" is the right-hand edge. */
+  edge: "start" | "end";
   visible: boolean;
   onClick: () => void;
 }
@@ -2465,7 +2466,7 @@ interface PillScrollArrowProps {
  *  doesn't eat taps meant for the pill below. */
 function PillScrollArrow({
   theme,
-  side,
+  edge,
   visible,
   onClick,
 }: PillScrollArrowProps) {
@@ -2475,12 +2476,24 @@ function PillScrollArrow({
       onClick={onClick}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
-      aria-label={tr(side === "left" ? "library.scrollTabsLeft" : "library.scrollTabsRight")}
+      aria-label={tr(
+        edge === "start" ? "library.scrollTabsStart" : "library.scrollTabsEnd",
+      )}
       style={{
         position: "absolute",
         top: "50%",
-        [side]: 0,
+        // Logical inset, not `left`/`right`: whether there is more strip to
+        // reach is decided in reading order, so the arrow announcing it has to
+        // sit on the matching edge. Pinning it physically put both arrows on
+        // the wrong side of an RTL strip — at the start, the "more this way"
+        // arrow appeared on the right, pointing away from the content.
+        [edge === "start" ? "insetInlineStart" : "insetInlineEnd"]: 0,
         transform: "translateY(-50%)",
+        // Above the pills, which carry z-index 1 of their own. Without this
+        // the arrow rendered *under* them: at the start edge it sat behind a
+        // half-scrolled pill and read as simply missing, which is why only the
+        // end-edge arrow was ever noticed.
+        zIndex: 2,
         width: 28,
         height: 28,
         borderRadius: 14,
@@ -2498,7 +2511,13 @@ function PillScrollArrow({
         flexShrink: 0,
       }}
     >
-      <Icon name={side === "left" ? "arrowL" : "arrowR"} size={14} />
+      {/* `rtl-flip-x` mirrors the glyph under RTL, so "toward the start" still
+          points at the start rather than away from it. */}
+      <Icon
+        name={edge === "start" ? "arrowL" : "arrowR"}
+        size={14}
+        className="rtl-flip-x"
+      />
     </button>
   );
 }
