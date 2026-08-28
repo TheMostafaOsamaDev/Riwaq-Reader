@@ -520,6 +520,7 @@ export const en = {
   "novel.downloadingClickCancel": "Downloading ({pct}%) — click to cancel",
   "novel.downloadChapter": "Download chapter",
   "novel.downloadVolume": "Download volume",
+  "novel.downloadVolumeConfirmTitle": "Download this volume?",
   "novel.downloadingVolume": "Queuing volume…",
   "novel.volumeAllDownloaded": "All chapters downloaded",
   "novel.volumeFallback": "Volume {n}",
