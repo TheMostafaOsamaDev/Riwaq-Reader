@@ -189,6 +189,48 @@ fn find_app_class<'local>(
     Ok(jni::objects::JClass::from(class_obj))
 }
 
+/// Drain any Java exception left pending on this thread.
+///
+/// A failed JNI call (missing method, wrong descriptor, a Java-side throw)
+/// raises its exception and leaves it **armed** on the attached thread. The
+/// `jni` crate reports the failure as a plain `Err`, but the exception is still
+/// there — and when the thread detaches, ART reports it as an uncaught
+/// `FATAL EXCEPTION` and kills the whole process. That is how a recoverable
+/// bridge failure turns into "the app just closed" with no dialog.
+///
+/// Draining here downgrades every such failure to an ordinary `Err`, which the
+/// commands map to a `String` and the frontend already catches (see
+/// `syncService` in src/store/backgroundTasks.ts, which simply logs and keeps
+/// downloading without the keep-alive service).
+///
+/// `ExceptionCheck` / `Describe` / `Clear` are the JNI calls that are legal
+/// while an exception is pending, so this is safe to call unconditionally.
+#[cfg(target_os = "android")]
+fn drain_pending_exception(env: &mut jni::JNIEnv<'_>) {
+    if let Ok(true) = env.exception_check() {
+        let _ = env.exception_describe();
+        let _ = env.exception_clear();
+    }
+}
+
+/// Resolve an app class through the activity's classloader and invoke one of
+/// its `void` statics. Every Rust->Kotlin call in this module goes through
+/// here so they share one failure shape; callers pair it with
+/// [`drain_pending_exception`].
+#[cfg(target_os = "android")]
+fn call_app_static_void<'local>(
+    env: &mut jni::JNIEnv<'local>,
+    activity: &JObject<'local>,
+    class_name: &str,
+    method: &str,
+    sig: &str,
+    args: &[JValue<'_, '_>],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let class = find_app_class(env, activity, class_name)?;
+    env.call_static_method(&class, method, sig, args)?;
+    Ok(())
+}
+
 #[cfg(target_os = "android")]
 fn android_call_update(
     _app: &AppHandle,
@@ -210,10 +252,10 @@ fn android_call_update(
     let title_j = env.new_string(title)?;
     let body_j = env.new_string(body)?;
 
-    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.DownloadNotifier")?;
-
-    env.call_static_method(
-        &class,
+    let res = call_app_static_void(
+        &mut env,
+        &activity,
+        "com.leaflet.reader.DownloadNotifier",
         "update",
         "(Landroid/content/Context;ILjava/lang/String;Ljava/lang/String;IIZZZ)V",
         &[
@@ -227,8 +269,10 @@ fn android_call_update(
             JValue::Bool(if ongoing { JNI_TRUE } else { JNI_FALSE } as jboolean),
             JValue::Bool(if taps_to_queue { JNI_TRUE } else { JNI_FALSE } as jboolean),
         ],
-    )?;
-    Ok(())
+    );
+    // A missing/renamed notifier method must not take the process down with it.
+    drain_pending_exception(&mut env);
+    res
 }
 
 #[cfg(target_os = "android")]
@@ -238,15 +282,24 @@ fn android_task_service(op: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut env = vm.attach_current_thread()?;
     let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
-    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.TaskService")?;
     let method = if op == "stop" { "stop" } else { "start" };
-    env.call_static_method(
-        &class,
+    // The descriptor here, TaskService.kt's @JvmStatic companion methods, and
+    // the -keep rule in gen/android/app/proguard-rules.pro have to agree.
+    // When they didn't, R8 pruned start/stop from release builds and this
+    // lookup threw NoSuchMethodError — which, left pending, killed the app the
+    // moment any download was queued.
+    let res = call_app_static_void(
+        &mut env,
+        &activity,
+        "com.leaflet.reader.TaskService",
         method,
         "(Landroid/content/Context;)V",
         &[JValue::Object(&activity)],
-    )?;
-    Ok(())
+    );
+    // Losing the keep-alive service is survivable — downloads still run while
+    // the app is foregrounded. Dying is not. Clear before returning.
+    drain_pending_exception(&mut env);
+    res
 }
 
 #[cfg(target_os = "android")]
@@ -265,13 +318,14 @@ fn android_set_bar_appearance(
     // background" — the inverse of our `dark_icons`. The Activity passed
     // in IS the MainActivity instance (ndk_context's context()), so we
     // hand it straight to the static method.
-    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.MainActivity")?;
     let light_icons = !dark_icons;
     // The descriptor here, the Kotlin signature, and the -keep rule in
     // gen/android/app/proguard-rules.pro have to agree. When they don't, R8
     // strips the method out of release builds and this lookup throws.
-    let call = env.call_static_method(
-        &class,
+    let res = call_app_static_void(
+        &mut env,
+        &activity,
+        "com.leaflet.reader.MainActivity",
         "setBarAppearance",
         "(Landroid/app/Activity;ZI)V",
         &[
@@ -280,16 +334,10 @@ fn android_set_bar_appearance(
             JValue::Int(background),
         ],
     );
-    if call.is_err() {
-        // A failed JNI call leaves its exception *pending* on this thread, and
-        // the next JNI call from anywhere aborts the process instead of
-        // returning an error. Clearing it keeps a signature mismatch to what it
-        // should be — the bars just don't get restyled.
-        let _ = env.exception_describe();
-        let _ = env.exception_clear();
-    }
-    call?;
-    Ok(())
+    // Keeps a signature mismatch to what it should be — the bars just don't
+    // get restyled.
+    drain_pending_exception(&mut env);
+    res
 }
 
 #[cfg(target_os = "android")]
@@ -300,7 +348,21 @@ fn android_consume_intent(_app: &AppHandle) -> Result<String, Box<dyn std::error
     let activity =
         unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
-    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.MainActivity")?;
+    let res = read_pending_intent(&mut env, &activity);
+    // Same rule as everywhere else in this module: a field lookup that R8
+    // renamed away must degrade to "no launch intent", not to a dead process.
+    drain_pending_exception(&mut env);
+    res
+}
+
+/// Field-access half of [`android_consume_intent`], split out so the caller can
+/// drain a pending exception on every exit path.
+#[cfg(target_os = "android")]
+fn read_pending_intent<'local>(
+    env: &mut jni::JNIEnv<'local>,
+    activity: &JObject<'local>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let class = find_app_class(env, activity, "com.leaflet.reader.MainActivity")?;
     let value = env.get_static_field(&class, "pendingLaunchIntent", "Ljava/lang/String;")?;
     let obj: JObject = value.l()?;
 
