@@ -59,23 +59,56 @@ pub async fn update_download_notification(
     }
 }
 
-/// Set the system status- and navigation-bar icon appearance to match
-/// the in-app reading theme. `dark_icons = true` paints dark icons for a
-/// light theme (sepia / light); `false` paints light icons for a dark
-/// theme (dark / oled). No-op on non-Android.
+/// Match the native window chrome to the in-app reading theme, which is
+/// independent of the OS DayNight setting.
+///
+/// `dark_icons = true` paints dark status/navigation-bar icons for a light
+/// theme (sepia / light); `false` paints light icons for a dark theme
+/// (dark / oled).
+///
+/// `background` is the theme's `bg` as `#rrggbb`. MainActivity stashes it and
+/// paints it as the window background on the NEXT cold launch — that window is
+/// what fills the screen between the launcher handing off and the webview's
+/// first frame, and without this it is the Material DayNight default (near
+/// black on a dark OS), which is the black flash users see at startup.
+///
+/// No-op on non-Android.
 #[tauri::command]
-pub async fn set_status_bar_style(app: AppHandle, dark_icons: bool) -> Result<(), String> {
+pub async fn set_status_bar_style(
+    app: AppHandle,
+    dark_icons: bool,
+    background: String,
+) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android_set_bar_appearance(&app, dark_icons)
+        let argb = parse_hex_rgb(&background)
+            .ok_or_else(|| format!("bad background colour: {background}"))?;
+        android_set_bar_appearance(&app, dark_icons, argb)
             .map_err(|e| format!("android status bar failed: {e}"))?;
         return Ok(());
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (app, dark_icons);
+        let _ = (app, dark_icons, background);
         Ok(())
     }
+}
+
+/// `#rrggbb` → opaque ARGB, as the `jint` Android's `ColorDrawable` wants.
+/// Returns None for anything that isn't exactly six hex digits behind a `#`,
+/// so a malformed value leaves the previously stashed colour alone rather
+/// than painting the launch window some arbitrary shade.
+#[cfg(target_os = "android")]
+fn parse_hex_rgb(hex: &str) -> Option<jint> {
+    let digits = hex.strip_prefix('#')?;
+    if digits.len() != 6 {
+        return None;
+    }
+    let rgb = u32::from_str_radix(digits, 16).ok()?;
+    // Widen through u32 and reinterpret: 0xff000000 | rgb overflows i32's
+    // positive range, and `as` on the u32 is the defined two's-complement
+    // reinterpretation Android expects for a colour int.
+    Some((0xff00_0000_u32 | rgb) as jint)
 }
 
 /// Start the Android foreground TaskService (keeps the process/webview
@@ -220,6 +253,7 @@ fn android_task_service(op: &str) -> Result<(), Box<dyn std::error::Error>> {
 fn android_set_bar_appearance(
     _app: &AppHandle,
     dark_icons: bool,
+    background: jint,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ctx = ndk_context::android_context();
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
@@ -233,15 +267,28 @@ fn android_set_bar_appearance(
     // hand it straight to the static method.
     let class = find_app_class(&mut env, &activity, "com.leaflet.reader.MainActivity")?;
     let light_icons = !dark_icons;
-    env.call_static_method(
+    // The descriptor here, the Kotlin signature, and the -keep rule in
+    // gen/android/app/proguard-rules.pro have to agree. When they don't, R8
+    // strips the method out of release builds and this lookup throws.
+    let call = env.call_static_method(
         &class,
         "setBarAppearance",
-        "(Landroid/app/Activity;Z)V",
+        "(Landroid/app/Activity;ZI)V",
         &[
             JValue::Object(&activity),
             JValue::Bool(if light_icons { JNI_TRUE } else { JNI_FALSE } as jboolean),
+            JValue::Int(background),
         ],
-    )?;
+    );
+    if call.is_err() {
+        // A failed JNI call leaves its exception *pending* on this thread, and
+        // the next JNI call from anywhere aborts the process instead of
+        // returning an error. Clearing it keeps a signature mismatch to what it
+        // should be — the bars just don't get restyled.
+        let _ = env.exception_describe();
+        let _ = env.exception_clear();
+    }
+    call?;
     Ok(())
 }
 
