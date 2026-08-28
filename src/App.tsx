@@ -189,8 +189,15 @@ function App() {
     // themes (dark, oled) need light icons. The OS DayNight setting
     // would otherwise leave white icons on a light bar. No-op / silent
     // throw off Android — invoke just rejects and we ignore it.
+    //
+    // `background` is stashed natively and painted as the launch window on
+    // the next cold start, so startup no longer shows a black frame in front
+    // of the app while the webview boots.
     const darkIcons = themeKey === "light" || themeKey === "sepia";
-    void invoke("set_status_bar_style", { darkIcons }).catch(() => {});
+    void invoke("set_status_bar_style", {
+      darkIcons,
+      background: theme.bg,
+    }).catch(() => {});
   }, [theme.bg, theme.ink, theme.muted, theme.ruleStrong, themeKey]);
 
   // Overlay-scrollbar behaviour for every scroll area in the app: the thumb

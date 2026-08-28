@@ -10,11 +10,81 @@
       renders is self-hosted under /public/fonts and declared in
       styles/global.css, so a <link> to fonts.googleapis.com only bought us a
       render-blocking DNS + TLS + HTTP round trip on every cold launch
-      (~300ms on a phone's first start) for families nothing resolves to —
+      (~300ms on this phone's first start) for families nothing resolves to —
       measured: the stylesheet was fetched, and zero font files were ever
       pulled from fonts.gstatic.com. Keep it that way; the app has to start
       offline.
     -->
+    <script>
+      /*
+       * First-paint theme bootstrap. Runs synchronously before the bundle so
+       * the very first painted frame is already the reader's chosen theme.
+       *
+       * Without it the launch reads as a flash: global.css paints its sepia
+       * default, then App's theme effect (a passive useEffect, i.e. after
+       * paint) swaps in the persisted theme. On a dark-theme device that is a
+       * bright cream frame on every single launch.
+       *
+       * Deliberately tiny and dependency-free — it has to run before any
+       * module loads, so it cannot import from styles/tokens.ts. The colours
+       * below mirror THEMES there, and src/styles/bootTheme.test.ts fails if
+       * the two ever drift.
+       */
+      (function () {
+        var BOOT_THEMES = {
+          sepia: { bg: "#f4ecd8", ink: "#3a2f1f" },
+          light: { bg: "#faf8f3", ink: "#1f1a14" },
+          dark: { bg: "#1a1614", ink: "#d8cbb0" },
+          oled: { bg: "#000000", ink: "#b8ad94" },
+        };
+        // Keep in step with DEFAULT_TWEAKS in src/hooks/useTweaks.ts.
+        var DEFAULT_THEME = "sepia";
+
+        var saved = {};
+        try {
+          saved = JSON.parse(localStorage.getItem("leaflet:tweaks:v1")) || {};
+        } catch (e) {
+          /* first run, or a corrupt blob — fall through to the defaults */
+        }
+
+        // Mirrors resolveTheme() in styles/tokens.ts: "system" follows the OS,
+        // the four concrete keys pass through, anything else is treated as
+        // unset so a hand-edited value can't leave the app unstyled.
+        var pref = saved.theme || DEFAULT_THEME;
+        if (pref === "system") {
+          pref =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        }
+        var theme = BOOT_THEMES[pref] || BOOT_THEMES[DEFAULT_THEME];
+
+        var root = document.documentElement;
+        // global.css reads these; the inline backgroundColor covers the frame
+        // before the stylesheet has been applied at all.
+        root.style.setProperty("--boot-bg", theme.bg);
+        root.style.setProperty("--boot-ink", theme.ink);
+        root.style.backgroundColor = theme.bg;
+
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.content = theme.bg;
+
+        // Mirrors detectLocale()/DIR_FOR in src/i18n/index.ts. Setting dir up
+        // front means the first frame is already laid out RTL — otherwise the
+        // chrome paints LTR and visibly flips once App's effect runs.
+        var langPref = saved.uiLang || "system";
+        var locale =
+          langPref === "en" || langPref === "ar"
+            ? langPref
+            : (navigator.language || "en").toLowerCase().split(/[-_]/)[0] ===
+                "ar"
+              ? "ar"
+              : "en";
+        root.lang = locale;
+        root.dir = locale === "ar" ? "rtl" : "ltr";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

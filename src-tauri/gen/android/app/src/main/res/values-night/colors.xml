@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Startup window / splash background when the OS is in dark mode.
+         Matches the `dark` theme's `bg` in src/styles/tokens.ts.
+
+         The reading theme is the app's own setting and does NOT follow OS
+         DayNight — MainActivity overrides the window and webview colours at
+         runtime with whatever the reader actually chose. This value only
+         decides the system splash screen, which is drawn from theme XML before
+         any of our code runs and so cannot be set at runtime. Keying it off
+         DayNight is the closest guess available, and it is right for the
+         common case of an OS-dark user reading in a dark theme. -->
+    <color name="riwaq_launch_bg">#1a1614</color>
+</resources>

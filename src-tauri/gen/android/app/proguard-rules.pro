@@ -34,8 +34,14 @@
 # Rust -> Kotlin: MainActivity.setBarAppearance(...) (static) and the static
 # pendingLaunchIntent field, both accessed via JNI. (The class itself is kept
 # by the manifest; only its JNI-touched members need pinning.)
+#
+# The signature below MUST mirror the one in MainActivity.kt and the JNI
+# descriptor in notify.rs (`(Landroid/app/Activity;ZI)V`). These rules match by
+# exact signature, so widening the method without editing here compiles and
+# runs fine in debug, then dies only in release: R8 strips the now-unmatched
+# method, the JNI lookup throws, and the process aborts on the next JNI call.
 -keepclassmembers class com.leaflet.reader.MainActivity {
-    public static void setBarAppearance(android.app.Activity, boolean);
+    public static void setBarAppearance(android.app.Activity, boolean, int);
     static java.lang.String pendingLaunchIntent;
 }
 

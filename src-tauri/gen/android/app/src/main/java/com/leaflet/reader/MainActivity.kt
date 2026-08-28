@@ -1,7 +1,9 @@
 package com.leaflet.reader
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.ActionMode
@@ -11,6 +13,15 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : TauriActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Paint the launch window in the reader's own theme before anything
+        // else. This window is what fills the screen from the moment the
+        // launcher hands off until the webview's first frame — a few hundred
+        // milliseconds — and the Material DayNight default paints it near
+        // black, which is the black flash on startup. themes.xml sets a
+        // sensible colour per OS DayNight; this narrows it to the theme the
+        // reader actually picked, which is independent of that setting.
+        applyRememberedLaunchBackground()
+
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
@@ -66,6 +77,32 @@ class MainActivity : TauriActivity() {
         pendingLaunchIntent = extra
     }
 
+    /** The reading theme's background, as stashed by the last
+     *  `setBarAppearance` call. Falls back to the themes.xml colour on a first
+     *  ever launch, where no theme has been chosen yet. */
+    private fun launchBackgroundColor(): Int {
+        val prefs = getSharedPreferences(LAUNCH_PREFS, Context.MODE_PRIVATE)
+        return prefs.getInt(
+            KEY_LAUNCH_BACKGROUND,
+            resources.getColor(R.color.riwaq_launch_bg, theme),
+        )
+    }
+
+    /** Repaint the window in the reading theme, so the frames between the
+     *  splash screen and the webview's first paint are the app's own colour. */
+    private fun applyRememberedLaunchBackground() {
+        window.setBackgroundDrawable(ColorDrawable(launchBackgroundColor()))
+    }
+
+    /** wry hands us the webview the moment it is constructed, well before it
+     *  has a document to paint. Left alone it renders black until first paint —
+     *  which is the black screen at startup, and it sits *on top* of the window
+     *  background so colouring the window alone does not fix it. */
+    override fun onWebViewCreate(webView: android.webkit.WebView) {
+        super.onWebViewCreate(webView)
+        webView.setBackgroundColor(launchBackgroundColor())
+    }
+
     /** Implemented in Rust (`notify.rs`). Initializes `ndk_context`'s global
      *  Activity + JavaVM handle so the JNI helpers in notify.rs can resolve the
      *  Android context. Must run before any Android command is invoked. */
@@ -81,6 +118,11 @@ class MainActivity : TauriActivity() {
         @Volatile
         var pendingLaunchIntent: String? = null
 
+        /** SharedPreferences holding what the next cold launch needs to know
+         *  about the in-app theme, before any JS has run. */
+        private const val LAUNCH_PREFS = "riwaq.launch"
+        private const val KEY_LAUNCH_BACKGROUND = "windowBackground"
+
         /** Set the status- and navigation-bar icon appearance to match
          *  the in-app reading theme, which is independent of the OS
          *  DayNight setting. `lightIcons` = true paints light (white)
@@ -88,13 +130,30 @@ class MainActivity : TauriActivity() {
          *  light background. Called via JNI from Rust's
          *  set_status_bar_style command on every theme change.
          *
+         *  `backgroundColor` is that theme's background as an opaque ARGB
+         *  int. We only stash it here; `applyRememberedLaunchBackground`
+         *  paints it on the NEXT launch, so the window standing in for the
+         *  webview during startup is already the right colour instead of the
+         *  Material DayNight default. Written synchronously-ish via apply()
+         *  because the value only has to survive to the next process start.
+         *
          *  Must touch the window on the UI thread — JNI calls arrive on
          *  an attached Rust thread, so we hop via runOnUiThread.
          *
          *  `@JvmStatic` so JNI sees a static method with a stable
-         *  signature: (Landroid/app/Activity;Z)V. */
+         *  signature: (Landroid/app/Activity;ZI)V. */
         @JvmStatic
-        fun setBarAppearance(activity: Activity, lightIcons: Boolean) {
+        fun setBarAppearance(
+            activity: Activity,
+            lightIcons: Boolean,
+            backgroundColor: Int,
+        ) {
+            activity
+                .getSharedPreferences(LAUNCH_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putInt(KEY_LAUNCH_BACKGROUND, backgroundColor)
+                .apply()
+
             activity.runOnUiThread {
                 val window = activity.window
                 val controller =

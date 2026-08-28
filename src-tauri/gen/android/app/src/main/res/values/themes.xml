@@ -1,6 +1,23 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.leaflet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!--
+          The colour of the window that stands in for the webview during
+          startup — from the moment the launcher hands off until the first
+          frame of the app renders, a few hundred milliseconds later. Left to
+          the DayNight default it paints near-black, which is the black flash
+          users see when opening the app.
+
+          @color/riwaq_launch_bg is the sepia default theme, which is what a
+          first-ever launch actually shows. Every launch after that,
+          MainActivity overrides this with the theme the reader last had open
+          (see applyRememberedLaunchBackground), so OS DayNight is deliberately
+          not consulted here — the reading theme is independent of it.
+
+          On API 31+ this also colours the system splash screen, which falls
+          back to windowBackground when it is a single colour;
+          values-v31/themes.xml states that explicitly.
+        -->
+        <item name="android:windowBackground">@color/riwaq_launch_bg</item>
     </style>
 </resources>

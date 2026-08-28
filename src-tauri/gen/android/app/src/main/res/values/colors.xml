@@ -7,4 +7,9 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Startup window / splash background. Matches the sepia theme's `bg`
+         in src/styles/tokens.ts, which is the default reading theme a fresh
+         install opens in. MainActivity overrides it at runtime with whatever
+         theme the reader actually chose. -->
+    <color name="riwaq_launch_bg">#f4ecd8</color>
 </resources>
