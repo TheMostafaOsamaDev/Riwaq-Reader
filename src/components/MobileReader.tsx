@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties } from "react";
 import { Icon } from "./Icon";
 import { BookBody } from "./BookBody";
 import { ChapterProgressBar } from "./ChapterProgressBar";
@@ -10,6 +10,8 @@ import {
   fractionToWidth,
 } from "./readerProgress";
 import { MobileSheet } from "./MobileSheet";
+import { MAX_TICKS, ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
+import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { SelectionHandle } from "./SelectionHandle";
@@ -30,6 +32,7 @@ import {
   type SelectionAnchor,
 } from "../lib/selectionAnchor";
 import { useI18n } from "../i18n/useI18n";
+import { formatNum } from "../i18n";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
@@ -251,7 +254,7 @@ export function MobileReader({
   onOpenFullSettings,
   onBack,
 }: Props) {
-  const { tr, dir } = useI18n();
+  const { tr, dir, locale } = useI18n();
   const [showChrome, setShowChrome] = useState(true);
   const [showProgress, setShowProgress] = useState(true);
   const reduced = useReducedMotion();
@@ -404,57 +407,19 @@ export function MobileReader({
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
 
-  // Drag-scrub the progress bar to jump chapters. While dragging, the
-  // thumb and fill follow the finger but the reader stays on
-  // `currentChapter` — only release commits the chapter change. This
-  // avoids chapter loads thrashing under the finger and lets the user
-  // preview the target via the floating chip without overshooting.
-  const trackRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-  const [draggingTarget, setDraggingTarget] = useState<number | null>(null);
-  const chapterFromClientX = (clientX: number): number | null => {
-    const el = trackRef.current;
-    if (!el || chapterCount === 0) return null;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0) return null;
-    const ratio = Math.min(
-      1,
-      Math.max(0, (clientX - rect.left) / rect.width),
-    );
-    return Math.min(chapterCount - 1, Math.floor(ratio * chapterCount));
-  };
-  const onTrackPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (chapterCount <= 1) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    draggingRef.current = true;
-    setDraggingTarget(chapterFromClientX(e.clientX) ?? currentChapter);
-  };
-  const onTrackPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current) return;
-    const next = chapterFromClientX(e.clientX);
-    if (next !== null) setDraggingTarget(next);
-  };
-  const onTrackPointerEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-    setDraggingTarget((target) => {
-      if (target !== null && target !== currentChapter) {
-        onChapterChange(target);
-      }
-      return null;
-    });
-  };
-
-  const displayChapter = draggingTarget ?? currentChapter;
-  const pct = chapterCount > 0
-    ? Math.round(((displayChapter + 1) / chapterCount) * 100)
-    : 0;
+  // Chapter landmarks and the bar's own position. The fraction is
+  // `chapter / (count - 1)` — chapter 0 at the start, the last chapter at the
+  // end — so it round-trips through a seek and a landmark sits exactly where
+  // its chapter begins. The drag itself now lives in ReaderProgressBar, which
+  // previews under the finger and commits on release; this reader used to
+  // carry its own copy of that logic, and the desktop one carried a different
+  // copy that committed on every move.
+  const chapterAt = (f: number) =>
+    Math.min(chapterCount - 1, Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))));
+  const barFraction = chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
   const ticks =
-    chapterCount > 1
-      ? Array.from({ length: chapterCount - 1 }, (_, i) => (i + 1) / chapterCount)
+    chapterCount > 2 && chapterCount - 2 <= MAX_TICKS
+      ? Array.from({ length: chapterCount - 2 }, (_, i) => (i + 1) / (chapterCount - 1))
       : [];
 
   const prevChapter = () => {
@@ -877,7 +842,10 @@ export function MobileReader({
             style={{ ...mobileTab(theme), width: 36, height: 36 }}
             aria-label={tr("reader.backToLibrary")}
           >
-            <Icon name="arrowL" size={16} className="rtl-flip-x" />
+            {/* `home`, not a back arrow: the other two readers have always used
+                it, and this button leaves the reader for the library rather
+                than stepping back through history. */}
+            <Icon name="home" size={16} />
           </button>
           <div
             style={{
@@ -1015,215 +983,48 @@ export function MobileReader({
         }}
       >
           {showProgress && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 12,
-              color: theme.muted,
-              fontSize: 10.5,
-            }}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                prevChapter();
+            <ReaderProgressBar
+              theme={theme}
+              rtl={dir === "rtl"}
+              fraction={barFraction}
+              formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
+              formatLabel={(f) =>
+                tr("reader.chapterDash", {
+                  n: formatNum(chapterAt(f) + 1, locale),
+                  title: book.chapters[chapterAt(f)]?.title ?? "",
+                })
+              }
+              ticks={ticks}
+              prevLabel={tr("reader.prevChapter")}
+              nextLabel={tr("reader.nextChapter")}
+              onPrev={prevChapter}
+              onNext={nextChapter}
+              prevDisabled={currentChapter === 0}
+              nextDisabled={currentChapter >= chapterCount - 1}
+              // No `onScrub`: the reader stays put while the finger moves, so a
+              // sweep across the book doesn't load every chapter it crosses.
+              // The handle and the chip preview the target; release commits.
+              onSeek={(f) => {
+                const next = chapterAt(f);
+                if (next !== currentChapter) onChapterChange(next);
               }}
-              disabled={currentChapter === 0}
-              aria-label={tr("reader.prevChapter")}
-              style={{
-                ...mobileTab(theme),
-                width: 28,
-                height: 28,
-                opacity: currentChapter === 0 ? 0.35 : 1,
-              }}
-            >
-              <Icon name="arrowL" size={14} className="rtl-flip-x" />
-            </button>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
-            <div
-              ref={trackRef}
-              onPointerDown={onTrackPointerDown}
-              onPointerMove={onTrackPointerMove}
-              onPointerUp={onTrackPointerEnd}
-              onPointerCancel={onTrackPointerEnd}
-              role="slider"
-              aria-label={tr("reader.chapterProgress")}
-              aria-valuemin={1}
-              aria-valuemax={chapterCount}
-              aria-valuenow={displayChapter + 1}
-              aria-valuetext={book.chapters[displayChapter]?.title}
-              style={{
-                flex: 1,
-                position: "relative",
-                // Visible bar stays 3px; padding + negative margin grow the
-                // touch target to ~27px without shifting layout.
-                paddingBlock: 12,
-                margin: "-12px 0",
-                touchAction: "none",
-                cursor: chapterCount > 1 ? "pointer" : "default",
-              }}
-            >
-              <div style={{ position: "relative", height: 3 }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background: theme.rule,
-                    borderRadius: 1.5,
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: `${pct}%`,
-                    background: theme.ink,
-                    borderRadius: 1.5,
-                  }}
-                />
-                {ticks.map((p, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      position: "absolute",
-                      insetInlineStart: `${p * 100}%`,
-                      top: -2,
-                      width: 1,
-                      height: 7,
-                      background: theme.muted,
-                      opacity: 0.5,
-                    }}
-                  />
-                ))}
-                <div
-                  style={{
-                    position: "absolute",
-                    insetInlineStart: `${pct}%`,
-                    top: "50%",
-                    transform: `translate(-50%, -50%) scale(${draggingTarget !== null ? 1.4 : 1})`,
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    background: theme.ink,
-                    boxShadow: `0 0 0 3px ${theme.chrome}`,
-                    transition: "transform 120ms ease-out",
-                  }}
-                />
-              </div>
-              {draggingTarget !== null && (
-                <div
-                  style={{
-                    position: "absolute",
-                    // Anchor on the thumb (insetInlineStart so the anchor
-                    // itself mirrors under RTL) and shift the chip back by a
-                    // fraction of its own width that matches how far along
-                    // the bar we are, so it never overflows the track.
-                    // LTR: pct=0% → no shift (chip extends toward the end);
-                    // pct=100% → -100% (chip extends back toward the start).
-                    // RTL mirrors this — the sign flips because the anchor
-                    // is now measured from the physical right, so "further
-                    // along" approaches the physical left edge instead.
-                    insetInlineStart: `${pct}%`,
-                    bottom: "calc(100% - 4px)",
-                    transform: `translateX(${(dir === "rtl" ? 1 : -1) * pct}%)`,
-                    background: theme.chrome,
-                    color: theme.ink,
-                    border: `0.5px solid ${theme.rule}`,
-                    borderRadius: 8,
-                    padding: "6px 10px",
-                    fontSize: 11,
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                    maxWidth: 240,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    pointerEvents: "none",
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.18)",
-                  }}
-                >
-                  {tr("reader.chapterDash", {
-                    n: draggingTarget + 1,
-                    title: book.chapters[draggingTarget]?.title ?? "",
-                  })}
-                  <span
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      // Mirror the chip's slide so the arrow always sits
-                      // under the thumb's real screen position. Clamped
-                      // inside the chip so it doesn't poke past the
-                      // rounded corners at the extremes.
-                      insetInlineStart: `clamp(12px, ${pct}%, calc(100% - 12px))`,
-                      bottom: -4,
-                      width: 8,
-                      height: 8,
-                      transform: "translateX(-50%) rotate(45deg)",
-                      background: theme.chrome,
-                      borderRight: `0.5px solid ${theme.rule}`,
-                      borderBottom: `0.5px solid ${theme.rule}`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                nextChapter();
-              }}
-              disabled={currentChapter >= chapterCount - 1}
-              aria-label={tr("reader.nextChapter")}
-              style={{
-                ...mobileTab(theme),
-                width: 28,
-                height: 28,
-                opacity: currentChapter >= chapterCount - 1 ? 0.35 : 1,
-              }}
-            >
-              <Icon name="arrowR" size={14} className="rtl-flip-x" />
-            </button>
-          </div>
+              ariaLabel={tr("reader.chapterProgress")}
+              valueMin={1}
+              valueMax={Math.max(1, chapterCount)}
+              valueNow={currentChapter + 1}
+              valueText={chapter.title}
+              reducedMotion={reduced}
+              labelWidth={0}
+              padding="0 6px 6px"
+            />
           )}
-          <div style={{ display: "flex", justifyContent: "space-around" }}>
-            <button
-              onClick={() => setSheet("toc")}
-              style={mobileTab(theme)}
-              aria-label={tr("reader.toc")}
-            >
-              <Icon name="list" size={18} />
-            </button>
-            <button
-              onClick={() => setSheet("highlights")}
-              style={mobileTab(theme)}
-              aria-label={tr("reader.highlights")}
-            >
-              <Icon name="highlight" size={18} />
-            </button>
-            <button
-              onClick={() => setShowProgress((s) => !s)}
-              style={mobileTab(theme)}
-              aria-label={showProgress ? tr("reader.hideProgressBar") : tr("reader.showProgressBar")}
-              aria-pressed={showProgress}
-            >
-              <Icon name="slider" size={18} />
-            </button>
-            <button
-              onClick={() => setSheet("progress")}
-              style={mobileTab(theme)}
-              aria-label={tr("reader.progress")}
-            >
-              <Icon name="clock" size={18} />
-            </button>
-            <button
-              onClick={() => setSheet("settings")}
-              style={mobileTab(theme)}
-              aria-label={tr("reader.settings")}
-            >
-              <Icon name="type" size={18} />
-            </button>
-          </div>
+          <ReaderTabBar
+            theme={theme}
+            active={sheet === "toc" || sheet === "highlights" || sheet === "progress" || sheet === "settings" ? sheet : null}
+            onOpen={setSheet}
+            showProgress={showProgress}
+            onToggleProgress={() => setShowProgress((s) => !s)}
+          />
         </div>
 
       {/* Sheet stays mounted while it animates out — pass `open` so it
