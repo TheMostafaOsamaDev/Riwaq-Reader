@@ -5,12 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f4ecd8" />
     <title>رواق</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Literata:ital,wght@0,400..700;1,400..700&family=Atkinson+Hyperlegible:wght@400;700&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      No remote font stylesheet here on purpose. Every face the app actually
+      renders is self-hosted under /public/fonts and declared in
+      styles/global.css, so a <link> to fonts.googleapis.com only bought us a
+      render-blocking DNS + TLS + HTTP round trip on every cold launch
+      (~300ms on a phone's first start) for families nothing resolves to —
+      measured: the stylesheet was fetched, and zero font files were ever
+      pulled from fonts.gstatic.com. Keep it that way; the app has to start
+      offline.
+    -->
   </head>
   <body>
     <div id="root"></div>
