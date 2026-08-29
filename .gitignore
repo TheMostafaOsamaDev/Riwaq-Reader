@@ -68,3 +68,6 @@ src-tauri/gen/apple/*.xcworkspace/xcuserdata/
 *.sw?
 .superpowers/
 .worktrees/
+
+# ui-ux-pro-max CLI mirrors skills here too
+.agents/
