@@ -1,0 +1,330 @@
+// Focus mode, shared by the reflow reader (DesktopReader) and the fixed-page
+// reader (PDF / DOCX). The chrome leaves the layout entirely so the page fills
+// the window, and comes back when the pointer nears the edge it lives on.
+//
+// It lives here rather than in one reader because "focus mode" is a property of
+// the reader SHELL — the top bar and the bottom scrubber — and both readers
+// already share that shell (ReaderTopBar / ReaderProgressBar). Having it in one
+// reader only is what made the two formats feel like different apps.
+//
+// Desktop only: the reveal is driven by pointer proximity, which a phone has no
+// equivalent for. Callers gate on their own layout flag.
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import { EASE, MOTION } from "../../styles/motion";
+import { FONT_STACKS, type Theme } from "../../styles/tokens";
+
+/** How close to an edge the pointer must come to summon that bar, in px. */
+const CHROME_EDGE_PX = 72;
+/** How long a revealed bar lingers after the pointer leaves its edge, in ms. */
+const CHROME_LINGER_MS = 450;
+/** How long the first-run hint stays up. Matches `.leaflet-focus-hint`. */
+export const FOCUS_HINT_MS = 3200;
+/** Set once the first-run focus-mode hint has been shown. */
+const FOCUS_HINT_KEY = "leaflet:focus-hint-seen";
+
+function focusHintSeen(): boolean {
+  // Private-mode / blocked-storage browsers throw on access; treating that as
+  // "already seen" is the quiet failure — better a missing hint than a crash.
+  try {
+    return localStorage.getItem(FOCUS_HINT_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function markFocusHintSeen(): void {
+  try {
+    localStorage.setItem(FOCUS_HINT_KEY, "1");
+  } catch {
+    // Nothing to do — the hint simply shows again next time.
+  }
+}
+
+export interface FocusChromeOptions {
+  /** The persisted `focusMode` tweak. */
+  active: boolean;
+  setActive: (next: boolean) => void;
+  /** True while any panel is open — Escape belongs to the panel then. */
+  panelOpen: boolean;
+  /** Close whatever panel is open. Called when entering focus mode. */
+  closePanels: () => void;
+  theme: Theme;
+  reducedMotion: boolean;
+  /** Wire the pointer tracking at all. False on phones. */
+  enabled?: boolean;
+}
+
+export interface FocusChrome {
+  /** True while the chrome is lifted out of the layout. */
+  floating: boolean;
+  showTop: boolean;
+  showBottom: boolean;
+  /** Bumped once per hint; 0 = nothing to show. Use as a React `key`. */
+  hint: number;
+  toggle: () => void;
+  /** Spread onto the reader root so pointer proximity can summon the bars. */
+  rootHandlers: {
+    onMouseMove: (e: ReactMouseEvent) => void;
+    onMouseLeave: () => void;
+  };
+  /** Outer clip window for one edge — see the note on the implementation. */
+  clip: (edge: "top" | "bottom", shown: boolean) => CSSProperties;
+  /** Inner sliding layer for one edge. */
+  slide: (edge: "top" | "bottom", shown: boolean) => CSSProperties;
+}
+
+export function useFocusChrome({
+  active,
+  setActive,
+  panelOpen,
+  closePanels,
+  theme,
+  reducedMotion,
+  enabled = true,
+}: FocusChromeOptions): FocusChrome {
+  // The chrome stays out of the layout while a panel is open, too. Letting it
+  // back in meant that opening a sheet grew the flow by both bar heights and
+  // reflowed the page underneath — the text jumped and re-wrapped when all the
+  // reader asked for was the one sheet they clicked. Opening a sheet now
+  // changes nothing but the sheet.
+  const floating = enabled && active;
+  const [revealTop, setRevealTop] = useState(false);
+  const [revealBottom, setRevealBottom] = useState(false);
+  // Bumped once, ever, to play the first-run hint. Counter rather than a
+  // boolean so the toast remounts (and its keyframe restarts) if it ever fires
+  // more than once in a session.
+  const [hint, setHint] = useState(0);
+  const showTop = !floating || revealTop;
+  const showBottom = !floating || revealBottom;
+
+  // Which edge zone the pointer is currently inside. Kept in a ref so the move
+  // handler only touches state when the pointer *crosses* a boundary —
+  // re-arming the hide timer on every mousemove would keep a revealed bar up
+  // forever as long as the pointer kept moving anywhere in the window.
+  const inEdge = useRef({ top: false, bottom: false });
+  const hideTimers = useRef({ top: 0, bottom: 0 });
+  const hintTimer = useRef(0);
+  const setEdgeShown = (edge: "top" | "bottom", shown: boolean) =>
+    (edge === "top" ? setRevealTop : setRevealBottom)(shown);
+  const revealEdge = useCallback((edge: "top" | "bottom") => {
+    window.clearTimeout(hideTimers.current[edge]);
+    setEdgeShown(edge, true);
+  }, []);
+  const hideEdgeSoon = useCallback((edge: "top" | "bottom") => {
+    window.clearTimeout(hideTimers.current[edge]);
+    // A grace period so brushing past the edge on the way somewhere else
+    // doesn't snatch the bar away mid-reach.
+    hideTimers.current[edge] = window.setTimeout(
+      () => setEdgeShown(edge, false),
+      CHROME_LINGER_MS,
+    );
+  }, []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(hideTimers.current.top);
+      window.clearTimeout(hideTimers.current.bottom);
+      window.clearTimeout(hintTimer.current);
+    },
+    [],
+  );
+  // Entering or leaving focus mode invalidates where the pointer was last known
+  // to be relative to the edges, so forget it and retire both bars after the
+  // usual grace. Any pointer movement re-reveals through the normal path.
+  useEffect(() => {
+    inEdge.current = { top: false, bottom: false };
+    if (!floating) return;
+    hideEdgeSoon("top");
+    hideEdgeSoon("bottom");
+  }, [floating, hideEdgeSoon]);
+
+  // Pointer proximity is measured on the reader root rather than with two hover
+  // strips: an element covering the top and bottom bands would swallow clicks
+  // and drag-selection over the text underneath it.
+  const trackPointer = (clientY: number, height: number) => {
+    if (!floating) return;
+    const near = {
+      top: clientY <= CHROME_EDGE_PX,
+      bottom: clientY >= height - CHROME_EDGE_PX,
+    };
+    for (const edge of ["top", "bottom"] as const) {
+      if (near[edge] === inEdge.current[edge]) continue;
+      inEdge.current[edge] = near[edge];
+      if (near[edge]) revealEdge(edge);
+      else hideEdgeSoon(edge);
+    }
+  };
+
+  const toggle = () => {
+    const next = !active;
+    setActive(next);
+    if (!next) return;
+    // Entering: this is "just the book", so any open panel goes with the
+    // chrome, and the bars start hidden rather than mid-reveal.
+    closePanels();
+    inEdge.current = { top: false, bottom: false };
+    setRevealTop(false);
+    setRevealBottom(false);
+    if (!focusHintSeen()) {
+      markFocusHintSeen();
+      setHint((n) => n + 1);
+      // Unmount once the keyframe has finished — `forwards` would otherwise
+      // leave an invisible pill in the tree (and in the a11y tree) for good.
+      window.clearTimeout(hintTimer.current);
+      hintTimer.current = window.setTimeout(() => setHint(0), FOCUS_HINT_MS);
+    }
+  };
+
+  // Escape leaves focus mode — the keyboard route back to the chrome, since a
+  // hidden bar is `visibility: hidden` and so out of the tab order. While a
+  // panel is open SideSheet owns Escape (it closes the panel), so stay out.
+  useEffect(() => {
+    if (!floating || panelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActive(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [floating, panelOpen, setActive]);
+
+  const chromeTransition = reducedMotion
+    ? "none"
+    : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
+
+  // Chrome that floats over the page, in two layers.
+  //
+  // The OUTER layer is a fixed window at the edge, `overflow: hidden`, sized by
+  // the bar inside it. It exists because a transformed box still counts toward
+  // its container's scrollable overflow: sliding a bar to `translateY(±100%)`
+  // directly in the reader root grew that root's scrollHeight past its
+  // clientHeight, quietly making the whole reader scrollable. `overflow:
+  // hidden` there only suppresses the scrollbar — the element stays
+  // programmatically scrollable, and the Contents panel's `scrollIntoView`
+  // (which walks up every scrollable ancestor) then dragged the entire page out
+  // of position. Clipping the slide inside this window keeps the translate from
+  // ever reaching the root's overflow region.
+  //
+  // `visibility` on the outer flips only after the fade finishes: it keeps the
+  // exit smooth and takes a hidden bar's buttons out of the tab order instead
+  // of leaving invisible focus stops behind.
+  const clip = (edge: "top" | "bottom", shown: boolean): CSSProperties => ({
+    position: "absolute",
+    [edge]: 0,
+    insetInlineStart: 0,
+    insetInlineEnd: 0,
+    overflow: "hidden",
+    // Above SideSheet's overlay (40) so a revealed bar is never dimmed by, or
+    // buried under, a panel's scrim; below the toasts at 50.
+    zIndex: 45,
+    visibility: shown ? "visible" : "hidden",
+    pointerEvents: shown ? "auto" : "none",
+    transition: reducedMotion
+      ? "none"
+      : `visibility 0s linear ${shown ? "0s" : `${MOTION.med}ms`}`,
+    // Chrome is never part of a text selection dragged across the page.
+    userSelect: "none",
+    WebkitUserSelect: "none",
+  });
+
+  // The INNER layer is what actually moves.
+  const slide = (edge: "top" | "bottom", shown: boolean): CSSProperties => ({
+    transform: shown
+      ? "translateY(0)"
+      : `translateY(${edge === "top" ? "-100%" : "100%"})`,
+    opacity: shown ? 1 : 0,
+    transition: chromeTransition,
+    background: theme.bg,
+  });
+
+  return {
+    floating,
+    showTop,
+    showBottom,
+    hint,
+    toggle,
+    rootHandlers: {
+      onMouseMove: (e: ReactMouseEvent) => {
+        if (!floating) return;
+        // Measure against the reader's OWN box, not the viewport: clientY and
+        // the root's height are only the same coordinate space when the reader
+        // starts at y=0, which is true of the app but not of anything that
+        // embeds it. One rect read per move, on an element whose layout is
+        // already clean.
+        const box = e.currentTarget.getBoundingClientRect();
+        trackPointer(e.clientY - box.top, box.height);
+      },
+      onMouseLeave: () => {
+        if (!floating) return;
+        for (const edge of ["top", "bottom"] as const) {
+          if (!inEdge.current[edge]) continue;
+          inEdge.current[edge] = false;
+          hideEdgeSoon(edge);
+        }
+      },
+    },
+    clip,
+    slide,
+  };
+}
+
+/** First-run pill explaining how to get the chrome back. */
+export function FocusHint({
+  theme,
+  title,
+  body,
+  isAr,
+}: {
+  theme: Theme;
+  title: string;
+  body: string;
+  isAr: boolean;
+}) {
+  return (
+    <div
+      className="leaflet-focus-hint"
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "none",
+        zIndex: 50,
+        padding: "16px 28px",
+        borderRadius: 14,
+        background: theme.chrome,
+        color: theme.ink,
+        border: `0.5px solid ${theme.rule}`,
+        boxShadow: "0 16px 44px rgba(0,0,0,0.22)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        fontFamily: FONT_STACKS.sans,
+        textAlign: "center",
+        minWidth: 240,
+        maxWidth: 340,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: isAr ? "normal" : "0.14em",
+          textTransform: isAr ? "none" : "uppercase",
+          color: theme.muted,
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ fontSize: 13, lineHeight: 1.5, color: theme.ink }}>
+        {body}
+      </div>
+    </div>
+  );
+}

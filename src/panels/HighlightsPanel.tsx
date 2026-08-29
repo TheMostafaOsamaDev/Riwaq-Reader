@@ -285,7 +285,14 @@ function HighlightRow({
             fontFamily: FONT_STACKS.sans,
           }}
         >
-          {tr("highlights.chapterLabel", { n: h.chapter + 1 })}
+          {/* A PDF highlight has no chapter — App fills the reflow fields with
+              0, which rendered every one of them as "Chapter 1". Its anchor
+              knows the page, so say that instead. (A DOCX highlight anchors to
+              a block, and only the page source can map that to a page, so it
+              keeps the chapter label.) */}
+          {h.fixed?.fmt === "pdf"
+            ? tr("highlights.pageLabel", { n: h.fixed.page + 1 })
+            : tr("highlights.chapterLabel", { n: h.chapter + 1 })}
         </div>
         {!editing && (
           <div

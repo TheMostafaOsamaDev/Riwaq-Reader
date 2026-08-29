@@ -259,6 +259,7 @@ export const ar: Messages = {
   "highlights.emptyBody":
     "حدّد نصًا أثناء القراءة لتظليله، ثم أضف ملاحظة لتتذكر سبب أهميته.",
   "highlights.chapterLabel": "الفصل {n}",
+  "highlights.pageLabel": "صفحة {n}",
   "highlights.addNote": "إضافة ملاحظة",
   "highlights.editNote": "تعديل الملاحظة",
   "highlights.notePlaceholder": "ملاحظة…",

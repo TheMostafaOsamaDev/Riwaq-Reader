@@ -294,6 +294,7 @@ export const en = {
   "highlights.emptyBody":
     "Select text while reading to highlight it, then add a note to remember why it mattered.",
   "highlights.chapterLabel": "Chapter {n}",
+  "highlights.pageLabel": "Page {n}",
   "highlights.addNote": "Add note",
   "highlights.editNote": "Edit note",
   "highlights.notePlaceholder": "Note…",

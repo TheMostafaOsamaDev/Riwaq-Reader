@@ -22,6 +22,11 @@ import {
 import { readingSurfaces, type Theme, type ThemeKey } from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
 import { resolveDocxSelection, type DocxSelectionAnchor } from "./docxHighlight";
+import {
+  pdfHighlightAt,
+  resolvePdfSelection,
+  type PdfSelectionAnchor,
+} from "./pdfHighlight";
 import type {
   FixedFit,
   FixedFlow,
@@ -127,6 +132,14 @@ export function tintFilter(tint: FixedPageTint): string {
   }
 }
 
+/** A pending text selection, tagged by the format that produced it — the two
+ *  anchor into a fixed-layout page in fundamentally different ways (a DOCX
+ *  block + char range vs. a PDF page + normalized rects), and the reader has to
+ *  store whichever it is given. */
+export type FixedSelection =
+  | ({ kind: "docx" } & DocxSelectionAnchor)
+  | ({ kind: "pdf" } & PdfSelectionAnchor);
+
 export interface FixedPageViewerProps {
   source: FixedPageSource;
   flow: FixedFlow;
@@ -149,7 +162,7 @@ export interface FixedPageViewerProps {
   highlights: Highlight[];
   themeKey: ThemeKey;
   /** DOCX text selected (or null to dismiss) — the shell shows a color popover. */
-  onSelect: (anchor: DocxSelectionAnchor | null) => void;
+  onSelect: (anchor: FixedSelection | null) => void;
   /** An existing highlight `<mark>` was clicked — the shell shows edit/delete. */
   onHighlightClick: (id: string, rect: DOMRect) => void;
 }
@@ -197,28 +210,59 @@ export const FixedPageViewer = forwardRef<
   // visible pages (renderPage re-injects the <mark> spans from the source).
   const [highlightNonce, setHighlightNonce] = useState(0);
   useEffect(() => {
-    if (source.kind !== "docx" || !source.setHighlights) return;
+    if (!source.setHighlights) return;
     source.setHighlights(highlights, themeKey);
-    // Force the visible pages to re-render so renderPage re-injects the marks.
-    // The per-page render cache is keyed only on scale, which hasn't changed, so
-    // without clearing it the render effect would skip these pages. `rendered`
-    // is untouched, so no skeleton flashes.
+    // PDF paints its marks as an overlay and has just updated them in place —
+    // nothing to re-render, and forcing one would re-rasterize the page for a
+    // change that never touched a pixel of it.
+    if (source.kind !== "docx") return;
+    // DOCX weaves the marks into the text, so the visible pages have to be
+    // rebuilt. The per-page render cache is keyed only on scale, which hasn't
+    // changed, so without clearing it the render effect would skip these pages.
+    // `rendered` is untouched, so no skeleton flashes.
     renderedScale.current.clear();
     setHighlightNonce((n) => n + 1);
   }, [source, highlights, themeKey]);
 
-  // DOCX text selection → color popover; clicking an existing <mark> → its
-  // edit/delete popover. Deferred a tick so the browser finalizes the selection.
+  // Selecting text is a scroll-mode affordance for now: in paged mode a
+  // horizontal drag is a page turn, and the text layer would swallow it.
   useEffect(() => {
-    if (source.kind !== "docx") return;
+    source.setSelectable?.(flow === "scroll");
+  }, [source, flow]);
+
+  // Text selection → color popover; clicking an existing highlight → its
+  // edit/delete popover. Deferred a tick so the browser finalizes the selection.
+  //
+  // The two formats differ only in how a selection is anchored and how an
+  // existing highlight is found under the pointer. DOCX marks are real
+  // elements in the text, so `closest()` finds them; PDF marks are an overlay
+  // beneath the text layer and deliberately transparent to the pointer, so
+  // they are found by hit test (see pdfHighlightAt).
+  const isPdf = source.kind === "pdf";
+  useEffect(() => {
+    // Paged mode has no selectable text layer to select from (PDF), and turning
+    // pages by drag should not raise a colour popover (DOCX).
+    if (flow !== "scroll") return;
     const scroller = scrollRef.current;
     if (!scroller) return;
     const onUp = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null;
+      const { clientX, clientY } = e;
       window.setTimeout(() => {
+        if (isPdf) {
+          const anchor = resolvePdfSelection(scroller);
+          if (anchor) {
+            onSelect({ kind: "pdf", ...anchor });
+            return;
+          }
+          onSelect(null);
+          const hit = pdfHighlightAt(clientX, clientY);
+          if (hit) onHighlightClick(hit.id, hit.rect);
+          return;
+        }
         const anchor = resolveDocxSelection(scroller);
         if (anchor) {
-          onSelect(anchor);
+          onSelect({ kind: "docx", ...anchor });
           return;
         }
         onSelect(null);
@@ -229,7 +273,7 @@ export const FixedPageViewer = forwardRef<
     };
     scroller.addEventListener("pointerup", onUp);
     return () => scroller.removeEventListener("pointerup", onUp);
-  }, [source, onSelect, onHighlightClick]);
+  }, [isPdf, flow, onSelect, onHighlightClick]);
 
   // Reading colours come straight from the theme now. The page is the theme's
   // paper and the surround a shade behind it, so the sheet reads as a sheet
@@ -242,6 +286,9 @@ export const FixedPageViewer = forwardRef<
   const hostRefs = useRef(new Map<number, HTMLDivElement>());
   const refCbs = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
   const renderedScale = useRef(new Map<number, number>());
+  // Bumped when a mounted host is found empty, to re-run the render effect.
+  // See `sweepBlankHosts`.
+  const [healNonce, setHealNonce] = useState(0);
   const resumedRef = useRef(false);
   const lastEmitted = useRef(-1);
   const saveTimer = useRef<number | null>(null);
@@ -423,6 +470,29 @@ export const FixedPageViewer = forwardRef<
     [onProgress, onLocationChange, formatCounter, pageCount, flow, layout],
   );
 
+  /** Notice a mounted host that has lost its contents.
+   *
+   *  `renderedScale` records what we ASKED the source for, not what is
+   *  actually on screen — a source that caches page bitmaps may drop one
+   *  afterwards, and then the render effect skips that page forever because
+   *  the cache still says "drawn at this scale". `retain` (below) tells the
+   *  source not to do that to an on-screen page; this is the backstop for
+   *  when it happens anyway.
+   *
+   *  Cheap enough to run per scroll frame: one property read per mounted host,
+   *  and the window is a handful of pages. State only moves when something is
+   *  genuinely blank, so a healthy scroll costs nothing but the reads. */
+  const sweepBlankHosts = useCallback(() => {
+    let blank = false;
+    for (const [i, host] of hostRefs.current) {
+      if (host.firstElementChild !== null) continue;
+      // Forget the claim so the render effect asks the source again.
+      renderedScale.current.delete(i);
+      blank = true;
+    }
+    if (blank) setHealNonce((n) => n + 1);
+  }, []);
+
   // Recompute the render window + current page from scroll position.
   const recompute = useCallback(() => {
     const el = scrollRef.current;
@@ -455,8 +525,9 @@ export const FixedPageViewer = forwardRef<
     }
     setWin((w) => (w.start === start && w.end === end ? w : { start, end }));
     setCurrent((c) => (c === cur ? c : cur));
+    sweepBlankHosts();
     emit(cur);
-  }, [flow, pageCount, layout, emit]);
+  }, [flow, pageCount, layout, emit, sweepBlankHosts]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -534,6 +605,29 @@ export const FixedPageViewer = forwardRef<
     return () => window.cancelAnimationFrame(raf);
   }, [flow]);
 
+  // Tell the source which pages are mounted, so a source that caches page
+  // bitmaps never evicts one out from under a live host. Without this, a PDF
+  // whose canvases outgrew the cache budget had pages pulled out from under
+  // hosts that were still on screen — and because `renderedScale` still said
+  // "drawn at this scale", the render effect below skipped them for good. The
+  // page stayed a blank sheet no matter how far you scrolled away and back.
+  useEffect(() => {
+    if (!source.retain) return;
+    const pages: number[] = [];
+    if (flow === "scroll") {
+      for (let i = win.start; i <= win.end; i++) pages.push(i);
+    } else {
+      // Paged: the page itself plus the neighbours the prefetcher warms — a
+      // turn re-parents one of those canvases, so losing one costs a
+      // rasterization inside the animation.
+      const d = lastDir.current;
+      pages.push(current);
+      for (let n = 1; n <= PREFETCH_AHEAD; n++) pages.push(current + n * d);
+      for (let n = 1; n <= PREFETCH_BEHIND; n++) pages.push(current - n * d);
+    }
+    source.retain(pages.filter((i) => i >= 0 && i < pageCount));
+  }, [source, flow, win, current, pageCount]);
+
   // Lazily measure + render the visible window (scroll).
   useEffect(() => {
     if (flow !== "scroll") return;
@@ -555,9 +649,27 @@ export const FixedPageViewer = forwardRef<
         }
         const sc = layout.displayW[i] / s.w;
         const want = Math.round(sc * 1000) / 1000;
-        if (renderedScale.current.get(i) !== want) {
+        // An empty host outranks the cache. `renderedScale` only records what
+        // we ASKED for, and the source is free to drop a page's contents
+        // afterwards (bitmap eviction under memory pressure). `retain` above
+        // stops that happening for on-screen pages, but this is the backstop
+        // that keeps a blank sheet from becoming permanent if it ever does:
+        // `renderPage` always leaves something in the host synchronously, so
+        // an empty one means there is genuinely nothing to show.
+        // Same-frame case: the source dropped this page's contents during
+        // this very pass. Later ones are caught by `sweepBlankHosts`.
+        const blank = host.firstElementChild === null;
+        if (renderedScale.current.get(i) !== want || blank) {
           renderedScale.current.set(i, want);
           const pi = i;
+          // Let the shimmer back while it redraws — there is no canvas under
+          // it to leak around, and a blank sheet reads as a broken page.
+          if (blank) setRendered((prev) => {
+            if (!prev.has(pi)) return prev;
+            const next = new Set(prev);
+            next.delete(pi);
+            return next;
+          });
           void source.renderPage(pi, host, sc).then(() => {
             setRendered((prev) => (prev.has(pi) ? prev : new Set(prev).add(pi)));
           });
@@ -574,7 +686,7 @@ export const FixedPageViewer = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [win, layout, sizes, tint, flow, source, highlightNonce]);
+  }, [win, layout, sizes, tint, flow, source, highlightNonce, healNonce]);
 
   // Lazily measure + render the single current page (paged).
   useEffect(() => {
