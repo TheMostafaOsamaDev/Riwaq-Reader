@@ -37,12 +37,15 @@ import type {
   PdfHighlightAnchor,
 } from "../../store/library";
 import type { FixedPageSource } from "./FixedPageSource";
-import { FixedPageViewer, type FixedPageViewerHandle } from "./FixedPageViewer";
+import {
+  FixedPageViewer,
+  type FixedPageViewerHandle,
+  type FixedSelection,
+} from "./FixedPageViewer";
 import { PanelShell } from "../../panels/PanelShell";
 import { HighlightsPanel } from "../../panels/HighlightsPanel";
 import { SelectionPopover } from "../../components/SelectionPopover";
 import { HighlightActionPopover } from "../../components/HighlightActionPopover";
-import type { DocxSelectionAnchor } from "./docxHighlight";
 import { SideSheet } from "../../components/SideSheet";
 import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
@@ -50,6 +53,7 @@ import { ReaderProgressBar } from "../chrome/ReaderProgressBar";
 import { ReaderTabBar } from "../chrome/ReaderTabBar";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
 import { SettingsPanel } from "../../panels/SettingsPanel";
+import { FocusHint, useFocusChrome } from "../chrome/focusChrome";
 import { useI18n } from "../../i18n/useI18n";
 import { formatNum } from "../../i18n";
 
@@ -128,25 +132,47 @@ export function FixedPageReader(props: FixedPageReaderProps) {
 
   // Highlighting popovers: `sel` drives the create-color popover after a text
   // selection; `activeHl` drives the edit/delete popover after clicking a mark.
-  const [sel, setSel] = useState<DocxSelectionAnchor | null>(null);
+  const [sel, setSel] = useState<FixedSelection | null>(null);
   const [activeHl, setActiveHl] = useState<{ id: string; rect: DOMRect } | null>(null);
 
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!sel) return;
+    // The anchor follows the format the selection came from. A DOCX page is
+    // real text, so it anchors to a block and a char range; a PDF page is a
+    // bitmap, so it anchors to the page plus the rectangles the selection
+    // covered, normalized to the page box.
     onCreateHighlight({
       text: sel.text,
       color,
       note,
-      fixed: {
-        fmt: "docx",
-        blockId: sel.blockId,
-        charStart: sel.charStart,
-        charEnd: sel.charEnd,
-      },
+      fixed:
+        sel.kind === "pdf"
+          ? { fmt: "pdf", page: sel.page, rects: sel.rects }
+          : {
+              fmt: "docx",
+              blockId: sel.blockId,
+              charStart: sel.charStart,
+              charEnd: sel.charEnd,
+            },
     });
     window.getSelection()?.removeAllRanges();
     setSel(null);
   };
+
+  // ── Focus mode ────────────────────────────────────────────────────────────
+  // The same affordance the reflow reader has, off the same persisted tweak —
+  // see reader/chrome/focusChrome.tsx. Desktop only: the reveal is driven by
+  // pointer proximity, and a phone has no pointer to track. On a phone the tab
+  // bar is the reader's way back to everything, so hiding it would strand them.
+  const focus = useFocusChrome({
+    active: t.focusMode,
+    setActive: (next) => setTweak("focusMode", next),
+    panelOpen: panel !== null,
+    closePanels: () => setPanel(null),
+    theme,
+    reducedMotion: reduced,
+    enabled: !isMobile,
+  });
 
   // Content/page-flip direction: DOCX carries its own; PDF follows the UI.
   const contentDir = book.kind === "docx" ? book.dir : uiDir;
@@ -366,6 +392,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   return (
     <div
       dir={uiDir}
+      // Pointer proximity summons a hidden bar; leaving the window retires both.
+      {...focus.rootHandlers}
       style={{
         position: "absolute",
         inset: 0,
@@ -375,7 +403,17 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         flexDirection: "column",
       }}
     >
-      {/* top chrome — shared with the reflow reader */}
+      {/* top chrome — shared with the reflow reader. The wrapper carries the
+          focus-mode float; out of focus mode it adds nothing but a flex row,
+          so the bar sits in the layout as before. */}
+      <div
+        style={
+          focus.floating ? focus.clip("top", focus.showTop) : { flexShrink: 0 }
+        }
+      >
+        <div
+          style={focus.floating ? focus.slide("top", focus.showTop) : undefined}
+        >
       <ReaderTopBar
         theme={theme}
         onBack={onBack}
@@ -410,6 +448,15 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           <>
             <ReaderIconButton
               theme={theme}
+              icon="focus"
+              label={
+                t.focusMode ? tr("reader.exitFocusMode") : tr("reader.focusMode")
+              }
+              onClick={focus.toggle}
+              active={t.focusMode}
+            />
+            <ReaderIconButton
+              theme={theme}
               icon="clock"
               label={tr("reader.readingProgress")}
               onClick={() => openPanel("progress")}
@@ -426,6 +473,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           )
         }
       />
+        </div>
+      </div>
 
       {/* center viewer — flex:1 fills the gap between the bars (positioned
           context for the viewer's absolute-inset scroll layer). */}
@@ -523,7 +572,36 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           />
         </div>
       ) : (
-        progressBar
+        <div
+          style={
+            focus.floating
+              ? focus.clip("bottom", focus.showBottom)
+              : { flexShrink: 0 }
+          }
+        >
+          <div
+            style={
+              focus.floating
+                ? {
+                    ...focus.slide("bottom", focus.showBottom),
+                    borderTop: `0.5px solid ${theme.rule}`,
+                  }
+                : undefined
+            }
+          >
+            {progressBar}
+          </div>
+        </div>
+      )}
+
+      {focus.hint > 0 && (
+        <FocusHint
+          key={focus.hint}
+          theme={theme}
+          title={tr("reader.focusMode")}
+          body={tr("reader.focusHintBody")}
+          isAr={uiDir === "rtl"}
+        />
       )}
 
       {/* Mobile panels: the same bottom sheet the reflow reader raises, at the
@@ -544,7 +622,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         </MobileSheet>
       )}
 
-      {/* Highlighting popovers (DOCX). Positioned from viewport-coordinate rects. */}
+      {/* Highlighting popovers. Positioned from viewport-coordinate rects. */}
       {sel && (
         <SelectionPopover
           theme={theme}

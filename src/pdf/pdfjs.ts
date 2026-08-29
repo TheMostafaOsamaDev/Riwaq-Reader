@@ -41,6 +41,14 @@ export interface PdfDoc {
   pageViewport(i: number, scale: number): Promise<{ width: number; height: number }>;
   /** Render page `i` into `canvas` at `scale` (handles devicePixelRatio). */
   renderPage(i: number, canvas: HTMLCanvasElement, scale: number): Promise<void>;
+  /** Render page `i`'s selectable text into `container` at `scale`.
+   *
+   *  A rendered PDF page is pixels, so selection and highlighting need pdf.js's
+   *  text layer: transparent, absolutely-positioned spans laid over the canvas
+   *  at the glyph positions the file declares. Styling lives in global.css
+   *  (`.textLayer`) — pdf.js positions the spans against a `--scale-factor`
+   *  custom property it expects the stylesheet to honour. */
+  renderTextLayer(i: number, container: HTMLElement, scale: number): Promise<void>;
   destroy(): void;
 }
 
@@ -59,6 +67,9 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
     HTMLCanvasElement,
     { cancel(): void; promise: Promise<void> }
   >();
+  // Same idea for text layers: a container being re-laid-out at a new scale
+  // must abandon the run already writing spans into it.
+  const textTasks = new WeakMap<HTMLElement, { cancel(): void }>();
 
   return {
     pageCount: doc.numPages,
@@ -114,6 +125,32 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
         if (renderTasks.get(canvas) === task) renderTasks.delete(canvas);
       }
     },
+    async renderTextLayer(i, container, scale) {
+      textTasks.get(container)?.cancel();
+      const page = await doc.getPage(i + 1);
+      const viewport = page.getViewport({ scale });
+      const textContentSource = await page.getTextContent();
+      container.textContent = "";
+      // pdf.js positions every span from this custom property; without it the
+      // whole layer collapses into the top-left corner. The container's own box
+      // is owned by whoever mounted it (PdfPageSource pins it over the canvas),
+      // so nothing here sets width or height.
+      container.style.setProperty("--scale-factor", String(scale));
+      const layer = new pdfjs.TextLayer({
+        textContentSource,
+        container,
+        viewport,
+      });
+      textTasks.set(container, layer);
+      try {
+        await layer.render();
+      } catch {
+        // cancelled / superseded — ignore
+      } finally {
+        if (textTasks.get(container) === layer) textTasks.delete(container);
+      }
+    },
+
     destroy() {
       void doc.destroy();
     },

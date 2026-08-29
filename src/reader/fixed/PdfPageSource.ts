@@ -4,7 +4,8 @@
 
 import { BaseDirectory, readFile } from "@tauri-apps/plugin-fs";
 import { openPdfDocument } from "../../pdf/pdfjs";
-import { bookDir, type PdfBook } from "../../store/library";
+import { bookDir, type Highlight, type PdfBook } from "../../store/library";
+import { hlBg, type ThemeKey } from "../../styles/tokens";
 import type { FixedPageSource } from "./FixedPageSource";
 
 const BASE = BaseDirectory.AppData;
@@ -32,10 +33,23 @@ function canvasBudgetBytes(): number {
 }
 
 /** A page we have already rasterized, plus the scale its pixels were drawn at.
- *  Keeping the scale lets `renderPage` re-mount a canvas somewhere else without
- *  redrawing it — see the note there. */
+ *  Keeping the scale lets `renderPage` re-mount a page somewhere else without
+ *  redrawing it — see the note there.
+ *
+ *  The three layers, bottom to top:
+ *
+ *    wrap      shrink-wraps the canvas, so its box IS the page box. Highlight
+ *              rects are stored normalized (0..1), so they are positioned in
+ *              percentages against this and need no repaint on zoom or resize.
+ *    marks     painted highlights. `pointer-events: none` — see `pdfHighlightAt`.
+ *    text      pdf.js's transparent, selectable text layer, on top so a drag
+ *              across the page selects text rather than the marks under it.
+ */
 interface Mounted {
+  wrap: HTMLDivElement;
   canvas: HTMLCanvasElement;
+  marks: HTMLDivElement;
+  text: HTMLDivElement;
   scale: number;
   /** Backing-store bytes, so eviction can budget by memory rather than count. */
   bytes: number;
@@ -69,6 +83,86 @@ export async function createPdfPageSourceFromBytes(
   // Insertion-ordered so the first key is the oldest — cheap LRU.
   const mounted = new Map<number, Mounted>();
   const budget = canvasBudgetBytes();
+  // Pages the viewer has mounted right now (see FixedPageSource.retain).
+  // Off-limits to the evictor at any budget: a page whose canvas is pulled out
+  // from under a live host renders as a blank sheet, and the viewer's own
+  // "already drawn at this scale" cache means it is never asked for again.
+  //
+  // This is what MIN_MOUNTED could not do. Three was the right floor for PAGED
+  // mode (the page, the one sliding in, one neighbour) but scroll mode keeps a
+  // window of three viewport heights on screen — five pages or more on a tall
+  // desktop window — so the floor sat below the working set and eviction ate
+  // pages the reader was looking at.
+  let retained: ReadonlySet<number> = new Set<number>();
+  // Current highlights + theme, pushed in by the viewer via setHighlights.
+  let curHighlights: Highlight[] = [];
+  let curThemeKey: ThemeKey = "light";
+  // Whether the text layer should accept the pointer. Off in paged mode, where
+  // a horizontal drag is a page turn and would otherwise be swallowed by a text
+  // selection. The spans are still built either way — building them costs one
+  // getTextContent() per page, and keeping the layer identical across flows
+  // means switching flow never has to rebuild it.
+  let selectable = true;
+
+  /** Build the three-layer page element. Empty until renderPage fills it. */
+  function makeMount(i: number): Mounted {
+    const wrap = document.createElement("div");
+    // A PDF carries its own text positions; an RTL ancestor would otherwise
+    // scramble both the canvas draw and the text layer's span placement.
+    wrap.dir = "ltr";
+    wrap.setAttribute("data-page-index", String(i));
+    // line-height:0 so the wrap shrink-wraps the canvas exactly, with no
+    // inline-descender strip under it throwing the normalized rects off.
+    wrap.style.cssText = "position:relative; line-height:0; direction:ltr;";
+    const canvas = document.createElement("canvas");
+    canvas.style.display = "block";
+    const marks = document.createElement("div");
+    marks.style.cssText =
+      "position:absolute; inset:0; pointer-events:none; overflow:hidden;";
+    const text = document.createElement("div");
+    // `.textLayer` in global.css styles the SPANS pdf.js creates (it owns their
+    // creation, so they can only be reached from a stylesheet). The container's
+    // own geometry is set here instead: it is structural — the layer has to sit
+    // exactly over the canvas for a selection's rects to mean anything — and
+    // leaving it to a global stylesheet meant anything rendering a page without
+    // importing global.css (the dev harness) laid the layer out in flow BELOW
+    // the page, doubling the wrap's height and putting every glyph elsewhere.
+    text.className = "textLayer";
+    text.style.cssText =
+      "position:absolute; inset:0; overflow:clip; line-height:1; " +
+      "text-align:initial; transform-origin:0 0; z-index:1;";
+    wrap.append(canvas, marks, text);
+    applySelectable(text);
+    return { wrap, canvas, marks, text, scale: 0, bytes: 0 };
+  }
+
+  function applySelectable(text: HTMLDivElement) {
+    text.style.pointerEvents = selectable ? "auto" : "none";
+    text.style.userSelect = selectable ? "text" : "none";
+    text.style.webkitUserSelect = selectable ? "text" : "none";
+  }
+
+  /** Repaint one page's marks from the current highlight set. Positions are
+   *  percentages of the page box, so this never needs redoing on a scale
+   *  change — only when the highlights or the theme change. */
+  function paintMarks(i: number, m: Mounted) {
+    m.marks.textContent = "";
+    for (const hl of curHighlights) {
+      if (hl.fixed?.fmt !== "pdf" || hl.fixed.page !== i) continue;
+      for (const r of hl.fixed.rects) {
+        const el = document.createElement("div");
+        el.setAttribute("data-h-id", hl.id);
+        el.style.cssText =
+          `position:absolute; left:${r.x * 100}%; top:${r.y * 100}%; ` +
+          `width:${r.w * 100}%; height:${r.h * 100}%; ` +
+          // Multiply, not a flat fill: the page is a bitmap underneath, and an
+          // opaque block would bury the very words being highlighted.
+          `background:${hlBg(hl.color, curThemeKey)}; mix-blend-mode:multiply; ` +
+          `border-radius:2px;`;
+        m.marks.appendChild(el);
+      }
+    }
+  }
 
   function heldBytes(): number {
     let n = 0;
@@ -77,8 +171,9 @@ export async function createPdfPageSourceFromBytes(
   }
 
   /** Drop least-recently-used canvases until we're inside both the byte budget
-   *  and the count ceiling, never touching `keep` and never going below
-   *  MIN_MOUNTED — a turn's working set outranks the budget. */
+   *  and the count ceiling, never touching `keep` or anything the viewer has
+   *  retained, and never going below MIN_MOUNTED — a turn's working set
+   *  outranks the budget. */
   function evict(keep: number) {
     let bytes = heldBytes();
     while (
@@ -90,15 +185,18 @@ export async function createPdfPageSourceFromBytes(
       // stalls eviction entirely and the budget is never enforced.
       let victim: number | undefined;
       for (const key of mounted.keys()) {
-        if (key !== keep) {
+        if (key !== keep && !retained.has(key)) {
           victim = key;
           break;
         }
       }
+      // Everything left is on screen. Hold the extra bytes rather than blank a
+      // page the reader is looking at — the working set is bounded by the
+      // viewport, so this cannot grow without limit.
       if (victim === undefined) break;
       const m = mounted.get(victim)!;
       bytes -= m.bytes;
-      m.canvas.remove();
+      m.wrap.remove();
       mounted.delete(victim);
     }
   }
@@ -108,6 +206,25 @@ export async function createPdfPageSourceFromBytes(
     pageCount: doc.pageCount,
     outline: doc.outline,
     hasTextLayer: doc.hasTextLayer,
+
+    retain(pages) {
+      retained = new Set(pages);
+    },
+
+    setHighlights(highlights, themeKey) {
+      curHighlights = highlights;
+      curThemeKey = themeKey;
+      // Repaint in place. Unlike DOCX — whose marks are spans woven into the
+      // text and so only appear on a re-render — these are an overlay, so a new
+      // highlight can show up without touching the rasterized page at all.
+      for (const [i, m] of mounted) paintMarks(i, m);
+    },
+
+    setSelectable(on) {
+      if (selectable === on) return;
+      selectable = on;
+      for (const m of mounted.values()) applySelectable(m.text);
+    },
 
     async pageSize(i) {
       const cached = sizeCache.get(i);
@@ -122,14 +239,15 @@ export async function createPdfPageSourceFromBytes(
       const want = quantize(scale);
       const entry = mounted.get(i);
       if (entry) {
-        // MOVE the existing canvas rather than building a new one. A page turn
-        // hands the same page from the overlay host to the base host, and a
-        // fresh canvas there meant rasterizing the page a second time — the
+        // MOVE the existing page element rather than building a new one. A page
+        // turn hands the same page from the overlay host to the base host, and
+        // a fresh canvas there meant rasterizing the page a second time — the
         // single most expensive thing a turn did, and it landed mid-animation.
-        // Re-parenting keeps the pixels, so the second mount is free.
-        if (entry.canvas.parentElement !== host) {
+        // Re-parenting keeps the pixels (and the text layer), so the second
+        // mount is free.
+        if (entry.wrap.parentElement !== host) {
           host.textContent = "";
-          host.appendChild(entry.canvas);
+          host.appendChild(entry.wrap);
         }
         // Refresh LRU order.
         mounted.delete(i);
@@ -138,25 +256,29 @@ export async function createPdfPageSourceFromBytes(
         if (entry.scale === want) return;
         entry.scale = want;
         await doc.renderPage(i, entry.canvas, scale);
+        await doc.renderTextLayer(i, entry.text, scale);
         entry.bytes = canvasBytes(entry.canvas); // scale changed the backing store
         evict(i);
         return;
       }
 
-      // Fresh host (or recycled by the virtualizer) — reset it.
+      // Fresh host (or recycled by the virtualizer) — reset it. The element is
+      // attached BEFORE the awaits below, so the viewer (which reads an empty
+      // host as "this page still needs drawing") never asks twice.
       host.textContent = "";
-      const canvas = document.createElement("canvas");
-      canvas.style.display = "block";
-      host.appendChild(canvas);
-      const created: Mounted = { canvas, scale: want, bytes: 0 };
+      const created = makeMount(i);
+      created.scale = want;
+      host.appendChild(created.wrap);
       mounted.set(i, created);
-      await doc.renderPage(i, canvas, scale);
-      created.bytes = canvasBytes(canvas);
+      paintMarks(i, created);
+      await doc.renderPage(i, created.canvas, scale);
+      await doc.renderTextLayer(i, created.text, scale);
+      created.bytes = canvasBytes(created.canvas);
       evict(i);
     },
 
     destroy() {
-      for (const m of mounted.values()) m.canvas.remove();
+      for (const m of mounted.values()) m.wrap.remove();
       mounted.clear();
       doc.destroy();
     },

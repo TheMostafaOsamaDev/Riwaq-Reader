@@ -20,13 +20,29 @@ export interface FixedPageSource {
    *  scroll view doesn't jump as pages render (no layout shift). */
   pageSize(i: number): Promise<{ w: number; h: number }>;
   /** Mount page `i` into `host` at `scale`. A <canvas> for PDF, a DOM subtree
-   *  for DOCX. The viewer owns `host`; the source owns its contents. */
+   *  for DOCX. The viewer owns `host`; the source owns its contents.
+   *
+   *  Must leave something in `host` SYNCHRONOUSLY (before its first `await`),
+   *  even if the pixels arrive later — the viewer treats an empty host as "this
+   *  page needs rendering" and would otherwise ask again every frame. */
   renderPage(i: number, host: HTMLElement, scale: number): Promise<void>;
+  /** The pages the viewer currently has mounted. A source that caches page
+   *  bitmaps must not evict any of these: dropping one out of a live host
+   *  leaves a blank page sitting on screen. Called whenever the set changes. */
+  retain?(pages: readonly number[]): void;
   /** DOCX only — the page a block id currently lives on, for jumping to a
    *  highlight. Undefined for PDF (highlights carry their own page). */
   pageForBlock?(blockId: string): number | undefined;
-  /** DOCX only — give the source the current highlights + theme so `renderPage`
-   *  can inject `<mark>` spans. The viewer calls this then re-renders. */
+  /** Give the source the current highlights + theme so it can show them.
+   *
+   *  How each backend uses it differs. DOCX weaves `<mark>` spans into the text
+   *  during `renderPage`, so the viewer must force a re-render afterwards. PDF
+   *  paints an overlay above the bitmap and updates it in place, so the call
+   *  alone is enough. */
   setHighlights?(highlights: Highlight[], themeKey: ThemeKey): void;
+  /** PDF only — whether the selectable text layer takes the pointer. The
+   *  viewer turns it off in paged mode, where a horizontal drag is a page turn
+   *  and would otherwise start a text selection instead. */
+  setSelectable?(on: boolean): void;
   destroy(): void;
 }

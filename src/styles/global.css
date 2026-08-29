@@ -767,3 +767,51 @@ input:focus-visible,
 [dir="rtl"] .rtl-flip-x {
   transform: scaleX(-1);
 }
+
+/* ── pdf.js text layer ─────────────────────────────────────────────────────
+   A rendered PDF page is pixels, so selecting and highlighting text needs
+   pdf.js's text layer: transparent, absolutely-positioned spans laid over the
+   canvas at the glyph positions the file declares (see PdfPageSource).
+
+   These rules are the subset of pdfjs-dist/web/pdf_viewer.css that the text
+   layer itself needs. That file is not imported wholesale because it also
+   carries the viewer's toolbar, annotation-editor and print styling — none of
+   which this app renders — along with `:root` variables that would land in the
+   app's own cascade. pdf.js positions each span from the `--scale-factor`
+   custom property it sets on the container; without these rules the layer
+   collapses into the page's top-left corner. */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+}
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+}
+.textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+/* Decorative glyphs pdf.js exposes as images carry no text to select. */
+.textLayer span[role="img"] {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
