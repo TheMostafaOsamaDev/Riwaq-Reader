@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
+import { useIncomingFiles } from "./hooks/useIncomingFiles";
 import { DesktopReader } from "./components/DesktopReader";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
@@ -107,6 +108,11 @@ function App() {
   // routing to the download queue). Has to live above the Library so
   // any emitted intents reach the Library's subscriber.
   useLaunchIntent();
+  // Files handed to us from outside — Open with, the Android share sheet,
+  // a drag-and-drop. Lives above the Library for the same reason
+  // useLaunchIntent does: the Library subscribes, and it isn't always
+  // mounted.
+  useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);

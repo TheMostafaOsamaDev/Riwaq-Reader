@@ -476,6 +476,9 @@ export const ar: Messages = {
   "status.importedFolderOther": "تم استيراد {n} كتب.",
   "status.coverNotFoundInEpub":
     "تعذّر العثور على غلاف في ملف EPUB الأصلي. جرّب “تعيين غلاف…” لاختيار صورة بنفسك.",
+  "status.importBusy": "هناك عملية استيراد جارية — أعد المحاولة بعد انتهائها.",
+  "status.skippedUnsupported": "تم تخطي {count} ملف لا يمكن لرواق قراءته.",
+  "status.alreadyInLibrary": "موجود في مكتبتك بالفعل.",
 
   "status.phase.queued": "في قائمة الانتظار",
   "status.phase.loadingSnapshot": "جارٍ تحميل اللقطة",

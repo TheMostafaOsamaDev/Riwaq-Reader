@@ -41,6 +41,7 @@ import {
 } from "../store/importReporter";
 import {
   coverSrcFor,
+  importPaths,
   listBooks,
   pickBooksForImport,
   pickFolderForImport,
@@ -57,6 +58,11 @@ import {
   type ImportReporter,
   type StagedPick,
 } from "../store/library";
+import {
+  hasIncoming,
+  onIncoming,
+  takeIncoming,
+} from "../store/incomingFiles";
 import {
   listShelves,
   createShelf as createShelfStore,
@@ -497,7 +503,10 @@ export function Library({
     }
   };
 
-  const beginImport = async (res: StagedPick | null) => {
+  const beginImport = async (
+    res: StagedPick | null,
+    opts?: { openWhenSingle?: boolean },
+  ) => {
     if (!res) {
       // Nothing was picked (dialog cancelled) — nothing will ever call
       // summarizeImport for this attempt, so drop any pending shelf
@@ -516,6 +525,23 @@ export function Library({
       errors: res.errors.map((e) => e.message),
     };
     if (res.autoImported.length > 0) await refresh();
+    // A file opened from outside meant "read this". Land the user in the
+    // reader — but only when there's exactly one book to land on. A
+    // multi-file drop has no defensible choice, so it stays in the library
+    // and reports through the usual import summary.
+    const reused = res.reused ?? [];
+    if (reused.length > 0) {
+      await refresh();
+      showToast("info", tr("status.alreadyInLibrary"));
+    }
+    const single =
+      res.autoImported.length + reused.length === 1 && res.drafts.length === 0
+        ? (res.autoImported[0] ?? reused[0])
+        : null;
+    if (opts?.openWhenSingle && single) {
+      onOpen(single.id);
+      return;
+    }
     if (res.drafts.length > 0) {
       setQIndex(0);
       setImportQueue(res.drafts);
@@ -554,14 +580,20 @@ export function Library({
     };
   };
 
-  const onImport = async () => {
+  /** Run one import. `source` supplies the paths — a picker prompt, or a
+   *  list that arrived from outside the app. */
+  const runImport = async (
+    source: (report: ImportReporter) => Promise<StagedPick | null>,
+    opts?: { openWhenSingle?: boolean },
+  ) => {
     if (importing || importQueue.length > 0) return;
     setImporting(true);
     setImportPct(null);
     setError(null);
     const run = importRunner();
     try {
-      await beginImport(await pickBooksForImport(run.reporter));
+      const res = await source(run.reporter);
+      await beginImport(res, opts);
       run.finish();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -575,6 +607,8 @@ export function Library({
       setImportPct(null);
     }
   };
+
+  const onImport = () => runImport((report) => pickBooksForImport(report));
 
   // Device → shelf (AddToShelfMenu's "From device"): snapshot the current
   // book ids, then run the *existing* single-file import trigger unchanged.
@@ -812,6 +846,25 @@ export function Library({
     () => onOpenDownloadQueue(() => openOverlay({ kind: "downloads" })),
     [],
   );
+
+  // Files handed to us from outside (Open with, Android share, drag-drop).
+  // They queue in the store because this component unmounts behind the
+  // reader — draining on mount is what makes a drop mid-chapter survive.
+  useEffect(() => {
+    const drain = () => {
+      if (!hasIncoming()) return;
+      if (importing || importQueue.length > 0) {
+        showToast("warn", tr("status.importBusy"));
+        return;
+      }
+      const paths = takeIncoming();
+      void runImport((report) => importPaths(paths, report), {
+        openWhenSingle: true,
+      });
+    };
+    drain();
+    return onIncoming(drain);
+  }, [importing, importQueue.length, showToast, tr]);
 
   // When a "Save as offline book" conversion finishes, one or more
   // brand-new library entries have just landed via importEpubBytes —
