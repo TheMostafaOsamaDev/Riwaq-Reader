@@ -478,7 +478,8 @@ export const ar: Messages = {
     "تعذّر العثور على غلاف في ملف EPUB الأصلي. جرّب “تعيين غلاف…” لاختيار صورة بنفسك.",
   "status.importBusy": "هناك عملية استيراد جارية — أعد المحاولة بعد انتهائها.",
   "status.skippedUnsupported": "تم تخطي {count} ملف لا يمكن لرواق قراءته.",
-  "status.alreadyInLibrary": "موجود في مكتبتك بالفعل.",
+  "status.alreadyInLibraryOne": "موجود في مكتبتك بالفعل.",
+  "status.alreadyInLibraryOther": "{n} كتب موجودة في مكتبتك بالفعل.",
 
   "status.phase.queued": "في قائمة الانتظار",
   "status.phase.loadingSnapshot": "جارٍ تحميل اللقطة",

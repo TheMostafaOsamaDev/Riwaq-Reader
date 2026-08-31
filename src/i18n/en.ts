@@ -579,7 +579,8 @@ export const en = {
     "Couldn't find a cover in the original EPUB. Try “Set cover…” to pick an image yourself.",
   "status.importBusy": "An import is already running — try again when it finishes.",
   "status.skippedUnsupported": "Skipped {count} file(s) Riwaq can't read.",
-  "status.alreadyInLibrary": "Already in your library.",
+  "status.alreadyInLibraryOne": "{n} already in your library.",
+  "status.alreadyInLibraryOther": "{n} already in your library.",
 
   // Progress-phase labels. `job.phase` (download queue conversions) and
   // import `Step.label` (source + docx importers) are free-form English

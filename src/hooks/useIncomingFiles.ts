@@ -32,11 +32,20 @@ export function useIncomingFiles(): void {
   useEffect(() => {
     void drainOnce();
 
+    // StrictMode (and a fast unmount in general) can tear this effect down
+    // before listen()'s promise resolves. Without the `disposed` flag,
+    // `unlisten` would still be undefined when cleanup runs, the `.then`
+    // below would write the real unlisten function into an already-
+    // detached closure, and that subscription would leak for the app's
+    // lifetime. Checking `disposed` in the `.then` unregisters it
+    // immediately instead.
+    let disposed = false;
     let unlisten: (() => void) | undefined;
     void listen("app://opened", () => {
       void drainOnce();
     }).then((fn) => {
-      unlisten = fn;
+      if (disposed) fn();
+      else unlisten = fn;
     });
 
     const onVisible = () => {
@@ -45,6 +54,7 @@ export function useIncomingFiles(): void {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
+      disposed = true;
       unlisten?.();
       document.removeEventListener("visibilitychange", onVisible);
     };
