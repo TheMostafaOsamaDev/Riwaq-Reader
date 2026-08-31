@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
+import { useFileDrop } from "./hooks/useFileDrop";
 import { DesktopReader } from "./components/DesktopReader";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
@@ -151,6 +152,12 @@ function App() {
   const isMobile = useMediaQuery(
     "(max-width: 720px), (pointer: coarse) and (max-height: 480px)",
   );
+  // Drag-and-drop is desktop-only: Android has no pointer drag onto the
+  // window, and Tauri emits no drag events there.
+  const dropState = useFileDrop(!isMobile);
+  // dropState is not yet rendered — the overlay that reads it lands in a
+  // follow-up task.
+  void dropState;
   // "system" resolves to light/dark from the OS setting; useMediaQuery
   // re-renders when the user flips OS appearance, so the whole app
   // (and the theme-aware brand mark) re-themes live.
