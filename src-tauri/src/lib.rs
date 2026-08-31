@@ -47,6 +47,7 @@ pub fn run() {
             notify::update_download_notification,
             notify::set_status_bar_style,
             notify::consume_launch_intent,
+            notify::consume_open_uri,
             notify::start_task_service,
             notify::stop_task_service,
             archive::stage_import_file,

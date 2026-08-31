@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.ActionMode
@@ -73,6 +74,21 @@ class MainActivity : TauriActivity() {
     }
 
     private fun rememberLaunchIntent(intent: Intent) {
+        // A book handed to us by another app — "Open with" (VIEW) or the
+        // share sheet (SEND). Kept in its own field rather than folded into
+        // pendingLaunchIntent, whose contract is the "queue" sentinel.
+        val bookUri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND ->
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            else -> null
+        }
+        if (bookUri != null) {
+            pendingOpenUri = bookUri.toString()
+            return
+        }
+
         val extra = intent.getStringExtra("leaflet.open") ?: return
         pendingLaunchIntent = extra
     }
@@ -117,6 +133,15 @@ class MainActivity : TauriActivity() {
         @JvmField
         @Volatile
         var pendingLaunchIntent: String? = null
+
+        /** Stashed content:// (or file://) URI of a book another app asked
+         *  us to open. Drained by Rust's consume_open_uri. Same @JvmField
+         *  @Volatile reasoning as pendingLaunchIntent above: JNI's
+         *  GetStaticFieldID needs a true static field, and the write lands
+         *  on a different thread than the read. */
+        @JvmField
+        @Volatile
+        var pendingOpenUri: String? = null
 
         /** SharedPreferences holding what the next cold launch needs to know
          *  about the in-app theme, before any JS has run. */
