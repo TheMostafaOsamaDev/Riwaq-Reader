@@ -51,10 +51,18 @@ From the brainstorming session:
   books the user meant. The library's existing import summary reports the
   batch.
 - **Drops are accepted anywhere in the window**, including mid-chapter in
-  the reader. The book imports in the background and the library picks it
-  up; the reader is not interrupted and does not navigate away — an
-  interruption there would cost the user their place, which is worse than
-  the delay in seeing the new book.
+  the reader. The reader is not interrupted and does not navigate away — an
+  interruption there would cost the user their place, which is worse than a
+  delay in seeing the new book.
+
+  `Library` unmounts behind the reader (`App.tsx` swaps the two through
+  `AnimatedSwap`), and it owns the import machinery — the progress reporter
+  and the PDF/DOCX dialog. So a drop arriving while the reader or settings
+  is on screen is **queued in the store and imported the moment the library
+  mounts**, not imported in place. The overlay acknowledges the drop
+  immediately with a short confirmation state so the queueing is visible
+  rather than silent; the library's existing import summary confirms
+  completion later.
 - **A drop or open arriving while an import is already running is
   refused, not queued.** `onImport` already guards on
   `importing || importQueue.length > 0`; the new entry points honour the
@@ -188,8 +196,10 @@ activity, and staging copies immediately.
 ### Frontend
 
 **`src/store/incomingFiles.ts`** (new) — module-scoped pub-sub mirroring
-`uiIntents.ts`. Holds the queue of paths awaiting import and the
-drag-overlay state.
+`uiIntents.ts`, including its `pendingStoreSource` idiom: paths that arrive
+with no subscriber mounted are held and drained on the next mount. That is
+what lets a drop survive the reader, and what makes a cold-launch open
+survive the gap before `Library` first renders.
 
 **`src/hooks/useIncomingFiles.ts`** (new) — mounted in `App.tsx` beside
 `useLaunchIntent`:
@@ -244,13 +254,18 @@ border box.
   overlay is purely visual). Backdrop is `theme.bg` at ~88% with an 8px
   blur — the app already uses blur to mean "the background is dismissed".
 - Centered card on `theme.paper` with a `theme.rule` border at the dialog
-  radius.
-  - **Accepting:** book icon, "أفلت الكتب هنا" / "Drop to add", a count
-    line, and a warm amber accent (`#d4a84a`, already in
+  radius. Three states:
+  - **Accepting:** `download` icon, "أفلت الكتب هنا" / "Drop to add", a
+    count line, and a warm amber accent (`#d4a84a`, already in
     `HIGHLIGHT_COLORS.yellow.dot`).
-  - **Refusing:** same card, muted ink, refusing icon, and
-    "EPUB · PDF · DOCX" as the recovery hint — an error must say how to fix
-    itself, not only that something is wrong.
+  - **Refusing:** same card, muted ink, `info` icon, and "EPUB · PDF · DOCX"
+    as the recovery hint — an error must say how to fix itself, not only
+    that something is wrong.
+  - **Received:** `check` icon, held 1400ms after a drop, then fades. This
+    is the only feedback a drop gets while the reader is on screen, since
+    the library's toast is unreachable from there. Shown unconditionally so
+    the drop's own outcome and the import's outcome each get their own
+    acknowledgement.
 - Motion: fade + `scale(0.98 → 1)` at `MOTION.med` / `EASE.enter`, exit at
   `MOTION.fast` / `EASE.exit`, collapsing to instant under
   `useReducedMotion()`.
