@@ -10,6 +10,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
+import { Spinner } from "./Spinner";
 import type { IconProps } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
@@ -29,6 +30,9 @@ interface Props {
   tab: LibraryTab;
   setTab: (t: LibraryTab) => void;
   importing: boolean;
+  /** 0..1 import progress, or null before the pipeline starts reporting.
+   *  Renders as a determinate ring inside the button. */
+  importPct: number | null;
   onImport: () => void;
   onImportFolder: () => void;
   onOpenQueue: () => void;
@@ -81,6 +85,7 @@ export function LibrarySidebar({
   tab,
   setTab,
   importing,
+  importPct,
   onImport,
   onImportFolder,
   onOpenQueue,
@@ -243,17 +248,30 @@ export function LibrarySidebar({
             <button
               onClick={onImport}
               disabled={importing}
+              aria-busy={importing || undefined}
               style={{
                 flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 40, border: 0,
                 borderInlineEnd: `1px solid ${dark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.18)"}`,
                 borderStartStartRadius: 11, borderEndStartRadius: 11, borderStartEndRadius: 0, borderEndEndRadius: 0,
                 background: theme.ink, color: theme.paper, font: "inherit", fontSize: 13.5, fontWeight: 600,
-                cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1, transition: TRANSITION,
+                // "progress", not "default": the action is under way, not unavailable.
+                cursor: importing ? "progress" : "pointer", opacity: importing ? 0.6 : 1, transition: TRANSITION,
               }}
               onMouseEnter={(e) => { if (!importing) e.currentTarget.style.opacity = "0.9"; }}
               onMouseLeave={(e) => { if (!importing) e.currentTarget.style.opacity = "1"; }}
             >
-              <Icon name="plus" size={16} />
+              {importing ? (
+                // Swaps in for the plus rather than sitting beside it, so the
+                // button's contents don't shift when a run starts. Determinate
+                // as soon as the pipeline reports a ratio.
+                <Spinner
+                  size={16}
+                  strokeWidth={2}
+                  {...(importPct === null ? {} : { value: importPct })}
+                />
+              ) : (
+                <Icon name="plus" size={16} />
+              )}
               {importing ? tr("sidebar.importing") : tr("sidebar.importBook")}
             </button>
             <button

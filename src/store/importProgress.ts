@@ -163,6 +163,17 @@ export function finishImport(resultBookId: string): void {
   });
 }
 
+/**
+ * Push an explicit 0..1 overall, for imports that report a continuous ratio
+ * rather than discrete steps. Device file imports know exactly how many bytes
+ * they've copied, so deriving progress from step *count* (which is what
+ * `recomputeOverall` does) would throw that away and stall the bar at 50%
+ * for the whole copy.
+ */
+export function setOverall(ratio: number): void {
+  set({ overall: Math.min(1, Math.max(0, ratio)) });
+}
+
 export function setMinimized(minimized: boolean): void {
   set({ minimized });
 }

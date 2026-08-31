@@ -11,6 +11,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -230,4 +231,179 @@ export function VirtualGrid<T>({
       <div style={{ height: totalHeight, position: "relative" }}>{rows}</div>
     </div>
   );
+}
+
+interface MeasuredVirtualListProps<T> {
+  items: T[];
+  /** Height to assume for rows that haven't been measured yet. Only affects
+   *  the scrollbar's initial accuracy — measured rows correct it as they
+   *  scroll into view. */
+  estimatedItemHeight: number;
+  overscan?: number;
+  renderItem: (item: T, index: number) => ReactNode;
+  itemKey: (item: T, index: number) => string | number;
+  style?: CSSProperties;
+  className?: string;
+  ariaLabel?: string;
+  /** ARIA role for the scrolling container. Pass "list" when the rows are
+   *  `role="listitem"` — windowing replaces the `<ul>`/`<li>` parent-child
+   *  relationship with absolutely positioned wrappers, so the semantics have
+   *  to be restated explicitly. */
+  role?: string;
+}
+
+/**
+ * Windowed list for rows whose height isn't known up front.
+ *
+ * `VirtualList` above clips every row to a fixed `itemHeight`, which is fine
+ * for the shelf picker but wrong for chapter lists: ~6% of chapter titles are
+ * long enough to wrap to a second line, and clipping them would hide content.
+ * This variant renders the window, measures what it actually rendered, and
+ * feeds those measurements back into the offset table — so a wrapped row
+ * simply takes the space it needs.
+ *
+ * Rows are positioned absolutely from a prefix-sum offset table. Unmeasured
+ * rows fall back to `estimatedItemHeight`, so the scrollbar is approximate
+ * until you've scrolled past a region and exact afterwards.
+ */
+export function MeasuredVirtualList<T>({
+  items,
+  estimatedItemHeight,
+  overscan = 6,
+  renderItem,
+  itemKey,
+  style,
+  className,
+  ariaLabel,
+  role,
+}: MeasuredVirtualListProps<T>) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<Viewport>({
+    scrollTop: 0,
+    height: 0,
+  });
+  // Measured (or estimated) height per index, and the running prefix sum.
+  // Refs rather than state: they're written during layout and we re-render
+  // explicitly via `revision` only when a measurement actually changed.
+  const heights = useRef<number[]>([]);
+  const offsets = useRef<number[]>([0]);
+  const [, setRevision] = useState(0);
+  const rows = useRef(new Map<number, HTMLElement>());
+
+  // Reset when the list identity changes (e.g. a different volume expands).
+  const count = items.length;
+  if (heights.current.length !== count) {
+    const next = new Array<number>(count);
+    for (let i = 0; i < count; i++) {
+      next[i] = heights.current[i] ?? estimatedItemHeight;
+    }
+    heights.current = next;
+    offsets.current = buildOffsets(next);
+    rows.current.clear();
+  }
+
+  const onScroll = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setViewport((v) =>
+      v.scrollTop === el.scrollTop ? v : { ...v, scrollTop: el.scrollTop },
+    );
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setViewport({ scrollTop: el.scrollTop, height: el.clientHeight });
+    const ro = new ResizeObserver(() => {
+      setViewport((v) =>
+        v.height === el.clientHeight ? v : { ...v, height: el.clientHeight },
+      );
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const total = offsets.current[count] ?? 0;
+  const first = Math.max(0, findIndexForOffset(offsets.current, viewport.scrollTop) - overscan);
+  const last = Math.min(
+    count,
+    findIndexForOffset(offsets.current, viewport.scrollTop + viewport.height) +
+      1 +
+      overscan,
+  );
+
+  // Measure what we just painted. Only re-render when a height actually
+  // moved, otherwise this would loop forever.
+  useLayoutEffect(() => {
+    let changed = false;
+    let from = count;
+    for (const [index, el] of rows.current) {
+      const h = el.offsetHeight;
+      if (h > 0 && Math.abs(h - heights.current[index]) > 0.5) {
+        heights.current[index] = h;
+        if (index < from) from = index;
+        changed = true;
+      }
+    }
+    if (changed) {
+      offsets.current = buildOffsets(heights.current);
+      setRevision((r) => r + 1);
+    }
+  });
+
+  const slice: ReactNode[] = [];
+  for (let i = first; i < last; i++) {
+    const item = items[i];
+    if (item === undefined) break;
+    slice.push(
+      <div
+        key={itemKey(item, i)}
+        ref={(el) => {
+          if (el) rows.current.set(i, el);
+          else rows.current.delete(i);
+        }}
+        style={{
+          position: "absolute",
+          top: offsets.current[i],
+          left: 0,
+          right: 0,
+        }}
+      >
+        {renderItem(item, i)}
+      </div>,
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      onScroll={onScroll}
+      aria-label={ariaLabel}
+      role={role}
+      className={className}
+      style={{ overflowY: "auto", position: "relative", ...style }}
+    >
+      <div style={{ height: total, position: "relative" }}>{slice}</div>
+    </div>
+  );
+}
+
+export function buildOffsets(heights: number[]): number[] {
+  const out = new Array<number>(heights.length + 1);
+  out[0] = 0;
+  for (let i = 0; i < heights.length; i++) out[i + 1] = out[i] + heights[i];
+  return out;
+}
+
+/** Largest index whose offset is <= `offset`. Binary search over the prefix
+ *  sums, so lookup stays O(log n) as the list grows. */
+export function findIndexForOffset(offsets: number[], offset: number): number {
+  let lo = 0;
+  let hi = offsets.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (offsets[mid] <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
 }

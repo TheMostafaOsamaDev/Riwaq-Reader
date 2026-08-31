@@ -1,10 +1,10 @@
-import JSZip from "jszip";
+import type { ZipSource } from "./zipSource";
 import type {
   ChapterItem,
   EpubBook,
   EpubChapter,
-  EpubCover,
-  EpubImage,
+  EpubCoverRef,
+  EpubImageRef,
   ImageItem,
   ParsedEpub,
 } from "./types";
@@ -20,9 +20,17 @@ import type {
 //                                  out of the zip and renaming hrefs onto a
 //                                  stable `images/img-NNN.ext` scheme.
 //
-// Block-level items become `ChapterItem`s — text or image. The image bytes
-// are returned in `ParsedEpub.images` so the caller (importEpubBytes) can
-// drop them on disk under `books/<id>/images/...`.
+// Block-level items become `ChapterItem`s — text or image. Images are
+// returned in `ParsedEpub.images` as *references* (zip entry + target
+// filename), never as bytes: the importer hands them to
+// `ZipSource.extract`, which copies archive → disk natively. On Android a
+// byte array crossing the JS IPC is expanded to one JSON array element per
+// byte, so keeping image bytes out of the webview is the difference between
+// an import that works and one that dies with `RangeError: Invalid array
+// length`.
+//
+// The zip itself is behind `ZipSource`, so the same parser serves an
+// archive on disk (Rust reads it) and one that only exists as a buffer.
 
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 const OPF_NS = "http://www.idpf.org/2007/opf";
@@ -36,10 +44,20 @@ export class EpubParseError extends Error {
   }
 }
 
-export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
-  const zip = await JSZip.loadAsync(bytes);
-  const opfPath = await readOpfPath(zip);
-  const opfText = await readZipText(zip, opfPath);
+/**
+ * Parse an EPUB out of `src`.
+ *
+ * `id` is supplied by the caller rather than generated here because the
+ * importer has to know the book's storage directory *before* parsing — the
+ * archive is staged to `books/<id>/book.epub` first, and the parser reads it
+ * from there.
+ */
+export async function parseEpubFromSource(
+  src: ZipSource,
+  id: string,
+): Promise<ParsedEpub> {
+  const opfPath = await readOpfPath(src);
+  const opfText = await readZipText(src, opfPath);
 
   const opf = new DOMParser().parseFromString(opfText, "application/xml");
   throwIfParserError(opf, "OPF");
@@ -57,8 +75,18 @@ export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
 
   const manifest = buildManifest(opf);
   const spineIds = readSpine(opf);
-  const navTitles = await readNavTitles(zip, basePath, opf, manifest);
-  const cover = await readCover(zip, basePath, opf, manifest);
+  const navTitles = await readNavTitles(src, basePath, opf, manifest);
+  const cover = await readCover(src, basePath, opf, manifest);
+
+  // Pull every spine document in one round trip. Read individually, a
+  // 114-chapter book costs 114 IPC round trips, and on Android each of
+  // those is a postMessage plus a `webview.eval` of the response.
+  await src.prefetchText(
+    spineIds
+      .map((idref) => manifest.get(idref))
+      .filter((item): item is ManifestItem => !!item)
+      .map((item) => joinPath(basePath, item.href)),
+  );
 
   const imageCollector = new ImageCollector();
   const chapters: EpubChapter[] = [];
@@ -67,7 +95,7 @@ export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
     const manifestItem = manifest.get(idref);
     if (!manifestItem) continue;
     const fullPath = joinPath(basePath, manifestItem.href);
-    const xhtml = await safeReadZipText(zip, fullPath);
+    const xhtml = await src.readText(fullPath);
     if (!xhtml) continue;
 
     const doc = new DOMParser().parseFromString(xhtml, "application/xhtml+xml");
@@ -84,9 +112,9 @@ export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
       `Chapter ${order + 1}`;
 
     const instructions = collectChapterInstructions(root);
-    const items = await resolveChapterItems(
+    const items = resolveChapterItems(
       instructions,
-      zip,
+      src,
       dirname(fullPath),
       imageCollector,
     );
@@ -107,7 +135,7 @@ export async function parseEpub(bytes: ArrayBuffer): Promise<ParsedEpub> {
     throw new EpubParseError("no readable chapters found in spine");
 
   const book: EpubBook = {
-    id: crypto.randomUUID(),
+    id,
     title,
     author,
     language,
@@ -128,8 +156,8 @@ interface ManifestItem {
   properties: string;
 }
 
-async function readOpfPath(zip: JSZip): Promise<string> {
-  const container = await readZipText(zip, "META-INF/container.xml");
+async function readOpfPath(src: ZipSource): Promise<string> {
+  const container = await readZipText(src, "META-INF/container.xml");
   const doc = new DOMParser().parseFromString(container, "application/xml");
   throwIfParserError(doc, "container.xml");
   const rootfile = doc.getElementsByTagName("rootfile")[0];
@@ -179,13 +207,13 @@ function looksLikeImage(item: ManifestItem): boolean {
 // <svg><image xlink:href> inside it, then resolve that back to a manifest
 // image item.
 async function resolveXhtmlCover(
-  zip: JSZip,
+  src: ZipSource,
   basePath: string,
   wrapper: ManifestItem,
   manifest: Map<string, ManifestItem>,
 ): Promise<ManifestItem | undefined> {
   const wrapperPath = joinPath(basePath, wrapper.href);
-  const xhtml = await safeReadZipText(zip, wrapperPath);
+  const xhtml = await src.readText(wrapperPath);
   if (!xhtml) return undefined;
 
   const doc = new DOMParser().parseFromString(xhtml, "application/xhtml+xml");
@@ -223,11 +251,11 @@ async function resolveXhtmlCover(
 }
 
 async function readCover(
-  zip: JSZip,
+  src: ZipSource,
   basePath: string,
   opf: Document,
   manifest: Map<string, ManifestItem>,
-): Promise<EpubCover | undefined> {
+): Promise<EpubCoverRef | undefined> {
   // EPUB 3: manifest item with properties="cover-image".
   let cover: ManifestItem | undefined;
   for (const item of manifest.values()) {
@@ -258,7 +286,7 @@ async function readCover(
     cover &&
     (cover.mediaType.includes("xhtml") || cover.href.match(/\.x?html?$/i))
   ) {
-    const inner = await resolveXhtmlCover(zip, basePath, cover, manifest);
+    const inner = await resolveXhtmlCover(src, basePath, cover, manifest);
     if (inner) cover = inner;
   }
 
@@ -276,7 +304,7 @@ async function readCover(
       const isXhtml =
         item.mediaType.includes("xhtml") || /\.x?html?$/i.test(item.href);
       if (!isXhtml || (!hintId && !hintHref)) continue;
-      const inner = await resolveXhtmlCover(zip, basePath, item, manifest);
+      const inner = await resolveXhtmlCover(src, basePath, item, manifest);
       if (inner) {
         cover = inner;
         break;
@@ -314,19 +342,13 @@ async function readCover(
   if (!cover || !looksLikeImage(cover)) return undefined;
 
   const fullPath = joinPath(basePath, cover.href);
-  const file = zip.file(fullPath);
-  if (!file) return undefined;
+  if (!src.has(fullPath)) return undefined;
 
-  try {
-    const bytes = await file.async("uint8array");
-    const extension = extensionFor(cover.mediaType, cover.href);
-    const mime = cover.mediaType.startsWith("image/")
-      ? cover.mediaType
-      : mimeForExtension(extension);
-    return { bytes, mimeType: mime, extension };
-  } catch {
-    return undefined;
-  }
+  const extension = extensionFor(cover.mediaType, cover.href);
+  const mime = cover.mediaType.startsWith("image/")
+    ? cover.mediaType
+    : mimeForExtension(extension);
+  return { entry: fullPath, mimeType: mime, extension };
 }
 
 function mimeForExtension(ext: string): string {
@@ -377,7 +399,7 @@ function readSpine(opf: Document): string[] {
 }
 
 async function readNavTitles(
-  zip: JSZip,
+  src: ZipSource,
   basePath: string,
   opf: Document,
   manifest: Map<string, ManifestItem>,
@@ -386,7 +408,7 @@ async function readNavTitles(
   for (const item of manifest.values()) {
     if (item.properties.split(/\s+/).includes("nav")) {
       const path = joinPath(basePath, item.href);
-      const xhtml = await safeReadZipText(zip, path);
+      const xhtml = await src.readText(path);
       if (!xhtml) continue;
       return parseNavXhtml(xhtml, basePath, item.href);
     }
@@ -398,7 +420,7 @@ async function readNavTitles(
     const item = manifest.get(tocId);
     if (item) {
       const path = joinPath(basePath, item.href);
-      const ncx = await safeReadZipText(zip, path);
+      const ncx = await src.readText(path);
       if (ncx) return parseNcx(ncx, basePath, item.href);
     }
   }
@@ -549,14 +571,16 @@ function collectChapterInstructions(doc: Document): ChapterInstruction[] {
 }
 
 /** Take the document-order instructions and turn them into ChapterItems,
- *  deferring image-byte reads through the shared collector so the same
- *  source path used by multiple chapters only gets stored once. */
-async function resolveChapterItems(
+ *  routing image references through the shared collector so the same source
+ *  path used by multiple chapters only gets stored once. No bytes are read
+ *  here — the collector records where each image lives and the importer
+ *  extracts them all in one native pass afterwards. */
+function resolveChapterItems(
   instructions: ChapterInstruction[],
-  zip: JSZip,
+  src: ZipSource,
   chapterDir: string,
   collector: ImageCollector,
-): Promise<ChapterItem[]> {
+): ChapterItem[] {
   const out: ChapterItem[] = [];
   for (const inst of instructions) {
     if (inst.kind === "text") {
@@ -564,7 +588,7 @@ async function resolveChapterItems(
       continue;
     }
     const zipPath = joinPath(chapterDir, decodeURI(inst.src.split("#")[0]));
-    const href = await collector.addImageFromZip(zip, zipPath);
+    const href = collector.reference(src, zipPath);
     if (!href) continue; // referenced image missing from zip — drop silently
     const item: ImageItem = { src: href };
     if (inst.alt) item.alt = inst.alt;
@@ -573,42 +597,34 @@ async function resolveChapterItems(
   return out;
 }
 
-/** Reads referenced images out of the zip on first encounter, dedupes by
- *  source path, and assigns each a stable `images/img-NNN.ext` href. The
- *  href shape doubles as the on-disk path under `books/<id>/`, so the
- *  reader can resolve it via Tauri's asset:// protocol later. */
+/** Notes each referenced image on first encounter, dedupes by source path,
+ *  and assigns a stable `images/img-NNN.ext` href. The href shape doubles as
+ *  the on-disk path under `books/<id>/`, so the reader can resolve it via
+ *  Tauri's asset:// protocol later.
+ *
+ *  Nothing is decompressed here. The collector only produces a work list;
+ *  `ZipSource.extract` turns it into files. That's what keeps a 200 MB
+ *  picture book from having its entire image set resident in the webview
+ *  at once. */
 class ImageCollector {
   private byPath = new Map<string, string>();
-  private images: EpubImage[] = [];
+  private images: EpubImageRef[] = [];
 
-  async addImageFromZip(
-    zip: JSZip,
-    zipPath: string,
-  ): Promise<string | null> {
+  reference(src: ZipSource, zipPath: string): string | null {
     const cached = this.byPath.get(zipPath);
     if (cached) return cached;
-
-    const file = zip.file(zipPath);
-    if (!file) return null;
-
-    let bytes: Uint8Array;
-    try {
-      bytes = await file.async("uint8array");
-    } catch {
-      return null;
-    }
+    if (!src.has(zipPath)) return null;
 
     const ext = imageExtensionForPath(zipPath);
     const idx = this.images.length + 1;
     const href = `images/img-${String(idx).padStart(3, "0")}.${ext}`;
-    const mimeType = mimeForExtension(ext);
 
     this.byPath.set(zipPath, href);
-    this.images.push({ href, bytes, mimeType });
+    this.images.push({ href, entry: zipPath, mimeType: mimeForExtension(ext) });
     return href;
   }
 
-  collected(): EpubImage[] {
+  collected(): EpubImageRef[] {
     return this.images;
   }
 }
@@ -642,23 +658,10 @@ function throwIfParserError(doc: Document, label: string) {
   void XHTML_NS;
 }
 
-async function readZipText(zip: JSZip, path: string): Promise<string> {
-  const file = zip.file(path);
-  if (!file) throw new EpubParseError(`missing ${path} in EPUB`);
-  return file.async("string");
-}
-
-async function safeReadZipText(
-  zip: JSZip,
-  path: string,
-): Promise<string | null> {
-  const file = zip.file(path);
-  if (!file) return null;
-  try {
-    return await file.async("string");
-  } catch {
-    return null;
-  }
+async function readZipText(src: ZipSource, path: string): Promise<string> {
+  const text = await src.readText(path);
+  if (text === null) throw new EpubParseError(`missing ${path} in EPUB`);
+  return text;
 }
 
 function dirname(p: string): string {

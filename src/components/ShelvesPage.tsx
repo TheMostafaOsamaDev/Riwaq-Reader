@@ -4,7 +4,7 @@
 // add tile — no separate "no books yet" placeholder — so there's always a
 // one-click way to start filling it.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, memo} from "react";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, titleFontFor, type Theme } from "../styles/tokens";
 import { Icon, type IconProps } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
@@ -173,7 +173,16 @@ function ShelfSection({
   const [menuHover, setMenuHover] = useState(false);
 
   return (
-    <section>
+    <section
+      style={{
+        // A library with many shelves stacks many of these rows, each holding
+        // a full carousel of covers. Off-screen rows skip layout and paint;
+        // the intrinsic size keeps their slot reserved so the page doesn't
+        // reflow as you scroll past.
+        contentVisibility: "auto",
+        containIntrinsicSize: `auto ${SHELF_ROW_INTRINSIC_H}px`,
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <span style={{ color: theme.muted, display: "flex", flexShrink: 0 }}>
           <Icon name="layers" size={16} />
@@ -269,12 +278,9 @@ function ShelfSection({
                 theme={theme}
                 book={b}
                 coverSrc={covers[b.id]}
-                onOpen={() => onOpenBook(b.id)}
-                onRemove={
-                  onRemoveFromShelf
-                    ? () => onRemoveFromShelf(b.id, shelf.id)
-                    : undefined
-                }
+                shelfId={shelf.id}
+                onOpen={onOpenBook}
+                onRemove={onRemoveFromShelf}
               />
             </div>
           ))}
@@ -291,23 +297,33 @@ function ShelfSection({
 // matching the same cover-then-title stacking the mobile shelf grid uses
 // (MobileShelfCard in Library.tsx) but at the carousel's fixed card width
 // instead of a fluid grid cell.
-function ShelfBookTile({
+/** Heading + carousel of one shelf row: the title line, the covers, and the
+ *  trailing add tile. Used as the `contain-intrinsic-size` placeholder for
+ *  rows that are scrolled out of view. */
+const SHELF_ROW_INTRINSIC_H = BOOK_COVER_DIMS.sm.h + 92;
+
+/** Memoized: the shelves page renders every book of every shelf, so a state
+ *  change anywhere (a rename dialog, a refresh) used to reconcile all of
+ *  them. Callbacks take the book id so they can stay stable. */
+const ShelfBookTile = memo(function ShelfBookTile({
   theme,
   book,
   coverSrc,
+  shelfId,
   onOpen,
   onRemove,
 }: {
   theme: Theme;
   book: BookIndexEntry;
   coverSrc?: string;
-  onOpen: () => void;
+  shelfId: string;
+  onOpen: (id: string) => void;
   /** Optional parity affordance (Task 14) — shows a small hover "×" over
    *  the cover that removes the book from just this shelf. Undefined when
    *  the caller didn't wire it up; the row then only offers the click-through
    *  to the book itself (touch users still reach "Remove from shelf" via the
    *  book's own context menu on the single-shelf detail page). */
-  onRemove?: () => void;
+  onRemove?: (bookId: string, shelfId: string) => void;
 }) {
   const { tr } = useI18n();
   const [hover, setHover] = useState(false);
@@ -325,7 +341,7 @@ function ShelfBookTile({
     >
       <div style={{ position: "relative" }}>
         <button
-          onClick={onOpen}
+          onClick={() => onOpen(book.id)}
           style={{
             display: "block",
             border: 0,
@@ -350,7 +366,7 @@ function ShelfBookTile({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onRemove();
+              onRemove(book.id, shelfId);
             }}
             aria-label={tr("shelves.removeFromShelf")}
             title={tr("shelves.removeFromShelf")}
@@ -379,7 +395,7 @@ function ShelfBookTile({
         )}
       </div>
       <button
-        onClick={onOpen}
+        onClick={() => onOpen(book.id)}
         style={{
           display: "block",
           width: "100%",
@@ -413,7 +429,7 @@ function ShelfBookTile({
       </button>
     </div>
   );
-}
+});
 
 // Small anchored popover for the section header's "⋯" button — Rename /
 // Delete. Deliberately lighter-weight than AddToShelfMenu (no fixed-overlay

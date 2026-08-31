@@ -12,6 +12,7 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { TocEntry } from "../types/reader";
+import { renameStaged, writeBytesChunked } from "./nativeStaging";
 import {
   appendIndexEntry,
   bookDir,
@@ -37,22 +38,33 @@ export function newFixedId(prefix: string): string {
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Persist a PDF: store the original bytes, a PdfBook descriptor, the chosen
- *  cover (if any), and append the index entry. */
-export async function commitPdfBook(opts: {
-  bytes: Uint8Array;
-  title: string;
-  author: string;
-  pageCount: number;
-  outline: TocEntry[];
-  cover?: ChosenCover;
-}): Promise<BookIndexEntry> {
+/** Persist a PDF: store the original, a PdfBook descriptor, the chosen cover
+ *  (if any), and append the index entry.
+ *
+ *  The original arrives one of two ways. `stagedPath` means the native import
+ *  pass already streamed it to disk, so we just rename it into place — no
+ *  bytes cross the IPC bridge, which is what makes a 200 MB PDF importable on
+ *  Android at all (see `nativeStaging.ts`). `bytes` is the in-memory fallback
+ *  used by the dev harness. */
+export async function commitPdfBook(
+  opts: {
+    title: string;
+    author: string;
+    pageCount: number;
+    outline: TocEntry[];
+    cover?: ChosenCover;
+  } & ({ stagedPath: string } | { bytes: Uint8Array }),
+): Promise<BookIndexEntry> {
   await ensureRoot();
   const id = newFixedId("pdf");
   const dir = bookDir(id);
   await mkdir(dir, { baseDir: BASE, recursive: true });
   // Keep the original file so pages can be re-rendered / re-scanned later.
-  await writeFile(`${dir}/book.pdf`, opts.bytes, { baseDir: BASE });
+  if ("stagedPath" in opts) {
+    await renameStaged(opts.stagedPath, `${dir}/book.pdf`);
+  } else {
+    await writeBytesChunked(`${dir}/book.pdf`, opts.bytes);
+  }
 
   const coverFile = await writeCover(dir, opts.cover);
 

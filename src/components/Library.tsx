@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLongPress } from "../hooks/useLongPress";
 import { Icon } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
@@ -32,7 +32,13 @@ import {
   getState as getQueueState,
   subscribe as subscribeToQueue,
 } from "../store/downloadQueue";
+import { Spinner } from "./Spinner";
 import { Store } from "./Store";
+import {
+  createImportReporter,
+  failImportRun,
+  finishImportRun,
+} from "../store/importReporter";
 import {
   coverSrcFor,
   listBooks,
@@ -48,6 +54,7 @@ import {
   removeBookFromShelf,
   type BookIndexEntry,
   type BookStatus,
+  type ImportReporter,
   type StagedPick,
 } from "../store/library";
 import {
@@ -163,6 +170,11 @@ export function Library({
   const { books, covers, loading, error, refresh, setError } = useBooks();
   const navState = useNav();
   const [importing, setImporting] = useState(false);
+  // 0..1 across the whole pick, or null while we're still waiting on the
+  // file dialog (nothing to measure yet). Drives the determinate ring in
+  // the import button; the Android notification reads the same numbers via
+  // the shared import-progress store.
+  const [importPct, setImportPct] = useState<number | null>(null);
   const [importQueue, setImportQueue] = useState<FixedImportDraft[]>([]);
   const [qIndex, setQIndex] = useState(0);
   const [qBusy, setQBusy] = useState(false);
@@ -512,19 +524,55 @@ export function Library({
     }
   };
 
+  /**
+   * Progress plumbing for one import run: a reporter to hand the pipeline,
+   * plus the two terminal calls.
+   *
+   * The real reporter is created lazily, on the first file. Creating it marks
+   * an import "active" — which lights up the Android notification — and the
+   * file dialog can sit open for as long as the user cares to browse, so
+   * nothing should look busy until they've actually chosen something. If they
+   * cancel, no reporter is ever made and `finish`/`fail` are no-ops.
+   */
+  const importRunner = () => {
+    let reporter: ImportReporter | undefined;
+    const start = () =>
+      (reporter ??= createImportReporter(
+        // Local state drives the button's ring; the reporter mirrors the
+        // same numbers into the shared store for the notification.
+        (view) => setImportPct(view.overall),
+        tr("sidebar.importing"),
+      ));
+    return {
+      reporter: {
+        file: (i, total, name) => start().file(i, total, name),
+        phase: (p) => reporter?.phase(p),
+        progress: (p) => reporter?.progress(p),
+      } satisfies ImportReporter,
+      finish: () => reporter && finishImportRun(null),
+      fail: (message: string) => reporter && failImportRun(message),
+    };
+  };
+
   const onImport = async () => {
     if (importing || importQueue.length > 0) return;
     setImporting(true);
+    setImportPct(null);
     setError(null);
+    const run = importRunner();
     try {
-      await beginImport(await pickBooksForImport());
+      await beginImport(await pickBooksForImport(run.reporter));
+      run.finish();
     } catch (e) {
-      setError(errorLabel(e instanceof Error ? e.message : String(e), tr));
+      const message = e instanceof Error ? e.message : String(e);
+      run.fail(message);
+      setError(errorLabel(message, tr));
       // The pick/import blew up before beginImport could run its own
       // cleanup — same reasoning as beginImport's `!res` branch above.
       pendingShelfImportRef.current = null;
     } finally {
       setImporting(false);
+      setImportPct(null);
     }
   };
 
@@ -547,13 +595,19 @@ export function Library({
   const onImportFolder = async () => {
     if (importing || importQueue.length > 0) return;
     setImporting(true);
+    setImportPct(null);
     setError(null);
+    const run = importRunner();
     try {
-      await beginImport(await pickFolderForImport());
+      await beginImport(await pickFolderForImport(run.reporter));
+      run.finish();
     } catch (e) {
-      setError(errorLabel(e instanceof Error ? e.message : String(e), tr));
+      const message = e instanceof Error ? e.message : String(e);
+      run.fail(message);
+      setError(errorLabel(message, tr));
     } finally {
       setImporting(false);
+      setImportPct(null);
     }
   };
 
@@ -678,12 +732,13 @@ export function Library({
   // `const` (stable across the closure) rather than a property access on
   // `menu`, which TS won't narrow inside a nested callback.
   const menuShelfId = menu?.shelfId;
-  const openContextMenu = (
-    bookId: string,
-    x: number,
-    y: number,
-    shelfId?: string,
-  ) => setMenu({ bookId, x, y, shelfId });
+  // Stable identity: it reaches every memoized library card, and a fresh
+  // arrow per render would make the memo a no-op.
+  const openContextMenu = useCallback(
+    (bookId: string, x: number, y: number, shelfId?: string) =>
+      setMenu({ bookId, x, y, shelfId }),
+    [],
+  );
   const closeContextMenu = () => setMenu(null);
   const onPickStatus = async (bookId: string, s: BookStatus) => {
     try {
@@ -806,6 +861,7 @@ export function Library({
     loading,
     error,
     importing,
+    importPct,
     tab,
     setTab: onSelectTab,
     onOpen: handleOpen,
@@ -1107,6 +1163,9 @@ interface LayoutProps {
   loading: boolean;
   error: string | null;
   importing: boolean;
+  /** 0..1 import progress, or null when the run hasn't started reporting
+   *  yet. Rendered as a determinate ring inside the import control. */
+  importPct: number | null;
   /** Active library tab, owned by the parent Library component so both
    *  layouts (and the Store) share it. */
   tab: LibraryTab;
@@ -1228,6 +1287,7 @@ function DesktopLibrary({
   loading,
   error,
   importing,
+  importPct,
   tab,
   setTab,
   onOpen,
@@ -1322,6 +1382,7 @@ function DesktopLibrary({
         tab={tab}
         setTab={setTab}
         importing={importing}
+        importPct={importPct}
         onImport={onImport}
         onImportFolder={onImportFolder}
         onOpenQueue={onOpenQueue}
@@ -1515,10 +1576,9 @@ function DesktopLibrary({
                   theme={theme}
                   book={b}
                   coverSrc={covers[b.id]}
-                  onOpen={() => onOpen(b.id)}
-                  onContextMenu={(x: number, y: number) =>
-                    onCardContextMenu(b.id, x, y, activeShelf.id)
-                  }
+                  shelfId={activeShelf.id}
+                  onOpen={onOpen}
+                  onContextMenu={onCardContextMenu}
                 />
               ))}
             </div>
@@ -1533,7 +1593,12 @@ function DesktopLibrary({
             {tr("library.loading")}
           </div>
         ) : books.length === 0 ? (
-          <EmptyState theme={theme} onImport={onImport} importing={importing} />
+          <EmptyState
+            theme={theme}
+            onImport={onImport}
+            importing={importing}
+            importPct={importPct}
+          />
         ) : visible.length === 0 ? (
           <FilteredEmptyState theme={theme} tab={tab} />
         ) : (
@@ -1591,10 +1656,8 @@ function DesktopLibrary({
                   theme={theme}
                   book={b}
                   coverSrc={covers[b.id]}
-                  onOpen={() => onOpen(b.id)}
-                  onContextMenu={(x: number, y: number) =>
-                    onCardContextMenu(b.id, x, y)
-                  }
+                  onOpen={onOpen}
+                  onContextMenu={onCardContextMenu}
                 />
               ))}
             </div>
@@ -1634,6 +1697,7 @@ function MobileLibrary({
   loading,
   error,
   importing,
+  importPct,
   tab,
   setTab,
   onOpen,
@@ -1970,10 +2034,9 @@ function MobileLibrary({
                     theme={theme}
                     book={b}
                     coverSrc={covers[b.id]}
-                    onOpen={() => onOpen(b.id)}
-                    onContextMenu={(x, y) =>
-                      onCardContextMenu(b.id, x, y, activeShelf.id)
-                    }
+                    shelfId={activeShelf.id}
+                    onOpen={onOpen}
+                    onContextMenu={onCardContextMenu}
                   />
                 ))}
               </div>
@@ -1989,7 +2052,12 @@ function MobileLibrary({
             {tr("library.loadingShort")}
           </div>
         ) : books.length === 0 ? (
-          <EmptyState theme={theme} onImport={onImport} importing={importing} />
+          <EmptyState
+            theme={theme}
+            onImport={onImport}
+            importing={importing}
+            importPct={importPct}
+          />
         ) : visible.length === 0 ? (
           <FilteredEmptyState theme={theme} tab={tab} />
         ) : (
@@ -2114,8 +2182,8 @@ function MobileLibrary({
                   theme={theme}
                   book={b}
                   coverSrc={covers[b.id]}
-                  onOpen={() => onOpen(b.id)}
-                  onContextMenu={(x, y) => onCardContextMenu(b.id, x, y)}
+                  onOpen={onOpen}
+                  onContextMenu={onCardContextMenu}
                 />
               ))}
             </div>
@@ -2133,6 +2201,7 @@ function MobileLibrary({
         <MobileBottomNav
           theme={theme}
           importing={importing}
+          importPct={importPct}
           tab={tab}
           shelvesActive={shelvesActive || !!activeShelf}
           onOpenShelves={onOpenShelves}
@@ -2149,6 +2218,7 @@ function MobileLibrary({
 interface MobileBottomNavProps {
   theme: Theme;
   importing: boolean;
+  importPct: number | null;
   tab: LibraryTab;
   shelvesActive: boolean;
   onOpenShelves: () => void;
@@ -2525,6 +2595,7 @@ function PillScrollArrow({
 function MobileBottomNav({
   theme,
   importing,
+  importPct,
   tab,
   shelvesActive,
   onOpenShelves,
@@ -2571,6 +2642,7 @@ function MobileBottomNav({
       <NavFabButton
         theme={theme}
         importing={importing}
+        importPct={importPct}
         onClick={onImport}
       />
       <NavIconButton
@@ -2671,10 +2743,16 @@ function NavIconButton({
 interface NavFabButtonProps {
   theme: Theme;
   importing: boolean;
+  importPct: number | null;
   onClick: () => void;
 }
 
-function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
+function NavFabButton({
+  theme,
+  importing,
+  importPct,
+  onClick,
+}: NavFabButtonProps) {
   // The focal action — filled + slightly larger than the outlined siblings
   // (50px vs 38px) + a soft drop shadow so it reads as the primary
   // affordance. Sits flush with the bar rather than protruding above it.
@@ -2683,7 +2761,10 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
     <button
       onClick={onClick}
       disabled={importing}
-      aria-label={tr("library.importEpub")}
+      aria-label={
+        importing ? tr("sidebar.importing") : tr("library.importEpub")
+      }
+      aria-busy={importing || undefined}
       title={importing ? tr("sidebar.importing") : tr("library.importEpub")}
       style={{
         width: 50,
@@ -2701,7 +2782,17 @@ function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
         flexShrink: 0,
       }}
     >
-      <Icon name="plus" size={20} />
+      {importing ? (
+        // Determinate whenever the pipeline has a real ratio — a 200 MB book
+        // takes long enough that a bare spinner reads as a hang.
+        <Spinner
+          size={22}
+          strokeWidth={2.5}
+          {...(importPct === null ? {} : { value: importPct })}
+        />
+      ) : (
+        <Icon name="plus" size={20} />
+      )}
     </button>
   );
 }
@@ -2722,21 +2813,29 @@ function sourceCornerMarker(theme: Theme, book: BookIndexEntry) {
   );
 }
 
-function MobileShelfCard({
+/** Mobile shelf-grid card. Memoized for the same reason as `LibraryCard`. */
+const MobileShelfCard = memo(function MobileShelfCard({
   theme,
   book,
   coverSrc,
+  shelfId,
   onOpen,
   onContextMenu,
 }: {
   theme: Theme;
   book: BookIndexEntry;
   coverSrc?: string;
-  onOpen: () => void;
-  onContextMenu: (x: number, y: number) => void;
+  shelfId?: string;
+  onOpen: (id: string) => void;
+  onContextMenu: (id: string, x: number, y: number, shelfId?: string) => void;
 }) {
   const { tr } = useI18n();
-  const longPress = useLongPress(onContextMenu);
+  const longPress = useLongPress(
+    useCallback(
+      (x: number, y: number) => onContextMenu(book.id, x, y, shelfId),
+      [onContextMenu, book.id, shelfId],
+    ),
+  );
   // Display-time fallback for a blank `Book.title` (see common.untitled) —
   // computed once so the font-family/line-height pick and the rendered
   // text agree on what's actually on screen.
@@ -2745,13 +2844,17 @@ function MobileShelfCard({
     <div
       onClick={() => {
         if (longPress.consumeLongPress()) return;
-        onOpen();
+        onOpen(book.id);
       }}
       {...longPress.bind}
       style={{
         // `minWidth: 0` so a wide unbreakable string inside this grid item
         // doesn't push the cell past its `minmax(0, 1fr)` track.
         minWidth: 0,
+        // See LibraryCard — off-screen cells skip layout/paint but keep their
+        // reserved height so the grid doesn't reflow while scrolling.
+        contentVisibility: "auto",
+        containIntrinsicSize: `auto ${MOBILE_CARD_INTRINSIC_H}px`,
         // Suppress the platform long-press text-selection / callout so the
         // menu opens cleanly without a stray selection box flickering in.
         WebkitUserSelect: "none",
@@ -2816,7 +2919,7 @@ function MobileShelfCard({
       )}
     </div>
   );
-}
+});
 
 function HeroContinueCard({
   theme,
@@ -2979,18 +3082,37 @@ function HeroContinueCard({
   );
 }
 
-function LibraryCard({
+/**
+ * Desktop library grid card.
+ *
+ * Memoized, and its callbacks take the book id rather than being pre-bound at
+ * the call site. With a few hundred books, an inline `() => onOpen(b.id)` per
+ * cell meant every card re-rendered on any Library state change (tab switch,
+ * context menu open, a refresh); now a card only re-renders when its own
+ * book or cover changes.
+ */
+/** Approximate rendered height of a grid card: cover + title + meta row.
+ *  Only used as the `contain-intrinsic-size` placeholder for off-screen
+ *  cards, so being a few px out costs nothing once a card scrolls in. */
+const CARD_INTRINSIC_H = BOOK_COVER_DIMS.md.h + 52;
+const MOBILE_CARD_INTRINSIC_H = BOOK_COVER_DIMS.sm.h + 46;
+
+const LibraryCard = memo(function LibraryCard({
   theme,
   book,
   coverSrc,
+  shelfId,
   onOpen,
   onContextMenu,
 }: {
   theme: Theme;
   book: BookIndexEntry;
   coverSrc?: string;
-  onOpen: () => void;
-  onContextMenu: (x: number, y: number) => void;
+  /** Set when the card is rendered inside a shelf, so the context menu can
+   *  offer "remove from this shelf". */
+  shelfId?: string;
+  onOpen: (id: string) => void;
+  onContextMenu: (id: string, x: number, y: number, shelfId?: string) => void;
 }) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
@@ -3005,13 +3127,23 @@ function LibraryCard({
       // never extends past it. The grid track is `minmax(140, 1fr)` so
       // cells stretch on wide viewports — without this, everything
       // below the cover stretched with the cell.
-      style={{ position: "relative", width: BOOK_COVER_DIMS.md.w }}
+      style={{
+        position: "relative",
+        width: BOOK_COVER_DIMS.md.w,
+        // Skip layout + paint for cards scrolled out of view. The grid keeps
+        // every card in the DOM (so Cmd+F, focus order and the scrollbar all
+        // behave), but the renderer only does real work for what's near the
+        // viewport. `contain-intrinsic-size` supplies the placeholder box so
+        // skipped cards still reserve their space — no scrollbar jitter.
+        contentVisibility: "auto",
+        containIntrinsicSize: `${BOOK_COVER_DIMS.md.w}px ${CARD_INTRINSIC_H}px`,
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
-        onContextMenu(e.clientX, e.clientY);
+        onContextMenu(book.id, e.clientX, e.clientY, shelfId);
       }}
     >
-      <div style={{ cursor: "pointer" }} onClick={onOpen}>
+      <div style={{ cursor: "pointer" }} onClick={() => onOpen(book.id)}>
         <div style={{ position: "relative" }}>
           <BookCover
             title={book.title}
@@ -3127,16 +3259,18 @@ function LibraryCard({
       </div>
     </div>
   );
-}
+});
 
 function EmptyState({
   theme,
   onImport,
   importing,
+  importPct,
 }: {
   theme: Theme;
   onImport: () => void;
   importing: boolean;
+  importPct: number | null;
 }) {
   const { tr } = useI18n();
   return (
@@ -3178,6 +3312,8 @@ function EmptyState({
         size="md"
         onClick={onImport}
         disabled={importing}
+        loading={importing}
+        {...(importPct === null ? {} : { loadingProgress: importPct })}
         leadingIcon={<Icon name="plus" size={14} />}
       >
         {importing ? tr("sidebar.importing") : tr("library.emptyCta")}

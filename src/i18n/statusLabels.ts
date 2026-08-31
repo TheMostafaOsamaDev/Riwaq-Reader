@@ -113,6 +113,8 @@ export function errorLabel(raw: string, tr: Tr): string {
   switch (raw) {
     case "Another import is already running":
       return tr("error.anotherImportRunning");
+    case "Unsupported file — not an EPUB, PDF or DOCX.":
+      return tr("error.unsupportedFile");
     case "Another import is still in progress.":
       return tr("error.anotherImportInProgress");
     case "This novel has no chapters to convert.":

@@ -51,29 +51,38 @@ export interface EpubBook {
   chapters: EpubChapter[];
 }
 
-export interface EpubCover {
-  bytes: Uint8Array;
+/** Where the cover lives inside the archive, plus how to name it on disk.
+ *
+ *  A *reference*, not bytes: a cover can be several MB, and on Android any
+ *  byte array that crosses the JS IPC is expanded to one JSON array element
+ *  per byte. The importer hands this straight to `ZipSource.extract`, so the
+ *  image goes archive → disk without passing through the webview. */
+export interface EpubCoverRef {
+  /** Entry name inside the EPUB zip. */
+  entry: string;
   /** Canonical MIME type from the OPF manifest (e.g. `image/jpeg`). */
   mimeType: string;
   /** File extension to use on disk, lowercase, without the dot. */
   extension: string;
 }
 
-/** Image extracted from chapter content. The parser pulls bytes out of
- *  the EPUB zip; importEpubBytes writes them to `books/<id>/<href>` so
- *  the reader can render them via Tauri's asset:// protocol later. */
-export interface EpubImage {
+/** An in-flow image referenced by chapter content. Same reasoning as
+ *  `EpubCoverRef` — the parser records *where* the image is and what it
+ *  should be called, and the importer has the archive copy it to
+ *  `books/<id>/<href>` natively. */
+export interface EpubImageRef {
   /** Storage-relative path. Matches the `src` in the chapter's image item. */
   href: string;
-  bytes: Uint8Array;
+  /** Entry name inside the EPUB zip. */
+  entry: string;
   mimeType: string;
 }
 
-/** What `parseEpub` returns — the book plus any extracted cover and
- *  in-flow images. */
+/** What `parseEpubFromSource` returns — the book plus references to the
+ *  cover and in-flow images, ready to be extracted to disk. */
 export interface ParsedEpub {
   book: EpubBook;
-  cover?: EpubCover;
+  cover?: EpubCoverRef;
   /** Images referenced from chapter content. May be empty. */
-  images: EpubImage[];
+  images: EpubImageRef[];
 }
