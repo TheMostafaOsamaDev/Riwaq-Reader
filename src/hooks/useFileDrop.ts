@@ -45,11 +45,25 @@ export function useFileDrop(enabled: boolean): DropState {
     // re-read every dropped folder and race a file moved mid-drag.
     let latest: DropClassification = EMPTY;
 
+    // A `received` confirmation schedules its own idle-out below. That
+    // timeout must not survive into whatever the drag surface does next —
+    // otherwise a stale timer from a prior drop fires mid-way through a
+    // fresh drag and forces the overlay back to idle out from under it.
+    // Every branch that moves the state on clears whatever timer is
+    // currently pending first.
+    const clearTimer = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
+    };
+
     void getCurrentWebview()
       .onDragDropEvent(async (event) => {
         const p = event.payload;
 
         if (p.type === "enter") {
+          clearTimer();
           try {
             latest = await invoke<DropClassification>("classify_drop", {
               paths: p.paths,
@@ -69,12 +83,14 @@ export function useFileDrop(enabled: boolean): DropState {
         }
 
         if (p.type === "leave") {
+          clearTimer();
           latest = EMPTY;
           setState({ kind: "idle" });
           return;
         }
 
         if (p.type === "drop") {
+          clearTimer();
           const books = latest.books;
           const skipped = latest.unsupported.length;
           latest = EMPTY;
@@ -103,7 +119,7 @@ export function useFileDrop(enabled: boolean): DropState {
     return () => {
       disposed = true;
       unlisten?.();
-      if (timer !== undefined) window.clearTimeout(timer);
+      clearTimer();
     };
   }, [enabled]);
 
