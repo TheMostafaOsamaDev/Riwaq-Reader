@@ -3,9 +3,37 @@ mod notify;
 mod opened;
 mod sources;
 
+/// Book paths out of a command line, skipping argv[0] and anything that
+/// isn't a file that exists.
+///
+/// Windows and Linux deliver a "Open with" cold start as plain arguments,
+/// mixed in with whatever flags the launcher added. Requiring the file to
+/// exist is what keeps a stray `--flag` from being queued as a book.
+#[cfg(desktop)]
+fn book_paths_from_argv(argv: &[String]) -> Vec<String> {
+    argv.iter()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .filter(|a| std::path::Path::new(a).is_file())
+        .cloned()
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // MUST be the first plugin registered — the plugin's own requirement.
+    // Fires in the ALREADY-RUNNING instance when a second launch happens,
+    // which is how Windows and Linux deliver "Open with" to a live window.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
+        |app, argv, _cwd| {
+            opened::push(app, book_paths_from_argv(&argv));
+        },
+    ));
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -33,6 +61,15 @@ pub fn run() {
             opened::classify_drop,
         ])
         .setup(|app| {
+            // Cold start on Windows / Linux: the file double-clicked in the
+            // file manager arrives as an argument. macOS doesn't use argv
+            // for this — it sends RunEvent::Opened, handled below.
+            #[cfg(desktop)]
+            {
+                let argv: Vec<String> = std::env::args().collect();
+                opened::push_silent(book_paths_from_argv(&argv));
+            }
+
             // Dev harness for the session-webview transport. Off unless
             // LEAFLET_SESSION_SELFTEST names a URL to fetch, so normal
             // runs are unaffected.
@@ -101,6 +138,20 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // macOS delivers "Open with" here, for BOTH cold and warm
+            // launches — never as argv. The urls are file:// and have to be
+            // converted back to paths before staging can open them.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect();
+                opened::push(_app, paths);
+            }
+        });
 }
