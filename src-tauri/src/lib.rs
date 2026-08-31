@@ -1,5 +1,6 @@
 mod archive;
 mod notify;
+mod opened;
 mod sources;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,6 +29,8 @@ pub fn run() {
             archive::write_chunk_b64,
             archive::rename_staged,
             archive::delete_staged,
+            opened::take_pending_opens,
+            opened::classify_drop,
         ])
         .setup(|app| {
             // Dev harness for the session-webview transport. Off unless
