@@ -117,6 +117,14 @@ export const ar: Messages = {
   "app.loadingBook": "جارٍ تحميل الكتاب…",
   "panel.close": "إغلاق اللوحة",
 
+  "drop.accept": "أفلت الكتب هنا",
+  "drop.acceptCount": "{count} كتاب",
+  "drop.refuse": "لا يمكن لرواق قراءة هذا الملف",
+  "drop.formats": "EPUB · PDF · DOCX",
+  "drop.received": "تمت الإضافة إلى مكتبتك",
+  "drop.skippedOne": "تم تخطي {count} ملف لا يمكن لرواق قراءته.",
+  "drop.skippedOther": "تم تخطي {count} ملفات لا يمكن لرواق قراءته.",
+
   "sidebar.searchLibrary": "بحث في المكتبة",
   "sidebar.main": "الرئيسية",
   "sidebar.library": "المكتبة",
@@ -477,8 +485,7 @@ export const ar: Messages = {
   "status.coverNotFoundInEpub":
     "تعذّر العثور على غلاف في ملف EPUB الأصلي. جرّب “تعيين غلاف…” لاختيار صورة بنفسك.",
   "status.importBusy": "هناك عملية استيراد جارية — أعد المحاولة بعد انتهائها.",
-  "status.skippedUnsupported": "تم تخطي {count} ملف لا يمكن لرواق قراءته.",
-  "status.alreadyInLibraryOne": "موجود في مكتبتك بالفعل.",
+  "status.alreadyInLibraryOne": "كتاب واحد موجود في مكتبتك بالفعل.",
   "status.alreadyInLibraryOther": "{n} كتب موجودة في مكتبتك بالفعل.",
 
   "status.phase.queued": "في قائمة الانتظار",

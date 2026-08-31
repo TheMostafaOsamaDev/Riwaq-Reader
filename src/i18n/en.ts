@@ -142,6 +142,15 @@ export const en = {
   "app.loadingBook": "Loading book…",
   "panel.close": "Close panel",
 
+  // drag-and-drop overlay (DropOverlay.tsx)
+  "drop.accept": "Drop to add",
+  "drop.acceptCount": "{count} book(s)",
+  "drop.refuse": "Riwaq can't read this",
+  "drop.formats": "EPUB · PDF · DOCX",
+  "drop.received": "Added to your library",
+  "drop.skippedOne": "Skipped {count} file Riwaq can't read.",
+  "drop.skippedOther": "Skipped {count} files Riwaq can't read.",
+
   // library sidebar
   "sidebar.searchLibrary": "Search library",
   "sidebar.main": "Main",
@@ -578,7 +587,6 @@ export const en = {
   "status.coverNotFoundInEpub":
     "Couldn't find a cover in the original EPUB. Try “Set cover…” to pick an image yourself.",
   "status.importBusy": "An import is already running — try again when it finishes.",
-  "status.skippedUnsupported": "Skipped {count} file(s) Riwaq can't read.",
   "status.alreadyInLibraryOne": "{n} already in your library.",
   "status.alreadyInLibraryOther": "{n} already in your library.",
 

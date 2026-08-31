@@ -5,6 +5,7 @@ import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
 import { useFileDrop } from "./hooks/useFileDrop";
 import { DesktopReader } from "./components/DesktopReader";
+import { DropOverlay } from "./components/DropOverlay";
 import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
 import { Lightbox } from "./components/Lightbox";
@@ -155,9 +156,6 @@ function App() {
   // Drag-and-drop is desktop-only: Android has no pointer drag onto the
   // window, and Tauri emits no drag events there.
   const dropState = useFileDrop(!isMobile);
-  // dropState is not yet rendered — the overlay that reads it lands in a
-  // follow-up task.
-  void dropState;
   // "system" resolves to light/dark from the OS setting; useMediaQuery
   // re-renders when the user flips OS appearance, so the whole app
   // (and the theme-aware brand mark) re-themes live.
@@ -891,6 +889,9 @@ function App() {
         <ImportProgress theme={theme} />
         {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
         <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+        {/* Drag-and-drop overlay — last, so it layers above the reader, the
+            library, and any open dialog while a drag is in progress. */}
+        <DropOverlay state={dropState} theme={theme} />
       </div>
     </I18nProvider>
   );
