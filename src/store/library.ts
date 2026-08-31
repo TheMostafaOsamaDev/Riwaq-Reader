@@ -41,6 +41,7 @@ import {
 import type { EpubBook } from "../epub/types";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
+import { findByHash } from "./dedupe";
 
 /** Best-effort current UI locale. This module runs outside the component
  *  tree (plain store functions, no React context available), so it reads
@@ -91,6 +92,12 @@ export interface BookIndexEntry {
   /** Ids of the shelves this book is on (see store/shelves.ts). Absent on
    *  older entries → treated as []. A book can be on multiple shelves. */
   shelfIds?: string[];
+  /** Lowercase hex SHA-256 of the file this book was imported from. Absent
+   *  on books imported before dedup existed, and on books that never came
+   *  from a file at all (source bookmarks). Lets a repeat "Open with" of
+   *  the same file reuse this entry — reading position and highlights
+   *  intact — instead of adding a second copy. Not backfilled. */
+  sourceHash?: string;
   /** What kind of library entry this is. Older entries (and any EPUB
    *  import) don't carry the field — they're treated as "epub" by callers.
    *  "source" entries are lightweight bookmarks: no book.json, no book.epub
@@ -326,6 +333,9 @@ export interface StagedPick {
   errors: { file: string; message: string }[];
   /** True only for folder picks that found no importable files. */
   empty?: boolean;
+  /** Books already in the library that the picked files turned out to be
+   *  copies of. Nothing was imported for these; the caller opens them as-is. */
+  reused?: BookIndexEntry[];
 }
 
 /** Progress sink for an import run. Supplied by the caller (the library
@@ -379,6 +389,11 @@ async function stagePaths(
   const autoImported: BookIndexEntry[] = [];
   const drafts: FixedImportDraft[] = [];
   const errors: { file: string; message: string }[] = [];
+  const reused: BookIndexEntry[] = [];
+  // Read once, outside the loop: a multi-file drop shouldn't re-read the
+  // index per file. Entries imported during this same run are appended
+  // below so a batch containing the same book twice still dedupes.
+  const known: BookIndexEntry[] = await listBooks();
 
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i];
@@ -392,6 +407,17 @@ async function stagePaths(
       // The dialog selection itself grants per-path read permission on Tauri
       // v2, so we don't need $HOME / $DOCUMENT in the fs scope.
       const staged = await stageImportFile(path, stagedPath, token);
+
+      // Already have this exact file? Drop the staged copy and hand back
+      // the existing book, so its reading position and highlights survive.
+      const existingId = findByHash(known, staged.hash);
+      if (existingId) {
+        await deleteStaged(stagedPath);
+        const entry = known.find((e) => e.id === existingId);
+        if (entry) reused.push(entry);
+        continue;
+      }
+
       const fixed = fixedKindFor(staged.format, path);
 
       if (fixed) {
@@ -406,10 +432,21 @@ async function stagePaths(
         // second copy.
         const bytes = await readFile(stagedPath, { baseDir: BASE });
         drafts.push(
-          await stageFixedImport(bytes, path, fixed, { stagedPath }),
+          await stageFixedImport(bytes, path, fixed, {
+            stagedPath,
+            sourceHash: staged.hash,
+          }),
         );
       } else if (staged.format === "epub") {
-        autoImported.push(await importStagedEpub(stagedPath, token, report));
+        const entry = await importStagedEpub(
+          stagedPath,
+          token,
+          report,
+          staged.hash,
+        );
+        autoImported.push(entry);
+        // A batch containing the same book twice dedupes against itself.
+        known.push(entry);
       } else {
         throw new Error(UNSUPPORTED_FILE);
       }
@@ -423,12 +460,29 @@ async function stagePaths(
       unlisten?.();
     }
   }
-  return { autoImported, drafts, errors };
+  return { autoImported, drafts, errors, reused };
 }
 
 /**
- * Prompt for one or more books. EPUBs are imported immediately; PDF/DOCX are
- * returned as drafts for the title/cover dialog. Null if the user cancelled.
+ * Import a list of already-chosen files. EPUBs import immediately; PDF/DOCX
+ * come back as drafts for the title/cover dialog; files the library already
+ * holds come back under `reused`.
+ *
+ * Split out from `pickBooksForImport` so files that arrive from outside the
+ * app — an "Open with" launch, an Android share, a drag-and-drop — take the
+ * exact same path as picked ones, including the native staging that keeps a
+ * 200 MB book off the Android IPC bridge.
+ */
+export async function importPaths(
+  paths: string[],
+  report?: ImportReporter,
+): Promise<StagedPick> {
+  return stagePaths(paths, report);
+}
+
+/**
+ * Prompt for one or more books, then import them. Null if the user
+ * cancelled.
  */
 export async function pickBooksForImport(
   report?: ImportReporter,
@@ -440,7 +494,7 @@ export async function pickBooksForImport(
   });
   if (!picked) return null;
   const paths = Array.isArray(picked) ? picked : [picked];
-  return stagePaths(paths, report);
+  return importPaths(paths, report);
 }
 
 /** Pull a reasonable display title out of a file path: drop the directory
@@ -537,6 +591,7 @@ async function commitEpubAt(
   id: string,
   token: string,
   report?: ImportReporter,
+  sourceHash?: string,
 ): Promise<BookIndexEntry> {
   const dir = bookDir(id);
   report?.phase("parse");
@@ -577,6 +632,7 @@ async function commitEpubAt(
       addedAt: Date.now(),
       progress: 0,
       ...(coverFile ? { coverFile } : {}),
+      ...(sourceHash ? { sourceHash } : {}),
     });
   } finally {
     src.dispose();
@@ -590,6 +646,7 @@ async function importStagedEpub(
   stagedPath: string,
   token: string,
   report?: ImportReporter,
+  sourceHash?: string,
 ): Promise<BookIndexEntry> {
   const id = crypto.randomUUID();
   const dir = bookDir(id);
@@ -598,7 +655,7 @@ async function importStagedEpub(
     // Keeping the original zip lets us re-extract the cover later when the
     // parser improves, without re-asking the user for the file.
     await renameStaged(stagedPath, `${dir}/book.epub`);
-    return await commitEpubAt(id, token, report);
+    return await commitEpubAt(id, token, report, sourceHash);
   } catch (err) {
     // A failed parse shouldn't leave a partial book (or a 200 MB orphan)
     // behind.

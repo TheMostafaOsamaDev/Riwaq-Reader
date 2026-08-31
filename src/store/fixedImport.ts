@@ -53,6 +53,7 @@ export async function commitPdfBook(
     pageCount: number;
     outline: TocEntry[];
     cover?: ChosenCover;
+    sourceHash?: string;
   } & ({ stagedPath: string } | { bytes: Uint8Array }),
 ): Promise<BookIndexEntry> {
   await ensureRoot();
@@ -90,6 +91,7 @@ export async function commitPdfBook(
     addedAt: Date.now(),
     progress: 0,
     ...(coverFile ? { coverFile } : {}),
+    ...(opts.sourceHash ? { sourceHash: opts.sourceHash } : {}),
   });
 }
 
@@ -103,6 +105,7 @@ export async function commitDocxBook(opts: {
   author: string;
   outline: { title: string; level: number; anchorId: string }[];
   cover?: ChosenCover;
+  sourceHash?: string;
 }): Promise<BookIndexEntry> {
   await ensureRoot();
   const id = newFixedId("docx");
@@ -140,6 +143,7 @@ export async function commitDocxBook(opts: {
     addedAt: Date.now(),
     progress: 0,
     ...(coverFile ? { coverFile } : {}),
+    ...(opts.sourceHash ? { sourceHash: opts.sourceHash } : {}),
   });
 }
 

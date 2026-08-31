@@ -60,6 +60,9 @@ const THUMB_MAX_W = 240;
  *  length` on Android for anything past ~128 MB. */
 export interface StagedSource {
   stagedPath: string;
+  /** Hash of the picked file, recorded on the committed entry so a repeat
+   *  open of the same file reuses this book. */
+  sourceHash?: string;
 }
 
 export async function stageFixedImport(
@@ -135,6 +138,7 @@ async function stagePdf(
         pageCount: doc.pageCount,
         outline: doc.outline,
         cover: chosen,
+        sourceHash: staged?.sourceHash,
       });
     },
     dispose: () => {
@@ -202,6 +206,7 @@ async function stageDocx(
         author: fixed.author,
         outline: fixed.outline,
         cover: chosen,
+        sourceHash: staged?.sourceHash,
       });
     },
     dispose: () => {
