@@ -13,6 +13,10 @@ import { Icon } from "./Icon";
 import type { IconProps } from "./Icon";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
+import {
+  getDownloadProgress,
+  subscribeDownloadProgress,
+} from "../store/downloadProgress";
 import { useNav, back, forward } from "../store/navigation";
 import type { Shelf } from "../store/shelves";
 import type { LibraryTab } from "./Library";
@@ -48,13 +52,21 @@ interface Props {
 
 const TRANSITION = "background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease";
 
+/** The queue drives the row's badge/label; the percentage comes from the
+ *  shared burst reading in `downloadProgress.ts`, which measures the whole
+ *  burst. Averaging the running jobs' own progress here is what used to
+ *  park this readout near 4% forever — with two workers there are only
+ *  ever two partial jobs, and each restarts at zero as the one before it
+ *  lands, so the average never reflected the queue draining. */
 function useDownloadSummary() {
   const [jobs, setJobs] = useState(() => getState().jobs);
   useEffect(() => subscribe((s) => setJobs(s.jobs)), []);
-  const active = jobs.filter((j) => j.status === "queued" || j.status === "running");
-  const running = active.filter((j) => j.status === "running");
-  const progress = running.length ? running.reduce((a, j) => a + j.progress, 0) / running.length : 0;
-  return { count: active.length, active: active.length > 0, progress };
+  const [burst, setBurst] = useState(getDownloadProgress);
+  useEffect(() => subscribeDownloadProgress(setBurst), []);
+  const count = jobs.filter(
+    (j) => j.status === "queued" || j.status === "running",
+  ).length;
+  return { count, active: count > 0, pct: burst.pct };
 }
 
 const TREE_KEYS: { key: LibraryTab; k: MsgKey }[] = [
@@ -204,11 +216,17 @@ export function LibrarySidebar({
             onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            <span style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: dl.active ? `${Math.max(6, Math.round(dl.progress * 100))}%` : 0, background: goldSoft, borderRadius: 10, transition: "width .35s ease", zIndex: 0 }} />
+            <span style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: dl.active ? `${Math.max(6, dl.pct)}%` : 0, background: goldSoft, borderRadius: 10, transition: "width .35s ease", zIndex: 0 }} />
             <span style={{ position: "relative", zIndex: 1, color: theme.muted, display: "flex" }}><Icon name="download" size={18} /></span>
             <span style={{ position: "relative", zIndex: 1 }}>{tr("sidebar.downloads")}</span>
             {dl.active ? (
-              <span style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", fontSize: 11.5, fontWeight: 600, color: theme.ink, fontVariantNumeric: "tabular-nums" }}>{Math.round(dl.progress * 100)}%</span>
+              <span
+                role="progressbar"
+                aria-valuenow={dl.pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", fontSize: 11.5, fontWeight: 600, color: theme.ink, fontVariantNumeric: "tabular-nums" }}
+              >{dl.pct}%</span>
             ) : dl.count > 0 ? (
               <span style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: goldSoft, color: gold, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{dl.count}</span>
             ) : null}
