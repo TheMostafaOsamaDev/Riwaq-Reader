@@ -56,6 +56,11 @@ import {
   getState as getImportState,
   isImportActive,
 } from "./importProgress";
+import {
+  endBurst,
+  rebaseBurst,
+  reportBurst,
+} from "./downloadProgress";
 import { makeTr, type Locale } from "../i18n";
 import { phaseLabel } from "../i18n/statusLabels";
 
@@ -122,6 +127,10 @@ interface Snapshot {
   importActive: boolean;
   /** 0..100 progress of the active import, for the widget. */
   importPct: number;
+  /** Summed 0..1 progress of everything currently in flight (running
+   *  jobs plus the import, which counts as one unit of `active`).
+   *  Feeds the burst percentage so a lone job's download still moves. */
+  activePartial: number;
   done: number;
   error: number;
   cancelled: number;
@@ -143,11 +152,6 @@ let summaryShown = false;
  *  the queue is fully idle to avoid showing inflated totals after a
  *  clearTerminals(). */
 let burstTotal = 0;
-/** Monotonic high-water-mark of the displayed percent within a burst,
- *  so progress never ticks backward. The running chapters' partial
- *  progress resetting at chapter boundaries otherwise made the percent
- *  bounce (19% → 18% → 19%). Reset when the queue goes fully idle. */
-let burstMaxPct = 0;
 /** Per-kind resolved-count tally captured at the start of a burst. Queue
  *  terminals from a previous burst linger until clearTerminals(), so we
  *  subtract this baseline to keep a new burst's counts/percent its own. */
@@ -204,6 +208,7 @@ export function startDownloadNotifier(): () => void {
 
 function summarize(jobs: DownloadJob[]): Snapshot {
   let active = 0;
+  let activePartial = 0;
   let done = 0;
   let error = 0;
   let cancelled = 0;
@@ -213,6 +218,7 @@ function summarize(jobs: DownloadJob[]): Snapshot {
   for (const j of jobs) {
     if (j.status === "queued" || j.status === "running") {
       active++;
+      if (j.status === "running") activePartial += j.progress;
       if (j.kind === "conversion") activeConversions++;
     } else if (j.status === "done") done++;
     else if (j.status === "error") error++;
@@ -236,6 +242,7 @@ function summarize(jobs: DownloadJob[]): Snapshot {
     activeConversions,
     importActive,
     importPct,
+    activePartial: activePartial + (importActive ? imp.overall : 0),
     done,
     error,
     cancelled,
@@ -259,7 +266,7 @@ async function publish(snap: Snapshot) {
   // waiting to be announced.
   if (snap.active === 0 && snap.total === 0 && !importTerminalPending) {
     burstTotal = 0;
-    burstMaxPct = 0;
+    endBurst();
     burstBase = {
       resolved: 0,
       chDone: 0,
@@ -288,7 +295,7 @@ async function publish(snap: Snapshot) {
   const tally = resolvedTally();
   if (snap.active > 0 && summaryShown) {
     burstTotal = 0;
-    burstMaxPct = 0;
+    rebaseBurst();
     summaryShown = false;
     burstBase = tally;
   }
@@ -296,11 +303,21 @@ async function publish(snap: Snapshot) {
   const liveTotal = snap.active + burstCompleted;
   if (liveTotal > burstTotal) burstTotal = liveTotal;
 
+  // Publish the burst reading on every emission — ahead of the
+  // dedupe/throttle below, which exist to stop Android re-alerting and
+  // must not also stall the in-app Downloads pill.
+  const pctOverall = reportBurst({
+    active: snap.active,
+    resolved: burstCompleted,
+    partial: snap.activePartial,
+    total: burstTotal,
+  });
+
   const isTerminalSummary = snap.active === 0;
   // Compose what to display. A conversion in flight gets first
   // billing — it's whole-novel work that produces a library entry,
   // versus chapter downloads which are per-row.
-  const composed = compose(snap, burstCompleted);
+  const composed = compose(snap, burstCompleted, pctOverall);
   if (!composed) return; // summary already shown this burst
   const { title, body } = composed;
 
@@ -385,17 +402,6 @@ function resolvedTally(): {
   };
 }
 
-/** Monotonic display percent for the aggregate download/mixed progress.
- *  Based on the RESOLVED-job fraction (done + failed + cancelled over the
- *  burst total) so it matches the "N of M" count exactly, then clamped to
- *  a per-burst high-water-mark so it never ticks backward. Using the
- *  resolved count instead of the running chapters' live partial progress
- *  is what removes the 19% → 18% → 19% bounce. */
-function clampPct(pct: number): number {
-  if (pct > burstMaxPct) burstMaxPct = pct;
-  return burstMaxPct;
-}
-
 interface Composed {
   title: string;
   body: string;
@@ -406,7 +412,11 @@ interface Composed {
   tapsToQueue: boolean;
 }
 
-function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
+function compose(
+  snap: Snapshot,
+  completedThisBurst: number,
+  pctOverall: number,
+): Composed | null {
   // This module runs outside the component tree (a plain background
   // subscriber, no React context available), so it resolves the current
   // UI locale + translator the same way kolnovel-theme.ts / cenele.ts do —
@@ -414,9 +424,6 @@ function compose(snap: Snapshot, completedThisBurst: number): Composed | null {
   const tr = makeTr(currentUiLocale());
   if (snap.active > 0) {
     summaryShown = false;
-    const pctOverall = clampPct(
-      Math.round((completedThisBurst / Math.max(burstTotal, 1)) * 100),
-    );
 
     // Mixed work: more than one kind of task overlapping (e.g. a
     // download burst running alongside a conversion or an import).
