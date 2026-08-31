@@ -60,6 +60,7 @@ EXPECTED=(
   "com.leaflet.reader.TaskService void stop(android.content.Context)"
   "com.leaflet.reader.MainActivity void setBarAppearance(android.app.Activity,boolean,int)"
   "com.leaflet.reader.MainActivity java.lang.String pendingLaunchIntent"
+  "com.leaflet.reader.MainActivity java.lang.String pendingOpenUri"
   "com.leaflet.reader.DownloadNotifier void update(android.content.Context,int,java.lang.String,java.lang.String,int,int,boolean,boolean,boolean)"
   "com.leaflet.reader.DownloadNotifier void cancel(android.content.Context,int)"
 )
