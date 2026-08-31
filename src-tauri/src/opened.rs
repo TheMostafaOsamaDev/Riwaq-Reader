@@ -12,6 +12,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use serde::Serialize;
+#[cfg(desktop)]
 use tauri::{AppHandle, Emitter, Runtime};
 
 /// Extensions Riwaq can read. The single source of truth for what a
@@ -24,11 +25,19 @@ const SUPPORTED: [&str; 3] = ["epub", "pdf", "docx"];
 static PENDING: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Event name. Payload-less by design; see the module comment.
+#[cfg(desktop)]
 const OPENED_EVENT: &str = "app://opened";
 
 /// Queue paths and nudge the frontend. Safe to call before the webview
 /// exists — the emit simply reaches nobody, and the drain on mount picks
 /// the paths up.
+///
+/// Desktop-only: every call site (the single-instance plugin callback,
+/// the RunEvent::Opened handler) is #[cfg(desktop)]. Android delivers
+/// opens through its own JNI path (consume_open_uri in notify.rs)
+/// instead, so this never has an Android caller and would otherwise
+/// warn as dead code on that target.
+#[cfg(desktop)]
 pub fn push<R: Runtime>(app: &AppHandle<R>, paths: Vec<String>) {
     if paths.is_empty() {
         return;
@@ -42,6 +51,10 @@ pub fn push<R: Runtime>(app: &AppHandle<R>, paths: Vec<String>) {
 /// Queue paths without an AppHandle, for callers that run before one
 /// exists (the argv scan in setup runs early enough that emitting is
 /// pointless anyway — the frontend drains on mount).
+///
+/// Desktop-only: see push() above — its only caller is the argv scan in
+/// lib.rs setup(), which is itself #[cfg(desktop)].
+#[cfg(desktop)]
 pub fn push_silent(paths: Vec<String>) {
     if paths.is_empty() {
         return;
