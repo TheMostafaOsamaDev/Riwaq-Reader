@@ -1,3 +1,4 @@
+mod archive;
 mod notify;
 mod sources;
 
@@ -19,6 +20,14 @@ pub fn run() {
             notify::consume_launch_intent,
             notify::start_task_service,
             notify::stop_task_service,
+            archive::stage_import_file,
+            archive::zip_entries,
+            archive::zip_read_texts,
+            archive::zip_extract,
+            archive::zip_read_bytes,
+            archive::write_chunk_b64,
+            archive::rename_staged,
+            archive::delete_staged,
         ])
         .setup(|app| {
             // Dev harness for the session-webview transport. Off unless

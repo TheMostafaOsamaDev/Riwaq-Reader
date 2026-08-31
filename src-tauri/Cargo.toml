@@ -43,6 +43,10 @@ urlencoding = "2"
 # only carries text.
 base64 = "0.22"
 tokio = { version = "1", features = ["time", "macros", "rt-multi-thread", "sync"] }
+# Native zip reader for book imports (see src/archive.rs). Default features
+# pull in bzip2/zstd/aes C code we have no use for — EPUB and DOCX only ever
+# use stored + deflate — so keep it lean for the Android .so size budget.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Android-only: JNI bridge into the Kotlin DownloadNotifier class (see
 # src/notify.rs). Pinned to a version that matches the JNI ABI used by

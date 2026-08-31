@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { Spinner } from "./Spinner";
 
 export type ButtonVariant =
   | "primary"
@@ -34,6 +35,14 @@ export interface ButtonProps
    *  translucent "glass" for the rest) for buttons that sit over the hero's
    *  darkened backdrop — readable in every app theme. */
   surface?: "default" | "onImage";
+  /** Show a spinner in place of `leadingIcon` while an action is running.
+   *  The button keeps whatever `disabled` value it was given — callers
+   *  normally pass both, so the control reads as busy rather than merely
+   *  unavailable. */
+  loading?: boolean;
+  /** 0..1 to make the spinner a determinate ring. Omit while the duration is
+   *  still unknown. */
+  loadingProgress?: number;
 }
 
 // Press animation feels right for action buttons but not for chrome icon
@@ -51,6 +60,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     type = "button",
     shape = "rounded",
     surface = "default",
+    loading = false,
+    loadingProgress,
     disabled,
     style,
     children,
@@ -65,6 +76,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 ) {
   const [hover, setHover] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const busy = loading && !!disabled;
 
   const padding =
     size === "lg" ? "12px 24px" : size === "sm" ? "7px 12px" : "9px 18px";
@@ -72,6 +84,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const gap = size === "sm" ? 6 : 8;
 
   const interactive = !disabled;
+  // The spinner replaces the leading icon rather than sitting next to it, so
+  // the button's width doesn't jump when a run starts.
+  const lead = loading ? (
+    <Spinner
+      size={size === "lg" ? 15 : size === "sm" ? 12 : 13}
+      {...(typeof loadingProgress === "number"
+        ? { value: loadingProgress }
+        : {})}
+    />
+  ) : (
+    leadingIcon
+  );
   const v =
     surface === "onImage"
       ? onImageVariantStyle(variant, interactive && hover)
@@ -88,7 +112,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     fontFamily: FONT_STACKS.sans,
     letterSpacing: "-0.005em",
     borderRadius: shape === "pill" ? 999 : 8,
-    cursor: disabled ? "not-allowed" : "pointer",
+    // "progress" rather than "not-allowed" while busy: the action isn't
+    // forbidden, it's already under way.
+    cursor: disabled ? (loading ? "progress" : "not-allowed") : "pointer",
     opacity: disabled ? 0.55 : 1,
     transition:
       "transform 90ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease",
@@ -108,6 +134,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       disabled={disabled}
+      aria-busy={busy || undefined}
       style={composed}
       onMouseEnter={(e) => {
         setHover(true);
@@ -132,7 +159,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       }}
       {...rest}
     >
-      {leadingIcon}
+      {lead}
       {children}
       {trailingIcon}
     </button>

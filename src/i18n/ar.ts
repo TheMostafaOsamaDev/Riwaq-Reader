@@ -505,6 +505,8 @@ export const ar: Messages = {
   "status.phaseWithPercent": "{phase} · {pct}٪",
 
   "error.anotherImportRunning": "عملية استيراد أخرى قيد التشغيل بالفعل",
+  "error.unsupportedFile":
+    "هذا الملف ليس EPUB أو PDF أو DOCX — لا شيء لاستيراده.",
   "error.anotherImportInProgress": "لا تزال هناك عملية استيراد أخرى قيد التنفيذ.",
   "error.novelNoChaptersToConvert": "لا تحتوي هذه الرواية على فصول لتحويلها.",
   "error.sourceNotInstalledBuild": "المصدر “{sourceId}” غير مثبَّت في هذا الإصدار.",

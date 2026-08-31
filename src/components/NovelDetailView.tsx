@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  memo,
 } from "react";
 import { getSource, getSourceMeta } from "../sources/registry";
 import {
@@ -32,6 +33,8 @@ import {
   optimizedCoverUrl,
 } from "../sources/images";
 import type { Source, SourceChapter, SourceNovel } from "../sources/types";
+import type { DownloadJob } from "../store/downloadQueue";
+import { MeasuredVirtualList } from "./VirtualList";
 import type { SourceSnapshot } from "../store/sourceLibrary";
 import { transition } from "../styles/motion";
 
@@ -268,6 +271,13 @@ export function NovelDetailView({
     };
   }, [sourceId, novelUrl, libraryEntryIdProp]);
 
+  // Stable identity: it's threaded down to every memoized ChapterRow, and an
+  // inline arrow here would defeat the memo on each parent re-render.
+  const openChapter = useCallback(
+    (chapterId: number) => onStreamRead(chapterId),
+    [onStreamRead],
+  );
+
   const onAddToLibrary = useCallback(async () => {
     if (working) return;
     setWorking(true);
@@ -433,7 +443,7 @@ export function NovelDetailView({
               source={source}
               novel={state.novel}
               novelUrl={novelUrl}
-              onOpenChapter={(chapterId) => onStreamRead(chapterId)}
+              onOpenChapter={openChapter}
             />
           )}
           <VolumesAccordion
@@ -444,7 +454,7 @@ export function NovelDetailView({
             novelUrl={novelUrl}
             libraryEntryId={libraryEntryId ?? undefined}
             chapterFlags={chapterFlags}
-            onOpenChapter={(chapterId) => onStreamRead(chapterId)}
+            onOpenChapter={openChapter}
             onChapterFlagsChange={setChapterFlags}
             onNovelPatch={(updater) =>
               setState((s) => ({
@@ -1258,6 +1268,125 @@ function VolumeErrorPanel({ theme, message, onRetry }: VolumeErrorPanelProps) {
 // done / failed) and to enqueue/cancel a download when the user
 // clicks. Filled in by task 10 once the queue module exists.
 
+/** Resting height of a one-line chapter row. Only a seed for the windowed
+ *  list's offset table — rows that wrap get measured and corrected. */
+const CHAPTER_ROW_HEIGHT = 36;
+
+interface ChapterRowProps {
+  theme: Theme;
+  chapter: SourceChapter;
+  direction: "ltr" | "rtl";
+  read: boolean;
+  downloaded: boolean;
+  libraryEntryId: string | null | undefined;
+  novelTitle: string;
+  queueJob: DownloadJob | undefined;
+  onOpenChapter: (chapterId: number) => void;
+  onFlagsChanged: () => void;
+}
+
+/**
+ * One row in a volume's chapter list.
+ *
+ * Memoized on purpose. The parent re-renders on every download-queue event
+ * (`setActiveJobs` installs a fresh Map each tick), and with a ~950-chapter
+ * volume expanded that meant reconciling every mounted row several times a
+ * second during a download burst. All props here are primitives or stable
+ * identities, so a row only re-renders when something about *that* chapter
+ * actually changed.
+ */
+const ChapterRow = memo(function ChapterRow({
+  theme,
+  chapter,
+  direction,
+  read,
+  downloaded,
+  libraryEntryId,
+  novelTitle,
+  queueJob,
+  onOpenChapter,
+  onFlagsChanged,
+}: ChapterRowProps) {
+  return (
+    <div
+      role="listitem"
+      style={{ display: "flex", alignItems: "stretch", direction }}
+    >
+      <button
+        onClick={() => onOpenChapter(chapter.id)}
+        style={{
+          flex: 1,
+          textAlign: "start",
+          background: "transparent",
+          border: "none",
+          // Start-edge accent bar — transparent by default, theme.rule when
+          // read, ACCENT on hover. A fixed 2px logical border (never toggled
+          // to 0) so the colour change never shifts the row's layout.
+          borderInlineStart: `2px solid ${read ? theme.rule : "transparent"}`,
+          paddingBlock: 9,
+          paddingInlineStart: 26,
+          paddingInlineEnd: 14,
+          // Dim read chapters so the list reads "checked off" without hiding
+          // anything.
+          color: read ? theme.muted : theme.ink,
+          opacity: read ? 0.72 : 1,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          fontSize: 12.5,
+          lineHeight: 1.4,
+          display: "flex",
+          gap: 10,
+          alignItems: "baseline",
+          direction,
+          transition: transition("border-color", "fast", "out"),
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = theme.hover;
+          e.currentTarget.style.borderInlineStartColor = ACCENT;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.borderInlineStartColor = read
+            ? theme.rule
+            : "transparent";
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            color: theme.muted,
+            minWidth: 28,
+            flexShrink: 0,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {chapter.id}
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>{chapter.title}</span>
+        {read && (
+          <Icon
+            name="check"
+            size={13}
+            style={{ color: ACCENT, flexShrink: 0, alignSelf: "center" }}
+          />
+        )}
+      </button>
+      {libraryEntryId && (
+        <ChapterDownloadButton
+          theme={theme}
+          libraryEntryId={libraryEntryId}
+          chapterId={chapter.id}
+          downloaded={downloaded}
+          novelTitle={novelTitle}
+          chapterTitle={chapter.title}
+          queueJob={queueJob}
+          onChange={onFlagsChanged}
+        />
+      )}
+    </div>
+  );
+});
+
 interface ChapterDownloadButtonProps {
   theme: Theme;
   libraryEntryId: string;
@@ -1936,113 +2065,40 @@ function VolumesAccordion({
               </>
             )}
             {isOpen && v.chapters.length > 0 && (
-              <ul
+              // Windowed: a big volume runs to ~950 chapters, and mounting
+              // every row cost ~200ms and ~6.6k DOM nodes — after which every
+              // download-queue tick re-reconciled all of them. Measured (not
+              // fixed-height) because ~6% of chapter titles wrap to a second
+              // line and clipping them would hide content.
+              <MeasuredVirtualList
+                items={v.chapters}
+                estimatedItemHeight={CHAPTER_ROW_HEIGHT}
+                itemKey={(c) => c.id}
+                role="list"
                 className="leaflet-scroll-hidden leaflet-collapse-enter"
+                ariaLabel={v.title}
                 style={{
-                  listStyle: "none",
                   margin: 0,
                   padding: "4px 0 8px",
                   borderTop: `0.5px solid ${theme.rule}`,
                   maxHeight: 360,
-                  overflowY: "auto",
                   background: theme.bg,
                 }}
-              >
-                {v.chapters.map((c) => {
-                  const flags = chapterFlags.get(c.id);
-                  const read = !!flags?.readAt;
-                  const downloaded = !!flags?.downloadedAt;
-                  return (
-                    <li
-                      key={c.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "stretch",
-                        direction: novel.direction,
-                      }}
-                    >
-                      <button
-                        onClick={() => onOpenChapter(c.id)}
-                        style={{
-                          flex: 1,
-                          textAlign: "start",
-                          background: "transparent",
-                          border: "none",
-                          // Start-edge accent bar — transparent by default,
-                          // theme.rule when read, ACCENT on hover. A fixed
-                          // 2px logical border (never toggled to 0) so the
-                          // colour change never shifts the row's layout.
-                          borderInlineStart: `2px solid ${
-                            read ? theme.rule : "transparent"
-                          }`,
-                          paddingBlock: 9,
-                          paddingInlineStart: 26,
-                          paddingInlineEnd: 14,
-                          // Dim read chapters so the list reads "checked off"
-                          // without hiding anything.
-                          color: read ? theme.muted : theme.ink,
-                          opacity: read ? 0.72 : 1,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: 12.5,
-                          lineHeight: 1.4,
-                          display: "flex",
-                          gap: 10,
-                          alignItems: "baseline",
-                          direction: novel.direction,
-                          transition: transition("border-color", "fast", "out"),
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = theme.hover;
-                          e.currentTarget.style.borderInlineStartColor = ACCENT;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "transparent";
-                          e.currentTarget.style.borderInlineStartColor = read
-                            ? theme.rule
-                            : "transparent";
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: theme.muted,
-                            minWidth: 28,
-                            flexShrink: 0,
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {c.id}
-                        </span>
-                        <span style={{ flex: 1, minWidth: 0 }}>{c.title}</span>
-                        {read && (
-                          <Icon
-                            name="check"
-                            size={13}
-                            style={{
-                              color: ACCENT,
-                              flexShrink: 0,
-                              alignSelf: "center",
-                            }}
-                          />
-                        )}
-                      </button>
-                      {libraryEntryId && (
-                        <ChapterDownloadButton
-                          theme={theme}
-                          libraryEntryId={libraryEntryId}
-                          chapterId={c.id}
-                          downloaded={downloaded}
-                          novelTitle={novel.title}
-                          chapterTitle={c.title}
-                          queueJob={activeJobs.get(c.id)}
-                          onChange={() => void refreshFlags()}
-                        />
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+                renderItem={(c) => (
+                  <ChapterRow
+                    theme={theme}
+                    chapter={c}
+                    direction={novel.direction}
+                    read={!!chapterFlags.get(c.id)?.readAt}
+                    downloaded={!!chapterFlags.get(c.id)?.downloadedAt}
+                    libraryEntryId={libraryEntryId}
+                    novelTitle={novel.title}
+                    queueJob={activeJobs.get(c.id)}
+                    onOpenChapter={onOpenChapter}
+                    onFlagsChanged={refreshFlags}
+                  />
+                )}
+              />
             )}
           </div>
         );

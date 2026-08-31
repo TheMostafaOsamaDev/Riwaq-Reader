@@ -26,8 +26,18 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { FixedImportDraft } from "./fixedImportStage";
-import { detectBookFormat, isOpaqueUri } from "./bookFormat";
-import { parseEpub } from "../epub/parser";
+import { isOpaqueUri, type BookFormat } from "./bookFormat";
+import { parseEpubFromSource } from "../epub/parser";
+import { openNativeZip } from "../epub/zipSource";
+import {
+  deleteStaged,
+  newStagingToken,
+  onStageProgress,
+  renameStaged,
+  stageImportFile,
+  writeBytesChunked,
+  type StageProgress,
+} from "./nativeStaging";
 import type { EpubBook } from "../epub/types";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
@@ -49,6 +59,9 @@ const BASE = BaseDirectory.AppData;
 const ROOT = "leaflet";
 const BOOKS = `${ROOT}/books`;
 const INDEX = `${ROOT}/library.json`;
+/** Where a picked file lands before we know what it is. Kept out of books/
+ *  so a cancelled PDF/DOCX import never leaves a half-built book directory. */
+const STAGING = `${ROOT}/staging`;
 
 export type BookStatus = "reading" | "finished" | "wishlist";
 
@@ -187,7 +200,7 @@ interface LibraryFile {
 // ── low-level fs helpers ──────────────────────────────────────────────────
 
 export async function ensureRoot() {
-  for (const dir of [ROOT, BOOKS]) {
+  for (const dir of [ROOT, BOOKS, STAGING]) {
     if (!(await exists(dir, { baseDir: BASE }))) {
       await mkdir(dir, { baseDir: BASE, recursive: true });
     }
@@ -315,15 +328,32 @@ export interface StagedPick {
   empty?: boolean;
 }
 
-/** Read + classify a list of picked paths: EPUBs import directly, PDF/DOCX are
- *  staged (parsed in memory, cover candidates ready) for the import dialog. */
-/** Decide whether a picked file is a fixed-layout book (PDF/DOCX) or an EPUB.
- *  Sniffs the bytes first: Android's picker returns a Storage Access Framework
- *  URI with no extension, so the path alone used to send every Android import
- *  into the EPUB parser. Extension only breaks ties for bytes we can't
- *  identify, keeping the previous desktop behaviour intact. */
-function fixedKindFor(bytes: Uint8Array, path: string): "pdf" | "docx" | null {
-  const format = detectBookFormat(bytes);
+/** Progress sink for an import run. Supplied by the caller (the library
+ *  view) so the same pipeline can drive the desktop button spinner and the
+ *  Android notification without knowing about either. */
+export interface ImportReporter {
+  /** Starting on file `index` of `total`. */
+  file(index: number, total: number, name: string): void;
+  /** Coarse stage change: copying bytes, parsing, or writing the book out. */
+  phase(phase: "copy" | "parse" | "write"): void;
+  /** Fine-grained progress within the current phase. */
+  progress(p: StageProgress): void;
+}
+
+/** Thrown when a picked file's bytes aren't any format we can read.
+ *  Localized at the display site via `errorLabel` (see i18n/statusLabels.ts). */
+export const UNSUPPORTED_FILE =
+  "Unsupported file — not an EPUB, PDF or DOCX.";
+
+/** Resolve a staged file's format to the fixed-layout kind we should stage
+ *  for the import dialog, or null when it's an EPUB (imported directly).
+ *
+ *  The format comes from the bytes, sniffed natively while the file was being
+ *  copied: Android's picker returns a Storage Access Framework URI with no
+ *  extension, so the path alone used to send every Android import into the
+ *  EPUB parser. Extension only breaks ties for bytes we can't identify,
+ *  keeping the previous desktop behaviour intact. */
+function fixedKindFor(format: BookFormat, path: string): "pdf" | "docx" | null {
   if (format === "pdf" || format === "docx") return format;
   if (format === "epub") return null;
   if (/\.pdf$/i.test(path)) return "pdf";
@@ -331,29 +361,66 @@ function fixedKindFor(bytes: Uint8Array, path: string): "pdf" | "docx" | null {
   return null;
 }
 
-async function stagePaths(paths: string[]): Promise<StagedPick> {
+/**
+ * Read + classify a list of picked paths: EPUBs import directly, PDF/DOCX are
+ * staged (cover candidates ready) for the import dialog.
+ *
+ * Each file is first streamed to disk natively. That is what makes a 200 MB
+ * book importable at all: the picked bytes never enter the webview, so they
+ * never hit Tauri's Android IPC serializer, which would otherwise expand them
+ * to one JSON array element per byte and throw `RangeError: Invalid array
+ * length` past ~128 MB. See `nativeStaging.ts`.
+ */
+async function stagePaths(
+  paths: string[],
+  report?: ImportReporter,
+): Promise<StagedPick> {
+  await ensureRoot();
   const autoImported: BookIndexEntry[] = [];
   const drafts: FixedImportDraft[] = [];
   const errors: { file: string; message: string }[] = [];
-  for (const path of paths) {
+
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i];
+    const token = newStagingToken();
+    const stagedPath = `${STAGING}/${token}`;
+    let unlisten: (() => void) | undefined;
     try {
+      report?.file(i, paths.length, filenameTitle(path));
+      unlisten = await onStageProgress(token, (p) => report?.progress(p));
+
       // The dialog selection itself grants per-path read permission on Tauri
       // v2, so we don't need $HOME / $DOCUMENT in the fs scope.
-      const bytes = await readFile(path);
-      const fixed = fixedKindFor(bytes, path);
+      const staged = await stageImportFile(path, stagedPath, token);
+      const fixed = fixedKindFor(staged.format, path);
+
       if (fixed) {
+        report?.phase("parse");
         // Dynamic import avoids a static library ↔ staging cycle and keeps the
         // pdf.js / mammoth toolchains out of the initial bundle.
         const { stageFixedImport } = await import("./fixedImportStage");
-        drafts.push(await stageFixedImport(bytes, path, fixed));
+        // pdf.js / mammoth need the bytes, so this direction does cross the
+        // bridge — but Rust→JS responses travel as an octet-stream rather
+        // than a JSON number array, so there's no expansion. The staged file
+        // stays put and `commit` renames it into place instead of writing a
+        // second copy.
+        const bytes = await readFile(stagedPath, { baseDir: BASE });
+        drafts.push(
+          await stageFixedImport(bytes, path, fixed, { stagedPath }),
+        );
+      } else if (staged.format === "epub") {
+        autoImported.push(await importStagedEpub(stagedPath, token, report));
       } else {
-        autoImported.push(await importEpubBytes(bytes));
+        throw new Error(UNSUPPORTED_FILE);
       }
     } catch (err) {
+      await deleteStaged(stagedPath);
       errors.push({
         file: path.split(/[\\/]/).pop() ?? path,
         message: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      unlisten?.();
     }
   }
   return { autoImported, drafts, errors };
@@ -363,7 +430,9 @@ async function stagePaths(paths: string[]): Promise<StagedPick> {
  * Prompt for one or more books. EPUBs are imported immediately; PDF/DOCX are
  * returned as drafts for the title/cover dialog. Null if the user cancelled.
  */
-export async function pickBooksForImport(): Promise<StagedPick | null> {
+export async function pickBooksForImport(
+  report?: ImportReporter,
+): Promise<StagedPick | null> {
   const picked = await open({
     multiple: true,
     directory: false,
@@ -371,7 +440,7 @@ export async function pickBooksForImport(): Promise<StagedPick | null> {
   });
   if (!picked) return null;
   const paths = Array.isArray(picked) ? picked : [picked];
-  return stagePaths(paths);
+  return stagePaths(paths, report);
 }
 
 /** Pull a reasonable display title out of a file path: drop the directory
@@ -454,51 +523,114 @@ export async function loadFixedBook(
   return { book, state };
 }
 
+/**
+ * Parse an EPUB that already sits at `books/<id>/book.epub` and commit it to
+ * the library.
+ *
+ * Everything bulky stays native. The parser reads only the text entries it
+ * needs (OPF, nav/NCX, chapter XHTML) through `openNativeZip`, and images +
+ * cover are copied archive → disk by Rust, so a 200 MB picture book costs the
+ * webview a few hundred KB instead of holding the whole archive, a JSZip
+ * mirror of it, and every decoded image at once.
+ */
+async function commitEpubAt(
+  id: string,
+  token: string,
+  report?: ImportReporter,
+): Promise<BookIndexEntry> {
+  const dir = bookDir(id);
+  report?.phase("parse");
+  const src = await openNativeZip(`${dir}/book.epub`, token);
+  try {
+    const { book, cover, images } = await parseEpubFromSource(src, id);
+
+    report?.phase("write");
+    await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
+      baseDir: BASE,
+    });
+    await writeInitialState(id);
+
+    // In-flow images land under books/<id>/<href> so chapter image items
+    // resolve to a real file. Each href is `images/img-NNN.ext`; the native
+    // extractor creates the images/ subdirectory as it goes.
+    if (images.length > 0) {
+      await src.extract(
+        images.map((img) => ({ entry: img.entry, dest: `${dir}/${img.href}` })),
+      );
+    }
+
+    let coverFile: string | undefined;
+    if (cover) {
+      const name = `cover.${cover.extension}`;
+      const [ok] = await src.extract([
+        { entry: cover.entry, dest: `${dir}/${name}` },
+      ]);
+      if (ok) coverFile = name;
+    }
+
+    return appendIndexEntry({
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      language: book.language,
+      chapterCount: book.chapters.length,
+      addedAt: Date.now(),
+      progress: 0,
+      ...(coverFile ? { coverFile } : {}),
+    });
+  } finally {
+    src.dispose();
+  }
+}
+
+/** Move a staged EPUB into a fresh book directory and import it. The staged
+ *  copy becomes `book.epub` by rename, so the bytes are only ever written
+ *  once. */
+async function importStagedEpub(
+  stagedPath: string,
+  token: string,
+  report?: ImportReporter,
+): Promise<BookIndexEntry> {
+  const id = crypto.randomUUID();
+  const dir = bookDir(id);
+  await mkdir(dir, { baseDir: BASE, recursive: true });
+  try {
+    // Keeping the original zip lets us re-extract the cover later when the
+    // parser improves, without re-asking the user for the file.
+    await renameStaged(stagedPath, `${dir}/book.epub`);
+    return await commitEpubAt(id, token, report);
+  } catch (err) {
+    // A failed parse shouldn't leave a partial book (or a 200 MB orphan)
+    // behind.
+    await deleteStaged(dir);
+    throw err;
+  }
+}
+
+/**
+ * Import an EPUB the app itself produced in memory — a Sources download, a
+ * DOCX conversion, a store conversion.
+ *
+ * The buffer is written to disk in bounded slices first (see
+ * `writeBytesChunked`), then parsed through the same native path as a picked
+ * file. Chunking matters even here: Android's IPC serializer would otherwise
+ * expand the whole buffer into one JS array element per byte.
+ */
 export async function importEpubBytes(
   bytes: Uint8Array,
 ): Promise<BookIndexEntry> {
   await ensureRoot();
-  const { book, cover, images } = await parseEpub(bytes.buffer as ArrayBuffer);
-
-  const dir = bookDir(book.id);
+  const id = crypto.randomUUID();
+  const token = newStagingToken();
+  const dir = bookDir(id);
   await mkdir(dir, { baseDir: BASE, recursive: true });
-  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
-    baseDir: BASE,
-  });
-  // Persist the original zip alongside the parsed book. Costs ~MB of disk
-  // but lets us re-extract the cover later when the parser improves —
-  // without re-asking the user for the file.
-  await writeFile(`${dir}/book.epub`, bytes, { baseDir: BASE });
-  await writeInitialState(book.id);
-
-  // Drop in-flow images on disk under books/<id>/<href> so chapter image
-  // items resolve to a real file. Each href is `images/img-NNN.ext`, so
-  // the first hit also creates the images/ subdirectory.
-  if (images.length > 0) {
-    await mkdir(`${dir}/images`, { baseDir: BASE, recursive: true });
-    for (const img of images) {
-      await writeFile(`${dir}/${img.href}`, img.bytes, { baseDir: BASE });
-    }
+  try {
+    await writeBytesChunked(`${dir}/book.epub`, bytes);
+    return await commitEpubAt(id, token);
+  } catch (err) {
+    await deleteStaged(dir);
+    throw err;
   }
-
-  let coverFile: string | undefined;
-  if (cover) {
-    coverFile = `cover.${cover.extension}`;
-    await writeFile(`${dir}/${coverFile}`, cover.bytes, { baseDir: BASE });
-  }
-
-  const entry: BookIndexEntry = {
-    id: book.id,
-    title: book.title,
-    author: book.author,
-    language: book.language,
-    chapterCount: book.chapters.length,
-    addedAt: Date.now(),
-    progress: 0,
-    ...(coverFile ? { coverFile } : {}),
-  };
-
-  return appendIndexEntry(entry);
 }
 
 /**
@@ -656,7 +788,9 @@ export async function importFromSourceUrl(
  * EPUBs import immediately; PDF/DOCX are staged for the dialog queue. Null if
  * the user cancelled; `empty: true` when the folder held no importable files.
  */
-export async function pickFolderForImport(): Promise<StagedPick | null> {
+export async function pickFolderForImport(
+  report?: ImportReporter,
+): Promise<StagedPick | null> {
   const picked = await open({ multiple: false, directory: true });
   if (!picked) return null;
   const dir = Array.isArray(picked) ? picked[0] : picked;
@@ -671,7 +805,7 @@ export async function pickFolderForImport(): Promise<StagedPick | null> {
 
   const paths: string[] = [];
   for (const e of files) paths.push(await join(dir, e.name));
-  return { ...(await stagePaths(paths)), empty: false };
+  return { ...(await stagePaths(paths, report)), empty: false };
 }
 
 /** Let the user pick an image from disk and return its bytes (no write). Used
@@ -704,9 +838,14 @@ export async function readImageFile(): Promise<{
 }
 
 /**
- * Re-parse the book's stored EPUB bytes and extract a cover. Used to backfill
+ * Re-parse the book's stored EPUB and extract a cover. Used to backfill
  * covers on books that were imported by an older parser version that missed
- * them. Silent no-op if the EPUB bytes weren't saved (pre-0.2 books).
+ * them. Silent no-op if the EPUB wasn't saved (pre-0.2 books).
+ *
+ * Reads through the native zip source rather than pulling the archive into
+ * memory — `backfillMissingCovers` calls this for every cover-less book after
+ * each `listBooks()`, so on a shelf holding a few large books the old
+ * read-it-all approach cost hundreds of MB per library render.
  *
  * Returns the updated index entry, or null if nothing could be done.
  */
@@ -717,12 +856,19 @@ export async function rescanCover(
   const epubPath = `${dir}/book.epub`;
   if (!(await exists(epubPath, { baseDir: BASE }))) return null;
 
-  const bytes = await readFile(epubPath, { baseDir: BASE });
-  const { cover } = await parseEpub(bytes.buffer as ArrayBuffer);
-  if (!cover) return null;
-
-  const coverFile = `cover.${cover.extension}`;
-  await writeFile(`${dir}/${coverFile}`, cover.bytes, { baseDir: BASE });
+  const src = await openNativeZip(epubPath, newStagingToken());
+  let coverFile: string;
+  try {
+    const { cover } = await parseEpubFromSource(src, id);
+    if (!cover) return null;
+    coverFile = `cover.${cover.extension}`;
+    const [ok] = await src.extract([
+      { entry: cover.entry, dest: `${dir}/${coverFile}` },
+    ]);
+    if (!ok) return null;
+  } finally {
+    src.dispose();
+  }
 
   const idx = await readIndex();
   const entry = idx.books.find((b) => b.id === id);

@@ -617,6 +617,8 @@ export const en = {
   // DownloadQueueView's job.error, ImportProgress's state.error). Anything
   // NOT one of these stays raw — see BOUNDARY note.
   "error.anotherImportRunning": "Another import is already running",
+  "error.unsupportedFile":
+    "That file isn't an EPUB, PDF or DOCX — nothing to import.",
   "error.anotherImportInProgress": "Another import is still in progress.",
   "error.novelNoChaptersToConvert": "This novel has no chapters to convert.",
   "error.sourceNotInstalledBuild":

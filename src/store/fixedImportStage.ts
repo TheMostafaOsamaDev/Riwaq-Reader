@@ -6,6 +6,7 @@
 // large images (or a long PDF) doesn't decode everything up front.
 
 import { openPdfDocument } from "../pdf/pdfjs";
+import { deleteStaged } from "./nativeStaging";
 import { detectBookFormat } from "./bookFormat";
 import { commitDocxBook, commitPdfBook, type ChosenCover } from "./fixedImport";
 import { filenameTitle, type BookIndexEntry } from "./library";
@@ -52,22 +53,33 @@ const DOCX_MAX_IMAGES = 12;
 const DOCX_MIN_IMAGE_BYTES = 2048; // skip inline icons / bullets
 const THUMB_MAX_W = 240;
 
+/** Extra context from the native staging pass. When present, the file
+ *  already sits on disk at `stagedPath` (app-data-relative), so committing a
+ *  PDF renames it into place instead of pushing the bytes back across the
+ *  IPC bridge — the write that used to throw `RangeError: Invalid array
+ *  length` on Android for anything past ~128 MB. */
+export interface StagedSource {
+  stagedPath: string;
+}
+
 export async function stageFixedImport(
   bytes: Uint8Array,
   filename: string,
   /** Format the caller already sniffed. Omitted by callers holding a real
    *  filename (the dev harness), where the bytes still decide. */
   kind?: "pdf" | "docx",
+  staged?: StagedSource,
 ): Promise<FixedImportDraft> {
   const format = kind ?? detectBookFormat(bytes);
   return format === "pdf"
-    ? stagePdf(bytes, filename)
-    : stageDocx(bytes, filename);
+    ? stagePdf(bytes, filename, staged)
+    : stageDocx(bytes, filename, staged);
 }
 
 async function stagePdf(
   bytes: Uint8Array,
   filename: string,
+  staged?: StagedSource,
 ): Promise<FixedImportDraft> {
   const doc = await openPdfDocument(bytes);
   const urls: string[] = [];
@@ -117,7 +129,7 @@ async function stagePdf(
     commit: async ({ title, cover }) => {
       const chosen = await resolveCover(cover, candidates);
       return commitPdfBook({
-        bytes,
+        ...(staged ? { stagedPath: staged.stagedPath } : { bytes }),
         title: title.trim() || doc.meta.title || filenameTitle(filename),
         author: doc.meta.author || "",
         pageCount: doc.pageCount,
@@ -130,6 +142,10 @@ async function stagePdf(
       disposed = true;
       urls.forEach((u) => URL.revokeObjectURL(u));
       doc.destroy();
+      // After a successful commit the staged file has already been renamed
+      // into the book directory, so this is a no-op. After a cancel or a
+      // failure it reclaims the copy — which for a PDF can be hundreds of MB.
+      if (staged) void discardStaged(staged.stagedPath);
     },
   };
 }
@@ -137,6 +153,7 @@ async function stagePdf(
 async function stageDocx(
   bytes: Uint8Array,
   filename: string,
+  staged?: StagedSource,
 ): Promise<FixedImportDraft> {
   // Lazy — pulls in mammoth/jszip only when a DOCX is actually staged.
   const { docxToFixedDoc } = await import("../docx/toFixedDoc");
@@ -191,6 +208,9 @@ async function stageDocx(
       if (disposed) return;
       disposed = true;
       urls.forEach((u) => URL.revokeObjectURL(u));
+      // DOCX keeps nothing from the original on disk, so the staged copy is
+      // dead weight once the draft is done with (committed or cancelled).
+      if (staged) void discardStaged(staged.stagedPath);
     },
   };
 }
@@ -246,6 +266,11 @@ function extOf(href: string): string {
   const m = href.match(/\.([A-Za-z0-9]+)$/);
   const ext = m?.[1]?.toLowerCase() ?? "png";
   return ext === "jpeg" ? "jpg" : ext;
+}
+
+/** Fire-and-forget removal of a staged file. */
+async function discardStaged(path: string): Promise<void> {
+  await deleteStaged(path);
 }
 
 function newDraftId(): string {
