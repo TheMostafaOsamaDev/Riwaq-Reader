@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
 import { useFileDrop } from "./hooks/useFileDrop";
+import { useDropOverlayState } from "./store/dropOverlay";
 import { DesktopReader } from "./components/DesktopReader";
 import { DropOverlay } from "./components/DropOverlay";
 import { ImportProgress } from "./components/ImportProgress";
@@ -154,8 +156,34 @@ function App() {
     "(max-width: 720px), (pointer: coarse) and (max-height: 480px)",
   );
   // Drag-and-drop is desktop-only: Android has no pointer drag onto the
-  // window, and Tauri emits no drag events there.
-  const dropState = useFileDrop(!isMobile);
+  // window, and Tauri emits no drag events there. Gate on the actual OS via
+  // plugin-os's platform() — NOT window width. `isMobile` is a media query
+  // (narrow width OR coarse pointer + short viewport), so it breaks in both
+  // directions here: a desktop user narrowing the window past 720px (normal
+  // for side-by-side reading) would silently lose drag-and-drop, and a
+  // large Android tablet in landscape reports isMobile === false, which
+  // would subscribe the hook on a platform that never emits the events.
+  //
+  // platform() itself is synchronous (it reads a value the plugin stashes
+  // at webview init, not an IPC round-trip) but throws outside a real Tauri
+  // webview — e.g. `pnpm dev` in a plain browser — so it's wrapped the same
+  // defensive way backgroundTasks.ts's isAndroid() and
+  // downloadNotifier/transport.ts's getPlatform() are. Lazy useState
+  // initializer: runs once, no need for an effect since there's nothing
+  // async to wait on.
+  const [dropCapable] = useState(() => {
+    try {
+      // Mirrors the Rust `desktop` cfg alias (not(any(android, ios))) —
+      // ios has no gen/ scaffold yet, but the exclusion is cheap and keeps
+      // this in lockstep with the backend's own definition of "desktop".
+      const p = platform();
+      return p !== "android" && p !== "ios";
+    } catch {
+      return false;
+    }
+  });
+  useFileDrop(dropCapable);
+  const dropState = useDropOverlayState();
   // "system" resolves to light/dark from the OS setting; useMediaQuery
   // re-renders when the user flips OS appearance, so the whole app
   // (and the theme-aware brand mark) re-themes live.

@@ -203,9 +203,17 @@ export function Library({
   // await — still reads the value written just before onImport() was
   // called, and so it survives across every re-render the multi-step draft
   // queue produces before that point is reached.
+  //
+  // `reusedIds` covers the book the user already owned: hash-dedupe means
+  // beginImport reports it under `reused` rather than importing it, so it
+  // was already in the library BEFORE this run started and would never
+  // show up in the `before`/`after` diff below. Without tracking it
+  // separately, "Add to shelf → From device" on a book you already own
+  // silently drops the shelf assignment — your explicit pick does nothing.
   const pendingShelfImportRef = useRef<{
     shelfId: string;
     before: Set<string>;
+    reusedIds: string[];
   } | null>(null);
   // Set by beginImport when a file opened from outside (Open with,
   // Android share, drag-drop) resolved to exactly one PDF/DOCX draft — the
@@ -472,13 +480,15 @@ export function Library({
     const newIds = after
       .filter((b) => !pending.before.has(b.id))
       .map((b) => b.id);
-    if (newIds.length === 0) return;
-    await onAddBooksToShelf(pending.shelfId, newIds);
+    // Union with reusedIds: a hash-dedupe match was already in `before`
+    // (it's an existing book), so the diff above can never surface it —
+    // without folding it in here, picking an already-owned book from
+    // "From device" would silently do nothing to the shelf.
+    const ids = Array.from(new Set([...newIds, ...pending.reusedIds]));
+    if (ids.length === 0) return;
+    await onAddBooksToShelf(pending.shelfId, ids);
     const name = shelves.find((s) => s.id === pending.shelfId)?.name ?? "";
-    showToast(
-      "info",
-      tr("shelves.addedToast", { n: newIds.length, shelf: name }),
-    );
+    showToast("info", tr("shelves.addedToast", { n: ids.length, shelf: name }));
   };
 
   const summarizeImport = () => {
@@ -581,6 +591,14 @@ export function Library({
       return;
     }
     const reused = res.reused ?? [];
+    // A pending shelf assignment needs the reused ids too — see the
+    // pendingShelfImportRef doc comment for why the before/after diff in
+    // finishPendingShelfImport can't see them on its own.
+    if (pendingShelfImportRef.current) {
+      pendingShelfImportRef.current.reusedIds.push(
+        ...reused.map((b) => b.id),
+      );
+    }
     importStats.current = {
       imported: res.autoImported.length,
       errors: res.errors.map((e) => e.message),
@@ -708,6 +726,7 @@ export function Library({
     pendingShelfImportRef.current = {
       shelfId,
       before: new Set(books.map((b) => b.id)),
+      reusedIds: [],
     };
     await onImport();
   };
@@ -957,13 +976,18 @@ export function Library({
   // Files handed to us from outside (Open with, Android share, drag-drop).
   // They queue in the store because this component unmounts behind the
   // reader — draining on mount is what makes a drop mid-chapter survive.
+  //
+  // Genuinely queue, silently, while an import is already running — no
+  // toast. The drop/arrival was already acknowledged by the overlay (see
+  // store/dropOverlay.ts), so there is nothing left to say here; leave the
+  // paths in the incoming-files store rather than taking them. This effect
+  // resubscribes whenever `importing` or `importQueue.length` changes, so
+  // the retry happens automatically the moment the current run finishes —
+  // no need to schedule anything ourselves.
   useEffect(() => {
     const drain = () => {
       if (!hasIncoming()) return;
-      if (importing || importQueue.length > 0) {
-        showToast("warn", tr("status.importBusy"));
-        return;
-      }
+      if (importing || importQueue.length > 0) return;
       const paths = takeIncoming();
       void runImport((report) => importPaths(paths, report), {
         openWhenSingle: true,
@@ -971,7 +995,7 @@ export function Library({
     };
     drain();
     return onIncoming(drain);
-  }, [importing, importQueue.length, showToast, tr]);
+  }, [importing, importQueue.length]);
 
   // When a "Save as offline book" conversion finishes, one or more
   // brand-new library entries have just landed via importEpubBytes —

@@ -6,17 +6,17 @@
 // expanding one needs a directory read the webview can't do for arbitrary
 // paths. Tauri's `over` event carries no paths, so this costs one IPC per
 // drag rather than one per mousemove.
+//
+// The overlay's state itself lives in store/dropOverlay.ts, not here —
+// useIncomingFiles also needs to drive it (an Open-with/share arrival gets
+// the same "received" confirmation), so this hook only writes into the
+// shared store rather than owning its own React state.
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { pushIncoming } from "../store/incomingFiles";
-
-export type DropState =
-  | { kind: "idle" }
-  | { kind: "accept"; count: number }
-  | { kind: "refuse" }
-  | { kind: "received"; count: number; skipped: number };
+import { setAccept, setIdle, setRefuse, showReceived } from "../store/dropOverlay";
 
 interface DropClassification {
   /** Books the drop resolved to, folder contents already expanded. */
@@ -27,43 +27,22 @@ interface DropClassification {
 
 const EMPTY: DropClassification = { books: [], unsupported: [] };
 
-/** How long the post-drop confirmation stays up. Long enough to read,
- *  short enough not to sit over the reader. */
-const RECEIVED_MS = 1400;
-
-export function useFileDrop(enabled: boolean): DropState {
-  const [state, setState] = useState<DropState>({ kind: "idle" });
-
+export function useFileDrop(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
 
     let unlisten: (() => void) | undefined;
-    let timer: number | undefined;
     let disposed = false;
     // The classification from `enter`, reused on `drop`. Tauri repeats the
     // paths in the drop payload, but re-resolving them there would both
     // re-read every dropped folder and race a file moved mid-drag.
     let latest: DropClassification = EMPTY;
 
-    // A `received` confirmation schedules its own idle-out below. That
-    // timeout must not survive into whatever the drag surface does next —
-    // otherwise a stale timer from a prior drop fires mid-way through a
-    // fresh drag and forces the overlay back to idle out from under it.
-    // Every branch that moves the state on clears whatever timer is
-    // currently pending first.
-    const clearTimer = () => {
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-        timer = undefined;
-      }
-    };
-
     void getCurrentWebview()
       .onDragDropEvent(async (event) => {
         const p = event.payload;
 
         if (p.type === "enter") {
-          clearTimer();
           try {
             latest = await invoke<DropClassification>("classify_drop", {
               paths: p.paths,
@@ -74,39 +53,30 @@ export function useFileDrop(enabled: boolean): DropState {
             latest = EMPTY;
           }
           if (disposed) return;
-          setState(
-            latest.books.length > 0
-              ? { kind: "accept", count: latest.books.length }
-              : { kind: "refuse" },
-          );
+          if (latest.books.length > 0) setAccept(latest.books.length);
+          else setRefuse();
           return;
         }
 
         if (p.type === "leave") {
-          clearTimer();
           latest = EMPTY;
-          setState({ kind: "idle" });
+          setIdle();
           return;
         }
 
         if (p.type === "drop") {
-          clearTimer();
           const books = latest.books;
           const skipped = latest.unsupported.length;
           latest = EMPTY;
           if (books.length === 0) {
-            setState({ kind: "idle" });
+            setIdle();
             return;
           }
           pushIncoming(books);
           // Acknowledge the drop itself. The library's import summary
           // confirms completion later — but it is unreachable while the
           // reader is on screen, which is exactly when this matters.
-          setState({ kind: "received", count: books.length, skipped });
-          timer = window.setTimeout(
-            () => setState({ kind: "idle" }),
-            RECEIVED_MS,
-          );
+          showReceived(books.length, skipped);
         }
       })
       .then((fn) => {
@@ -119,9 +89,10 @@ export function useFileDrop(enabled: boolean): DropState {
     return () => {
       disposed = true;
       unlisten?.();
-      clearTimer();
+      // Disabling mid-drag (a platform check resolving, in practice —
+      // see App.tsx) must not leave the shared overlay stuck showing
+      // "accept"/"refuse" forever with nothing left to move it on.
+      setIdle();
     };
   }, [enabled]);
-
-  return state;
 }

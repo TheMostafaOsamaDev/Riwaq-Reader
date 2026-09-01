@@ -144,10 +144,16 @@ export const en = {
 
   // drag-and-drop overlay (DropOverlay.tsx)
   "drop.accept": "Drop to add",
-  "drop.acceptCount": "{count} book(s)",
+  "drop.acceptCountOne": "{count} book",
+  "drop.acceptCountOther": "{count} books",
   "drop.refuse": "Riwaq can't read this",
   "drop.formats": "EPUB · PDF · DOCX",
-  "drop.received": "Added to your library",
+  // Not "Added to your library": this fires the instant the drop/arrival
+  // lands, before anything has actually imported — most visibly wrong for
+  // a drop while reading, which is the exact case this confirmation exists
+  // for, and it stays wrong if the import later fails. "Queued" is true
+  // the moment it's shown.
+  "drop.received": "Queued for import",
   "drop.skippedOne": "Skipped {count} file Riwaq can't read.",
   "drop.skippedOther": "Skipped {count} files Riwaq can't read.",
 
@@ -586,7 +592,6 @@ export const en = {
   "status.importedFolderOther": "Imported {n} books.",
   "status.coverNotFoundInEpub":
     "Couldn't find a cover in the original EPUB. Try “Set cover…” to pick an image yourself.",
-  "status.importBusy": "An import is already running — try again when it finishes.",
   "status.alreadyInLibraryOne": "{n} already in your library.",
   "status.alreadyInLibraryOther": "{n} already in your library.",
 

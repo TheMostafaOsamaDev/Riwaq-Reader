@@ -12,19 +12,43 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { pushIncoming } from "../store/incomingFiles";
+import { showReceived } from "../store/dropOverlay";
 
 async function drainOnce(): Promise<void> {
+  let received = 0;
   try {
     const desktop = (await invoke("take_pending_opens")) as string[] | null;
-    if (desktop && desktop.length > 0) pushIncoming(desktop);
+    if (desktop && desktop.length > 0) {
+      pushIncoming(desktop);
+      received += desktop.length;
+    }
   } catch {
     // Command unavailable or transient — the next trigger retries.
   }
   try {
     const uri = (await invoke("consume_open_uri")) as string | null;
-    if (uri) pushIncoming([uri]);
+    if (uri) {
+      // CROSS-LANGUAGE CONTRACT with MainActivity.kt's rememberLaunchIntent:
+      // a SEND_MULTIPLE share (a multi-select "share to Riwaq") joins every
+      // URI into this one field with "\n" — a character that cannot occur
+      // inside a content:// URI. A single VIEW/SEND still round-trips
+      // unchanged, since splitting a string with no "\n" yields one
+      // element.
+      const paths = uri.split("\n");
+      pushIncoming(paths);
+      received += paths.length;
+    }
   } catch {
     // Non-Android or transient — silent, same as useLaunchIntent.
+  }
+  if (received > 0) {
+    // Acknowledge the arrival even when nobody is looking at the library.
+    // Without this, a book handed to Riwaq via Open-with or the Android
+    // share sheet while the reader or settings was on screen was
+    // completely silent — Library owns the only import toast, and it's
+    // unmounted behind those screens, which is exactly the common case
+    // (the app foregrounding from a share while mid-chapter).
+    showReceived(received);
   }
 }
 

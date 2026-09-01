@@ -11,10 +11,13 @@
 // the drop lands.
 //
 // Purely presentational: it takes state and renders. The drag plumbing
-// lives in hooks/useFileDrop.ts.
+// lives in hooks/useFileDrop.ts; the "received" state can also arrive from
+// hooks/useIncomingFiles.ts (an Open-with/share arrival), which is why the
+// state itself is a shared store (store/dropOverlay.ts) rather than local
+// to the drag hook.
 
 import { useEffect, useRef, useState } from "react";
-import type { DropState } from "../hooks/useFileDrop";
+import type { DropState } from "../store/dropOverlay";
 import { useI18n } from "../i18n/useI18n";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import { FONT_STACKS, HIGHLIGHT_COLORS, type Theme } from "../styles/tokens";
@@ -87,7 +90,9 @@ export function DropOverlay({ state, theme }: Props) {
       ? tr("drop.accept")
       : tr("drop.refuse");
   const subtitle = accepting
-    ? tr("drop.acceptCount", { count: String(state.count) })
+    ? tr(state.count === 1 ? "drop.acceptCountOne" : "drop.acceptCountOther", {
+        count: String(state.count),
+      })
     : received
       ? null
       : tr("drop.formats");
@@ -137,14 +142,25 @@ export function DropOverlay({ state, theme }: Props) {
           gap: 12,
           padding: "32px 40px",
           borderRadius: 14,
-          background: theme.bg,
+          // `chrome`, not `bg`: on oled bg is #000000 (paper === bg), so a
+          // bg-filled card sitting on the near-black blurred backdrop had
+          // no fill of its own — only the 18%-alpha border gave it a
+          // shape. `chrome` is this app's existing "surface a few percent
+          // off bg" token (oled: #0c0a08 vs bg #000000; dark: #24201c vs
+          // bg #1a1614, both roughly a 4-5% white lift), already used
+          // everywhere else a panel needs to read as distinct from the
+          // page behind it — reusing it here instead of inventing a new
+          // tint. On light/sepia the shift versus `bg` is similarly
+          // subtle and harmless, so one rule now separates the card in
+          // all four themes rather than special-casing the dark pair.
+          background: theme.chrome,
           // `ruleStrong` rather than `rule`: with the scrim now a flat
-          // black instead of a theme tint, oled's #000000 card sits on a
-          // still-near-black backdrop (the underlying content is blurred
-          // and darkened, not replaced), so the border carries more of
-          // the separation than it would in ConfirmDialog. `ruleStrong`
-          // is documented for exactly this — an edge that has to
-          // register against shadows or larger surfaces.
+          // black instead of a theme tint, oled's card still sits on a
+          // near-black backdrop (the underlying content is blurred and
+          // darkened, not replaced), so the border carries more of the
+          // separation than it would in ConfirmDialog. `ruleStrong` is
+          // documented for exactly this — an edge that has to register
+          // against shadows or larger surfaces.
           border: `1px solid ${theme.ruleStrong}`,
           boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
           fontFamily: FONT_STACKS.sans,

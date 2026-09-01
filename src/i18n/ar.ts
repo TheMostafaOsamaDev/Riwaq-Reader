@@ -118,10 +118,11 @@ export const ar: Messages = {
   "panel.close": "إغلاق اللوحة",
 
   "drop.accept": "أفلت الكتب هنا",
-  "drop.acceptCount": "{count} كتاب",
+  "drop.acceptCountOne": "{count} كتاب",
+  "drop.acceptCountOther": "{count} كتب",
   "drop.refuse": "لا يمكن لرواق قراءة هذا الملف",
   "drop.formats": "EPUB · PDF · DOCX",
-  "drop.received": "تمت الإضافة إلى مكتبتك",
+  "drop.received": "بانتظار الاستيراد",
   "drop.skippedOne": "تم تخطي {count} ملف لا يمكن لرواق قراءته.",
   "drop.skippedOther": "تم تخطي {count} ملفات لا يمكن لرواق قراءته.",
 
@@ -484,7 +485,6 @@ export const ar: Messages = {
   "status.importedFolderOther": "تم استيراد {n} كتب.",
   "status.coverNotFoundInEpub":
     "تعذّر العثور على غلاف في ملف EPUB الأصلي. جرّب “تعيين غلاف…” لاختيار صورة بنفسك.",
-  "status.importBusy": "هناك عملية استيراد جارية — أعد المحاولة بعد انتهائها.",
   "status.alreadyInLibraryOne": "كتاب واحد موجود في مكتبتك بالفعل.",
   "status.alreadyInLibraryOther": "{n} كتب موجودة في مكتبتك بالفعل.",
 
