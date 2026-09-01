@@ -47,6 +47,19 @@ tokio = { version = "1", features = ["time", "macros", "rt-multi-thread", "sync"
 # pull in bzip2/zstd/aes C code we have no use for — EPUB and DOCX only ever
 # use stored + deflate — so keep it lean for the Android .so size budget.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Content hash for import dedup (see archive.rs). Pure Rust and a few KB —
+# worth noting against the Android .so budget the profile below tunes for.
+# The bytes are already streaming through stage_import_file, so hashing
+# costs a pass over data we're touching anyway.
+sha2 = "0.10"
+
+# Desktop-only: without this, "Open with" on an already-running Riwaq
+# starts a SECOND copy of the app pointed at its own library rather than
+# handing the file to the window the user is looking at. macOS routes
+# opens through RunEvent::Opened instead and doesn't need it, but the
+# plugin is harmless there and keeps the three platforms on one path.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
 
 # Android-only: JNI bridge into the Kotlin DownloadNotifier class (see
 # src/notify.rs). Pinned to a version that matches the JNI ABI used by

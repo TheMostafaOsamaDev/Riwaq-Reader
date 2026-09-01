@@ -87,6 +87,44 @@ live for the React side; the Rust side rebuilds automatically on save.
 - `.msi` / `.exe` on Windows
 - `.deb` / `.AppImage` / `.rpm` on Linux
 
+### Installing the macOS app locally
+
+To use Riwaq as a normal app — Spotlight, Launchpad, Dock — instead of keeping
+`pnpm tauri dev` running:
+
+```sh
+pnpm mac:install     # build, ad-hoc sign, copy to /Applications
+```
+
+Then launch it from Spotlight ("Riwaq") or `open -a Riwaq`.
+
+This is a **release** build: the frontend is compiled and embedded in the
+bundle, so it does not hot-reload. Re-run `pnpm mac:install` after any change
+you want to see in the installed app. Keep using `pnpm tauri dev` for
+development.
+
+Related scripts: `pnpm mac:build` (bundle only, no install) and `pnpm mac:dmg`
+(a `.dmg` to hand to someone else).
+
+**On signing.** Tauri only invokes `codesign` when a signing identity is
+configured, so an unconfigured build keeps just the linker's ad-hoc signature:
+resources unsealed, `Info.plist` unbound, and a generated identifier like
+`leaflet-9ad04e75f33efb1c` rather than the real bundle id. It still launches —
+an app you built yourself carries no `com.apple.quarantine` attribute, so
+Gatekeeper does not gate it — but the signature fails `codesign --verify`.
+`scripts/mac-install.sh` re-signs ad-hoc (no Apple Developer account required)
+so the bundle is well-formed and its identity is stable across rebuilds.
+
+A `.dmg` sent to another Mac *does* get quarantined on download, and an ad-hoc
+signature will not satisfy Gatekeeper there. Distributing to other people needs
+a Developer ID certificate and notarisation.
+
+**Shared data.** Dev and release builds both key off the `com.leaflet.reader`
+identifier, so they read and write the same library at
+`~/Library/Application Support/com.leaflet.reader/leaflet/`. Handy — the
+installed app sees your existing books — but it also means anything destructive
+you try in `tauri dev` hits the real library.
+
 ## Run — Android
 
 See `docs/android.md`. Quick version:
@@ -147,3 +185,79 @@ That regenerates every platform-specific icon size automatically.
   `localStorage` under `leaflet:tweaks:v1` and applied on first paint via a
   `useEffect` in `App.tsx`. If you clear storage you'll briefly see the sepia
   default.
+## Testing file associations
+
+### macOS
+
+macOS only registers associations for an **installed** app. A `tauri dev`
+build never appears in "Open With", so testing means installing first: build
+the app bundle with the Tauri CLI, then copy it into `/Applications`:
+
+```bash
+pnpm tauri build --bundles app
+ditto "src-tauri/target/release/bundle/macos/Riwaq.app" /Applications/Riwaq.app
+```
+
+(`ditto`, not `cp -R` — it preserves the ad-hoc code signature. Some
+checkouts also carry `mac:build`/`mac:install` package scripts that wrap
+these two steps plus re-signing; check `package.json` for them first.)
+
+Confirm the registration took:
+
+```bash
+/System/Library/Frameworks/CoreServices.framework/Frameworks/\
+LaunchServices.framework/Support/lsregister -dump | grep -i -A 3 riwaq
+```
+
+Then the smoke test — quit Riwaq first, so this exercises the cold-launch
+path (`RunEvent::Opened`, not argv; macOS never uses argv for this):
+
+```bash
+open -a Riwaq ~/Downloads/test.epub
+```
+
+Run it a second time to check dedup: the same book should open with its
+reading position intact, and no second library entry should appear.
+
+### Android
+
+```bash
+adb shell am start -a android.intent.action.VIEW \
+  -d "file:///sdcard/Download/test.epub" -t application/epub+zip \
+  -n com.leaflet.reader/.MainActivity
+```
+
+Run it once with the app closed (cold, `onCreate`) and once with it
+foregrounded (warm, `onNewIntent`) — they are different code paths.
+
+Two VIEW intent-filters exist, not one: many file managers report a
+`.epub` as `application/octet-stream`, so the MIME-typed filter misses the
+common case and a `pathPattern` filter covers it. Test with a real file
+manager, not only `adb`.
+
+**Any new static Kotlin field reached from Rust over JNI needs a matching
+keep rule in `proguard-rules.pro`.** Without one the debug build works
+perfectly and only the release build dies. Always confirm with
+`pnpm android:build`, which chains `verify:jni` — the release build is
+the check that proves the keep rule works.
+
+### Windows and Linux
+
+**Unverified.** The association config in `tauri.conf.json` is shared
+across all three desktop platforms, so registration is likely fine; the
+untested part is *delivery* — argv on cold start, and
+`tauri-plugin-single-instance` forwarding the path into an already-running
+window. Without the plugin, opening a book while Riwaq runs starts a
+second copy of the app pointed at its own library.
+
+### Drag-and-drop
+
+Desktop only. Dropped folders are read one level deep — a shelf of books
+works, a nested tree does not. Everything the drop resolves to is imported
+through the same pipeline as the picker.
+
+The drop overlay is legible across light, dark, and sepia themes. On the
+OLED theme (black background, no grey), the card sits over a `rgba(0,0,0,0.42)`
+scrim and relies on the blurred content behind it plus a strengthened border
+for contrast. If visual testing finds this marginal, the lever to adjust is
+the card's fill color, not the scrim.

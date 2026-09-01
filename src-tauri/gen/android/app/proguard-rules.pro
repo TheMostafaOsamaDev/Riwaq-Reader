@@ -43,6 +43,7 @@
 -keepclassmembers class com.leaflet.reader.MainActivity {
     public static void setBarAppearance(android.app.Activity, boolean, int);
     static java.lang.String pendingLaunchIntent;
+    static java.lang.String pendingOpenUri;
 }
 
 # Kotlin -> Rust: native method invoked from MainActivity.onCreate to bootstrap

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.ActionMode
@@ -73,6 +74,40 @@ class MainActivity : TauriActivity() {
     }
 
     private fun rememberLaunchIntent(intent: Intent) {
+        // A book handed to us by another app — "Open with" (VIEW), a single
+        // share (SEND), or a multi-select share (SEND_MULTIPLE, e.g. a file
+        // manager's "share 3 files"). Kept in its own field rather than
+        // folded into pendingLaunchIntent, whose contract is the "queue"
+        // sentinel.
+        val bookPayload: String? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data?.toString()
+            Intent.ACTION_SEND ->
+                @Suppress("DEPRECATION")
+                (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.toString()
+            Intent.ACTION_SEND_MULTIPLE -> {
+                // The manifest's tauri-file-associations block (AUTO-
+                // GENERATED, do not hand-edit) declares SEND_MULTIPLE
+                // alongside SEND for every book MIME type, so this branch
+                // is reachable, not defensive dead code.
+                @Suppress("DEPRECATION")
+                val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                // CROSS-LANGUAGE CONTRACT: join with "\n", which cannot
+                // appear inside a content:// URI, rather than emitting JSON
+                // — pendingOpenUri stays a single String field so the JNI
+                // side (notify.rs's read_pending_open_uri) doesn't change.
+                // useIncomingFiles.ts on the frontend splits on the same
+                // "\n" and pushes every part; the single-URI case (VIEW,
+                // SEND) still works unchanged because splitting a string
+                // with no "\n" yields exactly one element.
+                uris?.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.toString() }
+            }
+            else -> null
+        }
+        if (bookPayload != null) {
+            pendingOpenUri = bookPayload
+            return
+        }
+
         val extra = intent.getStringExtra("leaflet.open") ?: return
         pendingLaunchIntent = extra
     }
@@ -117,6 +152,18 @@ class MainActivity : TauriActivity() {
         @JvmField
         @Volatile
         var pendingLaunchIntent: String? = null
+
+        /** Stashed content:// (or file://) URI of a book another app asked
+         *  us to open — or, for a SEND_MULTIPLE share, several URIs joined
+         *  with "\n" (see rememberLaunchIntent). Drained by Rust's
+         *  consume_open_uri, which hands the raw string to the frontend for
+         *  splitting. Same @JvmField @Volatile reasoning as
+         *  pendingLaunchIntent above: JNI's GetStaticFieldID needs a true
+         *  static field, and the write lands on a different thread than the
+         *  read. */
+        @JvmField
+        @Volatile
+        var pendingOpenUri: String? = null
 
         /** SharedPreferences holding what the next cold launch needs to know
          *  about the in-app theme, before any JS has run. */

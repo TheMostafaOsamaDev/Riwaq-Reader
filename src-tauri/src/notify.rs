@@ -160,6 +160,22 @@ pub async fn consume_launch_intent(app: AppHandle) -> Result<Option<String>, Str
     }
 }
 
+/// Drain the book URI stashed by MainActivity when another app asked us to
+/// open a file ("Open with" or the share sheet). Returns the `content://`
+/// or `file://` URI, or None.
+#[tauri::command]
+pub async fn consume_open_uri(app: AppHandle) -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        return Ok(android_consume_open_uri(&app).ok());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(None)
+    }
+}
+
 /// Look up an app class via the activity's classloader. JNI-attached
 /// Rust threads default to the **system** classloader, which only
 /// resolves Android framework classes — `env.find_class("com/.../MainActivity")`
@@ -378,6 +394,51 @@ fn read_pending_intent<'local>(
     // up the field id explicitly here.
     let field_id =
         env.get_static_field_id(&class, "pendingLaunchIntent", "Ljava/lang/String;")?;
+    env.set_static_field(&class, field_id, JValue::Object(&JObject::null()))?;
+
+    Ok(rust_str)
+}
+
+#[cfg(target_os = "android")]
+fn android_consume_open_uri(
+    _app: &AppHandle,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let mut env = vm.attach_current_thread()?;
+    let activity =
+        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
+
+    let res = read_pending_open_uri(&mut env, &activity);
+    // Same rule as everywhere else in this module: a field lookup R8
+    // renamed away must degrade to "no pending file", not a dead process.
+    drain_pending_exception(&mut env);
+    res
+}
+
+/// Field-access half of [`android_consume_open_uri`], split out so the
+/// caller can drain a pending exception on every exit path.
+#[cfg(target_os = "android")]
+fn read_pending_open_uri<'local>(
+    env: &mut jni::JNIEnv<'local>,
+    activity: &JObject<'local>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let class = find_app_class(env, activity, "com.leaflet.reader.MainActivity")?;
+    let value = env.get_static_field(&class, "pendingOpenUri", "Ljava/lang/String;")?;
+    let obj: JObject = value.l()?;
+
+    if obj.is_null() {
+        return Err("no pending open uri".into());
+    }
+
+    let jstr: jni::objects::JString = obj.into();
+    let rust_str: String = env.get_string(&jstr)?.into();
+
+    // Clear so subsequent calls return None. `set_static_field` in jni
+    // 0.21 expects a `JStaticFieldID`, not a (name, sig) tuple — look up
+    // the field id explicitly here.
+    let field_id =
+        env.get_static_field_id(&class, "pendingOpenUri", "Ljava/lang/String;")?;
     env.set_static_field(&class, field_id, JValue::Object(&JObject::null()))?;
 
     Ok(rust_str)

@@ -38,6 +38,9 @@ const B64_STRIDE = 32 * 1024;
 export interface StagedFile {
   size: number;
   format: BookFormat;
+  /** Lowercase hex SHA-256 of the file's bytes, computed by Rust during the
+   *  copy. Used to recognise a book the library already holds. */
+  hash: string;
 }
 
 export interface StageProgress {
@@ -84,11 +87,15 @@ export async function stageImportFile(
   dest: string,
   token: string,
 ): Promise<StagedFile> {
-  const staged = await invoke<{ size: number; format: string }>(
+  const staged = await invoke<{ size: number; format: string; hash: string }>(
     "stage_import_file",
     { src, dest, token },
   );
-  return { size: staged.size, format: staged.format as BookFormat };
+  return {
+    size: staged.size,
+    format: staged.format as BookFormat,
+    hash: staged.hash,
+  };
 }
 
 /** Base64-encode a slice without spreading it all onto the argument stack. */

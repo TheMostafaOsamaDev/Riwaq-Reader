@@ -39,6 +39,7 @@ use std::path::{Component, Path, PathBuf};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
@@ -69,6 +70,11 @@ pub struct StagedFile {
     /// "epub" | "pdf" | "docx" | "unknown" — sniffed from the bytes, because
     /// Android's SAF picker returns a `content://` URI with no extension.
     pub format: String,
+    /// Lowercase hex SHA-256 of the file's bytes. Lets an import recognise a
+    /// book the library already holds and reuse it — with its reading
+    /// position and highlights — instead of adding a second copy. Computed
+    /// during the copy, so it costs a pass over bytes already in hand.
+    pub hash: String,
 }
 
 #[derive(Deserialize)]
@@ -227,6 +233,7 @@ pub async fn stage_import_file<R: Runtime>(
         let mut buf = vec![0u8; COPY_BUF];
         let mut copied: u64 = 0;
         let mut last_emitted = 0.0f64;
+        let mut hasher = Sha256::new();
 
         loop {
             let n = reader.read(&mut buf).map_err(|e| format!("read failed: {e}"))?;
@@ -240,6 +247,7 @@ pub async fn stage_import_file<R: Runtime>(
             writer
                 .write_all(&buf[..n])
                 .map_err(|e| format!("write failed: {e}"))?;
+            hasher.update(&buf[..n]);
             copied += n as u64;
 
             if total > 0 {
@@ -259,6 +267,7 @@ pub async fn stage_import_file<R: Runtime>(
         Ok(StagedFile {
             size: copied,
             format,
+            hash: format!("{:x}", hasher.finalize()),
         })
     })
     .await
