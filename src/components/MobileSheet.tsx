@@ -472,7 +472,7 @@ export function MobileSheet({
         : `opacity ${MOTION.med}ms ${EASE.enter}`;
 
   return (
-    // `overflow: hidden` is load-bearing, not cosmetic. The sheet below is
+    // Clipping here is load-bearing, not cosmetic. The sheet below is
     // absolutely positioned at bottom:0 and then TRANSLATED down to reach a
     // partial snap, and a transformed box still contributes to its ancestor's
     // scrollable overflow. Without this the reader root — which is itself
@@ -481,7 +481,18 @@ export function MobileSheet({
     // scrollHeight 1028 against a 915 viewport) and got scrolled to it,
     // dragging the header and the page up by 113px as the sheet opened. The
     // sheet is meant to float over the reader, not shove it.
-    <div style={{ position: "absolute", inset: 0, zIndex: 20, overflow: "hidden" }}>
+    //
+    // `.leaflet-clip-window` (global.css) upgrades the inline `hidden` below
+    // to `overflow: clip`, which additionally stops THIS element from being
+    // scrolled: a hidden box keeps its scroll range, and a `scrollIntoView`
+    // inside the sheet was happy to spend it, hauling the sheet up mid-
+    // animation. The inline `hidden` stays as the floor for anything that
+    // renders this component without global.css. See the rule for the full
+    // account.
+    <div
+      className="leaflet-clip-window"
+      style={{ position: "absolute", inset: 0, zIndex: 20, overflow: "hidden" }}
+    >
       <div
         onClick={onClose}
         style={{
