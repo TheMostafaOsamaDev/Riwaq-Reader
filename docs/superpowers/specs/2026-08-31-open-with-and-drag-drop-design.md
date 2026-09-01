@@ -342,3 +342,57 @@ The native paths are not unit-testable, so verification is a manual matrix:
 - iOS (no `gen/apple` project exists).
 - Registering Riwaq as the *default* handler for any type. It appears as an
   option; the user chooses.
+
+## Known follow-ups
+
+Found by review during implementation, deliberately not fixed in this branch.
+None is reachable on a normal path; each is recorded here rather than lost.
+
+**Worth a look before the next release**
+
+- **Index read-modify-write race.** `stagePaths` calls `listBooks()`, which
+  fire-and-forgets `backfillMissingCovers`. That runs `readIndex` → mutate →
+  `writeIndex` concurrently with the import's own `appendIndexEntry`. If a
+  backfill write lands between the append's read and write, the freshly
+  imported entry is dropped from the index and its files orphaned on disk.
+  Narrow preconditions (a cover-less EPUB whose cover the parser can now
+  find) and the underlying race predates this branch via `refresh()`, but
+  imports now overlap the two by construction. Fix: read the index without
+  the backfill side effect.
+- **A hash match trusts the index without checking the files exist.** If a
+  matching entry's directory is gone, re-importing the same file can never
+  repair it — the app points at the broken entry forever. A `getEntry` plus
+  existence check before discarding the staged copy would close it.
+- **Parse errors are swallowed on the open-when-single path.** `open -a Riwaq
+  good.epub broken.epub` opens the reader and never reports the failure,
+  because the early return skips `summarizeImport`. This is *new* in this
+  branch — before it, `summarizeImport` did report the skip.
+
+**Smaller**
+
+- Two `pushIncoming` calls inside one render frame could pass both busy
+  guards and start two concurrent import runs; a `useRef` flag is the robust
+  form.
+- `drop.acceptCount`'s `received` variant carries a `count` the overlay never
+  reads.
+- The overlay's `role="status"` live region is mounted and populated in the
+  same frame, which screen readers commonly fail to announce; a
+  persistently-mounted empty region is the reliable pattern.
+- `getCurrentWebview().onDragDropEvent(...)` has no `.catch`, so a
+  registration failure surfaces as an unhandled rejection.
+- `importPaths` is a pure pass-through to `stagePaths`.
+- A shelf-assignment regression test for the dedupe path needs the
+  union-of-ids logic extracted as a pure function first (the repo can render
+  React under `environment: "node"`, but not stateful `useRef`/async logic).
+- OLED drop-overlay card fill lifts only ~1.06:1 above the background; the
+  border carries the edge at ~1.33:1 and the text is ≥7:1, so it is readable
+  but shapeless. Lever if the visual pass finds it too subtle: a larger
+  card-fill lift on OLED only, not a scrim change.
+- An empty `Uri` inside a multi-URI Android share would produce an empty
+  path segment after the newline split. It degrades into a reported import
+  error, not corruption; a `.filter(Boolean)` would close it.
+- A single batch containing two copies of the same PDF/DOCX still creates two
+  entries. EPUB dedupes within a batch; fixed-format entries do not exist
+  until the user confirms the import dialog, so there is nothing to compare
+  against mid-loop. Cross-batch dedupe — the actual "Open with" case — works
+  for all three formats.
