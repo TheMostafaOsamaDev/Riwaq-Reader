@@ -112,7 +112,15 @@ export function DropOverlay({ state, theme }: Props) {
         // you're about to raise some other layer past this, that's a
         // choice to make on purpose, not a number to bump past by habit.
         zIndex: 11000,
-        background: `${theme.bg}e0`,
+        // Deliberately theme-independent — the same flat black scrim
+        // AnimatedDialog.tsx uses behind every dialog in the app. A
+        // theme-tinted scrim (`${theme.bg}e0`) collapses to the SAME
+        // colour as the card in sepia/dark/oled (paper === bg there), and
+        // on oled specifically bg is #000000, so a black scrim behind a
+        // black card leaves only a 10%-alpha hairline doing all the work.
+        // Do not "fix" this back to a theme tint — that's the bug this
+        // undoes. The blur, not the tint, is what reads as "dismissed".
+        background: "rgba(0,0,0,0.42)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
       }}
@@ -130,7 +138,14 @@ export function DropOverlay({ state, theme }: Props) {
           padding: "32px 40px",
           borderRadius: 14,
           background: theme.bg,
-          border: `0.5px solid ${theme.rule}`,
+          // `ruleStrong` rather than `rule`: with the scrim now a flat
+          // black instead of a theme tint, oled's #000000 card sits on a
+          // still-near-black backdrop (the underlying content is blurred
+          // and darkened, not replaced), so the border carries more of
+          // the separation than it would in ConfirmDialog. `ruleStrong`
+          // is documented for exactly this — an edge that has to
+          // register against shadows or larger surfaces.
+          border: `1px solid ${theme.ruleStrong}`,
           boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
           fontFamily: FONT_STACKS.sans,
           // Centred, icon over text — no directional flip needed for RTL.
