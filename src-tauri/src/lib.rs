@@ -3,6 +3,13 @@ mod notify;
 mod opened;
 mod sources;
 
+// Only needed to call `get_webview_window` from the desktop-only open-path
+// handlers below (single-instance callback, RunEvent::Opened) — gated so it
+// doesn't warn as unused on the Android build, where neither call site
+// compiles.
+#[cfg(desktop)]
+use tauri::Manager;
+
 /// Book paths out of a command line, skipping argv[0] and anything that
 /// isn't a file that exists.
 ///
@@ -30,6 +37,16 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_single_instance::init(
         |app, argv, _cwd| {
             opened::push(app, book_paths_from_argv(&argv));
+            // The whole point of this callback firing is that a second
+            // launch handed us a book while Riwaq was already running,
+            // typically behind other windows — the plugin's own documented
+            // usage calls set_focus() here. Without it the import lands in
+            // a window the user can't see and the second process just
+            // exits, so nothing visibly happened.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
         },
     ));
 
@@ -67,7 +84,15 @@ pub fn run() {
             // for this — it sends RunEvent::Opened, handled below.
             #[cfg(desktop)]
             {
-                let argv: Vec<String> = std::env::args().collect();
+                // args(), not args_os(): panics on ANY non-UTF-8 argument,
+                // on every desktop launch — not just an Open-with one. A
+                // lossy conversion turns a mangled argument into garbage
+                // that harmlessly fails the is_file() filter below instead
+                // of aborting the whole process before it can even show a
+                // window.
+                let argv: Vec<String> = std::env::args_os()
+                    .map(|a| a.to_string_lossy().into_owned())
+                    .collect();
                 opened::push_silent(book_paths_from_argv(&argv));
             }
 
@@ -153,6 +178,15 @@ pub fn run() {
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
                 opened::push(_app, paths);
+                // A book opened by double-click while Riwaq sits minimized
+                // activates the app (RunEvent::Opened already implies
+                // that) but previously left the window itself minimized in
+                // the Dock — the import happened somewhere the user
+                // couldn't see it land.
+                if let Some(window) = _app.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
             }
         });
 }

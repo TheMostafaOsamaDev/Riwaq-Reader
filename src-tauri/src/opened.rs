@@ -92,8 +92,15 @@ pub struct DropClassification {
 ///
 /// Called once per drag-enter, since Tauri's `over` event carries no
 /// paths, so the I/O is paid once per drag rather than per mousemove.
+///
+/// `async fn`, not `fn`: a sync `#[tauri::command]` runs on the main
+/// thread, so a folder with thousands of entries (or one on a slow
+/// network mount) would freeze the whole UI — including the overlay this
+/// command exists to drive — for the length of the walk. Marking it async
+/// is enough; Tauri's command dispatch moves it off the main thread on its
+/// own, no manual `spawn_blocking` needed.
 #[tauri::command]
-pub fn classify_drop(paths: Vec<String>) -> DropClassification {
+pub async fn classify_drop(paths: Vec<String>) -> DropClassification {
     let mut books = Vec::new();
     let mut unsupported = Vec::new();
 
