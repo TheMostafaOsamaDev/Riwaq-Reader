@@ -815,3 +815,28 @@ input:focus-visible,
   -webkit-user-select: none;
   cursor: default;
 }
+
+/* Clip window for boxes whose whole job is to hide a translated child — the
+   mobile bottom sheet's overlay, which renders the sheet at full height and
+   pushes it below the viewport to reach a partial snap.
+
+   `overflow: hidden` alone is not enough here. A hidden box only loses its
+   SCROLLBAR; it stays a scrolling box, settable via `scrollTop` and, more to
+   the point, eligible for `Element.scrollIntoView` — which walks up every
+   scrollable ancestor and scrolls each one. A row revealed inside the sheet
+   therefore found ~890px of "scroll range" in this wrapper (the sheet's
+   off-screen tail) and scrolled it, yanking the sheet up over its own enter
+   animation and leaving it settled well above its snap.
+
+   `overflow: clip` is not a scrolling box at all, so there is no range to
+   find.
+
+   `!important` is deliberate. Elements carrying this class ALSO set inline
+   `overflow: hidden`, which is the floor for the two cases this rule can't
+   cover: a WebView old enough not to parse `clip` (pre-Chromium-90) drops the
+   declaration below and keeps the inline clip, and a dev harness that renders
+   the component without importing this stylesheet still clips. Inline styles
+   outrank a class selector, so the upgrade has to say so. */
+.leaflet-clip-window {
+  overflow: clip !important;
+}

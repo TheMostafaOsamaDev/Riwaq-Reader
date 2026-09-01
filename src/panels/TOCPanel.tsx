@@ -14,6 +14,11 @@ import { transition } from "../styles/motion";
 import { useI18n } from "../i18n/useI18n";
 import type { TocVolume } from "../types/reader";
 import { PanelShell } from "./PanelShell";
+import {
+  centerScrollTop,
+  contentOffsetTop,
+  nearestScrollableAncestor,
+} from "./tocReveal";
 
 interface Props {
   theme: Theme;
@@ -123,12 +128,32 @@ export function TOCPanel({
   // chapter". Deliberately NOT keyed on `currentChapter` — a docked panel
   // that re-scrolls itself every chapter turn fights the reader's own
   // browsing, which is exactly what the button is for.
+  //
+  // The scroll is applied to THIS list's scroll container only. `scrollIntoView`
+  // would instead walk up every scrollable ancestor (see ./tocReveal), and
+  // inside the mobile bottom sheet that dragged the sheet itself up mid-enter —
+  // the row starts off-screen below, so the browser found the range it needed
+  // in the sheet's clip wrapper.
   const activeRowRef = useRef<HTMLButtonElement>(null);
   const [revealNonce, setRevealNonce] = useState(0);
   useEffect(() => {
-    activeRowRef.current?.scrollIntoView({
-      block: "center",
-      inline: "nearest",
+    const row = activeRowRef.current;
+    if (!row) return;
+    const scroller = nearestScrollableAncestor(row);
+    if (!scroller) return;
+    const top = centerScrollTop({
+      scrollTop: scroller.scrollTop,
+      clientHeight: scroller.clientHeight,
+      scrollHeight: scroller.scrollHeight,
+      rowOffsetTop: contentOffsetTop(
+        row.getBoundingClientRect().top,
+        scroller.getBoundingClientRect().top,
+        scroller.scrollTop,
+      ),
+      rowHeight: row.getBoundingClientRect().height,
+    });
+    scroller.scrollTo({
+      top,
       behavior: revealNonce === 0 ? "auto" : "smooth",
     });
   }, [revealNonce]);
