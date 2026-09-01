@@ -190,11 +190,17 @@ That regenerates every platform-specific icon size automatically.
 ### macOS
 
 macOS only registers associations for an **installed** app. A `tauri dev`
-build never appears in "Open With", so testing means installing first:
+build never appears in "Open With", so testing means installing first: build
+the app bundle with the Tauri CLI, then copy it into `/Applications`:
 
 ```bash
-pnpm mac:build && pnpm mac:install
+pnpm tauri build --bundles app
+ditto "src-tauri/target/release/bundle/macos/Riwaq.app" /Applications/Riwaq.app
 ```
+
+(`ditto`, not `cp -R` — it preserves the ad-hoc code signature. Some
+checkouts also carry `mac:build`/`mac:install` package scripts that wrap
+these two steps plus re-signing; check `package.json` for them first.)
 
 Confirm the registration took:
 

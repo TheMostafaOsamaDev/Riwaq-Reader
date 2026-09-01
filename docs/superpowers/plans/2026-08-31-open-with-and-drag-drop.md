@@ -2157,7 +2157,7 @@ Run this in full before opening the PR. Every row is a manual check; the automat
 | Drop: empty folder | a directory with no books | refuse state |
 | Drop while reading | drop mid-chapter | reader keeps place; book appears on return |
 | Multi-book open | drop 3 books | stays in library, no reader |
-| Drop during an import | drop twice quickly | second refused with a toast |
+| Drop during an import | drop twice quickly | second queues silently, imports once the first finishes |
 | Overlay in 4 themes | light, sepia, dark, oled | legible, warm, no blue |
 | Reduced motion | OS setting on | instant, no scale |
 | Dedupe | open the same file twice | one entry, position kept |

@@ -63,12 +63,18 @@ From the brainstorming session:
   immediately with a short confirmation state so the queueing is visible
   rather than silent; the library's existing import summary confirms
   completion later.
-- **A drop or open arriving while an import is already running is
-  refused, not queued.** `onImport` already guards on
-  `importing || importQueue.length > 0`; the new entry points honour the
-  same guard and show a toast saying an import is in progress. Queueing
-  would mean a second progress reporter fighting the first over the same
-  Android notification.
+- **A drop or open arriving while an import is already running queues
+  silently — it is not refused.** `onImport` already guards on
+  `importing || importQueue.length > 0`; the drain effect honours the same
+  guard by leaving the paths in the incoming-files store instead of taking
+  them, and it resubscribes whenever `importing`/`importQueue.length`
+  change, so the deferred run starts on its own the moment the current one
+  finishes. (Corrected post-launch: this originally toasted a refusal, but
+  the code toasted AND imported anyway once free — the toast was a lie —
+  and the stated reason for refusing, two progress reporters fighting over
+  one Android notification, doesn't apply, since the deferred run only
+  starts after the first ends. The overlay's own "received" acknowledgment
+  already covers telling the user something happened.)
 
 ### Transport: why a buffered queue
 
@@ -324,7 +330,7 @@ The native paths are not unit-testable, so verification is a manual matrix:
 | Drop: folder | a directory of books |
 | Drop while reading | drop a book mid-chapter; reader keeps its place |
 | Multi-book open | drop 3 books; stays in library, no reader |
-| Drop during an import | second drop is refused with a toast, not queued |
+| Drop during an import | second drop queues silently, imports once the first finishes |
 | Overlay in all 4 themes | light, sepia, dark, oled |
 | Reduced motion | overlay appears instantly, no scale animation |
 | Dedup | open the same file twice; one library entry, position preserved |
