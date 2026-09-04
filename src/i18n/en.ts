@@ -377,7 +377,7 @@ export const en = {
   "import.choice.manageDesc":
     "Pick the cover, trim pages, and review images before adding.",
 
-  // docx import-progress modal/dock
+  // docx import-progress modal
   "import.progress.titleFailed": "Import failed",
   "import.progress.titleComplete": "Import complete",
   "import.progress.titleImporting": "Importing document",
@@ -385,9 +385,9 @@ export const en = {
   "import.progress.dismiss": "Dismiss",
   "import.progress.addedToLibrary": "Added to your library.",
   "import.progress.staysRunning": "Stays running if you close this.",
-  "import.progress.dockAriaLabel": "Open import progress",
-  "import.progress.dockFailedHint": "Import failed — click to view",
-  "import.progress.dockImportingHint": "Importing — click to view",
+  // Label for the import button while a run is in flight — a tap opens the
+  // stepper above rather than the file picker.
+  "import.progress.openDetails": "Open import progress",
 
   // download-range dialog (source-backed novels)
   "downloads.range.title": "Download a chapter range",

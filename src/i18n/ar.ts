@@ -332,9 +332,7 @@ export const ar: Messages = {
   "import.progress.dismiss": "تجاهل",
   "import.progress.addedToLibrary": "أُضيف إلى مكتبتك.",
   "import.progress.staysRunning": "يستمر العمل إذا أغلقت هذه النافذة.",
-  "import.progress.dockAriaLabel": "فتح تقدّم الاستيراد",
-  "import.progress.dockFailedHint": "فشل الاستيراد — اضغط للعرض",
-  "import.progress.dockImportingHint": "جارٍ الاستيراد — اضغط للعرض",
+  "import.progress.openDetails": "فتح تقدّم الاستيراد",
 
   "downloads.range.title": "تنزيل نطاق من الفصول",
   "downloads.range.body":
