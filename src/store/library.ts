@@ -348,6 +348,10 @@ export interface ImportReporter {
   phase(phase: "copy" | "parse" | "write"): void;
   /** Fine-grained progress within the current phase. */
   progress(p: StageProgress): void;
+  /** Fine-grained progress *within* the parse phase. Separate from
+   *  `progress`, which carries Rust's `StageProgress` — whose phases are
+   *  copy and extract, neither of which parsing has a counterpart in. */
+  parseProgress(ratio: number): void;
 }
 
 /** Thrown when a picked file's bytes aren't any format we can read.
@@ -597,7 +601,10 @@ async function commitEpubAt(
   report?.phase("parse");
   const src = await openNativeZip(`${dir}/book.epub`, token);
   try {
-    const { book, cover, images } = await parseEpubFromSource(src, id);
+    const { book, cover, images } = await parseEpubFromSource(src, id, {
+      onChapter: (done, total) =>
+        report?.parseProgress(total > 0 ? done / total : 1),
+    });
 
     report?.phase("write");
     await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {

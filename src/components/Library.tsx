@@ -673,6 +673,7 @@ export function Library({
       reporter: {
         file: (i, total, name) => start().file(i, total, name),
         phase: (p) => reporter?.phase(p),
+        parseProgress: (r) => reporter?.parseProgress(r),
         progress: (p) => reporter?.progress(p),
       } satisfies ImportReporter,
       finish: () => reporter && finishImportRun(null),

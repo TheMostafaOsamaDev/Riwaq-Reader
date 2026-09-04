@@ -1,3 +1,4 @@
+import { createTimeSlicer } from "../lib/yieldToUI";
 import type { ZipSource } from "./zipSource";
 import type {
   ChapterItem,
@@ -44,6 +45,13 @@ export class EpubParseError extends Error {
   }
 }
 
+export interface ParseOptions {
+  /** Called after each spine item, whether or not it produced a chapter, so
+   *  `done` always reaches `total`. Lets the importer drive a progress ring
+   *  through the parse — which for a long book is seconds, not milliseconds. */
+  onChapter?: (done: number, total: number) => void;
+}
+
 /**
  * Parse an EPUB out of `src`.
  *
@@ -55,6 +63,7 @@ export class EpubParseError extends Error {
 export async function parseEpubFromSource(
   src: ZipSource,
   id: string,
+  opts: ParseOptions = {},
 ): Promise<ParsedEpub> {
   const opfPath = await readOpfPath(src);
   const opfText = await readZipText(src, opfPath);
@@ -90,13 +99,19 @@ export async function parseEpubFromSource(
 
   const imageCollector = new ImageCollector();
   const chapters: EpubChapter[] = [];
-  let order = 0;
-  for (const idref of spineIds) {
+
+  // One spine item → a chapter, or null for the items that carry no reading
+  // content: usually covers and title pages whose image we already counted,
+  // or nav docs that snuck into the spine.
+  const parseSpineItem = async (
+    idref: string,
+    order: number,
+  ): Promise<EpubChapter | null> => {
     const manifestItem = manifest.get(idref);
-    if (!manifestItem) continue;
+    if (!manifestItem) return null;
     const fullPath = joinPath(basePath, manifestItem.href);
     const xhtml = await src.readText(fullPath);
-    if (!xhtml) continue;
+    if (!xhtml) return null;
 
     const doc = new DOMParser().parseFromString(xhtml, "application/xhtml+xml");
     // XHTML parse can fail on malformed EPUBs; fall back to HTML parsing.
@@ -118,17 +133,30 @@ export async function parseEpubFromSource(
       dirname(fullPath),
       imageCollector,
     );
-    // Skip spine items that produced nothing — usually covers, title pages
-    // whose image we already counted, or nav docs that snuck into the spine.
-    if (items.length === 0) continue;
+    if (items.length === 0) return null;
 
-    chapters.push({
+    return {
       id: idref,
       href: manifestItem.href,
       title,
       paragraphs: items,
-      order: order++,
-    });
+      order,
+    };
+  };
+
+  // Yield to the event loop on an 8 ms slice. `prefetchText` above already
+  // warmed every chapter, so without this the awaits below all resolve as
+  // microtasks and the whole spine parses inside one task — the webview
+  // can't paint, can't take a tap, and can't even render the progress this
+  // loop is reporting.
+  const slice = createTimeSlicer();
+  for (let i = 0; i < spineIds.length; i++) {
+    // `chapters.length` is the next chapter's order, which keeps the numbering
+    // gapless across skipped spine items — highlights anchor on it.
+    const chapter = await parseSpineItem(spineIds[i], chapters.length);
+    if (chapter) chapters.push(chapter);
+    opts.onChapter?.(i + 1, spineIds.length);
+    await slice();
   }
 
   if (chapters.length === 0)

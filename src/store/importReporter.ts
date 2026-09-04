@@ -84,6 +84,10 @@ export function createImportReporter(label: string): ImportReporter {
       // Entering a phase means everything before it is done.
       push(fileFraction(next, 0));
     },
+    parseProgress(ratio: number) {
+      phase = "parse";
+      push(fileFraction("parse", ratio));
+    },
     progress(p: StageProgress) {
       // Rust reports "extract" for the unpack pass, which is the tail of our
       // "write" phase; anything else is the byte copy.

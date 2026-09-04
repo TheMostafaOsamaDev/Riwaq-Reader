@@ -146,6 +146,21 @@ describe("parseEpubFromSource", () => {
     expect(written.map((w) => w.dest)).toEqual(["books/x/images/img-001.png"]);
   });
 
+  it("reports progress once per spine item", async () => {
+    const src = await openMemoryZip(await buildFixture());
+    const seen: [number, number][] = [];
+    await parseEpubFromSource(src, "book-1", {
+      onChapter: (done, total) => seen.push([done, total]),
+    });
+    // The fixture's spine holds two documents; both are reported, in order,
+    // and the last call lands exactly on total — the ring has to reach the
+    // end of the parse phase, not 1-of-2 of it.
+    expect(seen).toEqual([
+      [1, 2],
+      [2, 2],
+    ]);
+  });
+
   it("rejects an archive with no readable spine content", async () => {
     const zip = new JSZip();
     zip.file("mimetype", "application/epub+zip");
