@@ -257,7 +257,7 @@ Every release ships a `SHA256SUMS` manifest. Put it next to your download and ch
 |---|---|---|
 | **فضاء الروايات** | [cenele.com](https://cenele.com) | Arabic translations of Asian web novels. Some pages sit behind bot protection; the first request to a chapter may need a session refresh. |
 | **ملوك الروايات** | [kolnovel.com](https://kolnovel.com) | Arabic translations of Korean / Chinese / Japanese web novels. |
-| **ملوك الروايات · Pro** | [kolnovel.com](https://kolnovel.com) | Alternate reader for the same site. |
+| **ملوك الروايات** | [kolnovel.com](https://kolnovel.com) | The same site again, through Riwaq's alternate **Pro** reader. |
 
 Riwaq hosts and redistributes nothing. The Store reads publicly available pages so you can
 read them offline. Support the translators and official releases where they exist.
