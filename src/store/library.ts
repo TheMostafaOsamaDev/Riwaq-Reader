@@ -30,6 +30,9 @@ import { isOpaqueUri, type BookFormat } from "./bookFormat";
 import { parseEpubFromSource } from "../epub/parser";
 import { openNativeZip } from "../epub/zipSource";
 import { writeImageManifest } from "./epubImages";
+import { BOOKS, bookDir, INDEX, ROOT, STAGING } from "./paths";
+// Re-exported because callers across the app import `bookDir` from here.
+export { bookDir };
 import {
   deleteStaged,
   newStagingToken,
@@ -58,12 +61,9 @@ function currentUiLocale(): Locale {
 }
 
 const BASE = BaseDirectory.AppData;
-const ROOT = "leaflet";
-const BOOKS = `${ROOT}/books`;
-const INDEX = `${ROOT}/library.json`;
-/** Where a picked file lands before we know what it is. Kept out of books/
- *  so a cancelled PDF/DOCX import never leaves a half-built book directory. */
-const STAGING = `${ROOT}/staging`;
+// Storage layout lives in ./paths so nothing has to re-type the root folder
+// name. STAGING is kept out of books/ so a cancelled PDF/DOCX import never
+// leaves a half-built book directory behind.
 
 export type BookStatus = "reading" | "finished" | "wishlist";
 
@@ -234,10 +234,6 @@ async function readIndex(): Promise<LibraryFile> {
 async function writeIndex(idx: LibraryFile) {
   await ensureRoot();
   await writeTextFile(INDEX, JSON.stringify(idx, null, 2), { baseDir: BASE });
-}
-
-export function bookDir(id: string) {
-  return `${BOOKS}/${id}`;
 }
 
 async function readBookJson(id: string): Promise<EpubBook> {

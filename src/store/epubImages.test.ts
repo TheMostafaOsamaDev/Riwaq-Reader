@@ -36,8 +36,12 @@ import {
   IMAGE_MANIFEST,
   writeImageManifest,
 } from "./epubImages";
+import { bookDir } from "./paths";
 
-const DIR = "leaflet/books/b1";
+// Derived, not spelled out: the root folder name has changed before, and a
+// test that hardcodes it would keep passing while the app looked in the
+// wrong directory.
+const DIR = bookDir("b1");
 
 beforeEach(() => {
   files = {};

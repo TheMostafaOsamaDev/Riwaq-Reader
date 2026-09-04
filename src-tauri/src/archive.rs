@@ -425,29 +425,34 @@ pub async fn read_file_range<R: Runtime>(
         return Err(format!("range too large: {length} > {MAX_RANGE}"));
     }
     let file_path = resolve(&app, &path)?;
-    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let mut file = File::open(&file_path)
-            .map_err(|e| format!("cannot open {}: {e}", file_path.display()))?;
-        file.seek(SeekFrom::Start(offset))
-            .map_err(|e| format!("seek to {offset} failed: {e}"))?;
-        let mut buf = vec![0u8; length as usize];
-        let mut filled = 0usize;
-        // read() may return short. A partial range would corrupt whatever
-        // object pdf.js is decoding, so loop until the buffer is full or the
-        // file ends.
-        while filled < buf.len() {
-            match file.read(&mut buf[filled..]) {
-                Ok(0) => break,
-                Ok(n) => filled += n,
-                Err(e) => return Err(format!("read failed: {e}")),
-            }
-        }
-        buf.truncate(filled);
-        Ok(buf)
-    })
-    .await
-    .map_err(|e| format!("range read task failed: {e}"))??;
+    let bytes = tauri::async_runtime::spawn_blocking(move || read_range(&file_path, offset, length))
+        .await
+        .map_err(|e| format!("range read task failed: {e}"))??;
     Ok(Response::new(bytes))
+}
+
+/// Read at most `length` bytes from `path` starting at `offset`, short only at
+/// end of file. Split out from the command so it can be tested without an
+/// `AppHandle`.
+fn read_range(path: &Path, offset: u64, length: u64) -> Result<Vec<u8>, String> {
+    let mut file =
+        File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|e| format!("seek to {offset} failed: {e}"))?;
+    let mut buf = vec![0u8; length as usize];
+    let mut filled = 0usize;
+    // read() is allowed to return short. A partial range would corrupt
+    // whatever object pdf.js is decoding, so loop until the buffer is full or
+    // the file ends.
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) => return Err(format!("read failed: {e}")),
+        }
+    }
+    buf.truncate(filled);
+    Ok(buf)
 }
 
 /// Append (or create) a file from a base64 chunk.
@@ -596,6 +601,27 @@ mod tests {
         assert!(safe_entry_name("/abs/path").is_none());
         assert!(safe_entry_name("images/cover.png").is_some());
         assert!(safe_entry_name("dir/").is_none());
+    }
+
+    /// pdf.js decodes objects at exact byte offsets, so an off-by-one or a
+    /// short read here surfaces as a corrupt document rather than an error.
+    #[test]
+    fn reads_an_exact_byte_range() {
+        let dir = std::env::temp_dir().join(format!("leaflet-range-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("book.pdf");
+        let body: Vec<u8> = (0..=255u8).collect();
+        fs::write(&path, &body).unwrap();
+
+        assert_eq!(read_range(&path, 0, 4).unwrap(), vec![0, 1, 2, 3]);
+        assert_eq!(read_range(&path, 250, 4).unwrap(), vec![250, 251, 252, 253]);
+        // Past the end truncates instead of padding with zeros — pdf.js uses
+        // the returned length to know it hit EOF.
+        assert_eq!(read_range(&path, 254, 16).unwrap(), vec![254, 255]);
+        assert!(read_range(&path, 300, 8).unwrap().is_empty());
+        assert!(read_range(&dir.join("missing.pdf"), 0, 8).is_err());
+
+        fs::remove_dir_all(&dir).ok();
     }
 }
 

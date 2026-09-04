@@ -24,6 +24,7 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { EpubImageRef } from "../epub/types";
+import { bookDir } from "./paths";
 
 const BASE = BaseDirectory.AppData;
 
@@ -33,13 +34,6 @@ interface ImageManifest {
   version: 1;
   /** Stored href (`images/img-001.png`) → entry name inside book.epub. */
   entries: Record<string, string>;
-}
-
-/** Mirrors `bookDir` in library.ts. Inlined rather than imported: library.ts
- *  imports this module, and BookBody imports both, so taking the dependency
- *  the other way would close a cycle over one string. */
-function dirFor(bookId: string): string {
-  return `leaflet/books/${bookId}`;
 }
 
 /** Per-book manifest, or null when the book has none. A missing key means
@@ -62,7 +56,7 @@ export async function writeImageManifest(
   for (const img of images) entries[img.href] = img.entry;
   const manifest: ImageManifest = { version: 1, entries };
   await writeTextFile(
-    `${dirFor(bookId)}/${IMAGE_MANIFEST}`,
+    `${bookDir(bookId)}/${IMAGE_MANIFEST}`,
     JSON.stringify(manifest),
     { baseDir: BASE },
   );
@@ -74,7 +68,7 @@ async function loadManifest(bookId: string): Promise<ImageManifest | null> {
   if (cached !== undefined) return cached;
   let manifest: ImageManifest | null = null;
   try {
-    const raw = await readTextFile(`${dirFor(bookId)}/${IMAGE_MANIFEST}`, {
+    const raw = await readTextFile(`${bookDir(bookId)}/${IMAGE_MANIFEST}`, {
       baseDir: BASE,
     });
     const parsed = JSON.parse(raw) as ImageManifest;
@@ -109,7 +103,7 @@ export async function ensureEpubImages(
   const manifest = await loadManifest(bookId);
   if (!manifest) return;
 
-  const dir = dirFor(bookId);
+  const dir = bookDir(bookId);
   let onDisk = present.get(bookId);
   if (!onDisk) {
     onDisk = new Set();
