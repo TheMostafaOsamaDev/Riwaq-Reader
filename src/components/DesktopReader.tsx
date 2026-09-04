@@ -30,6 +30,12 @@ import {
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import {
+  DOCK_QUERY,
+  DOCK_WIDTH,
+  shouldDockContents,
+} from "../reader/chrome/dockContents";
 import { useI18n } from "../i18n/useI18n";
 import { formatNum, type Tr } from "../i18n";
 import { useReducedMotion } from "../styles/motion";
@@ -82,8 +88,6 @@ interface Props {
   onBack: () => void;
 }
 
-/** Width of the Contents panel. */
-const TOC_WIDTH = 340;
 export function DesktopReader({
   theme,
   themeKey,
@@ -124,11 +128,19 @@ export function DesktopReader({
   const contentTheme: Theme = theme;
 
   // Contents docks beside the reading column instead of covering it, so you
-  // can see where you are in the book and keep reading at the same time.
-  // Below ~1000px there isn't room for both: this reader starts at 721px
-  // wide, where a 340px panel would leave the text a ~380px gutter, so
-  // narrow windows keep the overlay. The other panels always overlay —
-  // they're tools you dismiss, not a place you navigate from.
+  // can see where you are in the book and keep reading at the same time. The
+  // rule (which panel, and how wide the window has to be) lives in
+  // reader/chrome/dockContents.ts because the fixed-page reader applies the
+  // identical one — the last attempt at docking only did it here, so opening
+  // Contents meant one thing on an EPUB and another on a PDF.
+  //
+  // Docking narrows the reading column, so the book does re-wrap once on open
+  // and once on close. That is unavoidable: the panel takes real width and
+  // the gutter has nowhere near 340px of slack to give back. What keeps it
+  // from throwing the reader's place away is PaginatedView, which re-anchors
+  // on the paragraph they were reading whenever its width changes.
+  const roomToDock = useMediaQuery(DOCK_QUERY);
+  const tocDocked = shouldDockContents(activePanel, roomToDock);
 
   // ── Focus mode ────────────────────────────────────────────────────────────
   // Shared with the fixed-page reader — see reader/chrome/focusChrome.tsx.
@@ -760,18 +772,18 @@ export function DesktopReader({
         </div>
       </div>
 
-      {/* Content region — the positioning context for the SideSheet. Every
-          panel, Contents included, floats OVER a full-width reading column
-          rather than claiming layout beside it. Docking Contents used to
-          reflow and re-paginate the book the moment the panel opened, which
-          moved the text out from under the reader's eye just to show them a
-          chapter list; the fixed-page reader never did this, and the two
-          formats disagreeing was the bug. The sheet is absolutely positioned,
-          so its DOM position here costs it nothing. */}
+      {/* Content region. It is both the positioning context for an OVERLAY
+          sheet — tool panels float over a full-width reading column — and the
+          flex row a DOCKED Contents panel joins, where the reading column
+          shrinks beside it instead. The sheet comes first so the docked panel
+          lands on the leading edge in flow (and under RTL, on the trailing
+          one), with tab order following what the eye sees. The overlay variant
+          is absolutely positioned, so its DOM position here costs it nothing. */}
       <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
         <SideSheet
           open={activePanel !== null}
           onClose={() => setActivePanel(null)}
+          dock={tocDocked}
           // Navigation panels rest on the leading edge; tool panels (settings,
           // progress) on the trailing edge. SideSheet flips these under RTL.
           side={
@@ -799,11 +811,14 @@ export function DesktopReader({
               chapters={book.chapters}
               currentChapter={currentChapter}
               volumes={tocVolumes}
-              width={TOC_WIDTH}
+              width={DOCK_WIDTH}
               onJump={(order) => {
                 onChapterChange(order);
-                // The panel covers the page it just sent you to, so it goes.
-                setActivePanel(null);
+                // A docked panel isn't in the way, so it stays open: you can
+                // pick a chapter, read it, and pick the next one without
+                // reopening Contents each time. The overlay still closes —
+                // leaving it up would hide the chapter you just jumped to.
+                if (!tocDocked) setActivePanel(null);
               }}
             />
           )}

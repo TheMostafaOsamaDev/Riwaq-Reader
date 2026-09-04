@@ -54,6 +54,8 @@ import { ReaderTabBar } from "../chrome/ReaderTabBar";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
 import { SettingsPanel } from "../../panels/SettingsPanel";
 import { FocusHint, useFocusChrome } from "../chrome/focusChrome";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { DOCK_QUERY, shouldDockContents } from "../chrome/dockContents";
 import { useI18n } from "../../i18n/useI18n";
 import { formatNum } from "../../i18n";
 
@@ -121,6 +123,13 @@ export function FixedPageReader(props: FixedPageReaderProps) {
 
   const [source, setSource] = useState<FixedPageSource | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
+
+  // Contents docks beside the page rather than covering it, on exactly the
+  // same rule the reflowable reader uses — see reader/chrome/dockContents.ts.
+  // The two readers disagreeing about this is what got docking removed the
+  // last time round, so neither of them owns the rule any more.
+  const roomToDock = useMediaQuery(DOCK_QUERY);
+  const tocDocked = !isMobile && shouldDockContents(panel, roomToDock);
   // Same affordance the EPUB reader has: the scrubber can be folded away when
   // you want the page and nothing else.
   const [showProgress, setShowProgress] = useState(true);
@@ -476,74 +485,85 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         </div>
       </div>
 
-      {/* center viewer — flex:1 fills the gap between the bars (positioned
-          context for the viewer's absolute-inset scroll layer). */}
-      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-        {source ? (
-          <FixedPageViewer
-            ref={viewerRef}
-            source={source}
-            flow={t.fixedFlow}
-            fit={t.fixedFit}
-            zoom={zoom}
-            tint={t.fixedPageTint}
-            dir={contentDir}
-            // Turns follow the gesture that drives them: a sideways swipe on
-            // mobile, the wheel on desktop.
-            turnAxis={isMobile ? "x" : "y"}
-            theme={theme}
-            themeKey={themeKey}
-            highlights={highlights}
-            onSelect={setSel}
-            onHighlightClick={(id, rect) => {
-              setSel(null);
-              setActiveHl({ id, rect });
-            }}
-            resume={resume}
-            reducedMotion={reduced}
-            formatCounter={formatCounter}
-            onProgress={(p) =>
-              setProgress((prev) => {
-                // Take the page the viewer reports; `fraction` is not
-                // invertible (see ReaderProgress.page).
-                const page = p.page ?? prev.page;
-                return prev.label === p.label
-                  ? prev
-                  : { page, fraction: p.fraction, label: p.label };
-              })
-            }
-            onLocationChange={(page, off) =>
-              onLocationChange?.(page, off, source?.pageCount ?? 0)
-            }
-          />
-        ) : (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "grid",
-              placeItems: "center",
-              color: theme.muted,
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontSize: 18,
-            }}
-          >
-            {tr("app.loadingBook")}
-          </div>
-        )}
-
-        {/* Desktop: panels slide in over the viewer as an overlay sheet.
-            Mobile keeps its own bottom-anchored overlay below. */}
+      {/* Center region — fills the gap between the bars. It is the flex row a
+          DOCKED Contents panel joins (the page area shrinks beside it) and the
+          positioning context an OVERLAY sheet fills. The sheet comes first so
+          a docked panel lands on the leading edge in flow, matching the
+          reflowable reader. */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+        {/* Desktop: panels either dock beside the viewer (Contents) or slide
+            in over it. Mobile keeps its own bottom-anchored sheet below. */}
         {!isMobile && (
           <SideSheet
             open={panel !== null}
             onClose={closePanel}
+            dock={tocDocked}
             side={panel === "settings" || panel === "progress" ? "right" : "left"}
             label={panelLabel}
           >
             {renderPanelBody()}
           </SideSheet>
         )}
+
+        {/* Positioned context for the viewer's own absolute-inset scroll
+            layer, so it fills whatever width is left once Contents has taken
+            its strip. */}
+        <div
+          style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}
+        >
+          {source ? (
+            <FixedPageViewer
+              ref={viewerRef}
+              source={source}
+              flow={t.fixedFlow}
+              fit={t.fixedFit}
+              zoom={zoom}
+              tint={t.fixedPageTint}
+              dir={contentDir}
+              // Turns follow the gesture that drives them: a sideways swipe on
+              // mobile, the wheel on desktop.
+              turnAxis={isMobile ? "x" : "y"}
+              theme={theme}
+              themeKey={themeKey}
+              highlights={highlights}
+              onSelect={setSel}
+              onHighlightClick={(id, rect) => {
+                setSel(null);
+                setActiveHl({ id, rect });
+              }}
+              resume={resume}
+              reducedMotion={reduced}
+              formatCounter={formatCounter}
+              onProgress={(p) =>
+                setProgress((prev) => {
+                  // Take the page the viewer reports; `fraction` is not
+                  // invertible (see ReaderProgress.page).
+                  const page = p.page ?? prev.page;
+                  return prev.label === p.label
+                    ? prev
+                    : { page, fraction: p.fraction, label: p.label };
+                })
+              }
+              onLocationChange={(page, off) =>
+                onLocationChange?.(page, off, source?.pageCount ?? 0)
+              }
+            />
+          ) : (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "grid",
+                placeItems: "center",
+                color: theme.muted,
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontSize: 18,
+              }}
+            >
+              {tr("app.loadingBook")}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* bottom scrubber — shared with the reflow reader (seeks pages) */}

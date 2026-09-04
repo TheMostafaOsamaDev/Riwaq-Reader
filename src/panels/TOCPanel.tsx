@@ -6,7 +6,15 @@
 // list light: the DOM holds a few dozen volume headers instead of thousands
 // of buttons.
 
-import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { Icon, type IconProps } from "../components/Icon";
 import type { EpubChapter } from "../epub/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
@@ -19,6 +27,7 @@ import {
   contentOffsetTop,
   nearestScrollableAncestor,
 } from "./tocReveal";
+import { rowOffsets, windowRange } from "./virtualWindow";
 
 interface Props {
   theme: Theme;
@@ -123,40 +132,16 @@ export function TOCPanel({
     grouped.rows.length > 0 &&
     grouped.rows.every((row) => openVolumes.has(row.volume.id));
 
-  // Scroll the current chapter's row to the middle of the list: once when the
-  // panel mounts, and again whenever the reader presses "go to current
-  // chapter". Deliberately NOT keyed on `currentChapter` — a docked panel
-  // that re-scrolls itself every chapter turn fights the reader's own
-  // browsing, which is exactly what the button is for.
+  // Bumping this asks the list holding the current chapter to scroll it to the
+  // middle: once when the panel mounts, and again whenever the reader presses
+  // "go to current chapter". Deliberately NOT keyed on `currentChapter` — a
+  // docked panel that re-scrolls itself every chapter turn fights the reader's
+  // own browsing, which is exactly what the button is for.
   //
-  // The scroll is applied to THIS list's scroll container only. `scrollIntoView`
-  // would instead walk up every scrollable ancestor (see ./tocReveal), and
-  // inside the mobile bottom sheet that dragged the sheet itself up mid-enter —
-  // the row starts off-screen below, so the browser found the range it needed
-  // in the sheet's clip wrapper.
-  const activeRowRef = useRef<HTMLButtonElement>(null);
+  // The scroll itself lives in VirtualChapterList, which owns the row
+  // geometry. Every list ignores a reveal for a chapter it does not hold, so
+  // on a grouped book only the open volume containing it responds.
   const [revealNonce, setRevealNonce] = useState(0);
-  useEffect(() => {
-    const row = activeRowRef.current;
-    if (!row) return;
-    const scroller = nearestScrollableAncestor(row);
-    if (!scroller) return;
-    const top = centerScrollTop({
-      scrollTop: scroller.scrollTop,
-      clientHeight: scroller.clientHeight,
-      scrollHeight: scroller.scrollHeight,
-      rowOffsetTop: contentOffsetTop(
-        row.getBoundingClientRect().top,
-        scroller.getBoundingClientRect().top,
-        scroller.scrollTop,
-      ),
-      rowHeight: row.getBoundingClientRect().height,
-    });
-    scroller.scrollTo({
-      top,
-      behavior: revealNonce === 0 ? "auto" : "smooth",
-    });
-  }, [revealNonce]);
 
   const goToCurrent = () => {
     if (currentVolumeId) {
@@ -232,18 +217,21 @@ export function TOCPanel({
         )}
 
         {grouped === null
-          ? filtered.map((c) => (
-              <ChapterRow
-                key={c.id}
-                rowRef={c.order === currentChapter ? activeRowRef : undefined}
+          ? (
+              // Ungrouped books hand the whole spine to one list, so this is
+              // the path that has to survive a 2000-chapter novel. It owns its
+              // own reveal (see VirtualChapterList) because the row to scroll
+              // to is usually not mounted; the effect above handles the
+              // grouped path, where every rendered row is a real element.
+              <VirtualChapterList
+                chapters={filtered}
+                currentChapter={currentChapter}
                 theme={theme}
-                chapter={c}
-                active={c.order === currentChapter}
-                read={c.order < currentChapter}
                 isAr={isAr}
                 onJump={onJump}
+                revealNonce={revealNonce}
               />
-            ))
+            )
           : grouped.rows.map((row) => {
               const open = isOpen(row.volume.id);
               const holdsCurrent =
@@ -305,22 +293,21 @@ export function TOCPanel({
                         borderTop: `0.5px solid ${theme.rule}`,
                       }}
                     >
-                      {row.chapters.map((c) => (
-                        <ChapterRow
-                          key={c.id}
-                          rowRef={
-                            c.order === currentChapter
-                              ? activeRowRef
-                              : undefined
-                          }
-                          theme={theme}
-                          chapter={c}
-                          active={c.order === currentChapter}
-                          read={c.order < currentChapter}
-                          isAr={isAr}
-                          onJump={onJump}
-                        />
-                      ))}
+                      {/* Windowed like the flat list. Normally only the volume
+                          being read is open, so this is cheap either way — but
+                          "expand all", and a search that matches across the
+                          book, both open every volume at once, and that put
+                          2042 rows in the DOM and 33-40ms on every chapter
+                          turn while Contents was docked. Each open volume runs
+                          its own window and the off-screen ones mount nothing. */}
+                      <VirtualChapterList
+                        chapters={row.chapters}
+                        currentChapter={currentChapter}
+                        theme={theme}
+                        isAr={isAr}
+                        onJump={onJump}
+                        revealNonce={revealNonce}
+                      />
                     </div>
                   )}
                 </div>
@@ -332,7 +319,6 @@ export function TOCPanel({
             {grouped.loose.map((c) => (
               <ChapterRow
                 key={c.id}
-                rowRef={c.order === currentChapter ? activeRowRef : undefined}
                 theme={theme}
                 chapter={c}
                 active={c.order === currentChapter}
@@ -346,6 +332,255 @@ export function TOCPanel({
       </div>
     </PanelShell>
   );
+}
+
+/** Height a chapter row is assumed to have before anything has been measured:
+ *  11px padding top and bottom around a 14.5px/1.3 line, plus the 1px gap.
+ *  Only the seed — see `estimateOf`, which replaces it with the running mean
+ *  of the rows actually seen, because titles wrap and rows are not uniform. */
+const ROW_SEED = 42;
+
+/** Rows kept mounted beyond each edge of the scrollport, so a flick reveals
+ *  chapters rather than blank space while React catches up. */
+const OVERSCAN = 6;
+
+/** Attempts allowed to converge a reveal. Scrolling to a row mounts the rows
+ *  around it, which measures them, which moves the row — so the target has to
+ *  be recomputed until it stops moving. It settles in two or three passes;
+ *  the cap only stops a pathological list from looping. */
+const REVEAL_PASSES = 5;
+
+/** The flat chapter list, windowed.
+ *
+ *  A scraped novel's spine runs to thousands of chapters, and a DOCKED
+ *  Contents panel stays mounted the whole time you read. Rendering every row
+ *  measured 103ms to open and 37-66ms per chapter turn — the turn cost being
+ *  the one docking introduces, since the overlay it replaces was dismissed on
+ *  jump. Memoising the rows was measured too and was not enough on its own:
+ *  simply CREATING 2000 elements per render is most of the cost, so the list
+ *  has to stop producing them.
+ *
+ *  Rows are NOT a fixed height — a long chapter title wraps — so heights are
+ *  measured as rows mount and cached by chapter id, with the running mean
+ *  standing in for rows not yet seen. The windowing arithmetic lives in
+ *  ./virtualWindow so it can be tested against a 5000-row spine without a DOM. */
+function VirtualChapterList({
+  chapters,
+  currentChapter,
+  theme,
+  isAr,
+  onJump,
+  revealNonce,
+}: {
+  chapters: EpubChapter[];
+  currentChapter: number;
+  theme: Theme;
+  isAr: boolean;
+  onJump?: (order: number) => void;
+  /** Bumped by the panel to ask for the current chapter to be revealed. */
+  revealNonce: number;
+}) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const measured = useRef(new Map<string, number>());
+  const [measureTick, bumpMeasured] = useReducer((n: number) => n + 1, 0);
+  const [view, setView] = useState({ scrollTop: 0, height: 0, listTop: 0 });
+
+  // Unmeasured rows are assumed to be the mean of the rows we HAVE measured,
+  // not a fixed 42. With roughly one title in seven wrapping to two lines, a
+  // constant estimate drifts by thousands of pixels over a long spine, which
+  // is enough to land "go to current chapter" in the wrong part of the book.
+  const heights = useMemo(() => {
+    const seen = measured.current;
+    let total = 0;
+    for (const h of seen.values()) total += h;
+    const estimate = seen.size > 0 ? total / seen.size : ROW_SEED;
+    return chapters.map((c) => seen.get(c.id) ?? estimate);
+    // measureTick is the signal that `measured` has new entries.
+  }, [chapters, measureTick]);
+
+  const offsets = useMemo(() => rowOffsets(heights), [heights]);
+
+  // Track the panel's scroll container. Reading scrollTop inside a rAF rather
+  // than straight from the scroll event keeps this to one layout read per
+  // frame however fast the wheel is spun.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const scroller = nearestScrollableAncestor(host);
+    if (!scroller) return;
+
+    let queued = 0;
+    const read = () => {
+      queued = 0;
+      const listTop = contentOffsetTop(
+        host.getBoundingClientRect().top,
+        scroller.getBoundingClientRect().top,
+        scroller.scrollTop,
+      );
+      setView((prev) =>
+        prev.scrollTop === scroller.scrollTop &&
+        prev.height === scroller.clientHeight &&
+        prev.listTop === listTop
+          ? prev
+          : { scrollTop: scroller.scrollTop, height: scroller.clientHeight, listTop },
+      );
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = requestAnimationFrame(read);
+    };
+
+    read();
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    // The panel is resizable in practice: docking changes nothing, but the
+    // window does, and on mobile the sheet is dragged between snaps.
+    const ro = new ResizeObserver(read);
+    ro.observe(scroller);
+    return () => {
+      if (queued) cancelAnimationFrame(queued);
+      scroller.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [chapters]);
+
+  const total = offsets[offsets.length - 1];
+  const viewTop = view.scrollTop - view.listTop;
+
+  // A list can sit entirely outside the scrollport — every open volume on a
+  // fully-expanded novel renders one of these, and only one of them is on
+  // screen. windowRange always keeps a row mounted (it has to, or an
+  // unmeasured list could never grow past its first frame), so without this
+  // 40 off-screen volumes would still cost 40 windows' worth of rows.
+  // Guarded on a measured height so it can't fire before the first layout.
+  const offscreen = view.height > 0 && (viewTop >= total || viewTop + view.height <= 0);
+
+  const { start, end } = offscreen
+    ? { start: 0, end: 0 }
+    : windowRange(offsets, viewTop, view.height, OVERSCAN);
+
+  // Record real heights for rows that just mounted. Only a change worth more
+  // than half a pixel counts, so this settles after one pass rather than
+  // oscillating on sub-pixel rounding.
+  const onRowMeasured = (id: string, height: number) => {
+    if (Math.abs((measured.current.get(id) ?? -1) - height) < 0.5) return;
+    measured.current.set(id, height);
+    queueMicrotask(bumpMeasured);
+  };
+
+  // ── Reveal ──────────────────────────────────────────────────────────────
+  // Scroll the current chapter to the middle of the list.
+  //
+  // Two-stage, because in a windowed list the row being revealed is usually
+  // NOT mounted, so there is no element to measure. While it is absent the
+  // target comes from `offsets` — good enough to haul the scrollport into the
+  // right region, which mounts the row. Once it IS mounted its own rect gives
+  // the exact answer, and that is what actually centres it: the offsets ahead
+  // of the window are estimates, and the rows that mount during a scroll are
+  // measured *after* it, which on its own left the row ~130-340px off centre.
+  //
+  // Settles in two or three passes. REVEAL_PASSES only stops a pathological
+  // list from looping, and `done` stops this from ever fighting the reader's
+  // own scrolling afterwards.
+  const revealIndex = chapters.findIndex((c) => c.order === currentChapter);
+  const pending = useRef({ nonce: -1, passes: 0, last: -1, done: false });
+  if (pending.current.nonce !== revealNonce) {
+    pending.current = { nonce: revealNonce, passes: 0, last: -1, done: false };
+  }
+
+  useEffect(() => {
+    const p = pending.current;
+    if (p.done || revealIndex < 0) return;
+    const host = hostRef.current;
+    if (!host) return;
+    const scroller = nearestScrollableAncestor(host);
+    if (!scroller) return;
+
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    const row = host.querySelector<HTMLElement>('[aria-current="true"]');
+    const rect = row?.getBoundingClientRect();
+
+    const geometry = rect
+      ? {
+          rowOffsetTop: contentOffsetTop(
+            rect.top,
+            scrollerTop,
+            scroller.scrollTop,
+          ),
+          rowHeight: rect.height,
+        }
+      : {
+          rowOffsetTop:
+            contentOffsetTop(
+              host.getBoundingClientRect().top,
+              scrollerTop,
+              scroller.scrollTop,
+            ) + offsets[revealIndex],
+          rowHeight: offsets[revealIndex + 1] - offsets[revealIndex],
+        };
+
+    const top = centerScrollTop({
+      scrollTop: scroller.scrollTop,
+      clientHeight: scroller.clientHeight,
+      scrollHeight: scroller.scrollHeight,
+      ...geometry,
+    });
+
+    // Centred on the row's real geometry and no longer moving — finished.
+    if (rect && Math.abs(top - p.last) < 1) {
+      p.done = true;
+      return;
+    }
+    p.last = top;
+    p.passes += 1;
+    if (p.passes >= REVEAL_PASSES) p.done = true;
+    scroller.scrollTo({ top, behavior: "auto" });
+  }, [revealNonce, revealIndex, offsets]);
+
+  return (
+    <div ref={hostRef}>
+      {/* Spacers stand in for the rows above and below the window, so the
+          scrollbar reflects the whole book rather than just what is mounted. */}
+      <div style={{ height: offsets[start] }} />
+      {chapters.slice(start, end).map((c) => (
+        <MeasuredChapterRow
+          key={c.id}
+          onMeasured={onRowMeasured}
+          theme={theme}
+          chapter={c}
+          active={c.order === currentChapter}
+          read={c.order < currentChapter}
+          isAr={isAr}
+          onJump={onJump}
+        />
+      ))}
+      <div style={{ height: offsets[offsets.length - 1] - offsets[end] }} />
+    </div>
+  );
+}
+
+/** A chapter row that reports its laid-out height once it is on screen. */
+function MeasuredChapterRow({
+  onMeasured,
+  chapter,
+  ...rest
+}: {
+  onMeasured: (id: string, height: number) => void;
+  theme: Theme;
+  chapter: EpubChapter;
+  active: boolean;
+  read: boolean;
+  isAr: boolean;
+  onJump?: (order: number) => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // marginBottom is part of the row's footprint in the offsets table, and
+    // getBoundingClientRect does not include it.
+    onMeasured(chapter.id, el.getBoundingClientRect().height + 1);
+  });
+  return <ChapterRow rowRef={ref} chapter={chapter} {...rest} />;
 }
 
 /** Panel-header icon button. Sized to match PanelShell's own close button so
@@ -495,7 +730,15 @@ function VolumeHeader({
   );
 }
 
-function ChapterRow({
+// Memoised because a DOCKED Contents panel stays mounted while you read, so
+// every chapter turn re-renders the whole list. On a 2000-chapter novel that
+// measured 37-66ms per turn — several dropped frames, on the one interaction
+// that has to feel instant. A turn only genuinely changes two or three rows
+// (the one you left, the one you arrived at), so memo takes the cost to ~0.
+//
+// This only holds while `onJump` and `theme` are referentially stable — see
+// the useCallback around onJump in the readers that mount this panel.
+const ChapterRow = memo(function ChapterRow({
   theme,
   chapter,
   active,
@@ -576,7 +819,7 @@ function ChapterRow({
       )}
     </button>
   );
-}
+});
 
 function SearchBar({
   theme,

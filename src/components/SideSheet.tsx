@@ -3,11 +3,14 @@
 //
 // Shared by the reflowable DesktopReader and the FixedPageReader so both
 // readers get identical open/close motion, Esc-to-close and RTL-correct
-// direction of travel. Every panel overlays; none of them dock. A docked
-// Contents panel reflowed and re-paginated the book the moment it opened,
-// moving the text out from under the reader's eye just to show a chapter
-// list — and the fixed-page reader never behaved that way, so the two
-// formats disagreed about what opening Contents does.
+// direction of travel.
+//
+// Two modes. Tool panels OVERLAY: they float over the reader on a scrim and
+// you dismiss them. Contents DOCKS (`dock`), joining the flex row as a real
+// sibling so the chapter list stays on screen while you read. Docking was
+// removed once before because only the reflowable reader did it, so the same
+// click behaved differently on a PDF; both readers now derive `dock` from
+// reader/chrome/dockContents.ts, which is what keeps them in step.
 //
 // Animation: the panel mounts OFF-SCREEN with no transition, then flips to its
 // resting position on the next frame via a CSS transition. Driving the slide
@@ -41,8 +44,10 @@ interface Props {
   /** Optional fixed width. When omitted the panel is sized by its content
    *  (e.g. PanelShell's own 340px), which is what both readers rely on. */
   width?: number | string;
-  /** Dim the reader behind the panel. Default true. */
+  /** Dim the reader behind the panel. Default true; ignored while docked. */
   dim?: boolean;
+  /** Claim layout beside the reader instead of floating over it. */
+  dock?: boolean;
   /** Accessible name for the dialog surface. */
   label?: string;
   /** Base stacking level; the panel sits one above the scrim. Default 40. */
@@ -56,6 +61,7 @@ export function SideSheet({
   children,
   width,
   dim = true,
+  dock = false,
   label,
   zIndex = 40,
 }: Props) {
@@ -66,14 +72,23 @@ export function SideSheet({
   const [mounted, setMounted] = useState(open);
   const [shown, setShown] = useState(open && reduced);
 
-  // Freeze the children + side seen while open so the exit transition plays the
-  // panel the user was actually using, sliding off its own edge — even though
-  // the parent has already cleared its active-panel state to null.
+  // Freeze the children + side + dock mode seen while open so the exit plays
+  // the panel the user was actually using, sliding off its own edge — even
+  // though the parent has already cleared its active-panel state to null.
+  //
+  // `dock` has to be frozen as much as the other two: callers derive it from
+  // that same active-panel state (`shouldDockContents(activePanel, …)`), so it
+  // goes false on the very render that starts the exit. Read live, a closing
+  // docked panel would fall into the overlay branch below — snapping the
+  // reading column back to full width and flashing a scrim in over it on the
+  // way out.
   const lastChildrenRef = useRef<ReactNode>(children);
   const lastSideRef = useRef(side);
+  const lastDockRef = useRef(dock);
   if (open) {
     lastChildrenRef.current = children;
     lastSideRef.current = side;
+    lastDockRef.current = dock;
   }
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -104,7 +119,12 @@ export function SideSheet({
     }
     // Closing: slide out, then unmount after the exit finishes.
     setShown(false);
-    if (reduced) {
+    // A docked panel closes instantly — no exit animation. It occupies real
+    // layout, so any fade-out leaves an empty 340px strip holding its width
+    // while the reading column waits to reflow, which reads as lag rather
+    // than as motion. Dismissal should feel immediate: the panel goes and the
+    // text takes the space back in the same frame.
+    if (reduced || lastDockRef.current) {
       setMounted(false);
       return;
     }
@@ -134,6 +154,7 @@ export function SideSheet({
   if (!mounted) return null;
 
   const activeSide = open ? side : lastSideRef.current;
+  const activeDock = open ? dock : lastDockRef.current;
   // Anchor on the logical edge (inset properties flip under RTL on their own);
   // the off-screen translate is physical, so choose it by where the panel lands.
   const physicalSide =
@@ -152,6 +173,45 @@ export function SideSheet({
   const ease = shown ? EASE.enter : EASE.exit;
   const slideTransition = reduced ? undefined : `transform ${dur}ms ${ease}`;
   const fadeTransition = reduced ? undefined : `opacity ${dur}ms ${ease}`;
+
+  if (activeDock) {
+    // The strip claims its width the instant it mounts and releases it once
+    // the exit finishes, so the reading column reflows exactly twice per
+    // open/close. Animating the width instead would re-trigger
+    // PaginatedView's ResizeObserver on every frame of the slide and
+    // re-paginate the book underneath the reader. What actually animates is
+    // the panel's own content, settling in from the edge it rests on —
+    // transform and opacity only, so nothing about the motion touches layout.
+    const nudge =
+      physicalSide === "left" ? "translateX(-10px)" : "translateX(10px)";
+    return (
+      <div
+        ref={panelRef}
+        // Not a dialog: a docked panel is a persistent region beside the
+        // reader, not something modal laid over it. `aria-modal` here would
+        // tell a screen reader the book had become inert while Contents was
+        // open, which is the opposite of the point.
+        role="complementary"
+        aria-label={label}
+        tabIndex={-1}
+        style={{
+          display: "flex",
+          flexShrink: 0,
+          minHeight: 0,
+          ...(width != null ? { width } : null),
+          maxWidth: "60%",
+          outline: "none",
+          opacity: shown ? 1 : 0,
+          transform: shown ? "none" : nudge,
+          transition: reduced
+            ? undefined
+            : `opacity ${dur}ms ${ease}, transform ${dur}ms ${ease}`,
+        }}
+      >
+        {open ? children : lastChildrenRef.current}
+      </div>
+    );
+  }
 
   return (
     <div
