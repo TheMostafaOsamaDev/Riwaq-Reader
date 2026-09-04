@@ -55,7 +55,7 @@ import { ReaderIconButton } from "../chrome/ReaderIconButton";
 import { SettingsPanel } from "../../panels/SettingsPanel";
 import { FocusHint, useFocusChrome } from "../chrome/focusChrome";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { DOCK_QUERY, shouldDockContents } from "../chrome/dockContents";
+import { DOCK_QUERY, DOCK_WIDTH, shouldDockContents } from "../chrome/dockContents";
 import { useI18n } from "../../i18n/useI18n";
 import { formatNum } from "../../i18n";
 
@@ -181,6 +181,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     theme,
     reducedMotion: reduced,
     enabled: !isMobile,
+    // A docked Contents panel keeps the floating bars off its own header.
+    dockInset: tocDocked ? DOCK_WIDTH : 0,
   });
 
   // Content/page-flip direction: DOCX carries its own; PDF follows the UI.

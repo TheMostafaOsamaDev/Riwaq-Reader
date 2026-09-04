@@ -153,6 +153,8 @@ export function DesktopReader({
     closePanels: () => setActivePanel(null),
     theme,
     reducedMotion: reduced,
+    // A docked Contents panel keeps the floating bars off its own header.
+    dockInset: tocDocked ? DOCK_WIDTH : 0,
   });
 
   // The live paragraph for the current chapter — updated by both the
