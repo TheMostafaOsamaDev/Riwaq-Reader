@@ -209,3 +209,30 @@ live library — with the 206 MB EPUB:
 Success looks like: bytes written roughly halved, no long task over 50 ms
 during the parse, and the progress ring advancing continuously instead of
 stalling.
+
+## Measured results
+
+Against the real files, in a real browser (Chromium, M-series Mac) or by
+arithmetic over the archive. A phone is several times slower, so treat every
+millisecond figure as a floor.
+
+| Change | Before | After | How measured |
+|---|---|---|---|
+| Import writes (206 MB EPUB) | 411 MB | 206 MB | `unzip -l`: 96 image entries = 204,679,462 bytes, no longer extracted |
+| Disk held for that book | ~411 MB | 206 MB + images read | same |
+| EPUB parse, longest block | 58 ms | 11.3 ms | real 114 chapters, timestamp at every yield point |
+| DOCX worst frame gap (8.9 MB, 109 images) | 62.5 ms | 10.4 ms | rAF heartbeat during conversion; identical output both ways |
+| PDF bytes pulled to stage (21 MB, 298 pp) | 21 MB read + 21 MB copy | 1.5 MB (7%) | production path with `__TAURI_INTERNALS__` serving real ranges |
+| Library re-renders per import | ~50 (whole tree) | 0 | `importPct` state removed; the FAB subscribes to the store itself |
+
+`read_file_range` has its own Rust test for exact offsets, short reads at EOF,
+and a missing file (`archive.rs: reads_an_exact_byte_range`).
+
+### Not yet verified
+
+The end-to-end run inside Tauri — importing the 206 MB file through the real
+app and confirming `images.json` lands, no `images/` directory is created at
+import, a chapter's images extract on first view, and exactly one indicator
+appears. Everything the app-level run would exercise is covered by a unit or
+browser test individually, but the wiring between them is not. Worth doing
+before this ships.
