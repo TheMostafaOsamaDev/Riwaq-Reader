@@ -101,9 +101,11 @@ and the sidebar moves to the right, icons flip, and every label follows.
 
 Reading progress on every cover, format badges for PDF and Word, source badges for novels,
 status filters (Reading / Finished / Wishlist), and your own shelves for anything else.
-`⌘K` opens a command palette over the whole app.
 
-![Command palette](docs/screenshots/desktop/16-search.png)
+`⌘K` opens a command palette over the whole app — search books and authors as you type, or
+jump straight to any view.
+
+![Searching the library from the command palette](docs/screenshots/desktop/16-search.png)
 
 ### ⬇️ Downloads that survive a restart
 
@@ -159,7 +161,7 @@ converted on import, with a step to pick the cover and review images first.
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/desktop/10-store-sources.png" alt="Sources"/><br/><b>Sources</b> — the sites Riwaq can browse</td>
-    <td width="50%"></td>
+    <td width="50%"><img src="docs/screenshots/desktop/21-search-jump.png" alt="Jump to"/><br/><b>Jump to</b> — reach any view from the palette</td>
   </tr>
 </table>
 
