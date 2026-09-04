@@ -163,6 +163,22 @@ export function SearchOverlay({
           maxWidth: 720,
           fontFamily: FONT_STACKS.sans,
           animation: "riwaqRise 160ms ease",
+          // The whole palette — input AND body — is one opaque `paper` card.
+          // The body used to be transparent, which painted `ink`/`muted` text
+          // straight onto the blurred library behind the scrim; contrast then
+          // depended on whichever cover happened to sit under the text
+          // (measured 1.0:1–10.3:1). On `paper` every token is back on the
+          // surface it was toned against, in all four themes.
+          background: theme.paper,
+          border: `1px solid ${theme.rule}`,
+          borderRadius: 16,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          // Long result lists used to run off the bottom of the screen with no
+          // way to reach them; the card is now bounded and the body scrolls.
+          maxHeight: "76vh",
         }}
       >
         {/* Search input */}
@@ -171,11 +187,9 @@ export function SearchOverlay({
             display: "flex",
             alignItems: "center",
             gap: 14,
-            background: theme.paper,
-            border: `1px solid ${theme.rule}`,
-            borderRadius: 16,
             padding: "16px 18px",
-            boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+            borderBottom: `1px solid ${theme.rule}`,
+            flexShrink: 0,
           }}
         >
           <span style={{ color: theme.muted, display: "flex" }}>
@@ -222,7 +236,7 @@ export function SearchOverlay({
         </div>
 
         {/* Body */}
-        <div style={{ marginTop: 18, padding: "0 4px" }}>
+        <div style={{ padding: "16px 18px 18px", overflowY: "auto", flex: 1, minHeight: 0 }}>
           {q ? (
             results.length || sourceResults.length ? (
               <>
@@ -325,9 +339,12 @@ export function SearchOverlay({
                   <OverlayLabel theme={theme} icon="clock" action={{ label: tr("search.clearHistory"), onClick: () => { setRecent([]); saveRecent([]); } }}>
                     {tr("search.recentSearches")}
                   </OverlayLabel>
+                  {/* Chips are bordered like the Jump-to pills: `chrome` alone
+                      is only a few shades off `paper` (sepia especially), so
+                      each chip needs the hairline to read as a control. */}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
                     {recent.map((r) => (
-                      <span key={r} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: theme.chrome, borderRadius: 20, padding: "7px 8px 7px 13px", fontSize: 13, color: theme.ink }}>
+                      <span key={r} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: theme.chrome, border: `1px solid ${theme.rule}`, borderRadius: 20, padding: "6px 7px 6px 12px", fontSize: 13, color: theme.ink }}>
                         <button onClick={() => { setTerm(r); inputRef.current?.focus(); }} style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", font: "inherit", padding: 0 }}>{r}</button>
                         <button aria-label={tr("search.removeRecent", { term: r })} onClick={() => { const n = recent.filter((x) => x !== r); setRecent(n); saveRecent(n); }} style={{ display: "flex", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", padding: 0 }}>
                           <Icon name="close" size={13} />
