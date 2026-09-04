@@ -5,6 +5,11 @@
 // is reused. pdf.js is heavy, so it is dynamically imported on first use.
 
 import type { TocEntry } from "../types/reader";
+import {
+  createFileRangeTransport,
+  RANGE_CHUNK,
+  readFileRange,
+} from "./rangeSource";
 
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
 
@@ -52,10 +57,17 @@ export interface PdfDoc {
   destroy(): void;
 }
 
-export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
+/** Where a PDF's bytes come from.
+ *
+ *  The path form never materializes the file in JS — pdf.js pulls the ranges
+ *  it needs through Rust (see rangeSource.ts), which is what keeps a 200 MB
+ *  book from costing ~400 MB of webview heap. The bytes form is for the dev
+ *  harness and tests, which hold a buffer and no Tauri. */
+export type PdfSource = Uint8Array | { path: string; length: number };
+
+export async function openPdfDocument(source: PdfSource): Promise<PdfDoc> {
   const pdfjs = await loadPdfjs();
-  // Hand pdf.js its own copy — it may transfer/detach the buffer.
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await loadDocument(pdfjs, source);
 
   const meta = await readMeta(doc);
   const outline = await buildOutline(doc);
@@ -158,6 +170,46 @@ export async function openPdfDocument(bytes: Uint8Array): Promise<PdfDoc> {
 }
 
 // ── internals (pdf.js's outline/metadata shapes are loosely typed) ──────────
+
+/** Open the document, streaming it when we were handed a path. */
+async function loadDocument(
+  pdfjs: Awaited<ReturnType<typeof loadPdfjs>>,
+  source: PdfSource,
+) {
+  if (source instanceof Uint8Array) {
+    // Hand pdf.js its own copy — it may transfer/detach the buffer.
+    return pdfjs.getDocument({ data: source.slice() }).promise;
+  }
+  try {
+    const head = await readFileRange(
+      source.path,
+      0,
+      Math.min(RANGE_CHUNK, source.length),
+    );
+    const range = createFileRangeTransport(
+      pdfjs,
+      source.path,
+      source.length,
+      head,
+    );
+    return await pdfjs.getDocument({
+      range,
+      rangeChunkSize: RANGE_CHUNK,
+      // Fetch what the rendered pages need and nothing more — pulling the
+      // whole file is the thing we are avoiding.
+      disableAutoFetch: true,
+      disableStream: true,
+    }).promise;
+  } catch (e) {
+    // Correctness beats memory: if ranges don't work on this platform, fall
+    // back to the old whole-file path rather than failing the import.
+    // eslint-disable-next-line no-console
+    console.warn("[pdf] range transport failed, falling back to whole file:", e);
+    const { BaseDirectory, readFile } = await import("@tauri-apps/plugin-fs");
+    const bytes = await readFile(source.path, { baseDir: BaseDirectory.AppData });
+    return pdfjs.getDocument({ data: bytes.slice() }).promise;
+  }
+}
 
 async function readMeta(doc: unknown): Promise<PdfMeta> {
   try {

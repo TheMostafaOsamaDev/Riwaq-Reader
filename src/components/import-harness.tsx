@@ -46,7 +46,7 @@ function Harness() {
     setStatus("staging…");
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
-      const d = await stageFixedImport(bytes, f.name);
+      const d = await stageFixedImport({ bytes }, f.name);
       setDraft(d);
       setStatus(`staged ${d.kind}: ${d.candidates.length} candidates`);
     } catch (err) {

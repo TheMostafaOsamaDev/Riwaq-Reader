@@ -430,14 +430,20 @@ async function stagePaths(
         // Dynamic import avoids a static library ↔ staging cycle and keeps the
         // pdf.js / mammoth toolchains out of the initial bundle.
         const { stageFixedImport } = await import("./fixedImportStage");
-        // pdf.js / mammoth need the bytes, so this direction does cross the
-        // bridge — but Rust→JS responses travel as an octet-stream rather
-        // than a JSON number array, so there's no expansion. The staged file
+        // A PDF is read in slices straight off disk (pdf/rangeSource.ts), so
+        // its bytes never enter the webview — reading a 200 MB book in, then
+        // copying it again for pdf.js, is what made the app crawl. DOCX does
+        // still cross the bridge because mammoth needs the whole buffer, but
+        // Rust→JS responses travel as an octet-stream rather than a JSON
+        // number array, so there's no expansion. Either way the staged file
         // stays put and `commit` renames it into place instead of writing a
         // second copy.
-        const bytes = await readFile(stagedPath, { baseDir: BASE });
+        const source =
+          fixed === "pdf"
+            ? { path: stagedPath, length: staged.size }
+            : { bytes: await readFile(stagedPath, { baseDir: BASE }) };
         drafts.push(
-          await stageFixedImport(bytes, path, fixed, {
+          await stageFixedImport(source, path, fixed, {
             stagedPath,
             sourceHash: staged.hash,
           }),
