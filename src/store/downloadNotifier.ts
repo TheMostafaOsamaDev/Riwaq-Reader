@@ -87,7 +87,7 @@ const NOTIFICATION_ID = DOWNLOAD_NOTIFICATION_ID;
  *  overlay on every body change, which reads as a blink at chapter
  *  boundaries. The channel only exists on Android; the createChannel
  *  call is a no-op everywhere else. */
-const CHANNEL_ID = "leaflet-downloads";
+const CHANNEL_ID = "riwaq-downloads";
 let channelRegistered = false;
 
 async function ensureChannel(): Promise<void> {

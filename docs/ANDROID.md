@@ -79,7 +79,7 @@ unmasked and `tauri icon` already pads them, so they're left alone.
 
 ## Permissions
 
-Leaflet needs read access to pick EPUBs:
+Riwaq needs read access to pick EPUBs:
 
 - `android.permission.READ_EXTERNAL_STORAGE` is **not** required — we use the system file picker via `@tauri-apps/plugin-dialog`, which grants scoped access.
 - No network permission is declared, because we don't fetch anything.

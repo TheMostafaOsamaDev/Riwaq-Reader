@@ -1,6 +1,6 @@
 # Setup
 
-Leaflet is a Tauri v2 + React 19 + TypeScript + Vite app targeting **desktop
+Riwaq is a Tauri v2 + React 19 + TypeScript + Vite app targeting **desktop
 (Linux / macOS / Windows)** and **Android**.
 
 ## Prerequisites
@@ -65,7 +65,7 @@ before-command matches.
 
 ```sh
 # From the repo root:
-cd Leaflet-ebook-reader
+cd Riwaq-ebook-reader
 pnpm install
 ```
 
@@ -109,7 +109,7 @@ Related scripts: `pnpm mac:build` (bundle only, no install) and `pnpm mac:dmg`
 **On signing.** Tauri only invokes `codesign` when a signing identity is
 configured, so an unconfigured build keeps just the linker's ad-hoc signature:
 resources unsealed, `Info.plist` unbound, and a generated identifier like
-`leaflet-9ad04e75f33efb1c` rather than the real bundle id. It still launches —
+`riwaq-<hash>` rather than the real bundle id. It still launches —
 an app you built yourself carries no `com.apple.quarantine` attribute, so
 Gatekeeper does not gate it — but the signature fails `codesign --verify`.
 `scripts/mac-install.sh` re-signs ad-hoc (no Apple Developer account required)
@@ -121,7 +121,7 @@ a Developer ID certificate and notarisation.
 
 **Shared data.** Dev and release builds both key off the `com.leaflet.reader`
 identifier, so they read and write the same library at
-`~/Library/Application Support/com.leaflet.reader/leaflet/`. Handy — the
+`~/Library/Application Support/com.leaflet.reader/riwaq/`. Handy — the
 installed app sees your existing books — but it also means anything destructive
 you try in `tauri dev` hits the real library.
 
@@ -182,7 +182,7 @@ That regenerates every platform-specific icon size automatically.
   export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
   ```
 - **Theme flash on startup** — the selected theme is persisted in
-  `localStorage` under `leaflet:tweaks:v1` and applied on first paint via a
+  `localStorage` under `riwaq:tweaks:v1` and applied on first paint via a
   `useEffect` in `App.tsx`. If you clear storage you'll briefly see the sepia
   default.
 ## Testing file associations

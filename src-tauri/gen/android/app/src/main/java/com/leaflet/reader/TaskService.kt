@@ -75,7 +75,7 @@ class TaskService : Service() {
     private fun acquireWakeLock() {
         if (wakeLock?.isHeld == true) return
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "leaflet:tasks").apply {
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "riwaq:tasks").apply {
             setReferenceCounted(false)
             acquire(30 * 60 * 1000L) // 30-min safety cap
         }
@@ -87,7 +87,7 @@ class TaskService : Service() {
     }
 
     companion object {
-        const val CHANNEL_ID = "leaflet-downloads"
+        const val CHANNEL_ID = "riwaq-downloads"
         const val NOTIF_ID = 1001
 
         @JvmStatic

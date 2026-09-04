@@ -287,7 +287,7 @@ export function TOCPanel({
                   />
                   {open && (
                     <div
-                      className="leaflet-collapse-enter"
+                      className="riwaq-collapse-enter"
                       style={{
                         padding: "3px 4px 6px",
                         borderTop: `0.5px solid ${theme.rule}`,

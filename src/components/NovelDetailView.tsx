@@ -1083,7 +1083,7 @@ function ChapterSearch({
       </div>
       {inSearchMode && (
         <div
-          className="leaflet-scroll-hidden"
+          className="riwaq-scroll-hidden"
           style={{
             marginTop: 8,
             border: `0.5px solid ${theme.rule}`,
@@ -2075,7 +2075,7 @@ function VolumesAccordion({
                 estimatedItemHeight={CHAPTER_ROW_HEIGHT}
                 itemKey={(c) => c.id}
                 role="list"
-                className="leaflet-scroll-hidden leaflet-collapse-enter"
+                className="riwaq-scroll-hidden riwaq-collapse-enter"
                 ariaLabel={v.title}
                 style={{
                   margin: 0,

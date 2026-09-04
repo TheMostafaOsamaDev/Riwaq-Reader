@@ -4,7 +4,7 @@
 
 The design came as a handoff bundle from Claude Design, extracted to
 `/tmp/design-extract/e-book-reader/`. The companion spec export is
-`E-Book Reader.html` from the Leaflet design spec.
+`E-Book Reader.html` from the Riwaq design spec.
 
 These notes mirror the tokens actually in `src/styles/tokens.ts` — when the
 notes and the code disagree, the code is the source of truth.
@@ -81,7 +81,7 @@ hosting, no font bundling, no `@font-face` rules.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ Leaflet    Library  Reading  Finished  Wishlist              + Import    │
+│ Riwaq    Library  Reading  Finished  Wishlist              + Import    │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌──────────┐   CONTINUE READING                                         │

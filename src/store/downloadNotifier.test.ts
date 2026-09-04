@@ -14,7 +14,7 @@ vi.mock("./downloadNotifier/transport", () => ({
   DOWNLOAD_NOTIFICATION_ID: 1001,
   DOWNLOAD_SUMMARY_ID: 1002,
   DOWNLOAD_REAUTH_ID: 1003,
-  DOWNLOAD_CHANNEL_ID: "leaflet-downloads",
+  DOWNLOAD_CHANNEL_ID: "riwaq-downloads",
   pushDownloadNotification: async () => {},
   setDockProgress: async () => {},
 }));

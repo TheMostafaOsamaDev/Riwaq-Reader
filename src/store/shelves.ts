@@ -1,4 +1,4 @@
-// Persistent shelves — a leaflet/shelves.json sibling of library.json.
+// Persistent shelves — a riwaq/shelves.json sibling of library.json.
 // Pure list logic lives in shelfLogic.ts; this module is the thin Tauri-fs
 // wrapper (load/seed/save + CRUD). Deleting a shelf also strips its id from
 // every book via library.removeShelfFromAllBooks.
@@ -18,11 +18,12 @@ import {
   type Shelf,
 } from "./shelfLogic";
 import { ensureRoot, removeShelfFromAllBooks } from "./library";
+import { ROOT } from "./paths";
 
 export type { Shelf };
 
 const BASE = BaseDirectory.AppData;
-const FILE = "leaflet/shelves.json";
+const FILE = `${ROOT}/shelves.json`;
 
 // Same locale probe pattern as library.ts's currentUiLocale().
 function currentUiLocale(): Locale {

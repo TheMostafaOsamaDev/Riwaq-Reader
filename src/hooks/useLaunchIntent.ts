@@ -5,7 +5,7 @@
 // once per visibility-change — a Tauri event would be cleaner but
 // requires emitting from Kotlin, which is more code.
 //
-// Today the only intent we handle is `leaflet.open=queue` →
+// Today the only intent we handle is `riwaq.open=queue` →
 // openDownloadQueue() via uiIntents.
 
 import { useEffect } from "react";

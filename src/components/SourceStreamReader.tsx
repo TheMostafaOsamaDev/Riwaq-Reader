@@ -59,6 +59,7 @@ import {
 import { useI18n } from "../i18n/useI18n";
 import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 import type { HighlightColor } from "../styles/tokens";
+import { migrateStorageKey } from "../lib/legacyStorage";
 
 interface Props {
   theme: Theme;
@@ -129,7 +130,7 @@ export function SourceStreamReader({
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
 
   const persistKey = useMemo(
-    () => `leaflet:stream-state:${sourceId}:${novelUrl}`,
+    () => `riwaq:stream-state:${sourceId}:${novelUrl}`,
     [sourceId, novelUrl],
   );
 
@@ -213,6 +214,7 @@ export function SourceStreamReader({
         );
 
         // Restore from persisted state, then map startChapterId if given.
+        migrateStorageKey(persistKey);
         const persisted = readPersisted(persistKey);
         let initialIdx = 0;
         if (startChapterId !== undefined) {

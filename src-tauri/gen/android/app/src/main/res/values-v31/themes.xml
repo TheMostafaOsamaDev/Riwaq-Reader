@@ -5,7 +5,7 @@
       explicitly so the launcher icon lands on the app's own paper colour on
       every OEM skin rather than a vendor default.
     -->
-    <style name="Theme.leaflet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.Riwaq" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/riwaq_launch_bg</item>
         <item name="android:windowSplashScreenBackground">@color/riwaq_launch_bg</item>
     </style>

@@ -42,7 +42,13 @@
 
         var saved = {};
         try {
-          saved = JSON.parse(localStorage.getItem("leaflet:tweaks:v1")) || {};
+          /* Falls back to the pre-rename key so an install from before the
+             Leaflet → Riwaq rename doesn't flash the default theme on the one
+             launch before useTweaks migrates it (see lib/legacyStorage.ts). */
+          var raw =
+            localStorage.getItem("riwaq:tweaks:v1") ||
+            localStorage.getItem("leaflet:tweaks:v1");
+          saved = JSON.parse(raw) || {};
         } catch (e) {
           /* first run, or a corrupt blob — fall through to the defaults */
         }

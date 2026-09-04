@@ -171,9 +171,9 @@ export function LibrarySidebar({
           to fix that insets the nav's content, which then no longer lines up
           with the full-width Search button above and Import button below —
           so instead we hide the scrollbar chrome entirely via
-          `leaflet-scroll-hidden` (wheel/trackpad scrolling still works) and
+          `riwaq-scroll-hidden` (wheel/trackpad scrolling still works) and
           keep the container full-width. */}
-      <div className="leaflet-scroll-hidden" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+      <div className="riwaq-scroll-hidden" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         <SectionLabel theme={theme}>{tr("sidebar.main")}</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 5, padding: "0 4px" }}>
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}

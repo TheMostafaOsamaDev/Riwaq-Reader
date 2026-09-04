@@ -21,18 +21,20 @@ import {
 import { EASE, MOTION } from "../../styles/motion";
 import { FONT_STACKS, type Theme } from "../../styles/tokens";
 import { chromeEdges } from "./focusEdges";
+import { migrateStorageKey } from "../../lib/legacyStorage";
 
 /** How long a revealed bar lingers after the pointer leaves its edge, in ms. */
 const CHROME_LINGER_MS = 450;
-/** How long the first-run hint stays up. Matches `.leaflet-focus-hint`. */
+/** How long the first-run hint stays up. Matches `.riwaq-focus-hint`. */
 export const FOCUS_HINT_MS = 3200;
 /** Set once the first-run focus-mode hint has been shown. */
-const FOCUS_HINT_KEY = "leaflet:focus-hint-seen";
+const FOCUS_HINT_KEY = "riwaq:focus-hint-seen";
 
 function focusHintSeen(): boolean {
   // Private-mode / blocked-storage browsers throw on access; treating that as
   // "already seen" is the quiet failure — better a missing hint than a crash.
   try {
+    migrateStorageKey(FOCUS_HINT_KEY);
     return localStorage.getItem(FOCUS_HINT_KEY) === "1";
   } catch {
     return true;
@@ -309,7 +311,7 @@ export function FocusHint({
 }) {
   return (
     <div
-      className="leaflet-focus-hint"
+      className="riwaq-focus-hint"
       style={{
         position: "absolute",
         left: "50%",

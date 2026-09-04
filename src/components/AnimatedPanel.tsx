@@ -61,8 +61,8 @@ export function AnimatedPanel({ open, side, children }: Props) {
   // from the wrong edge, across the reading column.
   const physicalSide =
     dir === "rtl" ? (side === "left" ? "right" : "left") : side;
-  const enterClass = `leaflet-panel-enter-${physicalSide}`;
-  const exitClass = `leaflet-panel-exit-${physicalSide}`;
+  const enterClass = `riwaq-panel-enter-${physicalSide}`;
+  const exitClass = `riwaq-panel-exit-${physicalSide}`;
   const cls = reduced
     ? undefined
     : phase === "enter"

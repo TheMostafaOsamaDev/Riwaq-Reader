@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Theme.leaflet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.Riwaq" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!--
           The colour of the window that stands in for the webview during
           startup — from the moment the launcher hands off until the first

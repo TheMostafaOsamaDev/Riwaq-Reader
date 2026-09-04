@@ -1,8 +1,8 @@
 [package]
-name = "leaflet"
+name = "riwaq"
 version = "0.1.0"
-description = "Leaflet — a warm, cross-platform e-book reader"
-authors = ["Leaflet Team"]
+description = "Riwaq — a calm, offline-first e-book reader for Arabic"
+authors = ["Mostafa Osama"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,8 +11,17 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "leaflet_lib"
+name = "riwaq_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# The binary filename is what macOS shows when you hover the Dock icon on a
+# `tauri dev` run (there is no .app bundle, so CFBundleName can't apply). Cargo
+# package names are conventionally lowercase, so name the bin target explicitly
+# rather than the package. Tauri's own docs point at this field in preference to
+# `mainBinaryName`, which only takes effect during `tauri build`.
+[[bin]]
+name = "Riwaq"
+path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -99,7 +99,7 @@ export function SettingsPage({
     try {
       const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
-        defaultPath: "leaflet-settings.json",
+        defaultPath: "riwaq-settings.json",
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!path) return;
@@ -463,7 +463,7 @@ export function SettingsPage({
             {inCategory ? (
               <div
                 key={activeCategory}
-                className={reduced ? undefined : "leaflet-settings-slide-in"}
+                className={reduced ? undefined : "riwaq-settings-slide-in"}
                 style={slideStyle}
               >
                 {card(renderEntries(entriesByCat[activeCategory]))}
@@ -547,7 +547,7 @@ export function SettingsPage({
                   setQuery("");
                 }}
                 aria-pressed={!searching && c === displayCategory}
-                className={reduced ? undefined : "leaflet-settings-slide-in"}
+                className={reduced ? undefined : "riwaq-settings-slide-in"}
                 style={{
                   ...(reduced ? null : { ...slideStyle, animationDelay: `${i * 28}ms` }),
                   display: "flex",
@@ -590,7 +590,7 @@ export function SettingsPage({
             ) : (
               <div
                 key={displayCategory}
-                className={reduced ? undefined : "leaflet-settings-slide-in"}
+                className={reduced ? undefined : "riwaq-settings-slide-in"}
                 style={slideStyle}
               >
                 <SectionHeader

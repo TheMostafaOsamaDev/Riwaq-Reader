@@ -3,7 +3,7 @@
 // One low-level primitive (`Skeleton`) + a few section-shaped composites
 // (cover card, section row, novel header) so callers don't have to
 // hand-tune dimensions. The shimmer animation lives in global.css under
-// `.leaflet-skeleton`; this file just stamps elements with the right
+// `.riwaq-skeleton`; this file just stamps elements with the right
 // dimensions and the shared class.
 
 import { Fragment, type CSSProperties } from "react";
@@ -30,7 +30,7 @@ export function Skeleton({
 }: SkeletonProps) {
   return (
     <div
-      className="leaflet-skeleton"
+      className="riwaq-skeleton"
       style={{
         width,
         height,

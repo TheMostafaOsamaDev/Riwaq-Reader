@@ -53,7 +53,7 @@ export function Spinner({
         flexShrink: 0,
         ...(determinate || reduced
           ? {}
-          : { animation: "leaflet-spin 1000ms linear infinite" }),
+          : { animation: "riwaq-spin 1000ms linear infinite" }),
       }}
       aria-hidden
       focusable="false"
@@ -103,9 +103,9 @@ function useSpinKeyframes() {
     if (injected) return;
     injected = true;
     const style = document.createElement("style");
-    style.dataset.leafletSpinner = "true";
+    style.dataset.riwaqSpinner = "true";
     style.textContent =
-      "@keyframes leaflet-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }";
+      "@keyframes riwaq-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }";
     document.head.appendChild(style);
   }, []);
 }

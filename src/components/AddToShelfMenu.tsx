@@ -53,12 +53,12 @@ export function AddToShelfMenu({
         justifyContent: "center",
         padding: 20,
         fontFamily: FONT_STACKS.sans,
-        animation: "leafletAddShelfFade 130ms ease",
+        animation: "riwaqAddShelfFade 130ms ease",
       }}
     >
       <style>{`
-        @keyframes leafletAddShelfFade { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes leafletAddShelfPop {
+        @keyframes riwaqAddShelfFade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes riwaqAddShelfPop {
           from { opacity: 0; transform: translateY(6px) scale(0.98); }
           to   { opacity: 1; transform: none; }
         }
@@ -75,7 +75,7 @@ export function AddToShelfMenu({
           borderRadius: 14,
           boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
           overflow: "hidden",
-          animation: "leafletAddShelfPop 150ms ease",
+          animation: "riwaqAddShelfPop 150ms ease",
         }}
       >
         <div

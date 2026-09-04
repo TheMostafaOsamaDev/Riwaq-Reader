@@ -1,4 +1,4 @@
-# GitHub Actions release pipeline for Leaflet.
+# GitHub Actions release pipeline for Riwaq.
 #
 # Two trigger paths:
 #   - push tag `v*`     → real release. Creates a DRAFT GitHub Release

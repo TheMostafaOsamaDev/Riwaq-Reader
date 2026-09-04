@@ -8,7 +8,7 @@ available offline, and how chapter downloads are queued and tracked.
 For each source-backed library entry (`kind: "source"`):
 
 ```
-$APPDATA/leaflet/books/<entry-id>/
+$APPDATA/riwaq/books/<entry-id>/
 ├── source.json                  novel metadata + volume index + per-
 │                                chapter flags (downloadedAt, readAt)
 ├── cover.<ext>                  downloaded cover (asset:// URL via

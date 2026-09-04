@@ -66,11 +66,11 @@ const SLIDE_MS = MOTION.med;
 const SLIDE_EASE = EASE.enter;
 
 const KEYFRAMES = `
-@keyframes leaflet-ctxmenu-pop-in {
+@keyframes riwaq-ctxmenu-pop-in {
   from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1); }
 }
-@keyframes leaflet-ctxmenu-pop-out {
+@keyframes riwaq-ctxmenu-pop-out {
   from { opacity: 1; transform: scale(1); }
   to   { opacity: 0; transform: scale(0.96); }
 }
@@ -401,11 +401,11 @@ export function ContextMenu({
 
   // Desktop animations.
   const mainAnim = leaving
-    ? `leaflet-ctxmenu-pop-out ${EXIT_MS}ms ${EXIT_EASE} forwards`
-    : `leaflet-ctxmenu-pop-in ${ENTER_MS}ms ${ENTER_EASE}`;
+    ? `riwaq-ctxmenu-pop-out ${EXIT_MS}ms ${EXIT_EASE} forwards`
+    : `riwaq-ctxmenu-pop-in ${ENTER_MS}ms ${ENTER_EASE}`;
   const submenuAnim = submenuLeaving
-    ? `leaflet-ctxmenu-pop-out ${EXIT_MS}ms ${EXIT_EASE} forwards`
-    : `leaflet-ctxmenu-pop-in ${ENTER_MS}ms ${ENTER_EASE}`;
+    ? `riwaq-ctxmenu-pop-out ${EXIT_MS}ms ${EXIT_EASE} forwards`
+    : `riwaq-ctxmenu-pop-in ${ENTER_MS}ms ${ENTER_EASE}`;
 
   // Items inside the main panel.
   const mainItems = (

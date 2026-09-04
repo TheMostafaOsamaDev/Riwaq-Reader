@@ -108,7 +108,7 @@ class MainActivity : TauriActivity() {
             return
         }
 
-        val extra = intent.getStringExtra("leaflet.open") ?: return
+        val extra = intent.getStringExtra("riwaq.open") ?: return
         pendingLaunchIntent = extra
     }
 

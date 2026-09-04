@@ -279,7 +279,7 @@ export function Library({
     libraryEntryId?: string;
   } | null>(null);
 
-  // Shelves (custom collections) — store-backed (leaflet/shelves.json),
+  // Shelves (custom collections) — store-backed (riwaq/shelves.json),
   // shared by both layouts so the mobile Shelves page and the desktop
   // sidebar agree. listShelves() seeds the two defaults on first run and is
   // the source of truth thereafter.
@@ -959,7 +959,7 @@ export function Library({
   }, [streamActive, refresh]);
 
   // Wired by useLaunchIntent in App.tsx — when a notification tap arrives with
-  // `leaflet.open=queue`, the pub/sub fires and we push the queue overlay onto
+  // `riwaq.open=queue`, the pub/sub fires and we push the queue overlay onto
   // nav history (so the hardware/desktop Back closes it).
   useEffect(
     () => onOpenDownloadQueue(() => openOverlay({ kind: "downloads" })),
@@ -1372,7 +1372,7 @@ interface LayoutProps {
   /** Navigate to the Shelves destination. */
   onOpenShelves: () => void;
   /** Custom shelves, owned by the parent so both layouts agree. Store-backed
-   *  (leaflet/shelves.json) via listShelves/createShelf/renameShelf/deleteShelf. */
+   *  (riwaq/shelves.json) via listShelves/createShelf/renameShelf/deleteShelf. */
   shelves: Shelf[];
   /** Open the "new shelf" dialog (rendered by the parent). */
   onNewShelf: () => void;
@@ -2604,7 +2604,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
       <div
         ref={scrollerRef}
         onScroll={updateEdges}
-        className="leaflet-pill-row"
+        className="riwaq-pill-row"
         style={{
           display: "flex",
           gap: 6,
