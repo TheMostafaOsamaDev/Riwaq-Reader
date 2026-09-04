@@ -22,7 +22,7 @@
 // started jobs are removed immediately.
 //
 // Persistence. The queue state is mirrored to
-// $APPDATA/leaflet/downloadQueue.json on every transition (debounced)
+// $APPDATA/riwaq/downloadQueue.json on every transition (debounced)
 // so jobs survive an app kill. On load, anything that was queued or
 // running is reclassified as "interrupted" so the user can decide
 // whether to resume (Retry button) — we don't auto-pump on load
@@ -53,11 +53,12 @@ import {
   type SourceSnapshot,
 } from "./sourceLibrary";
 import { createHost } from "../sources/host";
+import { ROOT } from "./paths";
+import { migrateLegacyRoot } from "./legacyRoot";
 import { getSource } from "../sources/registry";
 import type { SourceChapter, SourceLine } from "../sources/types";
 
 const BASE = BaseDirectory.AppData;
-const ROOT = "leaflet";
 const QUEUE_FILE = `${ROOT}/downloadQueue.json`;
 
 // ── public job shape ───────────────────────────────────────────────────────
@@ -250,6 +251,7 @@ async function persist(): Promise<void> {
   };
   const text = JSON.stringify(persisted);
   try {
+    await migrateLegacyRoot();
     if (!(await exists(ROOT, { baseDir: BASE }))) {
       await mkdir(ROOT, { baseDir: BASE, recursive: true });
     }
@@ -269,6 +271,9 @@ async function persist(): Promise<void> {
  *  reclassified as `interrupted` so the user explicitly opts back in
  *  via Retry. Idempotent. */
 export async function loadPersistedQueue(): Promise<void> {
+  // Same ordering trap as shelves: reading before the move gives an empty
+  // queue, and the next persist() would write that over the real file.
+  await migrateLegacyRoot();
   if (persistLoaded) return;
   persistLoaded = true;
   try {

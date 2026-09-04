@@ -482,7 +482,7 @@ export function MobileSheet({
     // dragging the header and the page up by 113px as the sheet opened. The
     // sheet is meant to float over the reader, not shove it.
     //
-    // `.leaflet-clip-window` (global.css) upgrades the inline `hidden` below
+    // `.riwaq-clip-window` (global.css) upgrades the inline `hidden` below
     // to `overflow: clip`, which additionally stops THIS element from being
     // scrolled: a hidden box keeps its scroll range, and a `scrollIntoView`
     // inside the sheet was happy to spend it, hauling the sheet up mid-
@@ -490,7 +490,7 @@ export function MobileSheet({
     // renders this component without global.css. See the rule for the full
     // account.
     <div
-      className="leaflet-clip-window"
+      className="riwaq-clip-window"
       style={{ position: "absolute", inset: 0, zIndex: 20, overflow: "hidden" }}
     >
       <div

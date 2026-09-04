@@ -1,4 +1,4 @@
-// Persistent shelves — a leaflet/shelves.json sibling of library.json.
+// Persistent shelves — a riwaq/shelves.json sibling of library.json.
 // Pure list logic lives in shelfLogic.ts; this module is the thin Tauri-fs
 // wrapper (load/seed/save + CRUD). Deleting a shelf also strips its id from
 // every book via library.removeShelfFromAllBooks.
@@ -18,11 +18,13 @@ import {
   type Shelf,
 } from "./shelfLogic";
 import { ensureRoot, removeShelfFromAllBooks } from "./library";
+import { ROOT } from "./paths";
+import { migrateLegacyRoot } from "./legacyRoot";
 
 export type { Shelf };
 
 const BASE = BaseDirectory.AppData;
-const FILE = "leaflet/shelves.json";
+const FILE = `${ROOT}/shelves.json`;
 
 // Same locale probe pattern as library.ts's currentUiLocale().
 function currentUiLocale(): Locale {
@@ -57,6 +59,10 @@ async function write(shelves: Shelf[]): Promise<void> {
  *  and persist them. Once the file exists it is the source of truth — an
  *  empty file (user deleted all shelves) is NOT re-seeded. */
 export async function listShelves(): Promise<Shelf[]> {
+  // Before the exists() probe, not just before the write: a pre-migration
+  // probe reports "no shelves file", which seeds the defaults and then
+  // overwrites the real one the migration brings in.
+  await migrateLegacyRoot();
   if (!(await exists(FILE, { baseDir: BASE }))) {
     const tr = makeTr(currentUiLocale());
     const seeded = buildDefaultShelves(

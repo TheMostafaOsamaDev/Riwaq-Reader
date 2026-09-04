@@ -915,7 +915,7 @@ export function DesktopReader({
                 onChapterProgress={onPaginatedProgress}
                 pageTurnAnimation={t.pageTurnAnimation}
               >
-                <div key={chapter.id} className="leaflet-chapter-enter">
+                <div key={chapter.id} className="riwaq-chapter-enter">
                   <BookBody
                     bookId={book.id}
                     chapter={chapter}
@@ -952,7 +952,7 @@ export function DesktopReader({
               }}
               className="no-scrollbar"
             >
-              <div key={chapter.id} className="leaflet-chapter-enter">
+              <div key={chapter.id} className="riwaq-chapter-enter">
                 <BookBody
                   bookId={book.id}
                   chapter={chapter}
@@ -1083,7 +1083,7 @@ export function DesktopReader({
 /**
  * Centered chapter-name pop-up. Fires on each chapter swap so the reader
  * gets a clear "you're now on Chapter X" cue without needing to look at
- * the chrome bar. Animation timing is owned by CSS (.leaflet-chapter-toast),
+ * the chrome bar. Animation timing is owned by CSS (.riwaq-chapter-toast),
  * the host just renders + unmounts.
  */
 /** One-time focus-mode hint. Same pill as ChapterToast, held longer because
@@ -1102,7 +1102,7 @@ function ChapterToast({
 }) {
   return (
     <div
-      className="leaflet-chapter-toast"
+      className="riwaq-chapter-toast"
       style={{
         position: "absolute",
         left: "50%",

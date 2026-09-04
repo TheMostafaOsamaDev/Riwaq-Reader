@@ -6,8 +6,9 @@ import {
   UI_FONT_STACKS,
   type FontFamilyKey,
 } from "../styles/tokens";
+import { migrateStorageKey } from "../lib/legacyStorage";
 
-const STORAGE_KEY = "leaflet:tweaks:v1";
+const STORAGE_KEY = "riwaq:tweaks:v1";
 
 export const DEFAULT_TWEAKS: Tweaks = {
   uiLang: "system",
@@ -41,6 +42,7 @@ export const DEFAULT_TWEAKS: Tweaks = {
 function load(): Tweaks {
   if (typeof localStorage === "undefined") return DEFAULT_TWEAKS;
   try {
+    migrateStorageKey(STORAGE_KEY);
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_TWEAKS;
     const parsed = JSON.parse(raw);

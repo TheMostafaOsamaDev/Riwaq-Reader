@@ -56,16 +56,16 @@ export function AnimatedDialog({
   const backdropClass = reduced
     ? undefined
     : phase === "exit"
-      ? "leaflet-backdrop-exit"
+      ? "riwaq-backdrop-exit"
       : phase === "enter"
-        ? "leaflet-backdrop-enter"
+        ? "riwaq-backdrop-enter"
         : undefined;
   const cardClass = reduced
     ? undefined
     : phase === "exit"
-      ? "leaflet-dialog-exit"
+      ? "riwaq-dialog-exit"
       : phase === "enter"
-        ? "leaflet-dialog-enter"
+        ? "riwaq-dialog-enter"
         : undefined;
   const animating = phase === "enter" || phase === "exit";
 

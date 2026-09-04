@@ -1218,6 +1218,6 @@ function tapZoneFlashStyle(
     background: theme.ink,
     pointerEvents: "none",
     zIndex: 30,
-    animation: "leaflet-zone-flash 3000ms ease-out forwards",
+    animation: "riwaq-zone-flash 3000ms ease-out forwards",
   };
 }

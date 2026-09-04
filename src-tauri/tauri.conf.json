@@ -24,7 +24,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/leaflet/**", "$APPLOCALDATA/leaflet/**"]
+        "scope": ["$APPDATA/riwaq/**", "$APPLOCALDATA/riwaq/**"]
       }
     }
   },

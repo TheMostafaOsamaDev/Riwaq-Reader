@@ -58,7 +58,7 @@ describe("index.html first-paint bootstrap", () => {
   });
 
   it("reads the same localStorage key useTweaks writes", () => {
-    expect(html).toContain('localStorage.getItem("leaflet:tweaks:v1")');
+    expect(html).toContain('localStorage.getItem("riwaq:tweaks:v1")');
   });
 
   it("loads no remote stylesheet — the app has to start offline", () => {

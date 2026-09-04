@@ -50,9 +50,9 @@ import {
 } from "./sourceLibrary";
 import { importEpubBytes } from "./library";
 import type { ConversionJob } from "./downloadQueue";
+import { ROOT } from "./paths";
 
 const BASE = BaseDirectory.AppData;
-const ROOT = "leaflet";
 const BOOKS = `${ROOT}/books`;
 
 interface EnrichedChapter {

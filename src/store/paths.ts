@@ -9,7 +9,12 @@
 // risking a cycle through library.ts.
 
 /** Root folder for everything the app stores, relative to app-data. */
-export const ROOT = "leaflet";
+export const ROOT = "riwaq";
+/** What {@link ROOT} was called before the Leaflet → Riwaq rename. An install
+ *  from <= v0.1.0 keeps its whole library here until `migrateLegacyRoot()`
+ *  (./legacyRoot.ts) moves it across. Keep until it is safe to assume nobody
+ *  is upgrading from a Leaflet-era install any more. */
+export const LEGACY_ROOT = "leaflet";
 export const BOOKS = `${ROOT}/books`;
 export const INDEX = `${ROOT}/library.json`;
 /** Where a picked file lands before we know what it is. */

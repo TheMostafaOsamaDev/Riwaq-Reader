@@ -37,7 +37,7 @@ This document covers the project layout, module boundaries, and data flow.
               │   • plugin-fs — AppData R/W      │
               │   • plugin-opener                │
               │                                  │
-              │   asset:// → AppData/leaflet/** │
+              │   asset:// → AppData/riwaq/** │
               │     (serves cover images to     │
               │      the webview via            │
               │      convertFileSrc)            │
@@ -47,7 +47,7 @@ This document covers the project layout, module boundaries, and data flow.
 ## Layout
 
 ```
-Leaflet-ebook-reader/
+Riwaq-ebook-reader/
 ├── index.html                      # Vite entry, loads Google Fonts
 ├── package.json                    # pnpm-managed; scripts: dev/build/tauri
 ├── vite.config.ts
@@ -94,7 +94,7 @@ Leaflet-ebook-reader/
 ## Why this shape
 
 - **Pure-JS EPUB parser, not epub.js.** `src/epub/parser.ts` uses `jszip` to unzip the book and the standard `DOMParser` to parse OPF / nav / NCX / XHTML. This keeps the reader layer independent of epub.js's iframe-based rendering — we emit paragraph-level text that `BookBody.tsx` renders itself, which means typography, RTL, and highlights are all native React.
-- **Tauri owns the filesystem, the webview owns everything else.** Rust only needs to host the webview, surface the system file picker, and serve `$APPDATA/leaflet/**` over `asset://`. No custom Rust commands needed.
+- **Tauri owns the filesystem, the webview owns everything else.** Rust only needs to host the webview, surface the system file picker, and serve `$APPDATA/riwaq/**` over `asset://`. No custom Rust commands needed.
 - **State**: no Redux, no zustand. Local `useState` (in `App.tsx`, `Library.tsx`, and the reader components), persisted via `store/library.ts` whenever the user causes a durable change (import, delete, progress tick, bookmark).
 - **Routing**: a single `view` state in `App.tsx` (`"library" | "reader"`). Mobile-friendly and avoids a router dep.
 
@@ -128,9 +128,9 @@ user clicks Import
         │     ├─ OPF: dc:title/creator/language + manifest + spine
         │     ├─ EPUB 3 nav.xhtml OR EPUB 2 NCX → chapter titles
         │     └─ each spine item → XHTML → block-level paragraphs
-        ├─ fs.writeTextFile($APPDATA/leaflet/books/<id>/book.json)
-        ├─ fs.writeTextFile($APPDATA/leaflet/books/<id>/state.json)
-        └─ append to $APPDATA/leaflet/library.json → BookIndexEntry
+        ├─ fs.writeTextFile($APPDATA/riwaq/books/<id>/book.json)
+        ├─ fs.writeTextFile($APPDATA/riwaq/books/<id>/state.json)
+        └─ append to $APPDATA/riwaq/library.json → BookIndexEntry
 
 user clicks a library card
   └─→ loadBook(id) → { book, state }
@@ -156,13 +156,13 @@ pickAndImportEpub()
             ├─ readNavTitles(zip, …) # EPUB3 nav or EPUB2 NCX
             └─ readCover(zip, …)     ← 5-tier resolver (see docs/progress.md)
        └─ write:
-            $APPDATA/leaflet/books/<id>/book.json
-            $APPDATA/leaflet/books/<id>/state.json
-            $APPDATA/leaflet/books/<id>/cover.<ext>   (if cover found)
+            $APPDATA/riwaq/books/<id>/book.json
+            $APPDATA/riwaq/books/<id>/state.json
+            $APPDATA/riwaq/books/<id>/cover.<ext>   (if cover found)
        └─ push index entry to library.json with coverFile set
 
 coverSrcFor(entry)
-  └─ join(appDataDir, "leaflet", "books", entry.id, entry.coverFile)
+  └─ join(appDataDir, "riwaq", "books", entry.id, entry.coverFile)
   └─ convertFileSrc(abs)  → asset://localhost/<encoded>
   └─ append ?v=<addedAt> so replacing a book bypasses the webview cache
 ```
@@ -188,12 +188,12 @@ resolves. Titles are looked up by three candidate keys (raw href,
 nav-relative, opf-relative) because real-world EPUBs are inconsistent
 about relative paths.
 
-## Storage layout ($APPDATA/leaflet/)
+## Storage layout ($APPDATA/riwaq/)
 
 Everything lives under the per-app AppData dir:
 
 ```
-$APPDATA/leaflet/
+$APPDATA/riwaq/
 ├── library.json                    # { version: 1, books: BookIndexEntry[] }
 └── books/
     └── <book-id>/
@@ -236,7 +236,7 @@ the Amiri font stack when `tweaks.rtl` is on. The library stays LTR.
 - `dialog:default` — the file picker.
 - `fs:*` with `$APPDATA/**` and `$APPLOCALDATA/**` scope — read/write under the app dir. No access outside it.
 
-The asset protocol scope in `tauri.conf.json` narrows that further for webview-loadable URLs: only `$APPDATA/leaflet/**` and `$APPLOCALDATA/leaflet/**` can be served over `asset://`.
+The asset protocol scope in `tauri.conf.json` narrows that further for webview-loadable URLs: only `$APPDATA/riwaq/**` and `$APPLOCALDATA/riwaq/**` can be served over `asset://`.
 
 ## What's still intentionally not there
 

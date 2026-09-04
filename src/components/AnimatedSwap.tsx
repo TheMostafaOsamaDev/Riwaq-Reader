@@ -1,6 +1,6 @@
 // Cross-fade swap for top-level view changes. Wraps the App's
 // Library / Reader / Stream views and runs the
-// `.leaflet-view-enter` + `.leaflet-view-exit` keyframes when `viewKey`
+// `.riwaq-view-enter` + `.riwaq-view-exit` keyframes when `viewKey`
 // changes. Both layers stay mounted simultaneously for the duration of
 // the longer animation so the user sees the new view rising over the
 // old one rather than a blank-frame snap.
@@ -19,7 +19,7 @@ interface SwapSlot {
   key: string;
   /** What to render. Re-assigned in place if `key` is unchanged. */
   content: ReactNode;
-  /** Drives which `.leaflet-view-*` class is on the layer. */
+  /** Drives which `.riwaq-view-*` class is on the layer. */
   phase: "enter" | "exit" | "idle";
 }
 
@@ -92,9 +92,9 @@ export function AnimatedSwap({ viewKey, children }: Props) {
             reduced
               ? undefined
               : s.phase === "enter"
-                ? "leaflet-view-enter"
+                ? "riwaq-view-enter"
                 : s.phase === "exit"
-                  ? "leaflet-view-exit"
+                  ? "riwaq-view-exit"
                   : undefined
           }
           // Slot is a flex column so children that use `flex: 1` to fill

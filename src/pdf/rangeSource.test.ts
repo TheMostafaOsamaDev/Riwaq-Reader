@@ -3,6 +3,11 @@
 // file read, then bytes.slice() because pdf.js may detach the buffer) and
 // the same again every time the book was opened.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { bookDir } from "../store/paths";
+
+// Derived, not spelled out: the root folder name has changed before, and a
+// test that hardcodes it would keep passing while the app read the wrong path.
+const PDF = `${bookDir("b1")}/book.pdf`;
 
 const calls: { path: string; offset: number; length: number }[] = [];
 let fail = false;
@@ -52,9 +57,9 @@ beforeEach(() => {
 
 describe("readFileRange", () => {
   it("asks Rust for exactly the requested slice", async () => {
-    const bytes = await readFileRange("leaflet/books/b1/book.pdf", 1024, 512);
+    const bytes = await readFileRange(PDF, 1024, 512);
     expect(calls).toEqual([
-      { path: "leaflet/books/b1/book.pdf", offset: 1024, length: 512 },
+      { path: PDF, offset: 1024, length: 512 },
     ]);
     expect(Array.from(bytes)).toEqual([1, 2, 3]);
   });
@@ -64,14 +69,14 @@ describe("createFileRangeTransport", () => {
   it("turns a pdf.js range request into a file read", async () => {
     const t = createFileRangeTransport(
       fakePdfjs,
-      "leaflet/books/b1/book.pdf",
+      PDF,
       9000,
       new Uint8Array([9]),
     ) as unknown as FakeTransport;
     t.requestDataRange(100, 356);
     await vi.waitFor(() => expect(t.ranges).toHaveLength(1));
     expect(calls).toEqual([
-      { path: "leaflet/books/b1/book.pdf", offset: 100, length: 256 },
+      { path: PDF, offset: 100, length: 256 },
     ]);
     expect(t.ranges[0][0]).toBe(100);
   });
@@ -82,7 +87,7 @@ describe("createFileRangeTransport", () => {
     fail = true;
     const t = createFileRangeTransport(
       fakePdfjs,
-      "leaflet/books/b1/book.pdf",
+      PDF,
       9000,
       new Uint8Array([9]),
     ) as unknown as FakeTransport;

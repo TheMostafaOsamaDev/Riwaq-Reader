@@ -7,7 +7,7 @@
 //              and body update so the user still sees state.
 //
 // Both paths reuse the same notification id (so the OS replaces in
-// place) and the same `leaflet-downloads` channel on Android.
+// place) and the same `riwaq-downloads` channel on Android.
 
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
@@ -17,7 +17,7 @@ import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
 /** Channel id used by every download/conversion notification. The
  *  Android channel is created on the Kotlin side; the plugin's
  *  fallback path expects the same id for desktop/iOS consistency. */
-export const DOWNLOAD_CHANNEL_ID = "leaflet-downloads";
+export const DOWNLOAD_CHANNEL_ID = "riwaq-downloads";
 
 /** Stable notification id reused so the system replaces in place
  *  rather than stacking. */

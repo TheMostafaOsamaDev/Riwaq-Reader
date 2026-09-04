@@ -371,7 +371,7 @@ function App() {
         goReader(id);
         // Keep the spinner up over the AnimatedSwap crossfade so the
         // user doesn't catch the Library through the reader's fade-in.
-        // The delay matches the .leaflet-view-enter keyframe (MOTION.med
+        // The delay matches the .riwaq-view-enter keyframe (MOTION.med
         // = 240ms); reduced-motion users get the swap instantly, so
         // there's nothing to wait for.
         if (reduced) {

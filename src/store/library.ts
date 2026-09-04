@@ -31,6 +31,7 @@ import { parseEpubFromSource } from "../epub/parser";
 import { openNativeZip } from "../epub/zipSource";
 import { writeImageManifest } from "./epubImages";
 import { BOOKS, bookDir, INDEX, ROOT, STAGING } from "./paths";
+import { migrateLegacyRoot } from "./legacyRoot";
 // Re-exported because callers across the app import `bookDir` from here.
 export { bookDir };
 import {
@@ -208,6 +209,7 @@ interface LibraryFile {
 // ── low-level fs helpers ──────────────────────────────────────────────────
 
 export async function ensureRoot() {
+  await migrateLegacyRoot();
   for (const dir of [ROOT, BOOKS, STAGING]) {
     if (!(await exists(dir, { baseDir: BASE }))) {
       await mkdir(dir, { baseDir: BASE, recursive: true });
@@ -1008,7 +1010,7 @@ async function backfillMissingCovers(entries: BookIndexEntry[]): Promise<void> {
 //
 // The webview can't open arbitrary paths directly — it has to go through
 // Tauri's `asset://` protocol (configured in tauri.conf.json to allow
-// `$APPDATA/leaflet/**`). `convertFileSrc` wraps an absolute path into
+// `$APPDATA/riwaq/**`). `convertFileSrc` wraps an absolute path into
 // that protocol's URL form.
 
 let cachedAppDataDir: string | null = null;
@@ -1032,7 +1034,7 @@ export async function coverSrcFor(
 
 /** Resolve a chapter image's storage-relative `src` (e.g. `images/img-001.jpg`)
  *  into an asset-protocol URL the webview can load. The file lives at
- *  `$APPDATA/leaflet/books/<bookId>/<src>`, which is in the Tauri asset scope.
+ *  `$APPDATA/riwaq/books/<bookId>/<src>`, which is in the Tauri asset scope.
  *
  *  Absolute URLs (http/https/data:) pass through unchanged so the same
  *  resolver works for the streaming reader, which mounts a virtual EpubBook

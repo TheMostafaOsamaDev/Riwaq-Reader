@@ -66,9 +66,9 @@ export function AnimatedFullScreen({
     const sheetClass = reduced
       ? undefined
       : phase === "exit"
-        ? "leaflet-sheet-exit"
+        ? "riwaq-sheet-exit"
         : phase === "enter"
-          ? "leaflet-sheet-enter"
+          ? "riwaq-sheet-enter"
           : undefined;
     return (
       <div
@@ -94,16 +94,16 @@ export function AnimatedFullScreen({
   const backdropClass = reduced
     ? undefined
     : phase === "exit"
-      ? "leaflet-backdrop-exit"
+      ? "riwaq-backdrop-exit"
       : phase === "enter"
-        ? "leaflet-backdrop-enter"
+        ? "riwaq-backdrop-enter"
         : undefined;
   const cardClass = reduced
     ? undefined
     : phase === "exit"
-      ? "leaflet-fullscreen-exit"
+      ? "riwaq-fullscreen-exit"
       : phase === "enter"
-        ? "leaflet-fullscreen-enter"
+        ? "riwaq-fullscreen-enter"
         : undefined;
   return (
     <div

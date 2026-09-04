@@ -1,6 +1,6 @@
-# Leaflet — Docs
+# Riwaq — Docs
 
-This folder tracks the implementation of the **Leaflet** e-book reader, rebuilt from a Claude Design handoff bundle as a cross-platform Tauri v2 app (desktop + Android).
+This folder tracks the implementation of the **Riwaq** e-book reader, rebuilt from a Claude Design handoff bundle as a cross-platform Tauri v2 app (desktop + Android).
 
 ## Files
 

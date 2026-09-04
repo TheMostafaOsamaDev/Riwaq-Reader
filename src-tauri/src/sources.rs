@@ -171,7 +171,7 @@ pub async fn source_render_and_extract(
         .parse()
         .map_err(|e: url::ParseError| format!("Invalid URL: {e}"))?;
     let label = format!(
-        "leaflet-scraper-{}",
+        "riwaq-scraper-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -503,7 +503,7 @@ fn origin_lock(origin: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
 #[cfg(desktop)]
 fn session_label(origin: &str) -> String {
     format!(
-        "leaflet-session-{}",
+        "riwaq-session-{}",
         origin
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
@@ -519,8 +519,8 @@ fn session_bridge_script() -> String {
     format!(
         r#"
 (function () {{
-  if (window.__leafletBridge) return;
-  var B = window.__leafletBridge = {{
+  if (window.__riwaqBridge) return;
+  var B = window.__riwaqBridge = {{
     _state: "{wait}",
     _written: null,
     _b64: "",
@@ -614,7 +614,7 @@ fn origin_of(url: &url::Url) -> String {
 /// Ask the page to re-assert its fragment, then read it back.
 #[cfg(desktop)]
 async fn read_state(window: &tauri::WebviewWindow) -> Result<String, String> {
-    let _ = window.eval("window.__leafletBridge && window.__leafletBridge.poll()");
+    let _ = window.eval("window.__riwaqBridge && window.__riwaqBridge.poll()");
     tokio::time::sleep(Duration::from_millis(20)).await;
     let url = window.url().map_err(|e| format!("url-read failed: {e}"))?;
     Ok(url.fragment().unwrap_or("").to_string())
@@ -692,7 +692,7 @@ async fn acquire_session(
                 "Timed out waiting for {origin} to clear its browser check."
             ));
         }
-        let _ = window.eval("window.__leafletBridge && window.__leafletBridge.probe()");
+        let _ = window.eval("window.__riwaqBridge && window.__riwaqBridge.probe()");
         tokio::time::sleep(Duration::from_millis(80)).await;
         if let Ok(u) = window.url() {
             if u.fragment().unwrap_or("") == SESSION_READY {
@@ -756,7 +756,7 @@ async fn run_session_request(
     let encoded = urlencoding::encode(&req).into_owned();
     window
         .eval(&format!(
-            "window.__leafletBridge && window.__leafletBridge.request(\"{encoded}\")"
+            "window.__riwaqBridge && window.__riwaqBridge.request(\"{encoded}\")"
         ))
         .map_err(|e| format!("dispatch failed: {e}"))?;
 
@@ -787,7 +787,7 @@ async fn run_session_request(
         let want = SESSION_CHUNK_SIZE.min(total - start);
         window
             .eval(&format!(
-                "window.__leafletBridge && window.__leafletBridge.chunk({start},{want})"
+                "window.__riwaqBridge && window.__riwaqBridge.chunk({start},{want})"
             ))
             .map_err(|e| format!("chunk dispatch failed: {e}"))?;
         let expect = format!("{SESSION_CHUNK}{start}:");

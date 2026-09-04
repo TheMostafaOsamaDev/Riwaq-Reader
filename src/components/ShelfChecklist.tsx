@@ -59,12 +59,12 @@ export function ShelfChecklist({
         justifyContent: "center",
         padding: 20,
         fontFamily: FONT_STACKS.sans,
-        animation: "leafletShelfChecklistFade 130ms ease",
+        animation: "riwaqShelfChecklistFade 130ms ease",
       }}
     >
       <style>{`
-        @keyframes leafletShelfChecklistFade { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes leafletShelfChecklistPop {
+        @keyframes riwaqShelfChecklistFade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes riwaqShelfChecklistPop {
           from { opacity: 0; transform: translateY(6px) scale(0.98); }
           to   { opacity: 1; transform: none; }
         }
@@ -84,7 +84,7 @@ export function ShelfChecklist({
           borderRadius: 14,
           boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
           overflow: "hidden",
-          animation: "leafletShelfChecklistPop 150ms ease",
+          animation: "riwaqShelfChecklistPop 150ms ease",
         }}
       >
         <div

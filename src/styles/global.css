@@ -340,7 +340,7 @@ textarea::placeholder {
    Do NOT add `scrollbar-width` to these rules: setting the standard property
    makes Chromium ignore the `::-webkit-scrollbar` pseudo-elements entirely
    and fall back to a default bar. (The `.no-scrollbar` /
-   `.leaflet-scroll-hidden` helpers below set it deliberately, to hide.) */
+   `.riwaq-scroll-hidden` helpers below set it deliberately, to hide.) */
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -404,17 +404,17 @@ textarea::placeholder {
    flips under dir="rtl" (its gutter would otherwise land flush against
    adjacent rounded chrome). Scrolling still works via wheel/trackpad; unlike
    reserving a gutter, this keeps the container's content full width. */
-.leaflet-scroll-hidden {
+.riwaq-scroll-hidden {
   scrollbar-width: none;
 }
-.leaflet-scroll-hidden::-webkit-scrollbar {
+.riwaq-scroll-hidden::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
 
 /* Mobile pill row uses inline-style scrollbar hide; webkit needs the
  * pseudo-element rule, which only attaches via a class selector. */
-.leaflet-pill-row::-webkit-scrollbar {
+.riwaq-pill-row::-webkit-scrollbar {
   display: none;
 }
 
@@ -528,7 +528,7 @@ input:focus-visible,
 /* Chapter-mount transition. Used by the reader to mark a chapter swap so
    the user gets a tiny visual cue that they've moved between chapters —
    the content fades in and rises a few pixels. */
-@keyframes leaflet-chapter-enter {
+@keyframes riwaq-chapter-enter {
   from {
     opacity: 0;
     transform: translateY(8px);
@@ -538,15 +538,15 @@ input:focus-visible,
     transform: none;
   }
 }
-.leaflet-chapter-enter {
-  animation: leaflet-chapter-enter 280ms ease-out;
+.riwaq-chapter-enter {
+  animation: riwaq-chapter-enter 280ms ease-out;
 }
 
 /* Volume-accordion body reveal — fades/rises the chapter list in when a
    volume is expanded. Collapse is instant (the list unmounts); the header
    chevron rotates both ways to signal state. Auto-disabled under
    prefers-reduced-motion by the global rule below. */
-@keyframes leaflet-collapse-enter {
+@keyframes riwaq-collapse-enter {
   from {
     opacity: 0;
     transform: translateY(-4px);
@@ -556,15 +556,15 @@ input:focus-visible,
     transform: none;
   }
 }
-.leaflet-collapse-enter {
-  animation: leaflet-collapse-enter 200ms ease-out;
+.riwaq-collapse-enter {
+  animation: riwaq-collapse-enter 200ms ease-out;
 }
 
 /* Chapter-change toast: a centered pill that pops in, holds the chapter
    title for ~1s, then fades out. The single keyframe sequence handles
    in/hold/out so the host component just renders the element and lets
    CSS take care of the timing. */
-@keyframes leaflet-chapter-toast {
+@keyframes riwaq-chapter-toast {
   0% {
     opacity: 0;
     transform: translate(-50%, calc(-50% + 14px)) scale(0.94);
@@ -582,8 +582,8 @@ input:focus-visible,
     transform: translate(-50%, calc(-50% - 6px)) scale(1);
   }
 }
-.leaflet-chapter-toast {
-  animation: leaflet-chapter-toast 1500ms cubic-bezier(0.22, 0.61, 0.36, 1)
+.riwaq-chapter-toast {
+  animation: riwaq-chapter-toast 1500ms cubic-bezier(0.22, 0.61, 0.36, 1)
     forwards;
 }
 
@@ -591,15 +591,15 @@ input:focus-visible,
    sentence to read rather than a chapter title to glance at. Shown once, the
    first time focus mode hides the chrome, so an empty window is never a
    mystery on a later launch. */
-.leaflet-focus-hint {
-  animation: leaflet-chapter-toast 3200ms cubic-bezier(0.22, 0.61, 0.36, 1)
+.riwaq-focus-hint {
+  animation: riwaq-chapter-toast 3200ms cubic-bezier(0.22, 0.61, 0.36, 1)
     forwards;
 }
 
 /* Mobile tap-zone preview: a transparent tinted strip on each side
    that fades in, holds, then fades out over ~3s so the user can see
    how wide the new tap zones are when they adjust the width slider. */
-@keyframes leaflet-zone-flash {
+@keyframes riwaq-zone-flash {
   0%   { opacity: 0; }
   6%   { opacity: 0.18; }
   55%  { opacity: 0.18; }
@@ -610,7 +610,7 @@ input:focus-visible,
    gradient sweeps across to give the user a sense of progress while the
    real content is being fetched. Colors live on the element via
    `--skel-base` and `--skel-shine` so each theme can tune contrast. */
-@keyframes leaflet-skeleton-shimmer {
+@keyframes riwaq-skeleton-shimmer {
   0% {
     background-position: 200% 0;
   }
@@ -618,7 +618,7 @@ input:focus-visible,
     background-position: -200% 0;
   }
 }
-.leaflet-skeleton {
+.riwaq-skeleton {
   background: linear-gradient(
     90deg,
     var(--skel-base, rgba(0, 0, 0, 0.06)) 0%,
@@ -626,130 +626,130 @@ input:focus-visible,
     var(--skel-base, rgba(0, 0, 0, 0.06)) 100%
   );
   background-size: 200% 100%;
-  animation: leaflet-skeleton-shimmer 1.6s ease-in-out infinite;
+  animation: riwaq-skeleton-shimmer 1.6s ease-in-out infinite;
 }
 
 /* App-level view-swap (Library ↔ Reader ↔ Stream). Both layers are
    mounted simultaneously by AnimatedSwap and cross-fade through each
    other for the duration of the longer animation. */
-@keyframes leaflet-view-enter {
+@keyframes riwaq-view-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes leaflet-view-exit {
+@keyframes riwaq-view-exit {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-.leaflet-view-enter {
-  animation: leaflet-view-enter 240ms ease-out both;
+.riwaq-view-enter {
+  animation: riwaq-view-enter 240ms ease-out both;
 }
-.leaflet-view-exit {
-  animation: leaflet-view-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-view-exit {
+  animation: riwaq-view-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
   pointer-events: none;
 }
 
 /* Settings: sidebar categories morph in + content/category slide.
    `--slide-from` is set inline per reading direction (RTL flips the sign). */
-@keyframes leaflet-settings-slide-in {
+@keyframes riwaq-settings-slide-in {
   from { opacity: 0; transform: translateX(var(--slide-from, 10px)); }
   to { opacity: 1; transform: translateX(0); }
 }
-.leaflet-settings-slide-in {
-  animation: leaflet-settings-slide-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+.riwaq-settings-slide-in {
+  animation: riwaq-settings-slide-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 /* Backdrop + sheet (mobile) and side panel (desktop) enter/exit. The
    sheet rises from the bottom on mobile; the side panel slides from
    its anchor edge on desktop. Backdrop fades in/out in lock-step. */
-@keyframes leaflet-backdrop-enter {
+@keyframes riwaq-backdrop-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes leaflet-backdrop-exit {
+@keyframes riwaq-backdrop-exit {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-.leaflet-backdrop-enter {
-  animation: leaflet-backdrop-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+.riwaq-backdrop-enter {
+  animation: riwaq-backdrop-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
-.leaflet-backdrop-exit {
-  animation: leaflet-backdrop-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-backdrop-exit {
+  animation: riwaq-backdrop-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 /* Used by AnimatedFullScreen for the mobile DownloadQueue/Settings
    slide-up/slide-down. MobileSheet no longer uses these — it drives
    its enter/exit via inline transforms — but AnimatedFullScreen's
    mobile branch still applies these class names. */
-@keyframes leaflet-sheet-enter {
+@keyframes riwaq-sheet-enter {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
-@keyframes leaflet-sheet-exit {
+@keyframes riwaq-sheet-exit {
   from { transform: translateY(0); }
   to { transform: translateY(100%); }
 }
-.leaflet-sheet-enter {
-  animation: leaflet-sheet-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+.riwaq-sheet-enter {
+  animation: riwaq-sheet-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
-.leaflet-sheet-exit {
-  animation: leaflet-sheet-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-sheet-exit {
+  animation: riwaq-sheet-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
-@keyframes leaflet-panel-enter-right {
+@keyframes riwaq-panel-enter-right {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
 }
-@keyframes leaflet-panel-exit-right {
+@keyframes riwaq-panel-exit-right {
   from { transform: translateX(0); }
   to { transform: translateX(100%); }
 }
-@keyframes leaflet-dialog-enter {
+@keyframes riwaq-dialog-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes leaflet-dialog-exit {
+@keyframes riwaq-dialog-exit {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-.leaflet-dialog-enter {
-  animation: leaflet-dialog-enter 240ms ease-out both;
+.riwaq-dialog-enter {
+  animation: riwaq-dialog-enter 240ms ease-out both;
 }
-.leaflet-dialog-exit {
-  animation: leaflet-dialog-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-dialog-exit {
+  animation: riwaq-dialog-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
-@keyframes leaflet-fullscreen-enter {
+@keyframes riwaq-fullscreen-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes leaflet-fullscreen-exit {
+@keyframes riwaq-fullscreen-exit {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-.leaflet-fullscreen-enter {
-  animation: leaflet-fullscreen-enter 240ms ease-out both;
+.riwaq-fullscreen-enter {
+  animation: riwaq-fullscreen-enter 240ms ease-out both;
 }
-.leaflet-fullscreen-exit {
-  animation: leaflet-fullscreen-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-fullscreen-exit {
+  animation: riwaq-fullscreen-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
-@keyframes leaflet-panel-enter-left {
+@keyframes riwaq-panel-enter-left {
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
 }
-@keyframes leaflet-panel-exit-left {
+@keyframes riwaq-panel-exit-left {
   from { transform: translateX(0); }
   to { transform: translateX(-100%); }
 }
-.leaflet-panel-enter-right {
-  animation: leaflet-panel-enter-right 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+.riwaq-panel-enter-right {
+  animation: riwaq-panel-enter-right 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
-.leaflet-panel-exit-right {
-  animation: leaflet-panel-exit-right 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-panel-exit-right {
+  animation: riwaq-panel-exit-right 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
-.leaflet-panel-enter-left {
-  animation: leaflet-panel-enter-left 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+.riwaq-panel-enter-left {
+  animation: riwaq-panel-enter-left 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
-.leaflet-panel-exit-left {
-  animation: leaflet-panel-exit-left 180ms cubic-bezier(0.4, 0, 1, 1) both;
+.riwaq-panel-exit-left {
+  animation: riwaq-panel-exit-left 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -837,6 +837,6 @@ input:focus-visible,
    declaration below and keeps the inline clip, and a dev harness that renders
    the component without importing this stylesheet still clips. Inline styles
    outrank a class selector, so the upgrade has to say so. */
-.leaflet-clip-window {
+.riwaq-clip-window {
   overflow: clip !important;
 }

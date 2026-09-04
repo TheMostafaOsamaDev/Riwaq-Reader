@@ -607,7 +607,7 @@ mod tests {
     /// short read here surfaces as a corrupt document rather than an error.
     #[test]
     fn reads_an_exact_byte_range() {
-        let dir = std::env::temp_dir().join(format!("leaflet-range-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("riwaq-range-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("book.pdf");
         let body: Vec<u8> = (0..=255u8).collect();

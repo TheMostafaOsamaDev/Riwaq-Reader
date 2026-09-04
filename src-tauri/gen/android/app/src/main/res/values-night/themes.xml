@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Theme.leaflet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.Riwaq" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Same attribute as the day variant; @color/riwaq_launch_bg resolves
              to the dark value from values-night/colors.xml. See
              values/themes.xml for why this is set at all. -->

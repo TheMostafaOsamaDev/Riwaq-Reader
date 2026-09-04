@@ -15,11 +15,11 @@ import androidx.core.app.NotificationManagerCompat
  * for the real Android widget. Invoked from Rust over JNI; see
  * src-tauri/src/notify.rs.
  *
- * Channel id matches the existing TypeScript-side `leaflet-downloads`
+ * Channel id matches the existing TypeScript-side `riwaq-downloads`
  * channel so importance / vibration policy stays consistent.
  */
 object DownloadNotifier {
-    private const val CHANNEL_ID = "leaflet-downloads"
+    private const val CHANNEL_ID = "riwaq-downloads"
     private const val CHANNEL_NAME = "Downloads"
     private const val CHANNEL_DESC = "Chapter downloads and offline-book conversions"
 
@@ -89,7 +89,7 @@ object DownloadNotifier {
      * @param ongoing If true, marks the notification as background work
      *   (suppresses heads-up + can't be swiped away).
      * @param tapsToQueue If true, attaches a PendingIntent that opens
-     *   MainActivity with extra `leaflet.open=queue`. If false, no tap
+     *   MainActivity with extra `riwaq.open=queue`. If false, no tap
      *   intent (notification is informational).
      */
     @JvmStatic
@@ -125,7 +125,7 @@ object DownloadNotifier {
         if (tapsToQueue) {
             val intent = Intent(ctx, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra("leaflet.open", "queue")
+                putExtra("riwaq.open", "queue")
             }
             // API 31+ requires FLAG_IMMUTABLE on PendingIntents.
             val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

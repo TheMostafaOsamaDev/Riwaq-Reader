@@ -26,13 +26,13 @@ const probe = net.createServer();
 probe.once("error", (err) => {
   if (err && err.code === "EADDRINUSE") {
     console.log(
-      `[leaflet-dev] Vite already listening on :${PORT} — reusing existing dev server.`,
+      `[riwaq-dev] Vite already listening on :${PORT} — reusing existing dev server.`,
     );
     // Tauri proceeds as soon as this command exits cleanly; the
     // devUrl is already reachable through the other process.
     process.exit(0);
   }
-  console.error("[leaflet-dev] port probe failed:", err);
+  console.error("[riwaq-dev] port probe failed:", err);
   process.exit(1);
 });
 

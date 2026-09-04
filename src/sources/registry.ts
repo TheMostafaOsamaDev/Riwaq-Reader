@@ -6,7 +6,7 @@
 // factory the first time a source is requested and caches the instance for
 // the session.
 //
-// Future work: load extensions from $APPDATA/leaflet/extensions/ at startup,
+// Future work: load extensions from $APPDATA/riwaq/extensions/ at startup,
 // each bundle a JS file + manifest.json. The registry's public API stays
 // the same — `listSources()` and `getSource(id)` — so the rest of the app
 // doesn't need to know whether a source is built-in or sideloaded.

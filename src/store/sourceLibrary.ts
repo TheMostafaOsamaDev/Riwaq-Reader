@@ -1,6 +1,6 @@
 // Persisted state for source-backed library entries.
 //
-// Layout under $APPDATA/leaflet/books/<id>/:
+// Layout under $APPDATA/riwaq/books/<id>/:
 //
 //   source.json                  the novel snapshot — metadata, volumes,
 //                                chapters with per-chapter flags
@@ -42,9 +42,10 @@ import type {
   SourceNovelMeta,
   SourceVolume,
 } from "../sources/types";
+import { ROOT } from "./paths";
+import { migrateLegacyRoot } from "./legacyRoot";
 
 const BASE = BaseDirectory.AppData;
-const ROOT = "leaflet";
 const BOOKS = `${ROOT}/books`;
 
 // ── persisted shapes ───────────────────────────────────────────────────────
@@ -206,6 +207,7 @@ async function writeSnapshotFromSourceNovelImpl(
   novelUrl: string,
   novel: SourceNovel,
 ): Promise<SourceSnapshot> {
+  await migrateLegacyRoot();
   const dir = bookDir(entryId);
   if (!(await exists(dir, { baseDir: BASE }))) {
     await mkdir(dir, { baseDir: BASE, recursive: true });
@@ -540,6 +542,7 @@ export async function writeChapterContent(
   lines: SourceLine[],
   imageFiles: Array<{ basename: string; bytes: Uint8Array }>,
 ): Promise<void> {
+  await migrateLegacyRoot();
   const dir = chapterDir(entryId, chapterId);
   if (!(await exists(dir, { baseDir: BASE }))) {
     await mkdir(dir, { baseDir: BASE, recursive: true });
@@ -572,7 +575,7 @@ export async function chapterImageSrc(
     const root = await appDataDir();
     const abs = await join(
       root,
-      "leaflet",
+      ROOT,
       "books",
       entryId,
       "chapters",

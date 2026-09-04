@@ -52,7 +52,7 @@ const TEXT_BATCH = 64;
 
 /**
  * Open an archive that already lives under the app-data dir. `path` is
- * app-data-relative, e.g. `leaflet/books/<id>/book.epub`.
+ * app-data-relative, e.g. `riwaq/books/<id>/book.epub`.
  *
  * `token` correlates the Rust-side progress events with a specific import.
  */

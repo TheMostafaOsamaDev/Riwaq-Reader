@@ -479,7 +479,7 @@ function DownloadRangeContent({
         </div>
         <div
           data-sheet-scrollable
-          className="leaflet-scroll-hidden"
+          className="riwaq-scroll-hidden"
           style={{
             padding: "14px 18px 8px",
             display: "flex",
@@ -752,7 +752,7 @@ function ChapterRangeField({
           </div>
           <div
             data-sheet-scrollable
-            className="leaflet-scroll-hidden"
+            className="riwaq-scroll-hidden"
             style={{ maxHeight: 260, overflowY: "auto" }}
           >
             {filtered.length === 0 ? (
