@@ -1,9 +1,13 @@
-// PDF-backed FixedPageSource: reads books/<id>/book.pdf off disk, opens it with
-// pdf.js, and renders pages to <canvas> on demand. Page bitmaps are expensive,
-// so mounted canvases are LRU-evicted to keep memory bounded on long books.
+// PDF-backed FixedPageSource: opens books/<id>/book.pdf with pdf.js and
+// renders pages to <canvas> on demand. Page bitmaps are expensive, so mounted
+// canvases are LRU-evicted to keep memory bounded on long books.
+//
+// The file is streamed, not read: pdf.js pulls byte ranges through Rust (see
+// pdf/rangeSource.ts). Reading the whole thing meant opening a 200 MB book
+// cost ~400 MB of webview heap before the first page was drawn.
 
-import { BaseDirectory, readFile } from "@tauri-apps/plugin-fs";
-import { openPdfDocument } from "../../pdf/pdfjs";
+import { BaseDirectory, stat } from "@tauri-apps/plugin-fs";
+import { openPdfDocument, type PdfDoc } from "../../pdf/pdfjs";
 import { bookDir, type Highlight, type PdfBook } from "../../store/library";
 import { hlBg, type ThemeKey } from "../../styles/tokens";
 import type { FixedPageSource } from "./FixedPageSource";
@@ -69,16 +73,20 @@ function quantize(scale: number): number {
 export async function createPdfPageSource(
   book: PdfBook,
 ): Promise<FixedPageSource> {
-  const bytes = await readFile(`${bookDir(book.id)}/book.pdf`, { baseDir: BASE });
-  return createPdfPageSourceFromBytes(bytes);
+  const path = `${bookDir(book.id)}/book.pdf`;
+  const info = await stat(path, { baseDir: BASE });
+  return createPdfPageSourceFrom(await openPdfDocument({ path, length: info.size }));
 }
 
-/** Build a page source directly from PDF bytes — used by the dev harness and by
- *  createPdfPageSource after it reads the file off disk. */
+/** Build a page source directly from PDF bytes — used by the dev harness,
+ *  which has a buffer and no Tauri to stream through. */
 export async function createPdfPageSourceFromBytes(
   bytes: Uint8Array,
 ): Promise<FixedPageSource> {
-  const doc = await openPdfDocument(bytes);
+  return createPdfPageSourceFrom(await openPdfDocument(bytes));
+}
+
+async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
   const sizeCache = new Map<number, { w: number; h: number }>();
   // Insertion-ordered so the first key is the oldest — cheap LRU.
   const mounted = new Map<number, Mounted>();

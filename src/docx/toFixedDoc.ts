@@ -3,19 +3,12 @@
 // This replaces the old DOCX→EPUB conversion: DOCX is now read as fixed pages
 // (paginated at read time by DocxPageSource), not reflowed as an EPUB.
 //
-// mammoth (docx → HTML) and detectDirection are reused; buildEpub/splitChapters/
-// stage are NOT — this module is independent of the removed EPUB-conversion path.
+// The unzip + mammoth half runs in a worker (see rawHtml.ts / convertInWorker.ts);
+// what is left here is the DOM pass, which needs DOMParser and so cannot leave
+// the main thread.
 
-import JSZip from "jszip";
-import { detectDocDirection, type Dir } from "./detectDirection";
-
-// Mammoth's browser bundle is ~700KB — lazy-load it so it doesn't ship on app
-// start (Vite code-splits at the dynamic import; first .docx import pays the
-// one-time webview-cached cost).
-async function loadMammoth() {
-  const m = await import("mammoth/mammoth.browser");
-  return m.default;
-}
+import { docxToRawHtmlInWorker } from "./convertInWorker";
+import type { Dir } from "./detectDirection";
 
 /** One heading in the document, with an injected anchor id the page source maps
  *  to a page number after pagination (pages don't exist until read time). */
@@ -37,62 +30,17 @@ export interface FixedDoc {
   outline: DocxOutlineEntry[];
 }
 
-function extensionFromMime(mime: string): string {
-  switch (mime.toLowerCase()) {
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "image/gif":
-      return "gif";
-    case "image/webp":
-      return "webp";
-    case "image/svg+xml":
-      return "svg";
-    case "image/bmp":
-      return "bmp";
-    case "image/tiff":
-      return "tiff";
-    default:
-      return "bin";
-  }
-}
-
 export async function docxToFixedDoc(
   fileBytes: Uint8Array,
   fallbackTitle: string,
 ): Promise<FixedDoc> {
-  // JSZip wants the underlying buffer; Tauri's readFile may hand back a view
-  // over a larger buffer, so slice cleanly when it isn't exact.
-  const arrayBuffer =
-    fileBytes.byteOffset === 0 &&
-    fileBytes.byteLength === fileBytes.buffer.byteLength
-      ? (fileBytes.buffer as ArrayBuffer)
-      : (fileBytes.slice().buffer as ArrayBuffer);
-
-  const zip = await JSZip.loadAsync(arrayBuffer);
-  const { dir } = await detectDocDirection(zip);
-
-  const mammoth = await loadMammoth();
-  const images: { href: string; bytes: Uint8Array }[] = [];
-  let imgN = 0;
-  const result = await mammoth.convertToHtml(
-    { arrayBuffer },
-    {
-      convertImage: mammoth.images.imgElement(async (image) => {
-        const buffer = await image.readAsArrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        imgN += 1;
-        const href = `images/img-${String(imgN).padStart(3, "0")}.${extensionFromMime(image.contentType)}`;
-        images.push({ href, bytes });
-        return { src: href };
-      }),
-    },
-  );
+  const { html: rawHtml, images, dir } = await docxToRawHtmlInWorker(fileBytes);
 
   // Sanitize + inject heading anchors + build the outline. DOMParser is
-  // available in the webview (this runs at import time inside the app).
-  const parsed = new DOMParser().parseFromString(result.value, "text/html");
+  // available in the webview (this runs at import time inside the app) but
+  // not in a worker, which is why only this half stayed here. It measured at
+  // 3 ms against a real 8.9 MB document, versus 135 ms for the half above.
+  const parsed = new DOMParser().parseFromString(rawHtml, "text/html");
   parsed
     .querySelectorAll("script, style, link, meta, iframe, object, embed")
     .forEach((n) => n.remove());

@@ -47,29 +47,16 @@ export function fileFraction(
   return WEIGHTS.copy + WEIGHTS.parse + WEIGHTS.write * r;
 }
 
-export interface ImportProgressView {
-  /** 0..1 across every file in the run. */
-  overall: number;
-  /** 1-based index of the file being worked on. */
-  index: number;
-  total: number;
-  /** Display name of the current file, when we have one. */
-  name: string;
-}
-
 /**
  * Build a reporter for one import run.
  *
- * `onUpdate` receives every change so a component can render it locally;
- * the shared store is updated in step so the notification tracks it too.
- * The run starts minimized — the caller's own affordance (a button spinner)
- * is the primary feedback, and the full-screen stepper would be too much
- * ceremony for picking a file.
+ * Everything lands in the shared store, which is the single source of truth
+ * for all three consumers: the FAB's ring (via `store/importIndicator.ts`),
+ * the stepper modal, and the Android notification. The run starts minimized
+ * — the FAB is the primary feedback, and a full-screen stepper would be too
+ * much ceremony for picking a file.
  */
-export function createImportReporter(
-  onUpdate: (view: ImportProgressView) => void,
-  label: string,
-): ImportReporter {
+export function createImportReporter(label: string): ImportReporter {
   let index = 0;
   let total = 1;
   let name = "";
@@ -77,14 +64,7 @@ export function createImportReporter(
 
   const push = (fraction: number) => {
     const overall = total > 0 ? (index + fraction) / total : fraction;
-    const view: ImportProgressView = {
-      overall: Math.min(1, Math.max(0, overall)),
-      index: index + 1,
-      total,
-      name,
-    };
-    onUpdate(view);
-    setOverall(view.overall);
+    setOverall(Math.min(1, Math.max(0, overall)));
     if (name) setStepLabel(STEP_ID, name);
   };
 
@@ -104,6 +84,10 @@ export function createImportReporter(
       // Entering a phase means everything before it is done.
       push(fileFraction(next, 0));
     },
+    parseProgress(ratio: number) {
+      phase = "parse";
+      push(fileFraction("parse", ratio));
+    },
     progress(p: StageProgress) {
       // Rust reports "extract" for the unpack pass, which is the tail of our
       // "write" phase; anything else is the byte copy.
@@ -119,7 +103,13 @@ export function finishImportRun(bookId: string | null): void {
   finishImport(bookId ?? "");
 }
 
-/** Mark the run failed; the store keeps the message visible. */
+/** Mark the run failed; the store keeps the message visible.
+ *
+ *  Un-minimizes so the modal actually appears. Device imports start
+ *  minimized (see above), and the floating chip that used to be the way
+ *  back into the modal is gone — without this the failed step and its
+ *  message would sit in the store unreachable. */
 export function failImportRun(message: string): void {
   failStep(STEP_ID, message);
+  setMinimized(false);
 }

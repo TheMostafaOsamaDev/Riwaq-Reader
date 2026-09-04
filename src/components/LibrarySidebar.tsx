@@ -19,6 +19,8 @@ import {
   subscribeDownloadProgress,
 } from "../store/downloadProgress";
 import { useNav, back, forward } from "../store/navigation";
+import { useImportIndicator } from "../store/importIndicator";
+import { setMinimized } from "../store/importProgress";
 import type { Shelf } from "../store/shelves";
 import type { LibraryTab } from "./Library";
 import { useI18n } from "../i18n/useI18n";
@@ -30,9 +32,6 @@ interface Props {
   tab: LibraryTab;
   setTab: (t: LibraryTab) => void;
   importing: boolean;
-  /** 0..1 import progress, or null before the pipeline starts reporting.
-   *  Renders as a determinate ring inside the button. */
-  importPct: number | null;
   onImport: () => void;
   onImportFolder: () => void;
   onOpenQueue: () => void;
@@ -85,7 +84,6 @@ export function LibrarySidebar({
   tab,
   setTab,
   importing,
-  importPct,
   onImport,
   onImportFolder,
   onOpenQueue,
@@ -105,6 +103,9 @@ export function LibrarySidebar({
   const goldSoft = dark ? "rgba(212,168,74,0.22)" : "rgba(201,162,74,0.18)";
   const markSrc = dark ? "/brand/mark-cream.png" : "/brand/mark-ink.png";
   const dl = useDownloadSummary();
+  // Reads the shared import store, so a Store import shows here too and a
+  // click during a run re-opens the stepper instead of the file picker.
+  const ind = useImportIndicator(importing);
 
   const [openLib, setOpenLib] = useState(true);
   const [openShelves, setOpenShelves] = useState(true);
@@ -246,33 +247,39 @@ export function LibrarySidebar({
         <div ref={importRef} style={{ position: "relative" }}>
           <div style={{ display: "flex" }}>
             <button
-              onClick={onImport}
-              disabled={importing}
-              aria-busy={importing || undefined}
+              onClick={ind.action === "details" ? () => setMinimized(false) : onImport}
+              disabled={ind.action === "none"}
+              aria-busy={ind.busy || undefined}
+              {...(ind.action === "details"
+                ? { title: tr("import.progress.openDetails") }
+                : {})}
               style={{
                 flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 40, border: 0,
                 borderInlineEnd: `1px solid ${dark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.18)"}`,
                 borderStartStartRadius: 11, borderEndStartRadius: 11, borderStartEndRadius: 0, borderEndEndRadius: 0,
                 background: theme.ink, color: theme.paper, font: "inherit", fontSize: 13.5, fontWeight: 600,
                 // "progress", not "default": the action is under way, not unavailable.
-                cursor: importing ? "progress" : "pointer", opacity: importing ? 0.6 : 1, transition: TRANSITION,
+                cursor: ind.action === "none" ? "progress" : "pointer",
+                // Dimmed only while it genuinely can't be pressed — once a run
+                // is reporting, a click opens the stepper.
+                opacity: ind.action === "none" ? 0.6 : 1, transition: TRANSITION,
               }}
-              onMouseEnter={(e) => { if (!importing) e.currentTarget.style.opacity = "0.9"; }}
-              onMouseLeave={(e) => { if (!importing) e.currentTarget.style.opacity = "1"; }}
+              onMouseEnter={(e) => { if (!ind.busy) e.currentTarget.style.opacity = "0.9"; }}
+              onMouseLeave={(e) => { if (!ind.busy) e.currentTarget.style.opacity = "1"; }}
             >
-              {importing ? (
+              {ind.busy ? (
                 // Swaps in for the plus rather than sitting beside it, so the
                 // button's contents don't shift when a run starts. Determinate
                 // as soon as the pipeline reports a ratio.
                 <Spinner
                   size={16}
                   strokeWidth={2}
-                  {...(importPct === null ? {} : { value: importPct })}
+                  {...(ind.ratio === null ? {} : { value: ind.ratio })}
                 />
               ) : (
                 <Icon name="plus" size={16} />
               )}
-              {importing ? tr("sidebar.importing") : tr("sidebar.importBook")}
+              {ind.busy ? tr("sidebar.importing") : tr("sidebar.importBook")}
             </button>
             <button
               onClick={() => setMenuOpen((v) => !v)}

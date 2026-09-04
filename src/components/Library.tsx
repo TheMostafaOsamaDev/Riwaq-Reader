@@ -39,6 +39,8 @@ import {
   failImportRun,
   finishImportRun,
 } from "../store/importReporter";
+import { useImportIndicator } from "../store/importIndicator";
+import { setMinimized } from "../store/importProgress";
 import {
   coverSrcFor,
   importPaths,
@@ -180,7 +182,6 @@ export function Library({
   // file dialog (nothing to measure yet). Drives the determinate ring in
   // the import button; the Android notification reads the same numbers via
   // the shared import-progress store.
-  const [importPct, setImportPct] = useState<number | null>(null);
   const [importQueue, setImportQueue] = useState<FixedImportDraft[]>([]);
   const [qIndex, setQIndex] = useState(0);
   const [qBusy, setQBusy] = useState(false);
@@ -667,16 +668,12 @@ export function Library({
   const importRunner = () => {
     let reporter: ImportReporter | undefined;
     const start = () =>
-      (reporter ??= createImportReporter(
-        // Local state drives the button's ring; the reporter mirrors the
-        // same numbers into the shared store for the notification.
-        (view) => setImportPct(view.overall),
-        tr("sidebar.importing"),
-      ));
+      (reporter ??= createImportReporter(tr("sidebar.importing")));
     return {
       reporter: {
         file: (i, total, name) => start().file(i, total, name),
         phase: (p) => reporter?.phase(p),
+        parseProgress: (r) => reporter?.parseProgress(r),
         progress: (p) => reporter?.progress(p),
       } satisfies ImportReporter,
       finish: () => reporter && finishImportRun(null),
@@ -692,7 +689,6 @@ export function Library({
   ) => {
     if (importing || importQueue.length > 0) return;
     setImporting(true);
-    setImportPct(null);
     setError(null);
     const run = importRunner();
     try {
@@ -708,7 +704,6 @@ export function Library({
       pendingShelfImportRef.current = null;
     } finally {
       setImporting(false);
-      setImportPct(null);
     }
   };
 
@@ -734,7 +729,6 @@ export function Library({
   const onImportFolder = async () => {
     if (importing || importQueue.length > 0) return;
     setImporting(true);
-    setImportPct(null);
     setError(null);
     const run = importRunner();
     try {
@@ -746,7 +740,6 @@ export function Library({
       setError(errorLabel(message, tr));
     } finally {
       setImporting(false);
-      setImportPct(null);
     }
   };
 
@@ -1045,7 +1038,6 @@ export function Library({
     loading,
     error,
     importing,
-    importPct,
     tab,
     setTab: onSelectTab,
     onOpen: handleOpen,
@@ -1347,9 +1339,6 @@ interface LayoutProps {
   loading: boolean;
   error: string | null;
   importing: boolean;
-  /** 0..1 import progress, or null when the run hasn't started reporting
-   *  yet. Rendered as a determinate ring inside the import control. */
-  importPct: number | null;
   /** Active library tab, owned by the parent Library component so both
    *  layouts (and the Store) share it. */
   tab: LibraryTab;
@@ -1471,7 +1460,6 @@ function DesktopLibrary({
   loading,
   error,
   importing,
-  importPct,
   tab,
   setTab,
   onOpen,
@@ -1566,7 +1554,6 @@ function DesktopLibrary({
         tab={tab}
         setTab={setTab}
         importing={importing}
-        importPct={importPct}
         onImport={onImport}
         onImportFolder={onImportFolder}
         onOpenQueue={onOpenQueue}
@@ -1781,7 +1768,6 @@ function DesktopLibrary({
             theme={theme}
             onImport={onImport}
             importing={importing}
-            importPct={importPct}
           />
         ) : visible.length === 0 ? (
           <FilteredEmptyState theme={theme} tab={tab} />
@@ -1881,7 +1867,6 @@ function MobileLibrary({
   loading,
   error,
   importing,
-  importPct,
   tab,
   setTab,
   onOpen,
@@ -2240,7 +2225,6 @@ function MobileLibrary({
             theme={theme}
             onImport={onImport}
             importing={importing}
-            importPct={importPct}
           />
         ) : visible.length === 0 ? (
           <FilteredEmptyState theme={theme} tab={tab} />
@@ -2385,7 +2369,6 @@ function MobileLibrary({
         <MobileBottomNav
           theme={theme}
           importing={importing}
-          importPct={importPct}
           tab={tab}
           shelvesActive={shelvesActive || !!activeShelf}
           onOpenShelves={onOpenShelves}
@@ -2402,7 +2385,6 @@ function MobileLibrary({
 interface MobileBottomNavProps {
   theme: Theme;
   importing: boolean;
-  importPct: number | null;
   tab: LibraryTab;
   shelvesActive: boolean;
   onOpenShelves: () => void;
@@ -2779,7 +2761,6 @@ function PillScrollArrow({
 function MobileBottomNav({
   theme,
   importing,
-  importPct,
   tab,
   shelvesActive,
   onOpenShelves,
@@ -2826,7 +2807,6 @@ function MobileBottomNav({
       <NavFabButton
         theme={theme}
         importing={importing}
-        importPct={importPct}
         onClick={onImport}
       />
       <NavIconButton
@@ -2927,29 +2907,33 @@ function NavIconButton({
 interface NavFabButtonProps {
   theme: Theme;
   importing: boolean;
-  importPct: number | null;
   onClick: () => void;
 }
 
-function NavFabButton({
-  theme,
-  importing,
-  importPct,
-  onClick,
-}: NavFabButtonProps) {
+function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
   // The focal action — filled + slightly larger than the outlined siblings
   // (50px vs 38px) + a soft drop shadow so it reads as the primary
   // affordance. Sits flush with the bar rather than protruding above it.
+  //
+  // While an import runs this is the *only* progress indicator in the app,
+  // so it stays tappable: a tap re-opens the stepper modal instead of the
+  // file picker. `useImportIndicator` also picks up Store imports, which
+  // never reach this component's `importing` prop.
   const { tr } = useI18n();
+  const ind = useImportIndicator(importing);
+  const details = ind.action === "details";
+  const label = details
+    ? tr("import.progress.openDetails")
+    : ind.busy
+      ? tr("sidebar.importing")
+      : tr("library.importEpub");
   return (
     <button
-      onClick={onClick}
-      disabled={importing}
-      aria-label={
-        importing ? tr("sidebar.importing") : tr("library.importEpub")
-      }
-      aria-busy={importing || undefined}
-      title={importing ? tr("sidebar.importing") : tr("library.importEpub")}
+      onClick={details ? () => setMinimized(false) : onClick}
+      disabled={ind.action === "none"}
+      aria-label={label}
+      aria-busy={ind.busy || undefined}
+      title={label}
       style={{
         width: 50,
         height: 50,
@@ -2957,22 +2941,24 @@ function NavFabButton({
         border: "none",
         background: theme.ink,
         color: theme.bg,
-        cursor: importing ? "progress" : "pointer",
+        cursor: ind.action === "none" ? "progress" : "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         boxShadow: "0 3px 10px rgba(0,0,0,0.18)",
-        opacity: importing ? 0.6 : 1,
+        // Dimmed only while it genuinely can't be pressed. A tappable
+        // control at 0.6 reads as disabled.
+        opacity: ind.action === "none" ? 0.6 : 1,
         flexShrink: 0,
       }}
     >
-      {importing ? (
+      {ind.busy ? (
         // Determinate whenever the pipeline has a real ratio — a 200 MB book
         // takes long enough that a bare spinner reads as a hang.
         <Spinner
           size={22}
           strokeWidth={2.5}
-          {...(importPct === null ? {} : { value: importPct })}
+          {...(ind.ratio === null ? {} : { value: ind.ratio })}
         />
       ) : (
         <Icon name="plus" size={20} />
@@ -3449,14 +3435,13 @@ function EmptyState({
   theme,
   onImport,
   importing,
-  importPct,
 }: {
   theme: Theme;
   onImport: () => void;
   importing: boolean;
-  importPct: number | null;
 }) {
   const { tr } = useI18n();
+  const ind = useImportIndicator(importing);
   return (
     <div
       style={{
@@ -3495,12 +3480,12 @@ function EmptyState({
         variant="primary"
         size="md"
         onClick={onImport}
-        disabled={importing}
-        loading={importing}
-        {...(importPct === null ? {} : { loadingProgress: importPct })}
+        disabled={ind.busy}
+        loading={ind.busy}
+        {...(ind.ratio === null ? {} : { loadingProgress: ind.ratio })}
         leadingIcon={<Icon name="plus" size={14} />}
       >
-        {importing ? tr("sidebar.importing") : tr("library.emptyCta")}
+        {ind.busy ? tr("sidebar.importing") : tr("library.emptyCta")}
       </Button>
     </div>
   );

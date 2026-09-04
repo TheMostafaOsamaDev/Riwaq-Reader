@@ -26,6 +26,7 @@
 //   zip_read_texts    — batch-read entries as UTF-8 text
 //   zip_extract       — batch-extract entries straight to disk
 //   zip_read_bytes    — read one small entry as raw bytes (covers)
+//   read_file_range   — read a byte range of a staged file (pdf.js ranges)
 //   write_chunk_b64   — append in-memory bytes without the JSON-array blow-up
 //   delete_staged     — remove a staged file/dir after a failed import
 //
@@ -33,7 +34,7 @@
 // resolved through `resolve()`, which refuses anything that escapes it.
 
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -57,6 +58,11 @@ const COPY_BUF: usize = 256 * 1024;
 /// materializing it as a JS string would reintroduce the memory blow-up this
 /// module exists to avoid. Generous enough that no real chapter trips it.
 const MAX_TEXT_ENTRY: u64 = 64 * 1024 * 1024;
+
+/// Ceiling on one range read. pdf.js asks in `rangeChunkSize` slices, so this
+/// guards against a caller asking for a whole book in a single response rather
+/// than limiting anything a real request does.
+const MAX_RANGE: u64 = 16 * 1024 * 1024;
 
 /// Cumulative ceiling for one `zip_read_texts` call. The parser prefetches a
 /// whole spine at once, so without this a book with thousands of large
@@ -402,6 +408,53 @@ pub async fn zip_read_bytes<R: Runtime>(
     Ok(Response::new(bytes))
 }
 
+/// Read `length` bytes starting at `offset` from a file under app-data.
+///
+/// This is what lets pdf.js open a 200 MB book without the webview ever
+/// holding it: its range transport asks for slices, and we serve them from
+/// the file Rust already owns. Returned through `tauri::ipc::Response` so the
+/// bytes travel as an octet-stream rather than a JSON number array.
+#[tauri::command]
+pub async fn read_file_range<R: Runtime>(
+    app: AppHandle<R>,
+    path: String,
+    offset: u64,
+    length: u64,
+) -> Result<Response, String> {
+    if length > MAX_RANGE {
+        return Err(format!("range too large: {length} > {MAX_RANGE}"));
+    }
+    let file_path = resolve(&app, &path)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || read_range(&file_path, offset, length))
+        .await
+        .map_err(|e| format!("range read task failed: {e}"))??;
+    Ok(Response::new(bytes))
+}
+
+/// Read at most `length` bytes from `path` starting at `offset`, short only at
+/// end of file. Split out from the command so it can be tested without an
+/// `AppHandle`.
+fn read_range(path: &Path, offset: u64, length: u64) -> Result<Vec<u8>, String> {
+    let mut file =
+        File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|e| format!("seek to {offset} failed: {e}"))?;
+    let mut buf = vec![0u8; length as usize];
+    let mut filled = 0usize;
+    // read() is allowed to return short. A partial range would corrupt
+    // whatever object pdf.js is decoding, so loop until the buffer is full or
+    // the file ends.
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) => return Err(format!("read failed: {e}")),
+        }
+    }
+    buf.truncate(filled);
+    Ok(buf)
+}
+
 /// Append (or create) a file from a base64 chunk.
 ///
 /// For archives the app builds in memory — a Sources download, a DOCX
@@ -548,6 +601,27 @@ mod tests {
         assert!(safe_entry_name("/abs/path").is_none());
         assert!(safe_entry_name("images/cover.png").is_some());
         assert!(safe_entry_name("dir/").is_none());
+    }
+
+    /// pdf.js decodes objects at exact byte offsets, so an off-by-one or a
+    /// short read here surfaces as a corrupt document rather than an error.
+    #[test]
+    fn reads_an_exact_byte_range() {
+        let dir = std::env::temp_dir().join(format!("leaflet-range-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("book.pdf");
+        let body: Vec<u8> = (0..=255u8).collect();
+        fs::write(&path, &body).unwrap();
+
+        assert_eq!(read_range(&path, 0, 4).unwrap(), vec![0, 1, 2, 3]);
+        assert_eq!(read_range(&path, 250, 4).unwrap(), vec![250, 251, 252, 253]);
+        // Past the end truncates instead of padding with zeros — pdf.js uses
+        // the returned length to know it hit EOF.
+        assert_eq!(read_range(&path, 254, 16).unwrap(), vec![254, 255]);
+        assert!(read_range(&path, 300, 8).unwrap().is_empty());
+        assert!(read_range(&dir.join("missing.pdf"), 0, 8).is_err());
+
+        fs::remove_dir_all(&dir).ok();
     }
 }
 

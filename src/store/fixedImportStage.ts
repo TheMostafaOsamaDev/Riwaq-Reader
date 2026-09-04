@@ -65,26 +65,38 @@ export interface StagedSource {
   sourceHash?: string;
 }
 
+/** Where the staged file's bytes come from.
+ *
+ *  A PDF is read in slices straight off disk, so `{ path, length }` is the
+ *  app's path for it. DOCX still needs the whole buffer, because mammoth
+ *  does. */
+export type FixedSource =
+  | { bytes: Uint8Array }
+  | { path: string; length: number };
+
 export async function stageFixedImport(
-  bytes: Uint8Array,
+  source: FixedSource,
   filename: string,
   /** Format the caller already sniffed. Omitted by callers holding a real
    *  filename (the dev harness), where the bytes still decide. */
   kind?: "pdf" | "docx",
   staged?: StagedSource,
 ): Promise<FixedImportDraft> {
-  const format = kind ?? detectBookFormat(bytes);
-  return format === "pdf"
-    ? stagePdf(bytes, filename, staged)
-    : stageDocx(bytes, filename, staged);
+  const format =
+    kind ?? ("bytes" in source ? detectBookFormat(source.bytes) : "pdf");
+  if (format === "pdf") return stagePdf(source, filename, staged);
+  if (!("bytes" in source)) {
+    throw new Error("DOCX staging needs the file's bytes");
+  }
+  return stageDocx(source.bytes, filename, staged);
 }
 
 async function stagePdf(
-  bytes: Uint8Array,
+  source: FixedSource,
   filename: string,
   staged?: StagedSource,
 ): Promise<FixedImportDraft> {
-  const doc = await openPdfDocument(bytes);
+  const doc = await openPdfDocument("bytes" in source ? source.bytes : source);
   const urls: string[] = [];
   let disposed = false;
 
@@ -131,8 +143,17 @@ async function stagePdf(
     defaultCoverId: candidates[0]?.id ?? null,
     commit: async ({ title, cover }) => {
       const chosen = await resolveCover(cover, candidates);
+      // Without a staged file there is nothing on disk to rename into place,
+      // so the bytes are the only way to persist the original. The app always
+      // stages; only the dev harness takes the bytes branch.
+      const fallbackBytes = "bytes" in source ? source.bytes : null;
+      if (!staged && !fallbackBytes) {
+        throw new Error("cannot commit a PDF without a staged file or bytes");
+      }
       return commitPdfBook({
-        ...(staged ? { stagedPath: staged.stagedPath } : { bytes }),
+        ...(staged
+          ? { stagedPath: staged.stagedPath }
+          : { bytes: fallbackBytes as Uint8Array }),
         title: title.trim() || doc.meta.title || filenameTitle(filename),
         author: doc.meta.author || "",
         pageCount: doc.pageCount,

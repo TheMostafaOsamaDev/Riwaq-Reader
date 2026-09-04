@@ -1,14 +1,15 @@
-// Two-mode UI for the document-import flow:
+// The detail view for the document-import flow: a full overlay with an
+// animated stepper + progress bar, shown while the import is active and not
+// minimized.
 //
-//   Modal   — full overlay with an animated stepper + progress bar. Shown
-//             while the import is active and not minimized.
-//   Dock    — small circular progress chip pinned bottom-right. Shown while
-//             the import is active *and* minimized (user clicked "continue
-//             in background"). Tapping it re-opens the modal.
+// Minimized renders nothing. The bottom bar's centre FAB carries the ring
+// (see store/importIndicator.ts) and a tap on it un-minimizes this modal —
+// there used to be a floating chip here doing the same job, which meant two
+// progress indicators on screen for one import.
 //
-// Both read the same module-scoped store (`useImportProgress`), so the
-// underlying import keeps running regardless of which view is mounted —
-// closing the modal does NOT cancel.
+// The import itself lives in the module-scoped store (`useImportProgress`),
+// so it keeps running regardless of what is mounted — closing the modal does
+// NOT cancel.
 
 import { useEffect } from "react";
 import {
@@ -43,15 +44,15 @@ export function ImportProgress({ theme }: Props) {
   }, [state.active, state.finishedAt, state.error]);
 
   if (!state.active) return null;
+  // Minimized means "no chrome at all". The bottom-bar FAB is the only
+  // import indicator now, and tapping it un-minimizes this modal back into
+  // view — so a floating chip would just be the same progress twice.
+  if (state.minimized) return null;
 
   return (
     <>
       <KeyframesOnce />
-      {state.minimized ? (
-        <Dock theme={theme} />
-      ) : (
-        <Modal theme={theme} />
-      )}
+      <Modal theme={theme} />
     </>
   );
 }
@@ -412,165 +413,6 @@ function StepIcon({
   );
 }
 
-// ── Dock (minimized) ──────────────────────────────────────────────────────
-
-function Dock({ theme }: { theme: Theme }) {
-  const { tr } = useI18n();
-  const state = useImportProgress();
-  const onExpand = () => setMinimized(false);
-
-  const finished = state.finishedAt !== null;
-  const errored = state.error !== null;
-
-  const ringColor = errored ? "#c04a3a" : ACCENT;
-  const trackColor = theme.rule;
-
-  // SVG ring math: 56px circle, stroke-width 4 → radius = 26.
-  const r = 26;
-  const c = 2 * Math.PI * r;
-  // Show 100% on success/error; otherwise reflect overall progress.
-  const value = finished ? 1 : state.overall;
-  const offset = c * (1 - value);
-
-  return (
-    <button
-      onClick={onExpand}
-      aria-label={tr("import.progress.dockAriaLabel")}
-      title={
-        errored ? tr("import.progress.dockFailedHint")
-          : finished ? tr("import.progress.titleComplete")
-            : tr("import.progress.dockImportingHint")
-      }
-      style={{
-        position: "fixed",
-        insetInlineEnd: 24,
-        bottom: 24,
-        zIndex: 9800,
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        border: "none",
-        cursor: "pointer",
-        background: theme.bg,
-        boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
-        padding: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        animation: errored
-          ? undefined
-          : finished
-            ? "import-pop 260ms cubic-bezier(0.22, 1, 0.36, 1)"
-            : "import-dock-in 260ms cubic-bezier(0.22, 1, 0.36, 1)",
-        fontFamily: FONT_STACKS.sans,
-      }}
-    >
-      <svg
-        width={64}
-        height={64}
-        viewBox="0 0 64 64"
-        // -90deg so the arc starts at 12 o'clock instead of 3 o'clock.
-        style={{ transform: "rotate(-90deg)" }}
-        aria-hidden
-      >
-        <circle
-          cx={32}
-          cy={32}
-          r={r}
-          fill="none"
-          stroke={trackColor}
-          strokeWidth={4}
-        />
-        <circle
-          cx={32}
-          cy={32}
-          r={r}
-          fill="none"
-          stroke={ringColor}
-          strokeWidth={4}
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-          style={{
-            transition: "stroke-dashoffset 360ms cubic-bezier(0.22, 1, 0.36, 1)",
-          }}
-        />
-      </svg>
-      <span
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: ringColor,
-        }}
-      >
-        {finished && !errored ? (
-          <DockCheck />
-        ) : errored ? (
-          <DockBang />
-        ) : (
-          <DockSpinner color={ringColor} />
-        )}
-      </span>
-    </button>
-  );
-}
-
-function DockSpinner({ color }: { color: string }) {
-  return (
-    <svg
-      width={20}
-      height={20}
-      viewBox="0 0 20 20"
-      style={{ animation: "import-spin 1100ms linear infinite" }}
-      aria-hidden
-    >
-      <circle
-        cx={10}
-        cy={10}
-        r={7}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeDasharray="14 30"
-        opacity={0.85}
-      />
-    </svg>
-  );
-}
-
-function DockCheck() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 22 22" aria-hidden>
-      <path
-        d="M5 11l4 4 8-9"
-        fill="none"
-        stroke={ACCENT}
-        strokeWidth={2.4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DockBang() {
-  return (
-    <svg width={20} height={20} viewBox="0 0 20 20" aria-hidden>
-      <path
-        d="M10 4v8M10 15.5v.5"
-        fill="none"
-        stroke="#c04a3a"
-        strokeWidth={2.2}
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function CloseGlyph({ size = 16 }: { size?: number }) {
   return (
     <svg
@@ -619,21 +461,8 @@ const KEYFRAMES = `
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
-@keyframes import-dock-in {
-  from { opacity: 0; transform: translateY(16px) scale(0.85); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
-}
-@keyframes import-pop {
-  0%   { transform: scale(1); }
-  40%  { transform: scale(1.08); }
-  100% { transform: scale(1); }
-}
 @keyframes import-pulse {
   0%, 100% { transform: scale(1);   filter: brightness(1); }
   50%      { transform: scale(1.10); filter: brightness(1.12); }
-}
-@keyframes import-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
 }
 `;

@@ -29,6 +29,10 @@ import type { FixedImportDraft } from "./fixedImportStage";
 import { isOpaqueUri, type BookFormat } from "./bookFormat";
 import { parseEpubFromSource } from "../epub/parser";
 import { openNativeZip } from "../epub/zipSource";
+import { writeImageManifest } from "./epubImages";
+import { BOOKS, bookDir, INDEX, ROOT, STAGING } from "./paths";
+// Re-exported because callers across the app import `bookDir` from here.
+export { bookDir };
 import {
   deleteStaged,
   newStagingToken,
@@ -57,12 +61,9 @@ function currentUiLocale(): Locale {
 }
 
 const BASE = BaseDirectory.AppData;
-const ROOT = "leaflet";
-const BOOKS = `${ROOT}/books`;
-const INDEX = `${ROOT}/library.json`;
-/** Where a picked file lands before we know what it is. Kept out of books/
- *  so a cancelled PDF/DOCX import never leaves a half-built book directory. */
-const STAGING = `${ROOT}/staging`;
+// Storage layout lives in ./paths so nothing has to re-type the root folder
+// name. STAGING is kept out of books/ so a cancelled PDF/DOCX import never
+// leaves a half-built book directory behind.
 
 export type BookStatus = "reading" | "finished" | "wishlist";
 
@@ -235,10 +236,6 @@ async function writeIndex(idx: LibraryFile) {
   await writeTextFile(INDEX, JSON.stringify(idx, null, 2), { baseDir: BASE });
 }
 
-export function bookDir(id: string) {
-  return `${BOOKS}/${id}`;
-}
-
 async function readBookJson(id: string): Promise<EpubBook> {
   const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
   return JSON.parse(raw);
@@ -348,6 +345,10 @@ export interface ImportReporter {
   phase(phase: "copy" | "parse" | "write"): void;
   /** Fine-grained progress within the current phase. */
   progress(p: StageProgress): void;
+  /** Fine-grained progress *within* the parse phase. Separate from
+   *  `progress`, which carries Rust's `StageProgress` — whose phases are
+   *  copy and extract, neither of which parsing has a counterpart in. */
+  parseProgress(ratio: number): void;
 }
 
 /** Thrown when a picked file's bytes aren't any format we can read.
@@ -425,14 +426,20 @@ async function stagePaths(
         // Dynamic import avoids a static library ↔ staging cycle and keeps the
         // pdf.js / mammoth toolchains out of the initial bundle.
         const { stageFixedImport } = await import("./fixedImportStage");
-        // pdf.js / mammoth need the bytes, so this direction does cross the
-        // bridge — but Rust→JS responses travel as an octet-stream rather
-        // than a JSON number array, so there's no expansion. The staged file
+        // A PDF is read in slices straight off disk (pdf/rangeSource.ts), so
+        // its bytes never enter the webview — reading a 200 MB book in, then
+        // copying it again for pdf.js, is what made the app crawl. DOCX does
+        // still cross the bridge because mammoth needs the whole buffer, but
+        // Rust→JS responses travel as an octet-stream rather than a JSON
+        // number array, so there's no expansion. Either way the staged file
         // stays put and `commit` renames it into place instead of writing a
         // second copy.
-        const bytes = await readFile(stagedPath, { baseDir: BASE });
+        const source =
+          fixed === "pdf"
+            ? { path: stagedPath, length: staged.size }
+            : { bytes: await readFile(stagedPath, { baseDir: BASE }) };
         drafts.push(
-          await stageFixedImport(bytes, path, fixed, {
+          await stageFixedImport(source, path, fixed, {
             stagedPath,
             sourceHash: staged.hash,
           }),
@@ -597,7 +604,10 @@ async function commitEpubAt(
   report?.phase("parse");
   const src = await openNativeZip(`${dir}/book.epub`, token);
   try {
-    const { book, cover, images } = await parseEpubFromSource(src, id);
+    const { book, cover, images } = await parseEpubFromSource(src, id, {
+      onChapter: (done, total) =>
+        report?.parseProgress(total > 0 ? done / total : 1),
+    });
 
     report?.phase("write");
     await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
@@ -605,13 +615,12 @@ async function commitEpubAt(
     });
     await writeInitialState(id);
 
-    // In-flow images land under books/<id>/<href> so chapter image items
-    // resolve to a real file. Each href is `images/img-NNN.ext`; the native
-    // extractor creates the images/ subdirectory as it goes.
+    // In-flow images stay in the archive. Record where each one lives and
+    // let the reader pull it on first view (see store/epubImages.ts) — for
+    // an illustrated book, extracting here means writing the entire book a
+    // second time and then keeping both copies forever.
     if (images.length > 0) {
-      await src.extract(
-        images.map((img) => ({ entry: img.entry, dest: `${dir}/${img.href}` })),
-      );
+      await writeImageManifest(id, images);
     }
 
     let coverFile: string | undefined;

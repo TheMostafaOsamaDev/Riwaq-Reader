@@ -72,6 +72,7 @@ pub fn run() {
             archive::zip_read_texts,
             archive::zip_extract,
             archive::zip_read_bytes,
+            archive::read_file_range,
             archive::write_chunk_b64,
             archive::rename_staged,
             archive::delete_staged,
