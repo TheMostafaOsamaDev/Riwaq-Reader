@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { isImageItem, type ChapterItem, type EpubChapter } from "../epub/types";
 import { chapterImageSrcFor, type Highlight } from "../store/library";
+import { ensureEpubImages } from "../store/epubImages";
 import { open as openLightbox } from "../store/lightbox";
 import {
   FONT_READING_SANS,
@@ -69,7 +70,11 @@ interface Props {
 /** Resolve every image item's storage-relative src to a webview-loadable
  *  asset URL once per chapter switch. Brief flash on first render of each
  *  chapter while these promises settle is acceptable — once resolved the
- *  Map is stable and the same image rendered twice picks up the same URL. */
+ *  Map is stable and the same image rendered twice picks up the same URL.
+ *
+ *  That flash is also where lazy extraction hides: the first visit to a
+ *  chapter of an illustrated EPUB extracts its images out of the archive
+ *  before the URLs resolve. Later visits find them on disk. */
 function useChapterImageUrls(
   bookId: string,
   paragraphs: ChapterItem[],
@@ -85,6 +90,11 @@ function useChapterImageUrls(
     }
     let cancelled = false;
     (async () => {
+      // Images live inside book.epub until a chapter asks for them. No-op
+      // for books whose images are already on disk and for streaming books,
+      // whose srcs are remote URLs.
+      await ensureEpubImages(bookId, srcs);
+      if (cancelled) return;
       const entries = await Promise.all(
         srcs.map(
           async (src) =>

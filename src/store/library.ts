@@ -29,6 +29,7 @@ import type { FixedImportDraft } from "./fixedImportStage";
 import { isOpaqueUri, type BookFormat } from "./bookFormat";
 import { parseEpubFromSource } from "../epub/parser";
 import { openNativeZip } from "../epub/zipSource";
+import { writeImageManifest } from "./epubImages";
 import {
   deleteStaged,
   newStagingToken,
@@ -612,13 +613,12 @@ async function commitEpubAt(
     });
     await writeInitialState(id);
 
-    // In-flow images land under books/<id>/<href> so chapter image items
-    // resolve to a real file. Each href is `images/img-NNN.ext`; the native
-    // extractor creates the images/ subdirectory as it goes.
+    // In-flow images stay in the archive. Record where each one lives and
+    // let the reader pull it on first view (see store/epubImages.ts) — for
+    // an illustrated book, extracting here means writing the entire book a
+    // second time and then keeping both copies forever.
     if (images.length > 0) {
-      await src.extract(
-        images.map((img) => ({ entry: img.entry, dest: `${dir}/${img.href}` })),
-      );
+      await writeImageManifest(id, images);
     }
 
     let coverFile: string | undefined;
