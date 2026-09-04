@@ -19,6 +19,7 @@ import {
 } from "./shelfLogic";
 import { ensureRoot, removeShelfFromAllBooks } from "./library";
 import { ROOT } from "./paths";
+import { migrateLegacyRoot } from "./legacyRoot";
 
 export type { Shelf };
 
@@ -58,6 +59,10 @@ async function write(shelves: Shelf[]): Promise<void> {
  *  and persist them. Once the file exists it is the source of truth — an
  *  empty file (user deleted all shelves) is NOT re-seeded. */
 export async function listShelves(): Promise<Shelf[]> {
+  // Before the exists() probe, not just before the write: a pre-migration
+  // probe reports "no shelves file", which seeds the defaults and then
+  // overwrites the real one the migration brings in.
+  await migrateLegacyRoot();
   if (!(await exists(FILE, { baseDir: BASE }))) {
     const tr = makeTr(currentUiLocale());
     const seeded = buildDefaultShelves(

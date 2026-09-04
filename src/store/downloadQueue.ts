@@ -271,6 +271,9 @@ async function persist(): Promise<void> {
  *  reclassified as `interrupted` so the user explicitly opts back in
  *  via Retry. Idempotent. */
 export async function loadPersistedQueue(): Promise<void> {
+  // Same ordering trap as shelves: reading before the move gives an empty
+  // queue, and the next persist() would write that over the real file.
+  await migrateLegacyRoot();
   if (persistLoaded) return;
   persistLoaded = true;
   try {
