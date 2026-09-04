@@ -65,7 +65,7 @@ before-command matches.
 
 ```sh
 # From the repo root:
-cd Riwaq-ebook-reader
+cd Riwaq-Reader
 pnpm install
 ```
 

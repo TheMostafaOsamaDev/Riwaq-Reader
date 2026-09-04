@@ -192,7 +192,7 @@ converted on import, with a step to pick the cover and review images first.
 
 ## Download
 
-Builds are attached to each [GitHub Release](https://github.com/TheMostafaOsamaDev/Riwaq-ebook-reader/releases).
+Builds are attached to each [GitHub Release](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases).
 Pick the file for your platform:
 
 | Platform | File |
