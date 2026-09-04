@@ -2,7 +2,7 @@
 
 # رواق · Riwaq
 
-**A calm, offline-first e-book reader built for Arabic.**
+**A calm, offline-first e-book reader.**
 
 EPUB · PDF · Word — on Windows, macOS, Linux and Android.
 No accounts, no sync, no analytics. Your books stay on your device.
@@ -17,10 +17,14 @@ No accounts, no sync, no analytics. Your books stay on your device.
 
 ## What is Riwaq?
 
-Riwaq (رواق) is a reader for people who read in Arabic — translated web novels, scanned
-books, `.docx` drafts, ordinary EPUBs. It handles the things Arabic readers actually run
-into: right-to-left flow, diacritics, Naskh and Kufi type, and text that has to stay
+Riwaq (رواق) reads the books you already have — EPUBs, scanned PDFs, `.docx` drafts,
+translated web novels — in whatever language they're written in. The interface comes in
+English and Arabic, and it goes out of its way on the things long reading sessions depend
+on: typography you can actually tune, layouts that hold still, and text that stays
 readable for hours.
+
+Right-to-left gets first-class treatment rather than an afterthought — mirrored interface,
+diacritics, Naskh and Kufi faces — which is unusual enough to be worth saying out loud.
 
 It is one app on every platform: a Tauri 2 shell around a React 19 front end, desktop and
 phone from the same codebase. Everything is a file on your disk — no database, no cloud,
@@ -51,10 +55,12 @@ Move the pointer to the top or bottom edge and the controls come back.
 
 ![Focus mode](docs/screenshots/desktop/03-focus-mode.png)
 
-### ✍️ Typography that takes Arabic seriously
+### ✍️ Typography you can actually tune
 
-**17 reading faces** in four groups — Naskh book faces, modern sans, Kufi, and display —
-each previewed in its own type so you pick by eye, not by name.
+**17 reading faces** in four groups — Naskh book faces, modern sans, Kufi, and display.
+One picker drives both scripts: every row previews Arabic and Latin side by side, and a
+family that only carries one of them shows the fallback rather than hiding it. You pick by
+eye, not by name.
 
 <table>
 <tr>
@@ -90,10 +96,10 @@ through them later.
 </tr>
 </table>
 
-### 🇸🇦 Arabic and English, all the way down
+### 🌐 Two interface languages, mirrored properly
 
-The whole interface is translated and mirrored — not just the book text. Switch to العربية
-and the sidebar moves to the right, icons flip, and every label follows.
+English and العربية, and the translation goes all the way down — not just the book text.
+Switch to Arabic and the sidebar moves to the right, icons flip, and every label follows.
 
 ![The interface in Arabic, fully right-to-left](docs/screenshots/desktop/18-arabic-rtl.png)
 
