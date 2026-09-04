@@ -20,9 +20,8 @@ import {
 } from "react";
 import { EASE, MOTION } from "../../styles/motion";
 import { FONT_STACKS, type Theme } from "../../styles/tokens";
+import { chromeEdges } from "./focusEdges";
 
-/** How close to an edge the pointer must come to summon that bar, in px. */
-const CHROME_EDGE_PX = 72;
 /** How long a revealed bar lingers after the pointer leaves its edge, in ms. */
 const CHROME_LINGER_MS = 450;
 /** How long the first-run hint stays up. Matches `.leaflet-focus-hint`. */
@@ -60,6 +59,10 @@ export interface FocusChromeOptions {
   reducedMotion: boolean;
   /** Wire the pointer tracking at all. False on phones. */
   enabled?: boolean;
+  /** Width of a docked panel on the leading edge, or 0 when none is docked.
+   *  The floating bars stop short of it instead of lying across it — see the
+   *  note on `clip`. */
+  dockInset?: number;
 }
 
 export interface FocusChrome {
@@ -89,6 +92,7 @@ export function useFocusChrome({
   theme,
   reducedMotion,
   enabled = true,
+  dockInset = 0,
 }: FocusChromeOptions): FocusChrome {
   // The chrome stays out of the layout while a panel is open, too. Letting it
   // back in meant that opening a sheet grew the flow by both bar heights and
@@ -148,12 +152,13 @@ export function useFocusChrome({
   // Pointer proximity is measured on the reader root rather than with two hover
   // strips: an element covering the top and bottom bands would swallow clicks
   // and drag-selection over the text underneath it.
-  const trackPointer = (clientY: number, height: number) => {
+  const trackPointer = (
+    clientY: number,
+    height: number,
+    overDockedPanel: boolean,
+  ) => {
     if (!floating) return;
-    const near = {
-      top: clientY <= CHROME_EDGE_PX,
-      bottom: clientY >= height - CHROME_EDGE_PX,
-    };
+    const near = chromeEdges(clientY, height, overDockedPanel);
     for (const edge of ["top", "bottom"] as const) {
       if (near[edge] === inEdge.current[edge]) continue;
       inEdge.current[edge] = near[edge];
@@ -214,10 +219,18 @@ export function useFocusChrome({
   // `visibility` on the outer flips only after the fade finishes: it keeps the
   // exit smooth and takes a hidden bar's buttons out of the tab order instead
   // of leaving invisible focus stops behind.
+  //
+  // A floating bar stops short of a docked panel rather than lying across it.
+  // Spanning the full width put the bar on top of the panel's own header, so
+  // once it was out the close button sat underneath it — and because the bar
+  // occupies the same band that summons it, hovering the covered button held
+  // the bar there. The control was unreachable until you moved away and
+  // waited. `insetInlineStart` is logical, so this lands on whichever edge the
+  // strip is on and needs no separate RTL case.
   const clip = (edge: "top" | "bottom", shown: boolean): CSSProperties => ({
     position: "absolute",
     [edge]: 0,
-    insetInlineStart: 0,
+    insetInlineStart: dockInset,
     insetInlineEnd: 0,
     overflow: "hidden",
     // Above SideSheet's overlay (40) so a revealed bar is never dimmed by, or
@@ -258,7 +271,15 @@ export function useFocusChrome({
         // embeds it. One rect read per move, on an element whose layout is
         // already clean.
         const box = e.currentTarget.getBoundingClientRect();
-        trackPointer(e.clientY - box.top, box.height);
+        // Asked of the DOM rather than worked out from the strip's width and
+        // side: only a DOCKED panel is `role="complementary"` (an overlay one
+        // is a modal dialog), so this needs no geometry, and it stays right
+        // under RTL — where the strip is on the other edge — and at whatever
+        // width the panel happens to be.
+        const overDockedPanel = !!(e.target as Element | null)?.closest?.(
+          '[role="complementary"]',
+        );
+        trackPointer(e.clientY - box.top, box.height, overDockedPanel);
       },
       onMouseLeave: () => {
         if (!floating) return;
