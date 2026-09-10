@@ -1097,7 +1097,6 @@ export function DesktopReader({
                   <BookBody
                     bookId={book.id}
                     chapter={chapter}
-                    chapterCount={chapterCount}
                     theme={contentTheme}
                     themeKey={themeKey}
                     fontFamily={t.fontFamily}
@@ -1164,7 +1163,6 @@ export function DesktopReader({
                 <BookBody
                   bookId={book.id}
                   chapter={chapter}
-                  chapterCount={chapterCount}
                   theme={contentTheme}
                   themeKey={themeKey}
                   fontFamily={t.fontFamily}

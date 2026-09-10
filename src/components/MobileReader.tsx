@@ -1058,7 +1058,6 @@ export function MobileReader({
         <BookBody
           bookId={book.id}
           chapter={chapter}
-          chapterCount={chapterCount}
           theme={contentTheme}
           themeKey={themeKey}
           highlights={state.highlights}
