@@ -7,9 +7,7 @@ import {
 import { Spinner } from "../Spinner";
 import { useImportIndicator } from "../../store/importIndicator";
 import { setMinimized } from "../../store/importProgress";
-import type {
-  Theme,
-} from "../../styles/tokens";
+import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import type { LibraryTab } from "./tabs";
 
@@ -67,15 +65,15 @@ export function MobileBottomNav({
       <NavIconButton
         theme={theme}
         icon="globe"
-        ariaLabel={tab === "store" ? tr("library.backToLibrary") : tr("library.openStore")}
+        ariaLabel={
+          tab === "store"
+            ? tr("library.backToLibrary")
+            : tr("library.openStore")
+        }
         active={tab === "store"}
         onClick={onSetStore}
       />
-      <NavFabButton
-        theme={theme}
-        importing={importing}
-        onClick={onImport}
-      />
+      <NavFabButton theme={theme} importing={importing} onClick={onImport} />
       <NavIconButton
         theme={theme}
         icon="download"

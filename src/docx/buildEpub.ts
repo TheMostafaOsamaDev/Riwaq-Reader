@@ -116,9 +116,10 @@ function opfXml(
   cover: EpubCoverInput | null,
   images: EpubBuildImage[],
 ): string {
-  const uuid = (typeof crypto !== "undefined" && "randomUUID" in crypto)
-    ? crypto.randomUUID()
-    : fallbackUuid();
+  const uuid =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : fallbackUuid();
   const modified = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
   const manifestItems: string[] = [
@@ -261,6 +262,9 @@ function toXhtml(html: string): string {
 function fallbackUuid(): string {
   // Tauri's webview always has crypto.randomUUID; this is a safety net for
   // contexts where it might be missing. RFC4122 v4 shape, low-quality.
-  const r = () => Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+  const r = () =>
+    Math.floor(Math.random() * 0x10000)
+      .toString(16)
+      .padStart(4, "0");
   return `${r()}${r()}-${r()}-4${r().slice(1)}-a${r().slice(1)}-${r()}${r()}${r()}`;
 }

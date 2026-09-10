@@ -21,15 +21,22 @@ export interface DocDirection {
   dir: Dir;
 }
 
-const RTL_LANG_PREFIXES = ["ar", "he", "fa", "ur", "ps", "sd", "ckb", "yi", "ku"];
+const RTL_LANG_PREFIXES = [
+  "ar",
+  "he",
+  "fa",
+  "ur",
+  "ps",
+  "sd",
+  "ckb",
+  "yi",
+  "ku",
+];
 
 // Arabic, Hebrew, Syriac, Thaana, NKo plus presentation forms.
-const RTL_CHAR_RANGE =
-  /[֐-׿؀-ۿ܀-ݏݐ-ݿހ-޿߀-߿ࢠ-ࣿיִ-﷿ﹰ-﻿]/g;
+const RTL_CHAR_RANGE = /[֐-׿؀-ۿ܀-ݏݐ-ݿހ-޿߀-߿ࢠ-ࣿיִ-﷿ﹰ-﻿]/g;
 
-export async function detectDocDirection(
-  zip: JSZip,
-): Promise<DocDirection> {
+export async function detectDocDirection(zip: JSZip): Promise<DocDirection> {
   const documentXml = await readMaybe(zip, "word/document.xml");
   const stylesXml = await readMaybe(zip, "word/styles.xml");
   const settingsXml = await readMaybe(zip, "word/settings.xml");
@@ -81,9 +88,7 @@ function extractLang(xml: string | null): string | null {
   // bidi attribute is the RTL-script lang). Prefer w:val if present.
   const valMatch = xml.match(/<w:lang\b[^/>]*\bw:val\s*=\s*["']([^"']+)["']/);
   if (valMatch) return valMatch[1];
-  const bidiMatch = xml.match(
-    /<w:lang\b[^/>]*\bw:bidi\s*=\s*["']([^"']+)["']/,
-  );
+  const bidiMatch = xml.match(/<w:lang\b[^/>]*\bw:bidi\s*=\s*["']([^"']+)["']/);
   if (bidiMatch) return bidiMatch[1];
   return null;
 }

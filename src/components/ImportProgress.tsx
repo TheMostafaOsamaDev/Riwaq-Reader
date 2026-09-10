@@ -145,8 +145,16 @@ function Modal({ theme }: { theme: Theme }) {
           </div>
           <button
             onClick={finished ? onDismiss : onMinimize}
-            aria-label={finished ? tr("common.close") : tr("import.progress.continueInBackground")}
-            title={finished ? tr("common.close") : tr("import.progress.continueInBackground")}
+            aria-label={
+              finished
+                ? tr("common.close")
+                : tr("import.progress.continueInBackground")
+            }
+            title={
+              finished
+                ? tr("common.close")
+                : tr("import.progress.continueInBackground")
+            }
             style={{
               border: "none",
               background: "transparent",
@@ -165,11 +173,7 @@ function Modal({ theme }: { theme: Theme }) {
 
         {/* Progress bar */}
         <div style={{ padding: "8px 20px 0" }}>
-          <ProgressBar
-            theme={theme}
-            value={state.overall}
-            errored={errored}
-          />
+          <ProgressBar theme={theme} value={state.overall} errored={errored} />
         </div>
 
         {/* Steps */}
@@ -204,23 +208,24 @@ function Modal({ theme }: { theme: Theme }) {
               <div style={{ flex: 1, color: "#c04a3a", lineHeight: 1.4 }}>
                 {errorLabel(state.error ?? "", tr)}
               </div>
-              <button
-                onClick={onDismiss}
-                style={pillButton(theme)}
-              >
+              <button onClick={onDismiss} style={pillButton(theme)}>
                 {tr("import.progress.dismiss")}
               </button>
             </>
           ) : finished ? (
             <>
-              <div style={{ flex: 1 }}>{tr("import.progress.addedToLibrary")}</div>
+              <div style={{ flex: 1 }}>
+                {tr("import.progress.addedToLibrary")}
+              </div>
               <button onClick={onDismiss} style={pillButton(theme)}>
                 {tr("common.close")}
               </button>
             </>
           ) : (
             <>
-              <div style={{ flex: 1 }}>{tr("import.progress.staysRunning")}</div>
+              <div style={{ flex: 1 }}>
+                {tr("import.progress.staysRunning")}
+              </div>
               <button onClick={onMinimize} style={pillButton(theme)}>
                 {tr("import.progress.continueInBackground")}
               </button>
@@ -296,11 +301,7 @@ function StepRow({ theme, step }: { theme: Theme; step: Step }) {
 
   const opacity = isActive ? 1 : isDone ? 0.7 : isError ? 1 : 0.4;
   const fontWeight = isActive ? 600 : 500;
-  const color = isError
-    ? "#c04a3a"
-    : isActive
-      ? ACCENT
-      : theme.ink;
+  const color = isError ? "#c04a3a" : isActive ? ACCENT : theme.ink;
 
   return (
     <div
@@ -349,12 +350,7 @@ function StepIcon({
           animation: "import-pulse 1400ms ease-in-out infinite",
         }}
       >
-        <svg
-          width={18}
-          height={18}
-          viewBox="0 0 18 18"
-          aria-hidden
-        >
+        <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
           <circle cx={9} cy={9} r={8} fill={ACCENT} />
           <path
             d="M5 9l3 3 5-6"
@@ -370,12 +366,7 @@ function StepIcon({
   }
   if (status === "done") {
     return (
-      <svg
-        width={18}
-        height={18}
-        viewBox="0 0 18 18"
-        aria-hidden
-      >
+      <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
         <circle cx={9} cy={9} r={8} fill={themeMuted} opacity={0.45} />
         <path
           d="M5 9l3 3 5-6"
@@ -421,12 +412,7 @@ function StepIcon({
 
 function CloseGlyph({ size = 16 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      aria-hidden
-    >
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden>
       <path
         d="M4 4l8 8M12 4l-8 8"
         fill="none"

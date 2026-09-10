@@ -34,9 +34,7 @@ function oklchToHex(L: number, C: number, h: number): string {
   const bl = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
 
   const gamma = (u: number) =>
-    u <= 0.0031308
-      ? 12.92 * u
-      : 1.055 * Math.max(0, u) ** (1 / 2.4) - 0.055;
+    u <= 0.0031308 ? 12.92 * u : 1.055 * Math.max(0, u) ** (1 / 2.4) - 0.055;
 
   const to8 = (u: number) =>
     Math.max(0, Math.min(255, Math.round(gamma(u) * 255)));
@@ -49,9 +47,7 @@ function oklchToHex(L: number, C: number, h: number): string {
   );
 }
 
-export function paletteForId(
-  id: string,
-): readonly [string, string, string] {
+export function paletteForId(id: string): readonly [string, string, string] {
   const h = hash32(id);
   const hue = HUE_ANCHORS[h % HUE_ANCHORS.length] + ((h >> 8) % 20) - 10;
   const deep = oklchToHex(0.22, 0.05, hue);

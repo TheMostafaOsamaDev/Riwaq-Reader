@@ -1,13 +1,8 @@
-
 import { BOOK_COVER_DIMS } from "../BookCover";
-import type {
-  BookIndexEntry,
-} from "../../store/library";
+import type { BookIndexEntry } from "../../store/library";
 import { SourceBadge } from "../SourceBadge";
 import { getSourceMeta } from "../../sources/registry";
-import type {
-  Theme,
-} from "../../styles/tokens";
+import type { Theme } from "../../styles/tokens";
 
 /** Top-end corner marker flagging a source-backed library card with the
  *  source's favicon (globe fallback). Returns undefined for local books

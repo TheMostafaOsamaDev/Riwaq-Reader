@@ -87,7 +87,10 @@ export function createKolNovelProSource(host: SourceHost): Source {
       // illustrations inline in `.epcontent`. Read that directly — no PDF
       // round-trip, no token flow.
       const resp = await host.fetch(chapter.url);
-      const htmlLines = parseChapterContent(parseHtmlDocument(resp.text), BASE_URL);
+      const htmlLines = parseChapterContent(
+        parseHtmlDocument(resp.text),
+        BASE_URL,
+      );
       // Any extracted content means the chapter is readable as HTML. We
       // deliberately don't gate on a minimum length: real pro chapters serve
       // their full body inline (hundreds of paragraphs), and a length heuristic
@@ -98,10 +101,15 @@ export function createKolNovelProSource(host: SourceHost): Source {
       // Fallback: a chapter with no readable HTML body (older PDF-only posts,
       // or the site reverting to PDF delivery). Use the ts_ln_dl_url token
       // flow + pdf.js, exactly as before.
-      host.log("debug", `no HTML body — falling back to PDF for ${chapter.url}`);
+      host.log(
+        "debug",
+        `no HTML body — falling back to PDF for ${chapter.url}`,
+      );
       const postId = extractPostId(chapter.url);
       if (!postId) {
-        throw new Error(`Could not find a post id in chapter URL: ${chapter.url}`);
+        throw new Error(
+          `Could not find a post id in chapter URL: ${chapter.url}`,
+        );
       }
       const pdfUrl = await requestPdfUrl(host, postId);
       const bytes = await host.fetchBytes(pdfUrl);
@@ -137,21 +145,30 @@ function extractPostId(url: string): string | null {
 }
 
 /** POST the ts_ln_dl_url action and return the tokenized PDF URL. */
-async function requestPdfUrl(host: SourceHost, postId: string): Promise<string> {
+async function requestPdfUrl(
+  host: SourceHost,
+  postId: string,
+): Promise<string> {
   const body = `action=ts_ln_dl_url&post_id=${encodeURIComponent(postId)}`;
   const resp = await host.fetch(AJAX_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    },
     body,
   });
   let json: { error?: number; url?: string };
   try {
     json = JSON.parse(resp.text);
   } catch {
-    throw new Error(`PDF token endpoint returned non-JSON (status ${resp.status})`);
+    throw new Error(
+      `PDF token endpoint returned non-JSON (status ${resp.status})`,
+    );
   }
   if (!json || json.error !== 0 || !json.url) {
-    throw new Error(`PDF not available for post ${postId} (members-only or removed)`);
+    throw new Error(
+      `PDF not available for post ${postId} (members-only or removed)`,
+    );
   }
   return json.url;
 }

@@ -30,9 +30,9 @@ async function docxBytes(): Promise<Uint8Array> {
 
 describe("detectBookFormat", () => {
   it("identifies a PDF by its header", () => {
-    expect(detectBookFormat(bytes("%PDF-1.7\n%\xE2\xE3\xCF\xD3\n1 0 obj"))).toBe(
-      "pdf",
-    );
+    expect(
+      detectBookFormat(bytes("%PDF-1.7\n%\xE2\xE3\xCF\xD3\n1 0 obj")),
+    ).toBe("pdf");
   });
 
   it("identifies an EPUB by its mimetype entry", async () => {
@@ -54,9 +54,9 @@ describe("detectBookFormat", () => {
   it("reports unknown for a zip that is neither", async () => {
     const zip = new JSZip();
     zip.file("notes.txt", "hello");
-    expect(detectBookFormat(await zip.generateAsync({ type: "uint8array" }))).toBe(
-      "unknown",
-    );
+    expect(
+      detectBookFormat(await zip.generateAsync({ type: "uint8array" })),
+    ).toBe("unknown");
   });
 
   it("reports unknown for arbitrary bytes and for empty input", () => {

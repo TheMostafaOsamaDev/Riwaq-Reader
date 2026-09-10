@@ -22,11 +22,7 @@
 // run in front of you. In a plain browser (no Tauri) the events stay in memory
 // and are readable via `window.__readerLog()`.
 
-import {
-  BaseDirectory,
-  mkdir,
-  writeTextFile,
-} from "@tauri-apps/plugin-fs";
+import { BaseDirectory, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
 
 const LOG_DIR = "debug";
 const LOG_PATH = "debug/reader-debug.log";
@@ -56,7 +52,10 @@ async function ensureDir(): Promise<boolean> {
   if (!ready) {
     ready = (async () => {
       try {
-        await mkdir(LOG_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
+        await mkdir(LOG_DIR, {
+          baseDir: BaseDirectory.AppData,
+          recursive: true,
+        });
         return true;
       } catch {
         return false;
@@ -122,7 +121,9 @@ export function log(kind: string, data?: unknown): void {
   pending.push(`${JSON.stringify(ev)}\n`);
   if (events.length >= MAX_EVENTS) {
     capped = true;
-    pending.push(`${JSON.stringify({ t: ev.t, kind: "log:capped", data: MAX_EVENTS })}\n`);
+    pending.push(
+      `${JSON.stringify({ t: ev.t, kind: "log:capped", data: MAX_EVENTS })}\n`,
+    );
   }
   scheduleFlush();
 }
@@ -196,7 +197,9 @@ function styleOf(el: Element) {
     opacity: cs.opacity,
     transform: cs.transform,
     filter: cs.filter,
-    backdropFilter: cs.backdropFilter || (cs as unknown as Record<string, string>).webkitBackdropFilter,
+    backdropFilter:
+      cs.backdropFilter ||
+      (cs as unknown as Record<string, string>).webkitBackdropFilter,
     overflow: `${cs.overflowX}/${cs.overflowY}`,
     clipPath: cs.clipPath,
     contain: cs.contain,
@@ -278,7 +281,11 @@ export function snapshotReader(
       last: paras[paras.length - 1] ? rect(paras[paras.length - 1]) : null,
     },
     heading: heading
-      ? { rect: rect(heading), onScreen: onScreen(rect(heading)), text: heading.textContent?.slice(0, 30) }
+      ? {
+          rect: rect(heading),
+          onScreen: onScreen(rect(heading)),
+          text: heading.textContent?.slice(0, 30),
+        }
       : null,
     wrapper: wrapper ? styleOf(wrapper) : null,
     hitTest: hit
@@ -300,7 +307,11 @@ export function logSessionStart(extra?: Record<string, unknown>): void {
       at: new Date().toISOString(),
       ua: navigator.userAgent,
       tauri: hasTauri(),
-      window: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
+      window: {
+        w: window.innerWidth,
+        h: window.innerHeight,
+        dpr: window.devicePixelRatio,
+      },
       ...extra,
     });
   });

@@ -1,7 +1,4 @@
-
-import type {
-  Theme,
-} from "../../styles/tokens";
+import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 
 export function ErrorBanner({
@@ -24,7 +21,10 @@ export function ErrorBanner({
         marginBottom: 20,
       }}
     >
-      <strong style={{ fontWeight: 600 }}>{tr("library.importFailedPrefix")}</strong> {message}
+      <strong style={{ fontWeight: 600 }}>
+        {tr("library.importFailedPrefix")}
+      </strong>{" "}
+      {message}
     </div>
   );
 }

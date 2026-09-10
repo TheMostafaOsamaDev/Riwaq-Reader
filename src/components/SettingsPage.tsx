@@ -129,7 +129,8 @@ export function SettingsPage({
       if (!path || typeof path !== "string") return;
       const { readTextFile } = await import("@tauri-apps/plugin-fs");
       const parsed = JSON.parse(await readTextFile(path)) as Partial<Tweaks>;
-      if (!parsed || typeof parsed !== "object") throw new Error("not an object");
+      if (!parsed || typeof parsed !== "object")
+        throw new Error("not an object");
       applyTweaks(parsed);
       notify("info", tr("settings.importDone"));
     } catch (e) {
@@ -164,7 +165,13 @@ export function SettingsPage({
       {
         id: "theme",
         label: tr("settings.theme"),
-        node: <ThemeField theme={theme} pref={t.theme} onChange={(p) => setTweak("theme", p)} />,
+        node: (
+          <ThemeField
+            theme={theme}
+            pref={t.theme}
+            onChange={(p) => setTweak("theme", p)}
+          />
+        ),
       },
     ],
     reading: readingItems({
@@ -231,15 +238,21 @@ export function SettingsPage({
     downloads: [
       {
         id: "maxConcurrent",
-        label: tr("settings.maxConcurrentDownloads", { n: t.maxConcurrentDownloads }),
+        label: tr("settings.maxConcurrentDownloads", {
+          n: t.maxConcurrentDownloads,
+        }),
         node: (
           <Field
-            label={tr("settings.maxConcurrentDownloads", { n: t.maxConcurrentDownloads })}
+            label={tr("settings.maxConcurrentDownloads", {
+              n: t.maxConcurrentDownloads,
+            })}
             theme={theme}
           >
             <Slider
               theme={theme}
-              ariaLabel={tr("settings.maxConcurrentDownloads", { n: t.maxConcurrentDownloads })}
+              ariaLabel={tr("settings.maxConcurrentDownloads", {
+                n: t.maxConcurrentDownloads,
+              })}
               min={1}
               max={5}
               step={1}
@@ -265,7 +278,14 @@ export function SettingsPage({
                 { value: "off", label: tr("settings.off") },
               ]}
             />
-            <p style={{ margin: "8px 2px 0", fontSize: 10.5, color: theme.muted, lineHeight: 1.5 }}>
+            <p
+              style={{
+                margin: "8px 2px 0",
+                fontSize: 10.5,
+                color: theme.muted,
+                lineHeight: 1.5,
+              }}
+            >
               {tr("settings.wifiOnly.hint")}
             </p>
           </Field>
@@ -327,7 +347,9 @@ export function SettingsPage({
             }}
           >
             <BrandMark themeKey={themeKey} size={56} />
-            <span style={{ fontSize: 12, color: theme.muted, textAlign: "center" }}>
+            <span
+              style={{ fontSize: 12, color: theme.muted, textAlign: "center" }}
+            >
               {tr("settings.about.tagline")}
             </span>
             {version && (
@@ -366,7 +388,14 @@ export function SettingsPage({
                   : tr("settings.updates.checkNow")}
               </Button>
             </div>
-            <p style={{ margin: "8px 2px 0", fontSize: 10.5, color: theme.muted, lineHeight: 1.5 }}>
+            <p
+              style={{
+                margin: "8px 2px 0",
+                fontSize: 10.5,
+                color: theme.muted,
+                lineHeight: 1.5,
+              }}
+            >
               {tr("settings.updates.hint")}
             </p>
           </Field>
@@ -381,7 +410,14 @@ export function SettingsPage({
             icon={<Icon name="globe" size={16} />}
             label={tr("settings.about.sourceCode")}
             onClick={() => void openExternal(REPO_URL)}
-            trailing={<Icon name="chevronR" size={16} className="rtl-flip-x" style={{ opacity: 0.5 }} />}
+            trailing={
+              <Icon
+                name="chevronR"
+                size={16}
+                className="rtl-flip-x"
+                style={{ opacity: 0.5 }}
+              />
+            }
           />
         ),
       },
@@ -394,7 +430,14 @@ export function SettingsPage({
             icon={<Icon name="doc" size={16} />}
             label={tr("settings.about.license")}
             onClick={() => void openExternal(LICENSE_URL)}
-            trailing={<Icon name="chevronR" size={16} className="rtl-flip-x" style={{ opacity: 0.5 }} />}
+            trailing={
+              <Icon
+                name="chevronR"
+                size={16}
+                className="rtl-flip-x"
+                style={{ opacity: 0.5 }}
+              />
+            }
           />
         ),
       },
@@ -406,7 +449,9 @@ export function SettingsPage({
   const results = searching
     ? CATEGORY_ORDER.map((c) => ({
         cat: c,
-        entries: entriesByCat[c].filter((e) => e.label.toLowerCase().includes(q)),
+        entries: entriesByCat[c].filter((e) =>
+          e.label.toLowerCase().includes(q),
+        ),
       })).filter((g) => g.entries.length > 0)
     : [];
 
@@ -430,7 +475,14 @@ export function SettingsPage({
   const searchResults = (
     <div>
       {results.length === 0 ? (
-        <p style={{ textAlign: "center", color: theme.muted, fontSize: 13, padding: "40px 0" }}>
+        <p
+          style={{
+            textAlign: "center",
+            color: theme.muted,
+            fontSize: 13,
+            padding: "40px 0",
+          }}
+        >
           {tr("settings.searchNoResults")}
         </p>
       ) : (
@@ -449,7 +501,9 @@ export function SettingsPage({
   );
 
   const searchBox = (
-    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+    <div
+      style={{ position: "relative", display: "flex", alignItems: "center" }}
+    >
       <span
         style={{
           position: "absolute",
@@ -493,7 +547,11 @@ export function SettingsPage({
         <Header
           theme={theme}
           isAr={isAr}
-          title={inCategory ? tr(CATEGORY_META[activeCategory].labelKey) : tr("sidebar.settings")}
+          title={
+            inCategory
+              ? tr(CATEGORY_META[activeCategory].labelKey)
+              : tr("sidebar.settings")
+          }
           onBack={inCategory ? () => setActiveCategory(null) : onClose}
         />
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -509,21 +567,19 @@ export function SettingsPage({
             ) : (
               <>
                 <div style={{ marginBottom: 16 }}>{searchBox}</div>
-                {searching ? (
-                  searchResults
-                ) : (
-                  card(
-                    CATEGORY_ORDER.map((c) => (
-                      <MobileCategoryRow
-                        key={c}
-                        theme={theme}
-                        icon={CATEGORY_META[c].icon}
-                        label={tr(CATEGORY_META[c].labelKey)}
-                        onClick={() => setActiveCategory(c)}
-                      />
-                    )),
-                  )
-                )}
+                {searching
+                  ? searchResults
+                  : card(
+                      CATEGORY_ORDER.map((c) => (
+                        <MobileCategoryRow
+                          key={c}
+                          theme={theme}
+                          icon={CATEGORY_META[c].icon}
+                          label={tr(CATEGORY_META[c].labelKey)}
+                          onClick={() => setActiveCategory(c)}
+                        />
+                      )),
+                    )}
               </>
             )}
           </div>
@@ -537,7 +593,9 @@ export function SettingsPage({
   const displayCategory: CategoryKey = activeCategory ?? "appearance";
   return (
     <Shell theme={theme} isAr={isAr}>
-      <div style={{ display: "flex", flex: 1, minHeight: 0, padding: 16, gap: 16 }}>
+      <div
+        style={{ display: "flex", flex: 1, minHeight: 0, padding: 16, gap: 16 }}
+      >
         {/* rail — matches the app sidebar's chrome; items slide in on open */}
         <aside
           style={{
@@ -587,7 +645,9 @@ export function SettingsPage({
                 aria-pressed={!searching && c === displayCategory}
                 className={reduced ? undefined : "riwaq-settings-slide-in"}
                 style={{
-                  ...(reduced ? null : { ...slideStyle, animationDelay: `${i * 28}ms` }),
+                  ...(reduced
+                    ? null
+                    : { ...slideStyle, animationDelay: `${i * 28}ms` }),
                   display: "flex",
                   alignItems: "center",
                   gap: 11,
@@ -595,9 +655,13 @@ export function SettingsPage({
                   border: "none",
                   borderRadius: 10,
                   background:
-                    !searching && c === displayCategory ? theme.ink : "transparent",
+                    !searching && c === displayCategory
+                      ? theme.ink
+                      : "transparent",
                   color:
-                    !searching && c === displayCategory ? theme.paper : theme.ink,
+                    !searching && c === displayCategory
+                      ? theme.paper
+                      : theme.ink,
                   fontWeight: !searching && c === displayCategory ? 600 : 500,
                   fontSize: 13.5,
                   fontFamily: FONT_STACKS.sans,
@@ -609,7 +673,9 @@ export function SettingsPage({
                   style={{
                     display: "flex",
                     color:
-                      !searching && c === displayCategory ? theme.paper : theme.muted,
+                      !searching && c === displayCategory
+                        ? theme.paper
+                        : theme.muted,
                   }}
                 >
                   <Icon name={CATEGORY_META[c].icon} size={18} />
@@ -622,7 +688,9 @@ export function SettingsPage({
 
         {/* content */}
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-          <div style={{ maxWidth: 640, margin: "0 auto", padding: "6px 8px 60px" }}>
+          <div
+            style={{ maxWidth: 640, margin: "0 auto", padding: "6px 8px 60px" }}
+          >
             {searching ? (
               searchResults
             ) : (
@@ -634,7 +702,12 @@ export function SettingsPage({
                 <SectionHeader
                   theme={theme}
                   label={tr(CATEGORY_META[displayCategory].labelKey)}
-                  icon={<Icon name={CATEGORY_META[displayCategory].icon} size={13} />}
+                  icon={
+                    <Icon
+                      name={CATEGORY_META[displayCategory].icon}
+                      size={13}
+                    />
+                  }
                 />
                 {card(renderEntries(entriesByCat[displayCategory]))}
               </div>
@@ -650,7 +723,11 @@ export function SettingsPage({
     return (
       <>
         <Toast theme={theme} toast={toast} onDismiss={() => setToast(null)} />
-        <AnimatedDialog open={resetOpen} onScrimClick={() => setResetOpen(false)} zIndex={Z.dialogAbove}>
+        <AnimatedDialog
+          open={resetOpen}
+          onScrimClick={() => setResetOpen(false)}
+          zIndex={Z.dialogAbove}
+        >
           {resetOpen && (
             <ConfirmDialog
               theme={theme}
@@ -805,7 +882,12 @@ function MobileCategoryRow({
         <Icon name={icon} size={18} />
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
-      <Icon name="chevronR" size={16} className="rtl-flip-x" style={{ opacity: 0.4 }} />
+      <Icon
+        name="chevronR"
+        size={16}
+        className="rtl-flip-x"
+        style={{ opacity: 0.4 }}
+      />
     </button>
   );
 }

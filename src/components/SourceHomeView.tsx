@@ -122,8 +122,12 @@ export function SourceHomeView({
         // search the user just cleared.
         searchGeneration.current++;
         setSearchState({
-          loading: false, loadingMore: false, error: null,
-          loadMoreError: null, result: null, query: "",
+          loading: false,
+          loadingMore: false,
+          error: null,
+          loadMoreError: null,
+          result: null,
+          query: "",
         });
         return;
       }
@@ -215,7 +219,11 @@ export function SourceHomeView({
         onSubmitSearch={onSubmitSearch}
       />
 
-      <div style={{ padding: layout === "mobile" ? "8px 18px 40px" : "8px 40px 40px" }}>
+      <div
+        style={{
+          padding: layout === "mobile" ? "8px 18px 40px" : "8px 40px 40px",
+        }}
+      >
         {inSearchMode ? (
           <SearchResults
             theme={theme}
@@ -224,12 +232,19 @@ export function SourceHomeView({
               setSearchInput("");
               searchGeneration.current++;
               setSearchState({
-                loading: false, loadingMore: false, error: null,
-                loadMoreError: null, result: null, query: "",
+                loading: false,
+                loadingMore: false,
+                error: null,
+                loadMoreError: null,
+                result: null,
+                query: "",
               });
             }}
             onLoadMore={() =>
-              void runSearch(searchState.query, (searchState.result?.page ?? 1) + 1)
+              void runSearch(
+                searchState.query,
+                (searchState.result?.page ?? 1) + 1,
+              )
             }
             onOpenNovel={onOpenNovel}
           />
@@ -475,7 +490,14 @@ function SectionsList({ theme, state, onOpenNovel }: SectionsListProps) {
     );
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28, marginTop: 18 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 28,
+        marginTop: 18,
+      }}
+    >
       {state.sections.map((section) => (
         <SectionRow
           key={section.id}
@@ -534,7 +556,11 @@ function SectionRow({ theme, section, onOpenNovel }: SectionRowProps) {
             key={c.url}
             style={{ scrollSnapAlign: "start", flexShrink: 0, width: 140 }}
           >
-            <NovelCard theme={theme} card={c} onClick={() => onOpenNovel(c.url)} />
+            <NovelCard
+              theme={theme}
+              card={c}
+              onClick={() => onOpenNovel(c.url)}
+            />
           </div>
         ))}
       </SectionCarousel>

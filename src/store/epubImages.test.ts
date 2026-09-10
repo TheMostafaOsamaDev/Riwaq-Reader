@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let files: Record<string, string> = {};
 let existing = new Set<string>();
-const extracted: { path: string; items: { entry: string; dest: string }[] }[] = [];
+const extracted: { path: string; items: { entry: string; dest: string }[] }[] =
+  [];
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
   BaseDirectory: { AppData: 1 },
@@ -52,8 +53,16 @@ beforeEach(() => {
 
 async function seedManifest() {
   await writeImageManifest("b1", [
-    { href: "images/img-001.png", entry: "OEBPS/Images/a.png", mimeType: "image/png" },
-    { href: "images/img-002.png", entry: "OEBPS/Images/b.png", mimeType: "image/png" },
+    {
+      href: "images/img-001.png",
+      entry: "OEBPS/Images/a.png",
+      mimeType: "image/png",
+    },
+    {
+      href: "images/img-002.png",
+      entry: "OEBPS/Images/b.png",
+      mimeType: "image/png",
+    },
   ]);
 }
 
@@ -71,7 +80,9 @@ describe("ensureEpubImages", () => {
     expect(extracted).toEqual([
       {
         path: `${DIR}/book.epub`,
-        items: [{ entry: "OEBPS/Images/b.png", dest: `${DIR}/images/img-002.png` }],
+        items: [
+          { entry: "OEBPS/Images/b.png", dest: `${DIR}/images/img-002.png` },
+        ],
       },
     ]);
   });

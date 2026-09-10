@@ -95,7 +95,9 @@ export function UpdateBanner({
       }}
     >
       <span style={{ flex: 1, minWidth: 140, fontSize: 13, lineHeight: 1.45 }}>
-        {failed ? tr("update.failed") : tr("update.available", { v: info.version })}
+        {failed
+          ? tr("update.failed")
+          : tr("update.available", { v: info.version })}
       </span>
       <Button theme={theme} variant="ghost" size="sm" onClick={onDismiss}>
         {tr("update.action.later")}

@@ -78,7 +78,9 @@ export async function commitPdfBook(
     pageCount: opts.pageCount,
     outline: opts.outline,
   };
-  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), { baseDir: BASE });
+  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
+    baseDir: BASE,
+  });
   await writeInitialState(id);
 
   return appendIndexEntry({
@@ -132,7 +134,9 @@ export async function commitDocxBook(opts: {
     dir: opts.dir,
     outline: opts.outline,
   };
-  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), { baseDir: BASE });
+  await writeTextFile(`${dir}/book.json`, JSON.stringify(book), {
+    baseDir: BASE,
+  });
   await writeInitialState(id);
 
   return appendIndexEntry({
@@ -160,7 +164,9 @@ async function writeCover(
 ): Promise<{ coverFile?: string; thumbFile?: string }> {
   if (!cover) return {};
   const coverFile = `cover.${cover.ext}`;
-  await writeFile(`${bookDir(id)}/${coverFile}`, cover.bytes, { baseDir: BASE });
+  await writeFile(`${bookDir(id)}/${coverFile}`, cover.bytes, {
+    baseDir: BASE,
+  });
   // Null when the webview can't encode WebP — coverSrcFor then falls back to
   // the original, exactly as for a book imported before thumbnails existed.
   const thumbFile = (await writeCoverThumb(id, coverFile)) ?? undefined;

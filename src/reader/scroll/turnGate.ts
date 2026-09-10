@@ -44,7 +44,12 @@ export interface TurnGate {
    *
    * `deltaMode` comes straight from the WheelEvent; omitting it means pixels.
    */
-  onWheel(deltaY: number, atEdge: boolean, t: number, deltaMode?: number): boolean;
+  onWheel(
+    deltaY: number,
+    atEdge: boolean,
+    t: number,
+    deltaMode?: number,
+  ): boolean;
   /** The host confirms a turn landed, arming the lock. */
   didTurn(t: number): void;
   /** Forget everything — for a chapter change from elsewhere (TOC, scrubber). */
@@ -74,7 +79,8 @@ export function createTurnGate(options: TurnGateOptions = {}): TurnGate {
       // never unlocks.
       if (locked && gap >= quietMs) locked = false;
       if (!atEdge) return false;
-      if (Math.abs(wheelDeltaToPixels(deltaY, deltaMode)) < minDelta) return false;
+      if (Math.abs(wheelDeltaToPixels(deltaY, deltaMode)) < minDelta)
+        return false;
       return !locked;
     },
     didTurn(t) {

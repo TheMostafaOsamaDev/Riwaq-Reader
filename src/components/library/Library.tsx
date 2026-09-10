@@ -27,7 +27,7 @@ import { AddToShelfMenu } from "../AddToShelfMenu";
 import { AddToShelfDialog } from "../AddToShelfDialog";
 import { AnimatedDialog } from "../AnimatedDialog";
 import { AnimatedFullScreen } from "../AnimatedFullScreen";
-import { onOpenDownloadQueue, } from "../../store/uiIntents";
+import { onOpenDownloadQueue } from "../../store/uiIntents";
 import {
   useNav,
   goLibrary,
@@ -76,17 +76,13 @@ import {
   deleteShelf as deleteShelfStore,
   type Shelf,
 } from "../../store/shelves";
-import {
-  isOnShelf,
-  wouldOrphan,
-} from "../../store/shelfLogic";
+import { isOnShelf, wouldOrphan } from "../../store/shelfLogic";
 import { ImportDetailsDialog } from "../ImportDetailsDialog";
-import type { CoverChoice, FixedImportDraft } from "../../store/fixedImportStage";
-import {
-  type Theme,
-  type ThemeKey,
-  Z,
-} from "../../styles/tokens";
+import type {
+  CoverChoice,
+  FixedImportDraft,
+} from "../../store/fixedImportStage";
+import { type Theme, type ThemeKey, Z } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { errorLabel } from "../../i18n/statusLabels";
 import { DesktopLibrary } from "./DesktopLibrary";
@@ -112,7 +108,11 @@ interface Props {
   /** Open the Source streaming reader at a specific novel + chapter. The
    *  Library hands this off to App.tsx, which renders the reader at top
    *  level (covering Library + Store). */
-  onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
+  onStreamRead: (
+    sourceId: string,
+    novelUrl: string,
+    chapterId?: number,
+  ) => void;
   /** True while the streaming reader overlay is open above us. The Library
    *  stays mounted underneath, so we watch this to re-read the shelf when a
    *  reading session ends (a source novel's lastReadAt/progress changed). */
@@ -267,8 +267,7 @@ export function Library({
   const shelvesActive = view.kind === "shelves";
   // The shelf whose detail view is open, if any — drives the sidebar's
   // per-shelf active highlight (Task 9).
-  const activeShelfId =
-    view.kind === "shelfDetail" ? view.shelfId : undefined;
+  const activeShelfId = view.kind === "shelfDetail" ? view.shelfId : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
 
@@ -595,9 +594,7 @@ export function Library({
     // pendingShelfImportRef doc comment for why the before/after diff in
     // finishPendingShelfImport can't see them on its own.
     if (pendingShelfImportRef.current) {
-      pendingShelfImportRef.current.reusedIds.push(
-        ...reused.map((b) => b.id),
-      );
+      pendingShelfImportRef.current.reusedIds.push(...reused.map((b) => b.id));
     }
     importStats.current = {
       imported: res.autoImported.length,
@@ -757,7 +754,9 @@ export function Library({
       const entry = await d.commit({ title, cover });
       await advanceQueue(d, true, entry.id);
     } catch (e) {
-      importStats.current.errors.push(e instanceof Error ? e.message : String(e));
+      importStats.current.errors.push(
+        e instanceof Error ? e.message : String(e),
+      );
       await advanceQueue(d, false);
     } finally {
       setQBusy(false);
@@ -775,7 +774,9 @@ export function Library({
       });
       await advanceQueue(d, true, entry.id);
     } catch (e) {
-      importStats.current.errors.push(e instanceof Error ? e.message : String(e));
+      importStats.current.errors.push(
+        e instanceof Error ? e.message : String(e),
+      );
       await advanceQueue(d, false);
     } finally {
       setQBusy(false);

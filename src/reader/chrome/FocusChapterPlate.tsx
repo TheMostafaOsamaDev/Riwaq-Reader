@@ -155,40 +155,40 @@ export function FocusChapterPlate({
           ...reveal(nameShown, reducedMotion),
         }}
       >
-      <div
-        title={title}
-        style={{
-          marginTop: `calc(${PLATE_AIR_TOP}px + env(safe-area-inset-top, 0px))`,
-          maxWidth: "min(76%, 560px)",
-          // The name is book content, so it keeps the display stack the top
-          // bar's title uses — just in the marker's register.
-          fontFamily: titleFontFor(title),
-          fontSize: arabic ? 12.5 : 11,
-          lineHeight: `${PLATE_LINE}px`,
-          fontWeight: arabic ? 500 : 600,
-          letterSpacing: arabic ? "normal" : "0.2em",
-          textTransform: arabic ? "none" : "uppercase",
-          color: theme.muted,
-          textAlign: "center",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          // Tracking adds space AFTER the last glyph too, which pulls a
-          // centred line visibly off-centre. Half of it back closes the gap.
-          ...(arabic ? null : { textIndent: "0.2em" }),
-        }}
-      >
-        {title}
-      </div>
-      <div
-        aria-hidden
-        style={{
-          marginTop: PLATE_GAP,
-          width: PLATE_RULE_W,
-          height: 1,
-          background: `linear-gradient(to right, ${withAlpha(theme.ink, 0)}, ${inkAlpha(theme, 0.3)}, ${withAlpha(theme.ink, 0)})`,
-        }}
-      />
+        <div
+          title={title}
+          style={{
+            marginTop: `calc(${PLATE_AIR_TOP}px + env(safe-area-inset-top, 0px))`,
+            maxWidth: "min(76%, 560px)",
+            // The name is book content, so it keeps the display stack the top
+            // bar's title uses — just in the marker's register.
+            fontFamily: titleFontFor(title),
+            fontSize: arabic ? 12.5 : 11,
+            lineHeight: `${PLATE_LINE}px`,
+            fontWeight: arabic ? 500 : 600,
+            letterSpacing: arabic ? "normal" : "0.2em",
+            textTransform: arabic ? "none" : "uppercase",
+            color: theme.muted,
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            // Tracking adds space AFTER the last glyph too, which pulls a
+            // centred line visibly off-centre. Half of it back closes the gap.
+            ...(arabic ? null : { textIndent: "0.2em" }),
+          }}
+        >
+          {title}
+        </div>
+        <div
+          aria-hidden
+          style={{
+            marginTop: PLATE_GAP,
+            width: PLATE_RULE_W,
+            height: 1,
+            background: `linear-gradient(to right, ${withAlpha(theme.ink, 0)}, ${inkAlpha(theme, 0.3)}, ${withAlpha(theme.ink, 0)})`,
+          }}
+        />
       </div>
     </div>
   );

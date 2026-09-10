@@ -1,14 +1,9 @@
-import { memo, useCallback, } from "react";
+import { memo, useCallback } from "react";
 import { useLongPress } from "../../hooks/useLongPress";
-import { BookCover, } from "../BookCover";
-import type {
-  BookIndexEntry,
-} from "../../store/library";
+import { BookCover } from "../BookCover";
+import type { BookIndexEntry } from "../../store/library";
 import { paletteForId } from "../../store/palette";
-import {
-  titleFontFor,
-  type Theme,
-} from "../../styles/tokens";
+import { titleFontFor, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { MOBILE_CARD_INTRINSIC_H, sourceCornerMarker } from "./cardChrome";
 
@@ -67,7 +62,9 @@ export const MobileShelfCard = memo(function MobileShelfCard({
         palette={paletteForId(book.id)}
         size="sm"
         src={coverSrc}
-        badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
+        badge={
+          book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null
+        }
         cornerMarker={sourceCornerMarker(theme, book)}
         // Stretch the cover to the (constrained) cell width — the fixed
         // 110px `sm` size would overflow a 3-column grid on narrow phones.

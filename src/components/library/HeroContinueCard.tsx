@@ -1,14 +1,8 @@
-
-import { BookCover, } from "../BookCover";
+import { BookCover } from "../BookCover";
 import { Button } from "../Button";
-import type {
-  BookIndexEntry,
-} from "../../store/library";
+import type { BookIndexEntry } from "../../store/library";
 import { paletteForId } from "../../store/palette";
-import {
-  titleFontFor,
-  type Theme,
-} from "../../styles/tokens";
+import { titleFontFor, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { relTime } from "./relTime";
 
@@ -65,7 +59,9 @@ export function HeroContinueCard({
             marginBottom: 10,
           }}
         >
-          {book.lastReadAt ? tr("library.continueReading") : tr("library.startReading")}
+          {book.lastReadAt
+            ? tr("library.continueReading")
+            : tr("library.startReading")}
         </div>
         <h1
           title={displayTitle}
@@ -141,7 +137,8 @@ export function HeroContinueCard({
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              {Math.round(book.progress * 100)}% · {relTime(book.lastReadAt ?? book.addedAt, tr)}
+              {Math.round(book.progress * 100)}% ·{" "}
+              {relTime(book.lastReadAt ?? book.addedAt, tr)}
             </div>
           </div>
           <div
@@ -153,7 +150,9 @@ export function HeroContinueCard({
             }}
           >
             <Button theme={theme} variant="primary" size="md" onClick={onOpen}>
-              {book.lastReadAt ? tr("library.resumeReadingCta") : tr("library.startReadingCta")}
+              {book.lastReadAt
+                ? tr("library.resumeReadingCta")
+                : tr("library.startReadingCta")}
             </Button>
             <Button theme={theme} variant="ghost" size="md" onClick={onEdit}>
               {tr("library.editDetails")}

@@ -1,8 +1,5 @@
-
 import { Icon } from "../Icon";
-import type {
-  Theme,
-} from "../../styles/tokens";
+import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 
 /** Bottom nav for the mobile Library shell. Five slots arranged

@@ -26,7 +26,10 @@ import {
   Z_LOCAL,
 } from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
-import { resolveDocxSelection, type DocxSelectionAnchor } from "./docxHighlight";
+import {
+  resolveDocxSelection,
+  type DocxSelectionAnchor,
+} from "./docxHighlight";
 import {
   pdfHighlightAt,
   resolvePdfSelection,
@@ -286,7 +289,6 @@ export const FixedPageViewer = forwardRef<
   const surfaces = readingSurfaces(theme);
   const hostFilter = tintFilter(tint);
 
-
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRefs = useRef(new Map<number, HTMLDivElement>());
   const refCbs = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
@@ -298,9 +300,9 @@ export const FixedPageViewer = forwardRef<
   const lastEmitted = useRef(-1);
   const saveTimer = useRef<number | null>(null);
 
-  const [sizes, setSizes] = useState<Array<{ w: number; h: number } | undefined>>(
-    () => new Array(pageCount).fill(undefined),
-  );
+  const [sizes, setSizes] = useState<
+    Array<{ w: number; h: number } | undefined>
+  >(() => new Array(pageCount).fill(undefined));
   const [container, setContainer] = useState({ w: 0, h: 0 });
   const [current, setCurrent] = useState(resume?.page ?? 0);
   const [win, setWin] = useState({ start: 0, end: Math.min(pageCount - 1, 2) });
@@ -390,7 +392,8 @@ export const FixedPageViewer = forwardRef<
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const update = () => setContainer({ w: el.clientWidth, h: el.clientHeight });
+    const update = () =>
+      setContainer({ w: el.clientWidth, h: el.clientHeight });
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -464,7 +467,10 @@ export const FixedPageViewer = forwardRef<
         if (el && flow === "scroll") {
           off = Math.max(
             0,
-            Math.min(1, (el.scrollTop - layout.top[page]) / (layout.displayH[page] || 1)),
+            Math.min(
+              1,
+              (el.scrollTop - layout.top[page]) / (layout.displayH[page] || 1),
+            ),
           );
         }
         onLocationChange?.(page, off);
@@ -557,7 +563,12 @@ export const FixedPageViewer = forwardRef<
   // Resume once the container has a real size — scroll to the (estimated) offset
   // of the resume page; lazy measurement refines it as pages come into view.
   useEffect(() => {
-    if (resumedRef.current || !resume || container.h === 0 || flow !== "scroll") {
+    if (
+      resumedRef.current ||
+      !resume ||
+      container.h === 0 ||
+      flow !== "scroll"
+    ) {
       return;
     }
     resumedRef.current = true;
@@ -602,7 +613,8 @@ export const FixedPageViewer = forwardRef<
         el.scrollTop = top;
         if (Math.abs(el.scrollTop - top) <= 2) return; // the column can hold it
       }
-      if (performance.now() < deadline) raf = window.requestAnimationFrame(place);
+      if (performance.now() < deadline)
+        raf = window.requestAnimationFrame(place);
     };
     raf = window.requestAnimationFrame(place);
     return () => window.cancelAnimationFrame(raf);
@@ -667,14 +679,17 @@ export const FixedPageViewer = forwardRef<
           const pi = i;
           // Let the shimmer back while it redraws — there is no canvas under
           // it to leak around, and a blank sheet reads as a broken page.
-          if (blank) setRendered((prev) => {
-            if (!prev.has(pi)) return prev;
-            const next = new Set(prev);
-            next.delete(pi);
-            return next;
-          });
+          if (blank)
+            setRendered((prev) => {
+              if (!prev.has(pi)) return prev;
+              const next = new Set(prev);
+              next.delete(pi);
+              return next;
+            });
           void source.renderPage(pi, host, sc).then(() => {
-            setRendered((prev) => (prev.has(pi) ? prev : new Set(prev).add(pi)));
+            setRendered((prev) =>
+              prev.has(pi) ? prev : new Set(prev).add(pi),
+            );
           });
         }
       }
@@ -742,37 +757,40 @@ export const FixedPageViewer = forwardRef<
    *  whole viewer once per frame; at a 20x CPU handicap that put p99 frame time
    *  at ~196ms. `will-change` promotes the layers so the compositor moves them
    *  without repainting the page bitmap underneath. */
-  const writeTurn = useCallback((
-    reveal: number,
-    animate: boolean,
-    settle?: { ms: number; ease: string },
-  ) => {
-    if (!turnLive.current) return;
-    const { span, mirror, horizontal } = turnGeom.current;
-    const d = peekDir.current || 1;
-    const at = (px: number) =>
-      horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
-    const transition =
-      animate && !reducedRef.current
-        ? `transform ${settle?.ms ?? ANIM_MS}ms ${settle?.ease ?? TURN_EASE}`
-        : "none";
-    const basePx = -d * mirror * reveal * span;
-    const peekPx = d * mirror * (1 - reveal) * span;
-    const outgoing = hostRefs.current.get(currentRef.current);
-    for (const el of [outgoing, duotoneRef.current]) {
-      if (!el) continue;
-      el.style.willChange = "transform";
-      el.style.transition = transition;
-      el.style.transform = at(basePx);
-    }
-    const incoming = peekHostRef.current;
-    if (incoming) {
-      incoming.style.willChange = "transform";
-      incoming.style.transition = transition;
-      incoming.style.transform = at(peekPx);
-    }
-    revealRef.current = reveal;
-  }, []);
+  const writeTurn = useCallback(
+    (
+      reveal: number,
+      animate: boolean,
+      settle?: { ms: number; ease: string },
+    ) => {
+      if (!turnLive.current) return;
+      const { span, mirror, horizontal } = turnGeom.current;
+      const d = peekDir.current || 1;
+      const at = (px: number) =>
+        horizontal ? `translateX(${px}px)` : `translateY(${px}px)`;
+      const transition =
+        animate && !reducedRef.current
+          ? `transform ${settle?.ms ?? ANIM_MS}ms ${settle?.ease ?? TURN_EASE}`
+          : "none";
+      const basePx = -d * mirror * reveal * span;
+      const peekPx = d * mirror * (1 - reveal) * span;
+      const outgoing = hostRefs.current.get(currentRef.current);
+      for (const el of [outgoing, duotoneRef.current]) {
+        if (!el) continue;
+        el.style.willChange = "transform";
+        el.style.transition = transition;
+        el.style.transform = at(basePx);
+      }
+      const incoming = peekHostRef.current;
+      if (incoming) {
+        incoming.style.willChange = "transform";
+        incoming.style.transition = transition;
+        incoming.style.transform = at(peekPx);
+      }
+      revealRef.current = reveal;
+    },
+    [],
+  );
 
   /** Release the layers once a turn is over — drop `will-change` so the
    *  compositor can reclaim them, and clear the transform so a page that stays
@@ -794,34 +812,37 @@ export const FixedPageViewer = forwardRef<
 
   // Swap in the peeked page. The overlay is held (fully covering) until the base
   // layer has painted the new page, so a turn never flashes a skeleton.
-  const finalize = useCallback((d: 1 | -1) => {
-    if (turnTimer.current) {
-      window.clearTimeout(turnTimer.current);
-      turnTimer.current = null;
-    }
-    const neighbor = peekNeighbor.current;
-    lastDir.current = d;
-    turning.current = false;
-    accum.current = 0;
-    peekDir.current = 0;
-    turnLockUntil.current = performance.now() + POST_LOCK_MS;
-    pendingScroll.current = d > 0 ? "top" : "bottom";
-    peekHold.current = neighbor;
-    // The base host is keyed on `current`, so swapping pages hands us a fresh
-    // node with no transform — the outgoing page's travel doesn't have to be
-    // unwound, and the overlay is still covering while React commits.
-    turnLive.current = false;
-    revealRef.current = 0;
-    setCurrent(neighbor);
-    if (holdTimer.current) window.clearTimeout(holdTimer.current);
-    holdTimer.current = window.setTimeout(() => {
-      holdTimer.current = null;
-      peekHold.current = null;
-      releaseTurn();
-      setPeek(null);
-      setPeekIdx(null);
-    }, 500);
-  }, [releaseTurn]);
+  const finalize = useCallback(
+    (d: 1 | -1) => {
+      if (turnTimer.current) {
+        window.clearTimeout(turnTimer.current);
+        turnTimer.current = null;
+      }
+      const neighbor = peekNeighbor.current;
+      lastDir.current = d;
+      turning.current = false;
+      accum.current = 0;
+      peekDir.current = 0;
+      turnLockUntil.current = performance.now() + POST_LOCK_MS;
+      pendingScroll.current = d > 0 ? "top" : "bottom";
+      peekHold.current = neighbor;
+      // The base host is keyed on `current`, so swapping pages hands us a fresh
+      // node with no transform — the outgoing page's travel doesn't have to be
+      // unwound, and the overlay is still covering while React commits.
+      turnLive.current = false;
+      revealRef.current = 0;
+      setCurrent(neighbor);
+      if (holdTimer.current) window.clearTimeout(holdTimer.current);
+      holdTimer.current = window.setTimeout(() => {
+        holdTimer.current = null;
+        peekHold.current = null;
+        releaseTurn();
+        setPeek(null);
+        setPeekIdx(null);
+      }, 500);
+    },
+    [releaseTurn],
+  );
 
   /** Finish a turn. `releaseSpeed` (px/ms, unsigned) is the speed the finger
    *  was travelling when it let go; given it, the remaining distance is covered
@@ -983,7 +1004,10 @@ export const FixedPageViewer = forwardRef<
 
   useImperativeHandle(ref, () => ({ goToPage }), [goToPage]);
 
-  const flip = useCallback((delta: number) => goToPage(current + delta), [goToPage, current]);
+  const flip = useCallback(
+    (delta: number) => goToPage(current + delta),
+    [goToPage, current],
+  );
   useEffect(() => {
     if (flow !== "paged") return;
     const onKey = (e: KeyboardEvent) => {
@@ -1028,7 +1052,8 @@ export const FixedPageViewer = forwardRef<
         const max = el.scrollHeight - el.clientHeight;
         const TOL = 4; // a page fit to the viewport is often 1-2px taller
         const atEdge =
-          max <= TOL || (down ? el.scrollTop >= max - TOL : el.scrollTop <= TOL);
+          max <= TOL ||
+          (down ? el.scrollTop >= max - TOL : el.scrollTop <= TOL);
         if (!atEdge) return; // room to pan — let native scroll do it
         const dest = clampIdx(currentRef.current + d);
         if (dest === currentRef.current) return; // first / last page
@@ -1138,9 +1163,10 @@ export const FixedPageViewer = forwardRef<
           // Clamp against the layout-derived range for the same reason maxX is
           // read from layout — scrollLeft's own bounds move during a turn.
           const next = el.scrollLeft - dx;
-          el.scrollLeft = el.scrollLeft < 0 || next < 0
-            ? Math.max(-maxX, Math.min(0, next))
-            : Math.max(0, Math.min(maxX, next));
+          el.scrollLeft =
+            el.scrollLeft < 0 || next < 0
+              ? Math.max(-maxX, Math.min(0, next))
+              : Math.max(0, Math.min(maxX, next));
           s.x = e.clientX;
           s.samples.length = 0;
           s.samples.push({ x: e.clientX, t: e.timeStamp });
@@ -1165,12 +1191,16 @@ export const FixedPageViewer = forwardRef<
       }
       suppressClick.current = true;
       s.samples.push({ x: e.clientX, t: e.timeStamp });
-      while (s.samples.length > 2 && e.timeStamp - s.samples[0].t > VELOCITY_WINDOW_MS) {
+      while (
+        s.samples.length > 2 &&
+        e.timeStamp - s.samples[0].t > VELOCITY_WINDOW_MS
+      ) {
         s.samples.shift();
       }
       // renderPeek derives reveal as accum/TURN_PX, so expressing the travelled
       // fraction of a viewport in that unit makes the strip follow the finger.
-      accum.current = Math.min(1, Math.abs(dx) / (el.clientWidth || 1)) * TURN_PX;
+      accum.current =
+        Math.min(1, Math.abs(dx) / (el.clientWidth || 1)) * TURN_PX;
       renderPeek();
     };
 
@@ -1195,8 +1225,8 @@ export const FixedPageViewer = forwardRef<
       // to point the same way before treating it as a throw.
       const vx = releaseVelocity(s.samples);
       const towards = dir === "rtl" ? d : -d; // strip travel sign for this turn
-      const flicked = Math.sign(vx) === Math.sign(towards) &&
-        Math.abs(vx) >= FLING_PX_MS;
+      const flicked =
+        Math.sign(vx) === Math.sign(towards) && Math.abs(vx) >= FLING_PX_MS;
       s.samples = [];
       if (dragged >= SNAP_FRACTION || flicked) commit(d, Math.abs(vx));
       else cancelPeek();
@@ -1399,7 +1429,8 @@ export const FixedPageViewer = forwardRef<
   const onPagedMove = useCallback(
     (e: React.MouseEvent) => {
       const el = scrollRef.current;
-      if (el) el.style.cursor = edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
+      if (el)
+        el.style.cursor = edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
     },
     [edgeSideAt],
   );
@@ -1503,7 +1534,13 @@ export const FixedPageViewer = forwardRef<
         }}
       >
         {flow === "scroll" ? (
-          <div style={{ position: "relative", width: "100%", height: layout.totalH }}>
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              height: layout.totalH,
+            }}
+          >
             {visible.map((i) => (
               <div
                 key={i}
@@ -1513,7 +1550,11 @@ export const FixedPageViewer = forwardRef<
                   top: layout.top[i],
                   left: `calc(50% - ${layout.displayW[i] / 2}px)`,
                   filter: hostFilter,
-                  ...skeletonStyle(layout.displayW[i], layout.displayH[i], !rendered.has(i)),
+                  ...skeletonStyle(
+                    layout.displayW[i],
+                    layout.displayH[i],
+                    !rendered.has(i),
+                  ),
                 }}
               />
             ))}
@@ -1539,23 +1580,26 @@ export const FixedPageViewer = forwardRef<
             {/* Offscreen holders for the warmed neighbour pages. Kept out of
                 layout and out of the paint — they exist only to own a canvas
                 until a turn re-parents it. */}
-            {Array.from({ length: PREFETCH_AHEAD + PREFETCH_BEHIND }, (_, k) => (
-              <div
-                key={`warm-${k}`}
-                ref={(el) => {
-                  warmRefs.current[k] = el;
-                }}
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  width: 0,
-                  height: 0,
-                  overflow: "hidden",
-                  visibility: "hidden",
-                  pointerEvents: "none",
-                }}
-              />
-            ))}
+            {Array.from(
+              { length: PREFETCH_AHEAD + PREFETCH_BEHIND },
+              (_, k) => (
+                <div
+                  key={`warm-${k}`}
+                  ref={(el) => {
+                    warmRefs.current[k] = el;
+                  }}
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    width: 0,
+                    height: 0,
+                    overflow: "hidden",
+                    visibility: "hidden",
+                    pointerEvents: "none",
+                  }}
+                />
+              ),
+            )}
           </>
         )}
       </div>
@@ -1608,7 +1652,6 @@ export const FixedPageViewer = forwardRef<
           />
         </div>
       )}
-
     </div>
   );
 });

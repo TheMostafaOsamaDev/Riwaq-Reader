@@ -14,7 +14,11 @@
  */
 
 import { NOTE_SPINE, noteSpineBox } from "../../styles/noteSpine";
-import { hlMark, type HighlightColor, type ThemeKey } from "../../styles/tokens";
+import {
+  hlMark,
+  type HighlightColor,
+  type ThemeKey,
+} from "../../styles/tokens";
 
 /** Marks the elements this module owns, so a repaint can clear its own
  *  bars without touching the page's real content. */
@@ -46,9 +50,16 @@ export function paintDocxNoteSpines(
     // Two passes. Reading layout after a write forces a synchronous
     // reflow, so measuring all of them first costs one reflow for the
     // page instead of one per noted highlight.
-    const measured: { block: HTMLElement; target: SpineTarget; top: number; height: number }[] = [];
+    const measured: {
+      block: HTMLElement;
+      target: SpineTarget;
+      top: number;
+      height: number;
+    }[] = [];
     for (const target of targets) {
-      const mark = root.querySelector<HTMLElement>(`[data-h-id="${target.id}"]`);
+      const mark = root.querySelector<HTMLElement>(
+        `[data-h-id="${target.id}"]`,
+      );
       const block = mark?.parentElement;
       if (!mark || !block) continue;
       const box = noteSpineBox(

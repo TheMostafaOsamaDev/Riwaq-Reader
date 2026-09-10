@@ -128,7 +128,10 @@ export async function writeBytesChunked(
   onProgress?: (ratio: number) => void,
 ): Promise<void> {
   for (let offset = 0; offset < bytes.length; offset += CHUNK) {
-    const slice = bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length));
+    const slice = bytes.subarray(
+      offset,
+      Math.min(offset + CHUNK, bytes.length),
+    );
     await invoke("write_chunk_b64", {
       path: dest,
       data: toBase64(slice),

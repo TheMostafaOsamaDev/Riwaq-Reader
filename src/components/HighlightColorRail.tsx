@@ -81,7 +81,9 @@ export function HighlightColorRail({ theme, selected, onPick }: Props) {
           dir === "rtl"
             ? { left: end, right: start }
             : { left: start, right: end };
-        return prev.left === next.left && prev.right === next.right ? prev : next;
+        return prev.left === next.left && prev.right === next.right
+          ? prev
+          : next;
       });
     };
     sync();
@@ -127,7 +129,9 @@ export function HighlightColorRail({ theme, selected, onPick }: Props) {
             key={c}
             onClick={() => onPick(c)}
             aria-label={tr(
-              selected ? "selection.colorPickAriaLabel" : "selection.colorAriaLabel",
+              selected
+                ? "selection.colorPickAriaLabel"
+                : "selection.colorAriaLabel",
               { color: tr(COLOR_NAME_KEY[c]) },
             )}
             // Only a real choice gets pressed-state semantics.

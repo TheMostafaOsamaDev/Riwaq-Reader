@@ -6,7 +6,9 @@ import type { SourceSnapshot } from "../../store/sourceLibrary";
 /** Build a chapter-id → {downloadedAt, readAt} lookup from a snapshot.
  *  Lets the volumes accordion render per-chapter status with a single
  *  Map.get() per chapter instead of walking volumes each time. */
-export function buildFlagMap(snapshot: SourceSnapshot): Map<number, ChapterFlags> {
+export function buildFlagMap(
+  snapshot: SourceSnapshot,
+): Map<number, ChapterFlags> {
   const out = new Map<number, ChapterFlags>();
   for (const v of snapshot.volumes) {
     for (const c of v.chapters) {

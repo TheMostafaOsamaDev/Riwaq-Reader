@@ -72,20 +72,28 @@ describe("cancelJobsForChapters", () => {
     // before this test body gets to inspect it — these fillers keep
     // the chapters under test genuinely "queued".
     enqueue({
-      libraryEntryId: "filler", chapterId: 100,
-      novelTitle: "N", chapterTitle: "F1",
+      libraryEntryId: "filler",
+      chapterId: 100,
+      novelTitle: "N",
+      chapterTitle: "F1",
     });
     enqueue({
-      libraryEntryId: "filler", chapterId: 101,
-      novelTitle: "N", chapterTitle: "F2",
+      libraryEntryId: "filler",
+      chapterId: 101,
+      novelTitle: "N",
+      chapterTitle: "F2",
     });
     enqueue({
-      libraryEntryId: "e1", chapterId: 1,
-      novelTitle: "N", chapterTitle: "C1",
+      libraryEntryId: "e1",
+      chapterId: 1,
+      novelTitle: "N",
+      chapterTitle: "C1",
     });
     enqueue({
-      libraryEntryId: "e1", chapterId: 2,
-      novelTitle: "N", chapterTitle: "C2",
+      libraryEntryId: "e1",
+      chapterId: 2,
+      novelTitle: "N",
+      chapterTitle: "C2",
     });
 
     const res = cancelJobsForChapters("e1", [1]);
@@ -103,8 +111,10 @@ describe("cancelJobsForChapters", () => {
 
   it("ignores jobs belonging to another library entry", () => {
     enqueue({
-      libraryEntryId: "other", chapterId: 1,
-      novelTitle: "N", chapterTitle: "C1",
+      libraryEntryId: "other",
+      chapterId: 1,
+      novelTitle: "N",
+      chapterTitle: "C1",
     });
     const res = cancelJobsForChapters("e1", [1]);
     expect(res.cancelled).toEqual([]);
@@ -112,8 +122,10 @@ describe("cancelJobsForChapters", () => {
 
   it("reports a running job as wasRunning rather than cancelled outright", () => {
     enqueue({
-      libraryEntryId: "e1", chapterId: 7,
-      novelTitle: "N", chapterTitle: "C7",
+      libraryEntryId: "e1",
+      chapterId: 7,
+      novelTitle: "N",
+      chapterTitle: "C7",
     });
     const job = getState().jobs.find(
       (j) => j.kind === "chapter" && j.chapterId === 7,

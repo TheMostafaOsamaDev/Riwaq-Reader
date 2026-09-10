@@ -85,7 +85,10 @@ describe("stacking scale", () => {
     // app band, and it is declared in CSS because it has no React component.
     const css = readFileSync(join(SRC, "styles", "global.css"), "utf8");
     const block = css.match(/#riwaq-scrollbars\s*\{([^}]*)\}/);
-    expect(block, "#riwaq-scrollbars rule not found in global.css").toBeTruthy();
+    expect(
+      block,
+      "#riwaq-scrollbars rule not found in global.css",
+    ).toBeTruthy();
     const declared = block![1].match(/z-index:\s*(\d+)/);
     expect(declared, "#riwaq-scrollbars has no z-index").toBeTruthy();
     expect(Number(declared![1])).toBe(Z.scrollbars);

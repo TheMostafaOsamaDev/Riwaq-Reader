@@ -22,9 +22,7 @@ const DOT_HIT = 32; // larger touch target around the visible dot
 export function SelectionHandle({ rect, position, onPointerDown }: Props) {
   const lineHeight = rect.height || 18;
   const dotTop =
-    position === "start"
-      ? rect.top - DOT_SIZE
-      : rect.top + lineHeight;
+    position === "start" ? rect.top - DOT_SIZE : rect.top + lineHeight;
   return (
     <div
       style={{

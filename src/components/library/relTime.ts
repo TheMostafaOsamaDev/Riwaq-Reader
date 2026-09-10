@@ -1,4 +1,3 @@
-
 import type { Tr } from "../../i18n";
 
 export function relTime(ts: number, tr: Tr): string {

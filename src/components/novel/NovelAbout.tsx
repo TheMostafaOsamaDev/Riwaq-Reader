@@ -1,9 +1,6 @@
-
 import type { SourceNovel } from "../../sources/types";
 
-import type {
-  Theme,
-} from "../../styles/tokens";
+import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 
 export interface NovelAboutProps {

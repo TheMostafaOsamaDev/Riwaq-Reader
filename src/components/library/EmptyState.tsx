@@ -1,11 +1,7 @@
-
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 import { useImportIndicator } from "../../store/importIndicator";
-import {
-  FONT_SERIF_DISPLAY,
-  type Theme,
-} from "../../styles/tokens";
+import { FONT_SERIF_DISPLAY, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import type { LibraryTab } from "./tabs";
 
@@ -81,10 +77,10 @@ export function FilteredEmptyState({
     tab === "reading"
       ? tr("library.emptyReading")
       : tab === "finished"
-      ? tr("library.emptyFinished")
-      : tab === "wishlist"
-      ? tr("library.emptyWishlist")
-      : tr("library.emptyGeneric");
+        ? tr("library.emptyFinished")
+        : tab === "wishlist"
+          ? tr("library.emptyWishlist")
+          : tr("library.emptyGeneric");
   return (
     <div
       style={{

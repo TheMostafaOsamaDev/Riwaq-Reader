@@ -56,11 +56,7 @@ import {
   getState as getImportState,
   isImportActive,
 } from "./importProgress";
-import {
-  endBurst,
-  rebaseBurst,
-  reportBurst,
-} from "./downloadProgress";
+import { endBurst, rebaseBurst, reportBurst } from "./downloadProgress";
 import { makeTr, type Locale } from "../i18n";
 import { phaseLabel } from "../i18n/statusLabels";
 
@@ -70,7 +66,10 @@ import { phaseLabel } from "../i18n/statusLabels";
  *  that attribute in sync with the user's UI-language preference. Same
  *  pattern as `currentUiLocale()` in kolnovel-theme.ts / cenele.ts. */
 function currentUiLocale(): Locale {
-  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+  ) {
     return "ar";
   }
   return "en";
@@ -396,8 +395,7 @@ function resolvedTally(): {
 } {
   const c = getResolvedCounters();
   return {
-    resolved:
-      c.chDone + c.chFailed + c.chCancelled + c.cvDone + c.cvFailed,
+    resolved: c.chDone + c.chFailed + c.chCancelled + c.cvDone + c.cvFailed,
     ...c,
   };
 }
@@ -429,9 +427,11 @@ function compose(
     // download burst running alongside a conversion or an import).
     // Show one aggregate line instead of privileging a single kind.
     const kinds: string[] = [];
-    const dl = snap.active - snap.activeConversions - (snap.importActive ? 1 : 0);
+    const dl =
+      snap.active - snap.activeConversions - (snap.importActive ? 1 : 0);
     if (dl > 0) kinds.push(tr("status.notif.partDownloads", { n: dl }));
-    if (snap.activeConversions > 0) kinds.push(tr("status.notif.partConverting"));
+    if (snap.activeConversions > 0)
+      kinds.push(tr("status.notif.partConverting"));
     if (snap.importActive) kinds.push(tr("status.notif.partImporting"));
     if (kinds.length > 1) {
       return {
@@ -616,7 +616,6 @@ async function ensurePermission(): Promise<void> {
   })();
   await permissionInflight;
 }
-
 
 /** Find the conversion job that's currently running, if any. Used by
  *  the notification body so the phase text reads naturally rather

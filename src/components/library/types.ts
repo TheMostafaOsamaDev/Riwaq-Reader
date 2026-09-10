@@ -1,14 +1,6 @@
-
-import type {
-  BookIndexEntry,
-} from "../../store/library";
-import type {
-  Shelf,
-} from "../../store/shelves";
-import type {
-  Theme,
-  ThemeKey,
-} from "../../styles/tokens";
+import type { BookIndexEntry } from "../../store/library";
+import type { Shelf } from "../../store/shelves";
+import type { Theme, ThemeKey } from "../../styles/tokens";
 import type { LibraryTab } from "./tabs";
 
 export interface LayoutProps {
@@ -27,7 +19,11 @@ export interface LayoutProps {
   onImport: () => void;
   onImportFolder: () => void;
   /** Open a novel from a source in the streaming reader. */
-  onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
+  onStreamRead: (
+    sourceId: string,
+    novelUrl: string,
+    chapterId?: number,
+  ) => void;
   /** Imported via a source — refresh shelf after the new entry lands. */
   onSourceImportComplete: () => void;
   /** When non-null, the body shows NovelDetailView for a library-backed

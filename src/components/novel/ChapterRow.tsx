@@ -1,17 +1,9 @@
-
-import {
-  useCallback,
-  useState,
-  memo,
-} from "react";
-import type { SourceChapter, } from "../../sources/types";
+import { useCallback, useState, memo } from "react";
+import type { SourceChapter } from "../../sources/types";
 import type { DownloadJob } from "../../store/downloadQueue";
 import { transition } from "../../styles/motion";
 
-import {
-  ACCENT,
-  type Theme,
-} from "../../styles/tokens";
+import { ACCENT, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { Icon } from "../Icon";
 import { useMediaQuery } from "../../hooks/useMediaQuery";

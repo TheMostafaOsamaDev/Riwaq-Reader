@@ -68,9 +68,16 @@ export class ReaderErrorBoundary extends Component<Props, State> {
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
             This chapter could not be displayed
           </div>
-          <div style={{ fontSize: 12.5, color: theme.muted, marginBottom: 16, lineHeight: 1.6 }}>
-            The reader hit an error while rendering. Nothing was lost — going back
-            and reopening the book is safe.
+          <div
+            style={{
+              fontSize: 12.5,
+              color: theme.muted,
+              marginBottom: 16,
+              lineHeight: 1.6,
+            }}
+          >
+            The reader hit an error while rendering. Nothing was lost — going
+            back and reopening the book is safe.
           </div>
           <pre
             style={{
@@ -82,7 +89,7 @@ export class ReaderErrorBoundary extends Component<Props, State> {
               background: theme.chrome,
               border: `1px solid ${theme.rule}`,
               color: theme.chromeInk,
-              font: '11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace',
+              font: "11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace",
               whiteSpace: "pre-wrap",
             }}
           >

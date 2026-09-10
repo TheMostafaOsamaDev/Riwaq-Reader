@@ -97,7 +97,11 @@ export function SelectionPopover({
           <HighlightColorRail theme={theme} onPick={onPick} />
           <div style={{ height: 1, background: theme.rule }} />
           <div
-            style={{ display: "flex", alignItems: "stretch", height: TOOLBAR_ROW_H }}
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              height: TOOLBAR_ROW_H,
+            }}
           >
             {/* One third / two thirds, per the design: copy is one word,
                 the note field wants room to read as a field. */}

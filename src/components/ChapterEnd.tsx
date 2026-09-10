@@ -105,7 +105,11 @@ export function ChapterEndCard({
         }}
       >
         <span style={{ flex: 1, height: 1, background: theme.rule }} />
-        <span>{nextTitle === null ? tr("reader.endOfBook") : tr("reader.endOfChapter")}</span>
+        <span>
+          {nextTitle === null
+            ? tr("reader.endOfBook")
+            : tr("reader.endOfChapter")}
+        </span>
         <span style={{ flex: 1, height: 1, background: theme.rule }} />
       </div>
 
@@ -130,7 +134,8 @@ export function ChapterEndCard({
               background: pressed ? theme.chromeHover : theme.chrome,
               border: `1px solid ${pressed ? theme.ruleStrong : theme.rule}`,
               color: theme.ink,
-              transition: "background 120ms ease-out, border-color 120ms ease-out",
+              transition:
+                "background 120ms ease-out, border-color 120ms ease-out",
             }}
           >
             <span style={{ flex: 1, minWidth: 0 }}>
@@ -158,7 +163,13 @@ export function ChapterEndCard({
                 {nextTitle}
               </span>
             </span>
-            <span style={{ color: theme.muted, display: "inline-flex", flexShrink: 0 }}>
+            <span
+              style={{
+                color: theme.muted,
+                display: "inline-flex",
+                flexShrink: 0,
+              }}
+            >
               <Forward size={20} />
             </span>
           </button>
@@ -180,7 +191,13 @@ export function ChapterEndCard({
           >
             {availability ? (
               <>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
                   <Icon
                     name={availability === "device" ? "check" : "downloadCirc"}
                     size={13}
@@ -243,7 +260,13 @@ export function ChapterStartLink({
   const { locale } = useI18n();
   const arabic = locale === "ar";
   return (
-    <div style={{ display: "flex", justifyContent: "center", marginBottom: compact ? 12 : 14 }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        marginBottom: compact ? 12 : 14,
+      }}
+    >
       <button
         onClick={onPrev}
         {...press}

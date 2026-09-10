@@ -143,7 +143,10 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
     // for wheel/keydown/transitionend to catch a turn that cannot
     // happen only bought false wakeups: one per keystroke typed into
     // the note editor, and one per swatch transition ending.
-    window.addEventListener("scroll", schedule, { capture: true, passive: true });
+    window.addEventListener("scroll", schedule, {
+      capture: true,
+      passive: true,
+    });
     window.addEventListener("resize", schedule);
     return () => {
       if (frame) cancelAnimationFrame(frame);

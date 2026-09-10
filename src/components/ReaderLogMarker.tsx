@@ -53,7 +53,7 @@ export function ReaderLogMarker({ scrollRef }: Props) {
         borderRadius: 10,
         background: "rgba(0,0,0,0.86)",
         color: "#a8e6a1",
-        font: '13px/1 ui-monospace, SFMono-Regular, Menlo, monospace',
+        font: "13px/1 ui-monospace, SFMono-Regular, Menlo, monospace",
         pointerEvents: "none",
       }}
     >

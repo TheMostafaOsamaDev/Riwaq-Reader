@@ -426,7 +426,9 @@ function CoverTile({
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       ) : (
-        <div style={{ width: "100%", height: "100%", background: theme.hover }} />
+        <div
+          style={{ width: "100%", height: "100%", background: theme.hover }}
+        />
       )}
     </TileShell>
   );

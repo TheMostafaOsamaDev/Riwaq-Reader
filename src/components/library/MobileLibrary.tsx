@@ -1,18 +1,13 @@
-
 import { useLongPress } from "../../hooks/useLongPress";
 import { Icon } from "../Icon";
-import { BookCover, } from "../BookCover";
+import { BookCover } from "../BookCover";
 import { Button } from "../Button";
 import { NovelDetailView } from "../novel/NovelDetailView";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
 import { AnimatedSwap } from "../AnimatedSwap";
-import {
-  back,
-} from "../../store/navigation";
+import { back } from "../../store/navigation";
 import { Store } from "../Store";
-import {
-  booksOnShelf,
-} from "../../store/shelfLogic";
+import { booksOnShelf } from "../../store/shelfLogic";
 import { paletteForId } from "../../store/palette";
 import {
   FONT_SERIF_DISPLAY,
@@ -78,7 +73,7 @@ export function MobileLibrary({
   // computation. Resolves the nav view's shelfId (threaded down as
   // `activeShelfId`) against the live shelf list.
   const activeShelf = activeShelfId
-    ? shelves.find((s) => s.id === activeShelfId) ?? null
+    ? (shelves.find((s) => s.id === activeShelfId) ?? null)
     : null;
   const shelfBooks = activeShelf ? booksOnShelf(books, activeShelf.id) : [];
   // Filter to the selected status tab. "store" is handled separately
@@ -89,9 +84,7 @@ export function MobileLibrary({
   // full library view. On a filtered tab we render a flat shelf so every
   // match is equally weighted.
   const hero =
-    tab === "all"
-      ? visible.find((b) => b.lastReadAt !== undefined)
-      : undefined;
+    tab === "all" ? visible.find((b) => b.lastReadAt !== undefined) : undefined;
   const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
   // Display-time fallback for a blank `Book.title` (see common.untitled) —
   // computed once so the font-family/line-height pick and the rendered
@@ -137,31 +130,34 @@ export function MobileLibrary({
           (NovelDetailView) brings its own header with a back arrow. Action
           buttons live in the bottom nav, so the right side of the title
           row is empty. */}
-      {!sourceDetailView && !shelvesActive && !activeShelf && tab !== "store" && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            padding: "16px 22px 10px",
-            borderBottom: `0.5px solid ${theme.rule}`,
-          }}
-        >
-          <h1
+      {!sourceDetailView &&
+        !shelvesActive &&
+        !activeShelf &&
+        tab !== "store" && (
+          <div
             style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontWeight: 400,
-              fontSize: 28,
-              margin: 0,
-              letterSpacing: "-0.02em",
-              color: theme.ink,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              padding: "16px 22px 10px",
+              borderBottom: `0.5px solid ${theme.rule}`,
             }}
           >
-            {tr("sidebar.library")}
-          </h1>
-          <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
-        </div>
-      )}
+            <h1
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontWeight: 400,
+                fontSize: 28,
+                margin: 0,
+                letterSpacing: "-0.02em",
+                color: theme.ink,
+              }}
+            >
+              {tr("sidebar.library")}
+            </h1>
+            <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
+          </div>
+        )}
 
       {/* Body cross-fades on tab switch / Store ↔ NovelDetail toggle. The
           wrapper provides AnimatedSwap's positioning context. */}
@@ -184,352 +180,379 @@ export function MobileLibrary({
                   : `tab:${tab}`
           }
         >
-      {shelvesActive ? (
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <BackHeader
-            theme={theme}
-            title={tr("shelves.title")}
-            onBack={() => back()}
-          />
-          <ShelvesPage
-            theme={theme}
-            shelves={shelves}
-            books={books}
-            covers={covers}
-            onOpenBook={onOpen}
-            onOpenShelf={onOpenShelf}
-            onAddToShelf={onAddToShelf}
-            onRequestRenameShelf={onRequestRenameShelf}
-            onRequestDeleteShelf={onRequestDeleteShelf}
-            onNewShelf={onNewShelf}
-            onRemoveFromShelf={onRemoveBookFromShelf}
-          />
-        </div>
-      ) : sourceDetailView ? (
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <NovelDetailView
-            theme={theme}
-            layout="mobile"
-            sourceId={sourceDetailView.sourceId}
-            novelUrl={sourceDetailView.novelUrl}
-            libraryEntryId={sourceDetailView.libraryEntryId}
-            onBack={onCloseSourceDetailView}
-            onStreamRead={(chapterId) =>
-              onStreamRead(
-                sourceDetailView.sourceId,
-                sourceDetailView.novelUrl,
-                chapterId,
-              )
-            }
-            onImportComplete={onSourceImportComplete}
-            onOpenRangeDialog={onOpenSourceDetailRangeDialog}
-            shelves={shelves}
-            bookShelfIds={
-              books.find((b) => b.id === sourceDetailView.libraryEntryId)
-                ?.shelfIds ?? []
-            }
-            onToggleShelf={(shelfId) =>
-              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
-            }
-            onNewShelfFromDetail={onNewShelf}
-          />
-        </div>
-      ) : tab === "store" ? (
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <BackHeader
-            theme={theme}
-            title={tr("sidebar.store")}
-            onBack={() => setTab("all")}
-          />
-          <Store
-            theme={theme}
-            layout="mobile"
-            onStreamRead={onStreamRead}
-            onImportComplete={onSourceImportComplete}
-          />
-        </div>
-      ) : activeShelf ? (
-        // Single-shelf detail page (Task 10), mobile: same back-arrow +
-        // large-title pattern as the Shelves/Store branches above, then a
-        // header row (count + Add/Rename/Delete) and the same 3-column
-        // grid + MobileShelfCard the default shelf uses.
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <BackHeader theme={theme} title={activeShelf.name} onBack={() => back()} />
-          <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
+          {shelvesActive ? (
             <div
               style={{
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden",
                 display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: 12,
-                marginBottom: 16,
+                flexDirection: "column",
               }}
             >
-              <div>
-                <h1
+              <BackHeader
+                theme={theme}
+                title={tr("shelves.title")}
+                onBack={() => back()}
+              />
+              <ShelvesPage
+                theme={theme}
+                shelves={shelves}
+                books={books}
+                covers={covers}
+                onOpenBook={onOpen}
+                onOpenShelf={onOpenShelf}
+                onAddToShelf={onAddToShelf}
+                onRequestRenameShelf={onRequestRenameShelf}
+                onRequestDeleteShelf={onRequestDeleteShelf}
+                onNewShelf={onNewShelf}
+                onRemoveFromShelf={onRemoveBookFromShelf}
+              />
+            </div>
+          ) : sourceDetailView ? (
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <NovelDetailView
+                theme={theme}
+                layout="mobile"
+                sourceId={sourceDetailView.sourceId}
+                novelUrl={sourceDetailView.novelUrl}
+                libraryEntryId={sourceDetailView.libraryEntryId}
+                onBack={onCloseSourceDetailView}
+                onStreamRead={(chapterId) =>
+                  onStreamRead(
+                    sourceDetailView.sourceId,
+                    sourceDetailView.novelUrl,
+                    chapterId,
+                  )
+                }
+                onImportComplete={onSourceImportComplete}
+                onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+                shelves={shelves}
+                bookShelfIds={
+                  books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                    ?.shelfIds ?? []
+                }
+                onToggleShelf={(shelfId) =>
+                  onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+                }
+                onNewShelfFromDetail={onNewShelf}
+              />
+            </div>
+          ) : tab === "store" ? (
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <BackHeader
+                theme={theme}
+                title={tr("sidebar.store")}
+                onBack={() => setTab("all")}
+              />
+              <Store
+                theme={theme}
+                layout="mobile"
+                onStreamRead={onStreamRead}
+                onImportComplete={onSourceImportComplete}
+              />
+            </div>
+          ) : activeShelf ? (
+            // Single-shelf detail page (Task 10), mobile: same back-arrow +
+            // large-title pattern as the Shelves/Store branches above, then a
+            // header row (count + Add/Rename/Delete) and the same 3-column
+            // grid + MobileShelfCard the default shelf uses.
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <BackHeader
+                theme={theme}
+                title={activeShelf.name}
+                onBack={() => back()}
+              />
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "16px 22px 40px",
+                }}
+              >
+                <div
                   style={{
-                    fontFamily: FONT_SERIF_DISPLAY,
-                    fontWeight: 400,
-                    fontSize: 24,
-                    margin: 0,
-                    letterSpacing: "-0.01em",
-                    color: theme.ink,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    marginBottom: 16,
                   }}
                 >
-                  {activeShelf.name}
-                </h1>
-                <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
-                  {tr(
-                    shelfBooks.length === 1
-                      ? "shelves.bookCountOne"
-                      : "shelves.bookCountOther",
-                    { n: shelfBooks.length },
-                  )}
+                  <div>
+                    <h1
+                      style={{
+                        fontFamily: FONT_SERIF_DISPLAY,
+                        fontWeight: 400,
+                        fontSize: 24,
+                        margin: 0,
+                        letterSpacing: "-0.01em",
+                        color: theme.ink,
+                      }}
+                    >
+                      {activeShelf.name}
+                    </h1>
+                    <div
+                      style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}
+                    >
+                      {tr(
+                        shelfBooks.length === 1
+                          ? "shelves.bookCountOne"
+                          : "shelves.bookCountOther",
+                        { n: shelfBooks.length },
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 20,
-                flexWrap: "wrap",
-              }}
-            >
-              <Button
-                theme={theme}
-                variant="primary"
-                size="sm"
-                onClick={() => onAddToShelf(activeShelf.id)}
-                leadingIcon={<Icon name="plus" size={13} />}
-              >
-                {tr("shelves.addBook")}
-              </Button>
-              <Button
-                theme={theme}
-                variant="ghost"
-                size="sm"
-                onClick={() => onRequestRenameShelf(activeShelf)}
-                leadingIcon={<Icon name="pencil" size={13} />}
-              >
-                {tr("shelves.rename")}
-              </Button>
-              <Button
-                theme={theme}
-                variant="destructiveGhost"
-                size="sm"
-                onClick={() => onRequestDeleteShelf(activeShelf)}
-                leadingIcon={<Icon name="trash" size={13} />}
-              >
-                {tr("shelves.delete")}
-              </Button>
-            </div>
-            {shelfBooks.length === 0 ? (
-              <AddTile theme={theme} onClick={() => onAddToShelf(activeShelf.id)} />
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: 16,
-                  rowGap: 22,
-                }}
-              >
-                {shelfBooks.map((b) => (
-                  <MobileShelfCard
-                    key={b.id}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 20,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Button
                     theme={theme}
-                    book={b}
-                    coverSrc={covers[b.id]}
-                    shelfId={activeShelf.id}
-                    onOpen={onOpen}
-                    onContextMenu={onCardContextMenu}
+                    variant="primary"
+                    size="sm"
+                    onClick={() => onAddToShelf(activeShelf.id)}
+                    leadingIcon={<Icon name="plus" size={13} />}
+                  >
+                    {tr("shelves.addBook")}
+                  </Button>
+                  <Button
+                    theme={theme}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRequestRenameShelf(activeShelf)}
+                    leadingIcon={<Icon name="pencil" size={13} />}
+                  >
+                    {tr("shelves.rename")}
+                  </Button>
+                  <Button
+                    theme={theme}
+                    variant="destructiveGhost"
+                    size="sm"
+                    onClick={() => onRequestDeleteShelf(activeShelf)}
+                    leadingIcon={<Icon name="trash" size={13} />}
+                  >
+                    {tr("shelves.delete")}
+                  </Button>
+                </div>
+                {shelfBooks.length === 0 ? (
+                  <AddTile
+                    theme={theme}
+                    onClick={() => onAddToShelf(activeShelf.id)}
                   />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}>
-        {error && <ErrorBanner theme={theme} message={error} />}
-
-        {loading && books.length === 0 ? (
-          <div style={{ color: theme.muted, padding: 30, textAlign: "center" }}>
-            {tr("library.loadingShort")}
-          </div>
-        ) : books.length === 0 ? (
-          <EmptyState
-            theme={theme}
-            onImport={onImport}
-            importing={importing}
-          />
-        ) : visible.length === 0 ? (
-          <FilteredEmptyState theme={theme} tab={tab} />
-        ) : (
-          <>
-            {hero && (
-              <div
-                onClick={() => {
-                  if (heroLongPress.consumeLongPress()) return;
-                  onOpen(hero.id);
-                }}
-                {...heroLongPress.bind}
-                role="button"
-                tabIndex={0}
-                style={{
-                  padding: 16,
-                  borderRadius: 14,
-                  background: theme.chrome,
-                  display: "flex",
-                  gap: 14,
-                  marginBottom: 28,
-                  alignItems: "center",
-                  cursor: "pointer",
-                  // Suppress the default long-press text-selection / callout
-                  // so the menu opens cleanly without a stray selection box.
-                  WebkitUserSelect: "none",
-                  userSelect: "none",
-                  WebkitTouchCallout: "none",
-                }}
-              >
-                <BookCover
-                  title={hero.title}
-                  author={hero.author}
-                  palette={paletteForId(hero.id)}
-                  size="sm"
-                  src={covers[hero.id]}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
+                ) : (
                   <div
                     style={{
-                      fontSize: 9.5,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 16,
+                      rowGap: 22,
+                    }}
+                  >
+                    {shelfBooks.map((b) => (
+                      <MobileShelfCard
+                        key={b.id}
+                        theme={theme}
+                        book={b}
+                        coverSrc={covers[b.id]}
+                        shelfId={activeShelf.id}
+                        onOpen={onOpen}
+                        onContextMenu={onCardContextMenu}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}
+            >
+              {error && <ErrorBanner theme={theme} message={error} />}
+
+              {loading && books.length === 0 ? (
+                <div
+                  style={{
+                    color: theme.muted,
+                    padding: 30,
+                    textAlign: "center",
+                  }}
+                >
+                  {tr("library.loadingShort")}
+                </div>
+              ) : books.length === 0 ? (
+                <EmptyState
+                  theme={theme}
+                  onImport={onImport}
+                  importing={importing}
+                />
+              ) : visible.length === 0 ? (
+                <FilteredEmptyState theme={theme} tab={tab} />
+              ) : (
+                <>
+                  {hero && (
+                    <div
+                      onClick={() => {
+                        if (heroLongPress.consumeLongPress()) return;
+                        onOpen(hero.id);
+                      }}
+                      {...heroLongPress.bind}
+                      role="button"
+                      tabIndex={0}
+                      style={{
+                        padding: 16,
+                        borderRadius: 14,
+                        background: theme.chrome,
+                        display: "flex",
+                        gap: 14,
+                        marginBottom: 28,
+                        alignItems: "center",
+                        cursor: "pointer",
+                        // Suppress the default long-press text-selection / callout
+                        // so the menu opens cleanly without a stray selection box.
+                        WebkitUserSelect: "none",
+                        userSelect: "none",
+                        WebkitTouchCallout: "none",
+                      }}
+                    >
+                      <BookCover
+                        title={hero.title}
+                        author={hero.author}
+                        palette={paletteForId(hero.id)}
+                        size="sm"
+                        src={covers[hero.id]}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            fontWeight: 600,
+                            color: theme.muted,
+                            letterSpacing: isAr ? "normal" : "0.1em",
+                            textTransform: isAr ? "none" : "uppercase",
+                            marginBottom: 4,
+                          }}
+                        >
+                          {hero.lastReadAt
+                            ? tr("library.continue")
+                            : tr("library.startReading")}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: titleFontFor(heroDisplayTitle),
+                            fontStyle: "normal",
+                            fontSize: 18,
+                            lineHeight: isArabicTitle(heroDisplayTitle)
+                              ? 1.4
+                              : 1.15,
+                            color: theme.ink,
+                            letterSpacing: "-0.01em",
+                            marginBottom: 4,
+                          }}
+                        >
+                          {heroDisplayTitle}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            color: theme.muted,
+                            marginBottom: 10,
+                          }}
+                        >
+                          {tr("library.chaptersAgo", {
+                            n: hero.chapterCount,
+                            rel: relTime(hero.lastReadAt ?? hero.addedAt, tr),
+                          })}
+                        </div>
+                        <div
+                          style={{
+                            height: 3,
+                            background: theme.rule,
+                            borderRadius: 2,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.round(hero.progress * 100)}%`,
+                              height: "100%",
+                              background: theme.ink,
+                              borderRadius: 2,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      fontSize: 10.5,
                       fontWeight: 600,
                       color: theme.muted,
                       letterSpacing: isAr ? "normal" : "0.1em",
                       textTransform: isAr ? "none" : "uppercase",
-                      marginBottom: 4,
+                      marginBottom: 14,
                     }}
                   >
-                    {hero.lastReadAt ? tr("library.continue") : tr("library.startReading")}
+                    {tr("library.yourShelf")}
                   </div>
                   <div
                     style={{
-                      fontFamily: titleFontFor(heroDisplayTitle),
-                      fontStyle: "normal",
-                      fontSize: 18,
-                      lineHeight: isArabicTitle(heroDisplayTitle) ? 1.4 : 1.15,
-                      color: theme.ink,
-                      letterSpacing: "-0.01em",
-                      marginBottom: 4,
+                      display: "grid",
+                      // minmax(0, 1fr) lets columns shrink below the cover's
+                      // intrinsic width so 3 fluid covers fit any phone width
+                      // instead of overflowing past the right edge.
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 16,
+                      rowGap: 22,
                     }}
                   >
-                    {heroDisplayTitle}
+                    {others.map((b) => (
+                      <MobileShelfCard
+                        key={b.id}
+                        theme={theme}
+                        book={b}
+                        coverSrc={covers[b.id]}
+                        onOpen={onOpen}
+                        onContextMenu={onCardContextMenu}
+                      />
+                    ))}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      color: theme.muted,
-                      marginBottom: 10,
-                    }}
-                  >
-                    {tr("library.chaptersAgo", {
-                      n: hero.chapterCount,
-                      rel: relTime(hero.lastReadAt ?? hero.addedAt, tr),
-                    })}
-                  </div>
-                  <div
-                    style={{
-                      height: 3,
-                      background: theme.rule,
-                      borderRadius: 2,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${Math.round(hero.progress * 100)}%`,
-                        height: "100%",
-                        background: theme.ink,
-                        borderRadius: 2,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 600,
-                color: theme.muted,
-                letterSpacing: isAr ? "normal" : "0.1em",
-                textTransform: isAr ? "none" : "uppercase",
-                marginBottom: 14,
-              }}
-            >
-              {tr("library.yourShelf")}
+                </>
+              )}
             </div>
-            <div
-              style={{
-                display: "grid",
-                // minmax(0, 1fr) lets columns shrink below the cover's
-                // intrinsic width so 3 fluid covers fit any phone width
-                // instead of overflowing past the right edge.
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: 16,
-                rowGap: 22,
-              }}
-            >
-              {others.map((b) => (
-                <MobileShelfCard
-                  key={b.id}
-                  theme={theme}
-                  book={b}
-                  coverSrc={covers[b.id]}
-                  onOpen={onOpen}
-                  onContextMenu={onCardContextMenu}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      )}
+          )}
         </AnimatedSwap>
       </div>
       {/* Bottom navigation. Hidden while the source detail view owns

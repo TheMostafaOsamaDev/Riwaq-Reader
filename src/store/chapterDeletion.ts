@@ -47,11 +47,7 @@ export async function deleteChaptersWithQueue(
   }
 
   // 3. Delete.
-  const first = await deleteChapterDownloads(
-    libraryEntryId,
-    ids,
-    onProgress,
-  );
+  const first = await deleteChapterDownloads(libraryEntryId, ids, onProgress);
 
   // 4. Re-check. Two different resurrections need catching here, and
   //    only one of them is visible in the snapshot.

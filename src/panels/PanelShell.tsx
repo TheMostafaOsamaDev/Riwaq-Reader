@@ -33,8 +33,8 @@ export function PanelShell({
     side === "left"
       ? { borderInlineEnd: `0.5px solid ${theme.rule}` }
       : side === "right"
-      ? { borderInlineStart: `0.5px solid ${theme.rule}` }
-      : {};
+        ? { borderInlineStart: `0.5px solid ${theme.rule}` }
+        : {};
   return (
     <div
       style={{
@@ -70,8 +70,17 @@ export function PanelShell({
           touchAction: "none",
         }}
       >
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
-          {icon && <div style={{ color: theme.chromeInk, paddingTop: 2 }}>{icon}</div>}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "flex-start",
+            minWidth: 0,
+          }}
+        >
+          {icon && (
+            <div style={{ color: theme.chromeInk, paddingTop: 2 }}>{icon}</div>
+          )}
           <div style={{ minWidth: 0 }}>
             <div
               style={{

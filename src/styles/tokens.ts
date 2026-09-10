@@ -236,7 +236,10 @@ export function hlBg(color: HighlightColor, themeKey: ThemeKey): string {
  * than reach for `dot`, or the marker and the popover disagree.
  */
 export function hlMark(color: HighlightColor, themeKey: ThemeKey): string {
-  return shade(HIGHLIGHT_COLORS[color].dot, isDarkTheme(themeKey) ? 0.2 : -0.28);
+  return shade(
+    HIGHLIGHT_COLORS[color].dot,
+    isDarkTheme(themeKey) ? 0.2 : -0.28,
+  );
 }
 
 /** Swatch order for any picker: the record's own declaration order,
@@ -393,18 +396,17 @@ export const FONT_GROUP_ORDER: ReadonlyArray<FontGroup> = [
  *  `dyslexic` named faces that were never shipped, so they were already
  *  rendering as Readex Pro on Android; `markazi` gives `serif` a real serif
  *  for the first time. */
-export const LEGACY_FONT_FAMILY: Record<string, FontFamilyKey | undefined> =
-  {
-    sans: "readex",
-    dyslexic: "readex",
-    serif: "markazi",
-    // Thmanyah Serif Display was dropped: it shipped without a license
-    // file, so it could not be redistributed. Markazi is the closest
-    // bundled face — the same editorial-serif role, carrying both
-    // scripts. Keyed by `string`, not `FontFamilyKey`, precisely so a
-    // retired key can still name its successor here.
-    thmanyah: "markazi",
-  };
+export const LEGACY_FONT_FAMILY: Record<string, FontFamilyKey | undefined> = {
+  sans: "readex",
+  dyslexic: "readex",
+  serif: "markazi",
+  // Thmanyah Serif Display was dropped: it shipped without a license
+  // file, so it could not be redistributed. Markazi is the closest
+  // bundled face — the same editorial-serif role, carrying both
+  // scripts. Keyed by `string`, not `FontFamilyKey`, precisely so a
+  // retired key can still name its successor here.
+  thmanyah: "markazi",
+};
 
 /** Selectable UI (app-chrome) font — distinct from the per-book reading
  *  `FontFamilyKey`. Applied through the `--ui-font` CSS variable that
@@ -469,8 +471,7 @@ export const FONT_CHAPTER_DISPLAY = FONT_STACKS.markazi;
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,
 // presentation forms A & B). Book titles no longer branch on this — see
 // `titleFontFor` — but callers that tune fontStyle per script still do.
-const ARABIC_RANGE =
-  /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+const ARABIC_RANGE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 
 export function isArabicTitle(title: string): boolean {
   return ARABIC_RANGE.test(title);
@@ -529,7 +530,9 @@ export function shade(hex: string, amount: number): string {
   if (!rgb) return hex;
   const target = amount < 0 ? 0 : 255;
   const k = Math.abs(amount);
-  return toHex(rgb.map((c) => c + (target - c) * k) as [number, number, number]);
+  return toHex(
+    rgb.map((c) => c + (target - c) * k) as [number, number, number],
+  );
 }
 
 /** A hex colour at an arbitrary alpha. Returns it untouched if it is not a

@@ -24,13 +24,7 @@
 // through localStorage. The callbacks have the same signature, so
 // DesktopReader doesn't know the difference.
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DesktopReader } from "./DesktopReader";
 import { MobileReader } from "./MobileReader";
 import { Icon } from "./Icon";
@@ -46,11 +40,7 @@ import {
   readSnapshot,
   snapshotToSourceNovel,
 } from "../store/sourceLibrary";
-import type {
-  Source,
-  SourceLine,
-  SourceNovel,
-} from "../sources/types";
+import type { Source, SourceLine, SourceNovel } from "../sources/types";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -138,10 +128,12 @@ export function SourceStreamReader({
   const [nextAvailability, setNextAvailability] = useState<
     "device" | "online" | undefined
   >(undefined);
-  const [inFlight, setInFlight] = useState<ReadonlySet<number>>(() => new Set());
-  const [chapterErrors, setChapterErrors] = useState<ReadonlyMap<number, string>>(
-    () => new Map(),
+  const [inFlight, setInFlight] = useState<ReadonlySet<number>>(
+    () => new Set(),
   );
+  const [chapterErrors, setChapterErrors] = useState<
+    ReadonlyMap<number, string>
+  >(() => new Map());
 
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
 
@@ -274,7 +266,15 @@ export function SourceStreamReader({
     return () => {
       cancelled = true;
     };
-  }, [source, novelUrl, sourceId, startChapterId, persistKey, libraryEntryId, tr]);
+  }, [
+    source,
+    novelUrl,
+    sourceId,
+    startChapterId,
+    persistKey,
+    libraryEntryId,
+    tr,
+  ]);
 
   // ── fetch a specific chapter's content (cached) ─────────────────────────
   // Splices new chapter items into the book by producing a fresh object
@@ -315,10 +315,7 @@ export function SourceStreamReader({
         // a library entry to consult.
         let items: ChapterItem[] | null = null;
         if (libraryEntryId) {
-          const local = await readChapterContent(
-            libraryEntryId,
-            stub.sourceId,
-          );
+          const local = await readChapterContent(libraryEntryId, stub.sourceId);
           if (local) {
             items = await persistedLinesToChapterItems(
               libraryEntryId,
@@ -404,7 +401,14 @@ export function SourceStreamReader({
       paragraphOffset,
       highlights,
     });
-  }, [book, persistKey, currentChapter, paragraphIndex, paragraphOffset, highlights]);
+  }, [
+    book,
+    persistKey,
+    currentChapter,
+    paragraphIndex,
+    paragraphOffset,
+    highlights,
+  ]);
 
   // ── reader callbacks ───────────────────────────────────────────────────
   const onChapterChange = useCallback(
@@ -482,10 +486,7 @@ export function SourceStreamReader({
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `h-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setHighlights((prev) => [
-        ...prev,
-        { ...input, id, ts: Date.now() },
-      ]);
+      setHighlights((prev) => [...prev, { ...input, id, ts: Date.now() }]);
     },
     [],
   );
@@ -498,7 +499,9 @@ export function SourceStreamReader({
     const trimmed = note.trim();
     setHighlights((prev) =>
       prev.map((h) =>
-        h.id === id ? { ...h, note: trimmed.length > 0 ? trimmed : undefined } : h,
+        h.id === id
+          ? { ...h, note: trimmed.length > 0 ? trimmed : undefined }
+          : h,
       ),
     );
   }, []);
@@ -619,7 +622,11 @@ export function SourceStreamReader({
       )}
 
       {overlay.kind === "loading" && <ChapterLoadingOverlay theme={theme} />}
-      <OverlayLog kind={overlay.kind} chapter={currentChapter} items={currentItems.length} />
+      <OverlayLog
+        kind={overlay.kind}
+        chapter={currentChapter}
+        items={currentItems.length}
+      />
       {overlay.kind === "error" && (
         <ChapterErrorOverlay
           theme={theme}
@@ -695,7 +702,10 @@ async function sourceLinesToChapterItems(
     // are used as-is (the browser fetches them).
     const resolved = await source.resolveImage?.(l.content);
     if (resolved) {
-      out.push({ src: await bytesToDataUrl(resolved.bytes, resolved.mimeType), alt: "" });
+      out.push({
+        src: await bytesToDataUrl(resolved.bytes, resolved.mimeType),
+        alt: "",
+      });
     } else {
       out.push({ src: l.content, alt: "" });
     }
@@ -707,7 +717,8 @@ function bytesToDataUrl(bytes: Uint8Array, mimeType: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("FileReader failed"));
     // Cast to BlobPart (not bytes.buffer) so a non-zero byteOffset/byteLength
     // view would still copy only its own bytes, not the whole backing buffer.
     reader.readAsDataURL(new Blob([bytes as BlobPart], { type: mimeType }));

@@ -55,7 +55,15 @@ const u = (bodySize: number, px: number) =>
 /** One arm of a mark. `w` may be a length or a percentage; it never centres
  *  itself, because every use here is a flex child and an auto inline margin on
  *  a flex item absorbs the free space rather than centring anything. */
-function Arm({ theme, w, alpha }: { theme: Theme; w: string | number; alpha: number }) {
+function Arm({
+  theme,
+  w,
+  alpha,
+}: {
+  theme: Theme;
+  w: string | number;
+  alpha: number;
+}) {
   return (
     <span
       aria-hidden

@@ -70,7 +70,9 @@ export function ReaderTabBar({
         onClick={onToggleProgress}
         style={readerTabStyle(theme)}
         aria-label={
-          showProgress ? tr("reader.hideProgressBar") : tr("reader.showProgressBar")
+          showProgress
+            ? tr("reader.hideProgressBar")
+            : tr("reader.showProgressBar")
         }
         aria-pressed={showProgress}
       >

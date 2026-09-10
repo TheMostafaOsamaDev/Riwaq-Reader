@@ -83,7 +83,9 @@ export async function createPdfPageSource(
 ): Promise<FixedPageSource> {
   const path = `${bookDir(book.id)}/book.pdf`;
   const info = await stat(path, { baseDir: BASE });
-  return createPdfPageSourceFrom(await openPdfDocument({ path, length: info.size }));
+  return createPdfPageSourceFrom(
+    await openPdfDocument({ path, length: info.size }),
+  );
 }
 
 async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {

@@ -94,10 +94,7 @@ interface StampedState {
 
 function isStamped(s: unknown): s is StampedState {
   return (
-    typeof s === "object" &&
-    s !== null &&
-    "navIndex" in s &&
-    "snapshot" in s
+    typeof s === "object" && s !== null && "navIndex" in s && "snapshot" in s
   );
 }
 
@@ -161,7 +158,10 @@ function snapshotsEqual(a: NavSnapshot, b: NavSnapshot): boolean {
  *  back step) unless `replace` is set, in which case it swaps the current
  *  entry in place — used for redirects that shouldn't be independently
  *  back-navigable. A no-op when the target equals the current snapshot. */
-export function navigate(next: NavSnapshot, opts?: { replace?: boolean }): void {
+export function navigate(
+  next: NavSnapshot,
+  opts?: { replace?: boolean },
+): void {
   init();
   if (!opts?.replace && snapshotsEqual(next, snapshot)) return;
   if (opts?.replace) {
@@ -196,7 +196,10 @@ export function goBase(base: BaseLocation, opts?: { replace?: boolean }): void {
   navigate({ base, overlay: null }, opts);
 }
 
-export function goLibrary(view: LibraryView, opts?: { replace?: boolean }): void {
+export function goLibrary(
+  view: LibraryView,
+  opts?: { replace?: boolean },
+): void {
   goBase({ screen: "library", view }, opts);
 }
 

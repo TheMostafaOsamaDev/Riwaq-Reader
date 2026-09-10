@@ -27,7 +27,10 @@ describe("thumbSize", () => {
   });
 
   it("fits a square image to the box", () => {
-    expect(thumbSize(1000, 1000)).toEqual({ width: THUMB_BOX, height: THUMB_BOX });
+    expect(thumbSize(1000, 1000)).toEqual({
+      width: THUMB_BOX,
+      height: THUMB_BOX,
+    });
   });
 
   it("refuses a degenerate image rather than emitting a zero-size canvas", () => {

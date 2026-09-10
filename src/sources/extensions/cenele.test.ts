@@ -35,7 +35,9 @@ describe("extractNovelConfig", () => {
   });
 
   it("returns null when the config global is absent", () => {
-    expect(extractNovelConfig("<html><body>no config</body></html>")).toBeNull();
+    expect(
+      extractNovelConfig("<html><body>no config</body></html>"),
+    ).toBeNull();
   });
 
   it("returns null when chaptersNonce is missing", () => {
@@ -63,8 +65,27 @@ describe("parseNovelPage", () => {
   it("keeps genres and tags as separate lists", () => {
     const n = parse();
     expect(n.tags).toEqual([
-      "أكشن", "بالغ", "زيانشيا", "غموض", "فنون قتالية", "للكبار", "مأساة", "مظلمة", "نفسي",
-      "إنتقال العالم", "الانتقال الزمني", "الانتقام", "الزراعة", "الشخصية لا ترحم", "الكيمياء", "الوقت القديم", "تطور شخصية", "خلفية عائلة غامضة", "داو", "غدر الأحباء", "من ضعيف إلى قوي",
+      "أكشن",
+      "بالغ",
+      "زيانشيا",
+      "غموض",
+      "فنون قتالية",
+      "للكبار",
+      "مأساة",
+      "مظلمة",
+      "نفسي",
+      "إنتقال العالم",
+      "الانتقال الزمني",
+      "الانتقام",
+      "الزراعة",
+      "الشخصية لا ترحم",
+      "الكيمياء",
+      "الوقت القديم",
+      "تطور شخصية",
+      "خلفية عائلة غامضة",
+      "داو",
+      "غدر الأحباء",
+      "من ضعيف إلى قوي",
     ]);
   });
 
@@ -111,7 +132,9 @@ describe("parseNovelPage", () => {
 
   it("throws a page-identifying error when the config is missing", () => {
     const doc = new DOMParser().parseFromString(
-      "<html><body>nope</body></html>", "text/html");
+      "<html><body>nope</body></html>",
+      "text/html",
+    );
     expect(() => parseNovelPage(doc, "https://cenele.com/cont/x/")).toThrow(
       /https:\/\/cenele\.com\/cont\/x\//,
     );
@@ -183,7 +206,10 @@ describe("parseSearchPage", () => {
 
   it("echoes query and page", () => {
     const r = parseSearchPage(
-      new DOMParser().parseFromString(searchHtml, "text/html"), "سيد", 2);
+      new DOMParser().parseFromString(searchHtml, "text/html"),
+      "سيد",
+      2,
+    );
     expect(r.query).toBe("سيد");
     expect(r.page).toBe(2);
   });

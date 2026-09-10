@@ -65,7 +65,11 @@ export function ReaderIconButton({
         opacity: disabled ? 0.35 : 1,
       }}
     >
-      <Icon name={icon} size={iconSize} className={flip ? "rtl-flip-x" : undefined} />
+      <Icon
+        name={icon}
+        size={iconSize}
+        className={flip ? "rtl-flip-x" : undefined}
+      />
     </button>
   );
 }

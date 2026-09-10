@@ -19,8 +19,8 @@ export interface MoveSample {
   t: number; // performance.now() in ms
 }
 
-export const TAP_THRESHOLD = 6;  // px — below this, the gesture is a tap
-export const V_THRESH = 500;     // px/sec — flick threshold
+export const TAP_THRESHOLD = 6; // px — below this, the gesture is a tap
+export const V_THRESH = 500; // px/sec — flick threshold
 export const VELOCITY_WINDOW_MS = 120;
 
 /** translateY (px) for a given snap relative to a sheet rendered at the
@@ -103,7 +103,7 @@ export function decideSnap(input: SnapInput): Snap {
 
   if (fromSnap === "default") {
     if (offsetPx < 0) {
-      const distOk = Math.abs(offsetPx) >= 0.20 * gapFullToDefault;
+      const distOk = Math.abs(offsetPx) >= 0.2 * gapFullToDefault;
       const flickOk = velocityPxPerSec <= -V_THRESH;
       if (distOk || flickOk) return "full";
       return "default";
