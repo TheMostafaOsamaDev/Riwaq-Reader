@@ -69,6 +69,13 @@ sha2 = "0.10"
 # plugin is harmless there and keeps the three platforms on one path.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
+# In-app updates. The updater plugin does not support Android or iOS — it
+# excludes those targets itself — so Android takes the manual "here is the
+# APK" channel instead (see src/store/updateChannel.ts). Keeping these inside
+# the desktop-only block is what stops the Android build from trying to
+# compile them. `process` is here only for the relaunch after an update.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # Android-only: JNI bridge into the Kotlin DownloadNotifier class (see
 # src/notify.rs). Pinned to a version that matches the JNI ABI used by
