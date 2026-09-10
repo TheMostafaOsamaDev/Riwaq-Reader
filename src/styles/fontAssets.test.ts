@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
  * catches it. These tests are that check.
  *
  * They also hold the WOFF2 line. The fonts were TrueType until they were
- * converted (scripts/fonts-to-woff2.sh); at 5.7 MB they were the largest
- * single thing in the bundle, and a .ttf dropped back into public/fonts is
- * both dead weight and, unreferenced, invisible.
+ * converted with `woff2_compress`; at 5.7 MB they were the largest single
+ * thing in the bundle, and a .ttf dropped back into public/fonts is both dead
+ * weight and, unreferenced, invisible.
  */
 
 const FONT_DIR = fileURLToPath(new URL("../../public/fonts", import.meta.url));
