@@ -1,0 +1,28 @@
+# Single-package repo. This file exists only so pnpm will run esbuild's install
+# script; without it a fresh clone cannot build. It needs BOTH fields below,
+# and the project has now been broken by each of them being missing in turn:
+#
+#   packages     — pnpm 9, which every CI job pins via pnpm/action-setup,
+#                  rejects a workspace file without it:
+#                      ERROR  packages field missing or empty
+#                  That lands inside actions/setup-node's `cache: pnpm` step,
+#                  which shells out to `pnpm store path` BEFORE any step we
+#                  wrote, so the job dies at setup naming neither the file nor
+#                  the version. This turned every run red after #96. It must
+#                  list `.`, not be empty: `packages: []` parses fine on both
+#                  versions but excludes the root, and then the build approval
+#                  below silently stops applying.
+#
+#   allowBuilds  — pnpm 10+ skips build scripts unless they are approved
+#                  (ERR_PNPM_IGNORED_BUILDS: esbuild). onlyBuiltDependencies
+#                  alone is NOT sufficient on pnpm 11; measured.
+#
+# #97 fixed CI by untracking the file, which fixed pnpm 9 by breaking every
+# fresh clone on pnpm 10+ — the version anyone installing pnpm today gets.
+# Verified: pnpm 9 and pnpm 11 both accept this, and pnpm 11 builds esbuild.
+packages:
+  - .
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild

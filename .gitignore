@@ -79,5 +79,3 @@ src-tauri/gen/apple/*.xcworkspace/xcuserdata/
 # Committing it turns every CI run red at the setup step.
 #
 # If the CI pin is ever raised to pnpm 10+, add `packages:` and commit it
-# deliberately in that same change: `git add -f pnpm-workspace.yaml`.
-pnpm-workspace.yaml

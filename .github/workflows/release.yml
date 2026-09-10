@@ -50,9 +50,30 @@ permissions:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────
+  # Preflight — config checks that cost seconds, gating builds that cost
+  # ~30 minutes. Every other guard here inspects an ARTIFACT, so it can only
+  # fail after the thing it checks has been built, and then it reports the
+  # symptom rather than the cause: an empty updater pubkey, a missing
+  # createUpdaterArtifacts and a version/tag mismatch ALL surface downstream
+  # as "manifest job: missing url for <platform>".
+  # ──────────────────────────────────────────────────────────────────
+  preflight:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the guards themselves
+        run: |
+          bash scripts/verify-release-config.sh --self-test
+          bash scripts/verify-update-manifest.sh --self-test
+          bash scripts/verify-apk-signing.sh --self-test
+      - name: Verify the release config
+        run: bash scripts/verify-release-config.sh "${{ github.ref_name }}"
+
+  # ──────────────────────────────────────────────────────────────────
   # Linux x86_64 — .deb, .AppImage, .rpm
   # ──────────────────────────────────────────────────────────────────
   linux:
+    needs: preflight
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -113,7 +134,10 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseDraft: true
-          prerelease: false
+          # A semver prerelease carries a hyphen (v0.2.0-rc1). Hardcoding
+          # false would publish an rc as the stable release, and
+          # /releases/latest/ would then serve it to every updater client.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: true
           # One manifest URL per platform: an MSI user updated through the
           # NSIS installer ends up with two installs. MSI is not built any
@@ -129,6 +153,7 @@ jobs:
   # so they don't collide with the x86_64 job on the same draft release.
   # ──────────────────────────────────────────────────────────────────
   linux-arm64:
+    needs: preflight
     runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -185,7 +210,10 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseDraft: true
-          prerelease: false
+          # A semver prerelease carries a hyphen (v0.2.0-rc1). Hardcoding
+          # false would publish an rc as the stable release, and
+          # /releases/latest/ would then serve it to every updater client.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: true
           # One manifest URL per platform: an MSI user updated through the
           # NSIS installer ends up with two installs. MSI is not built any
@@ -196,6 +224,7 @@ jobs:
   # Windows x86_64 — .msi (WiX) + .exe (NSIS)
   # ──────────────────────────────────────────────────────────────────
   windows:
+    needs: preflight
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -236,7 +265,10 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseDraft: true
-          prerelease: false
+          # A semver prerelease carries a hyphen (v0.2.0-rc1). Hardcoding
+          # false would publish an rc as the stable release, and
+          # /releases/latest/ would then serve it to every updater client.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: true
           # One manifest URL per platform: an MSI user updated through the
           # NSIS installer ends up with two installs. MSI is not built any
@@ -253,6 +285,7 @@ jobs:
   # pulls the correct arm64 runtime on the user's machine.
   # ──────────────────────────────────────────────────────────────────
   windows-arm64:
+    needs: preflight
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
@@ -298,7 +331,10 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseDraft: true
-          prerelease: false
+          # A semver prerelease carries a hyphen (v0.2.0-rc1). Hardcoding
+          # false would publish an rc as the stable release, and
+          # /releases/latest/ would then serve it to every updater client.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: true
           # One manifest URL per platform: an MSI user updated through the
           # NSIS installer ends up with two installs. MSI is not built any
@@ -313,6 +349,7 @@ jobs:
   # users clear the Gatekeeper quarantine on first launch (README).
   # ──────────────────────────────────────────────────────────────────
   macos:
+    needs: preflight
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -358,7 +395,10 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseDraft: true
-          prerelease: false
+          # A semver prerelease carries a hyphen (v0.2.0-rc1). Hardcoding
+          # false would publish an rc as the stable release, and
+          # /releases/latest/ would then serve it to every updater client.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: true
           # One manifest URL per platform: an MSI user updated through the
           # NSIS installer ends up with two installs. MSI is not built any
@@ -381,6 +421,7 @@ jobs:
   # APK is checked before it is uploaded anywhere.
   # ──────────────────────────────────────────────────────────────────
   android:
+    needs: preflight
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -532,6 +573,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK as workflow artifact (always)
+        if: always()
         # Even on workflow_dispatch (no tag), keep the APK reachable so
         # the manual smoke-test produces something the user can download
         # and install on a phone.
@@ -562,11 +604,14 @@ jobs:
   # Tag pushes only; workflow_dispatch creates no release to check.
   # ──────────────────────────────────────────────────────────────────
   manifest:
-    needs: [linux, linux-arm64, windows, windows-arm64, macos]
+    needs: [preflight, linux, linux-arm64, windows, windows-arm64, macos]
     runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
-      contents: read
+      # write, not read: this downloads latest.json from a DRAFT release, and
+      # drafts are invisible to a token without push access — the download
+      # would 404 and the error would blame the updater config.
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
