@@ -4,6 +4,7 @@
 // reliably without an in-page click region that fights body taps.
 
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { Z } from "../styles/tokens";
 
 interface Props {
   /** Viewport-coordinate rect of the collapsed caret position. */
@@ -33,7 +34,7 @@ export function SelectionHandle({ rect, position, onPointerDown }: Props) {
         width: BAR_WIDTH,
         height: lineHeight,
         background: BAR_COLOR,
-        zIndex: 9500,
+        zIndex: Z.menu,
         pointerEvents: "none",
       }}
     >

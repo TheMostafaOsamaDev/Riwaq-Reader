@@ -16,6 +16,7 @@ import {
   type FontFamilyKey,
   type FontGroup,
   type Theme,
+  Z,
 } from "../styles/tokens";
 import { useFontScale } from "../hooks/useFontScale";
 import { ScrollArea } from "./ScrollArea";
@@ -264,7 +265,7 @@ export function FontSelect({
             insetInline: 0,
             top: "calc(100% + 6px)",
             maxHeight: 300,
-            zIndex: 40,
+            zIndex: Z.floating,
             // `chrome`, not `paper`: on the dark themes paper IS bg (#1a1614,
             // and #000 on OLED), so a paper popover over the sheet had no
             // separation at all. chrome sits a step lighter there and a step

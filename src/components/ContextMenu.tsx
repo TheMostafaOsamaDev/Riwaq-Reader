@@ -10,7 +10,7 @@ import { Icon } from "./Icon";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { BookStatus } from "../store/library";
 import { EASE, MOTION } from "../styles/motion";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z, scrimUnder } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import type { Tr } from "../i18n";
 
@@ -804,7 +804,7 @@ export function ContextMenu({
             backdropFilter: entered && !leaving ? "blur(6px)" : "blur(0px)",
             WebkitBackdropFilter:
               entered && !leaving ? "blur(6px)" : "blur(0px)",
-            zIndex: 9499,
+            zIndex: scrimUnder(Z.menu),
             opacity: backdropOpacity,
             transition: backdropTransition,
           }}
@@ -816,7 +816,7 @@ export function ContextMenu({
             insetInlineStart: 0,
             insetInlineEnd: 0,
             bottom: 0,
-            zIndex: 9500,
+            zIndex: Z.menu,
             padding: 10,
             paddingBottom: `max(10px, env(safe-area-inset-bottom, 10px))`,
             display: "flex",
@@ -958,7 +958,7 @@ export function ContextMenu({
         position: "fixed",
         left: pos.x,
         top: pos.y,
-        zIndex: 9500,
+        zIndex: Z.menu,
         // Wider than the original 200px so the book header and status
         // label sit comfortably without crowding the rows.
         minWidth: 240,

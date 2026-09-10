@@ -31,6 +31,8 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
+  Z,
+  Z_LOCAL,
 } from "../styles/tokens";
 import { transition } from "../styles/motion";
 import { useI18n } from "../i18n/useI18n";
@@ -101,7 +103,7 @@ export function DownloadRangeDialog({
     );
   }
   return (
-    <AnimatedDialog open={open} onScrimClick={onCancel} zIndex={9700}>
+    <AnimatedDialog open={open} onScrimClick={onCancel} zIndex={Z.menuDialog}>
       {content}
     </AnimatedDialog>
   );
@@ -785,7 +787,7 @@ function ChapterRangeField({
                           background: theme.chrome,
                           position: "sticky",
                           top: 0,
-                          zIndex: 1,
+                          zIndex: Z_LOCAL.base,
                           direction,
                         }}
                       >

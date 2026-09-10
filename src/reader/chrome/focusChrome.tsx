@@ -19,7 +19,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { EASE, MOTION } from "../../styles/motion";
-import { FONT_STACKS, type Theme } from "../../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../../styles/tokens";
 import { chromeEdges } from "./focusEdges";
 import { glassBar, type GlassBar, type GlassEdge } from "./glass";
 import { migrateStorageKey } from "../../lib/legacyStorage";
@@ -267,9 +267,9 @@ export function useFocusChrome({
     [edge]: 0,
     insetInlineStart: dockInset,
     insetInlineEnd: 0,
-    // Above SideSheet's overlay (40) so a revealed bar is never dimmed by, or
-    // buried under, a panel's scrim; below the toasts at 50.
-    zIndex: 45,
+    // Above `Z.floating`, which SideSheet's overlay sits on, so a revealed bar
+    // is never dimmed by, or buried under, a panel's scrim; below `Z.hint`.
+    zIndex: Z.focusBar,
     // Chrome is never part of a text selection dragged across the page.
     userSelect: "none",
     WebkitUserSelect: "none",
@@ -376,7 +376,7 @@ export function FocusHint({
         top: "50%",
         transform: "translate(-50%, -50%)",
         pointerEvents: "none",
-        zIndex: 50,
+        zIndex: Z.hint,
         padding: "16px 28px",
         borderRadius: 14,
         background: theme.chrome,

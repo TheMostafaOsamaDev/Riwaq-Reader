@@ -5,7 +5,13 @@
 // one-click way to start filling it.
 
 import { useEffect, useRef, useState, memo} from "react";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, titleFontFor, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  titleFontFor,
+  type Theme,
+  Z,
+} from "../styles/tokens";
 import { Icon, type IconProps } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
 import { SectionCarousel } from "./SectionCarousel";
@@ -479,7 +485,7 @@ function ShelfOverflowMenu({
         borderRadius: 10,
         boxShadow: "0 12px 32px rgba(0,0,0,0.22)",
         padding: 4,
-        zIndex: 20,
+        zIndex: Z.panel,
       }}
     >
       <ShelfMenuItem theme={theme} icon="pencil" label={tr("shelves.rename")} onClick={onRename} />

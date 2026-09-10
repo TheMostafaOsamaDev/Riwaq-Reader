@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { Theme } from "../styles/tokens";
 import { fractionToWidth } from "./readerProgress";
+import { Z_LOCAL } from "../styles/tokens";
 
 interface Props {
   /** The reader writes the fill width imperatively through this ref (e.g. on
@@ -34,7 +35,7 @@ export function ChapterProgressBar({
         height: 2,
         background: theme.rule,
         pointerEvents: "none",
-        zIndex: 1,
+        zIndex: Z_LOCAL.base,
       }}
     >
       <div

@@ -306,7 +306,9 @@ textarea::placeholder {
 /* The overlay-scrollbar layer. `pointer-events: none` on the host so only the
    individual grab strips can be hit, and only the one under the pointer arms
    itself (see the controller). The z-index sits above app chrome and dialogs
-   so a scroll area inside a modal still gets its bar. */
+   so a scroll area inside a modal still gets its bar — it is the one layer
+   that lives outside the app band. Mirrors `Z.scrollbars` in styles/tokens.ts;
+   a test asserts the two stay equal, so change both or neither. */
 #riwaq-scrollbars {
   position: fixed;
   inset: 0;

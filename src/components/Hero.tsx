@@ -10,7 +10,7 @@
 // accent gradient so the frame is never a flat void.
 
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { ACCENT } from "../styles/tokens";
+import { ACCENT, Z_LOCAL } from "../styles/tokens";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 
 interface Props {
@@ -115,7 +115,7 @@ export function Hero({
       <div
         style={{
           position: "relative",
-          zIndex: 1,
+          zIndex: Z_LOCAL.base,
           width: "100%",
           boxSizing: "border-box",
           padding: isMobile ? "24px 18px 22px" : "40px 40px 32px",

@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import type { Theme } from "../styles/tokens";
-import { FONT_STACKS } from "../styles/tokens";
+import { FONT_STACKS, Z } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
@@ -53,7 +53,7 @@ export class ReaderErrorBoundary extends Component<Props, State> {
         style={{
           position: "absolute",
           inset: 0,
-          zIndex: 200,
+          zIndex: Z.dialog,
           background: theme.bg,
           color: theme.ink,
           fontFamily: FONT_STACKS.sans,

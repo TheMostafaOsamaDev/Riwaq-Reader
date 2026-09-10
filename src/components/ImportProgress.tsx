@@ -18,7 +18,13 @@ import {
   useImportProgress,
   type Step,
 } from "../store/importProgress";
-import { ACCENT, FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  ACCENT,
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  Z,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel, phaseLabel } from "../i18n/statusLabels";
 
@@ -93,7 +99,7 @@ function Modal({ theme }: { theme: Theme }) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 10000,
+        zIndex: Z.progress,
         background: "rgba(0,0,0,0.5)",
         backdropFilter: "blur(2px)",
         display: "flex",

@@ -17,7 +17,12 @@ import {
 } from "react";
 import { Icon, type IconProps } from "../components/Icon";
 import type { EpubChapter } from "../epub/types";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  Z_LOCAL,
+} from "../styles/tokens";
 import { transition } from "../styles/motion";
 import { useI18n } from "../i18n/useI18n";
 import type { TocVolume } from "../types/reader";
@@ -835,13 +840,13 @@ function SearchBar({
   const { tr, dir } = useI18n();
   return (
     // Sticks to the top of the scroll container so the search field
-    // stays reachable while scanning a long table of contents. zIndex 1
+    // stays reachable while scanning a long table of contents. `Z_LOCAL.base`
     // keeps it above the buttons that scroll under it.
     <div
       style={{
         position: "sticky",
         top: 0,
-        zIndex: 1,
+        zIndex: Z_LOCAL.base,
         padding: "10px 12px",
         background: theme.bg,
         borderBottom: `0.5px solid ${theme.rule}`,

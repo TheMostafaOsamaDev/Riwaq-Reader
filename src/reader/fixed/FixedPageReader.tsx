@@ -25,6 +25,7 @@ import {
   type HighlightColor,
   type Theme,
   type ThemeKey,
+  Z,
 } from "../../styles/tokens";
 import { useReducedMotion } from "../../styles/motion";
 import type { Tweaks, TocEntry } from "../../types/reader";
@@ -222,12 +223,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     ? `calc(${FOCUS_INSET_BARE}px + env(safe-area-inset-bottom, 0px))`
     : padBottom;
   // Where the floating bars sit relative to an open panel, which differs by
-  // platform because the panels do. Desktop keeps `pin`'s default 45, above
-  // SideSheet's scrim — that is what leaves a revealed bar undimmed with its
-  // buttons still clickable. A phone raises MobileSheet (zIndex 20) instead,
-  // which is meant to cover the chrome the way it does in the reflow reader
-  // (whose bars sit at 10), so the bars go under it.
-  const barLayer = isMobile ? { zIndex: 10 } : null;
+  // platform because the panels do. Desktop keeps `pin`'s default `Z.focusBar`,
+  // above SideSheet's scrim — that is what leaves a revealed bar undimmed with
+  // its buttons still clickable. A phone raises MobileSheet to `Z.panel`
+  // instead, which is meant to cover the chrome the way it does in the reflow
+  // reader, so the bars drop to `Z.readerChrome` and go under it.
+  const barLayer = isMobile ? { zIndex: Z.readerChrome } : null;
 
   // Content/page-flip direction: DOCX carries its own; PDF follows the UI.
   const contentDir = book.kind === "docx" ? book.dir : uiDir;

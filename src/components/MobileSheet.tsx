@@ -32,6 +32,7 @@ import {
   type Snap,
   type SnapDims,
 } from "./sheetSnap";
+import { Z } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
@@ -491,7 +492,7 @@ export function MobileSheet({
     // account.
     <div
       className="riwaq-clip-window"
-      style={{ position: "absolute", inset: 0, zIndex: 20, overflow: "hidden" }}
+      style={{ position: "absolute", inset: 0, zIndex: Z.panel, overflow: "hidden" }}
     >
       <div
         onClick={onClose}

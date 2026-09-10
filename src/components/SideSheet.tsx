@@ -37,6 +37,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
+import { Z, Z_LOCAL } from "../styles/tokens";
 
 interface Props {
   open: boolean;
@@ -54,7 +55,8 @@ interface Props {
   dock?: boolean;
   /** Accessible name for the dialog surface. */
   label?: string;
-  /** Base stacking level; the panel sits one above the scrim. Default 40. */
+  /** Base stacking level from `Z`; the panel sits one above the scrim inside
+   *  this component's own context. Defaults to `Z.floating`. */
   zIndex?: number;
   /** Room to leave at the top/bottom of an OVERLAY panel, for a reader whose
    *  chrome bars float over the content region rather than sitting above it.
@@ -74,7 +76,7 @@ export function SideSheet({
   dim = true,
   dock = false,
   label,
-  zIndex = 40,
+  zIndex = Z.floating,
   chromeInset,
 }: Props) {
   const { dir } = useI18n();
@@ -263,7 +265,7 @@ export function SideSheet({
           maxWidth: "100%",
           display: "flex",
           outline: "none",
-          zIndex: 1,
+          zIndex: Z_LOCAL.base,
           transform: shown ? "translateX(0)" : offscreen,
           transition: slideTransition,
           // Hint the compositor so the slide stays smooth under reader load.

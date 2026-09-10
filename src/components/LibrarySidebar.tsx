@@ -12,7 +12,14 @@ import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import { Spinner } from "./Spinner";
 import type { IconProps } from "./Icon";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  type ThemeKey,
+  Z,
+  Z_LOCAL,
+} from "../styles/tokens";
 import { getState, subscribe } from "../store/downloadQueue";
 import {
   getDownloadProgress,
@@ -222,19 +229,19 @@ export function LibrarySidebar({
             onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            <span style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: dl.active ? `${Math.max(6, dl.pct)}%` : 0, background: goldSoft, borderRadius: 10, transition: "width .35s ease", zIndex: 0 }} />
-            <span style={{ position: "relative", zIndex: 1, color: theme.muted, display: "flex" }}><Icon name="download" size={18} /></span>
-            <span style={{ position: "relative", zIndex: 1 }}>{tr("sidebar.downloads")}</span>
+            <span style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: dl.active ? `${Math.max(6, dl.pct)}%` : 0, background: goldSoft, borderRadius: 10, transition: "width .35s ease", zIndex: Z_LOCAL.under }} />
+            <span style={{ position: "relative", zIndex: Z_LOCAL.base, color: theme.muted, display: "flex" }}><Icon name="download" size={18} /></span>
+            <span style={{ position: "relative", zIndex: Z_LOCAL.base }}>{tr("sidebar.downloads")}</span>
             {dl.active ? (
               <span
                 role="progressbar"
                 aria-valuenow={dl.pct}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", fontSize: 11.5, fontWeight: 600, color: theme.ink, fontVariantNumeric: "tabular-nums" }}
+                style={{ position: "relative", zIndex: Z_LOCAL.base, marginInlineStart: "auto", fontSize: 11.5, fontWeight: 600, color: theme.ink, fontVariantNumeric: "tabular-nums" }}
               >{dl.pct}%</span>
             ) : dl.count > 0 ? (
-              <span style={{ position: "relative", zIndex: 1, marginInlineStart: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: goldSoft, color: gold, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{dl.count}</span>
+              <span style={{ position: "relative", zIndex: Z_LOCAL.base, marginInlineStart: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: goldSoft, color: gold, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{dl.count}</span>
             ) : null}
           </button>
 
@@ -296,7 +303,7 @@ export function LibrarySidebar({
             </button>
           </div>
           {menuOpen && (
-            <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 6px)", background: theme.paper, border: `1px solid ${theme.rule}`, borderRadius: 12, boxShadow: "0 16px 36px rgba(0,0,0,0.18)", padding: 6, zIndex: 20 }}>
+            <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 6px)", background: theme.paper, border: `1px solid ${theme.rule}`, borderRadius: 12, boxShadow: "0 16px 36px rgba(0,0,0,0.18)", padding: 6, zIndex: Z.panel }}>
               <MenuItem theme={theme} icon="folder" label={tr("sidebar.folderOfBooks")} onClick={() => { setMenuOpen(false); onImportFolder(); }} />
             </div>
           )}

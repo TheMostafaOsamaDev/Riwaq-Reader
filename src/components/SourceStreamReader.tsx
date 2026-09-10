@@ -56,6 +56,8 @@ import {
   FONT_STACKS,
   type Theme,
   type ThemeKey,
+  Z,
+  Z_LOCAL,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
@@ -564,7 +566,7 @@ export function SourceStreamReader({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9500,
+        zIndex: Z.menu,
         background: theme.bg,
       }}
     >
@@ -820,7 +822,7 @@ function FullPaneLoading({ theme, label }: { theme: Theme; label: string }) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9500,
+        zIndex: Z.menu,
         background: theme.bg,
         color: theme.ink,
         display: "flex",
@@ -854,7 +856,7 @@ function FullPaneError({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9500,
+        zIndex: Z.menu,
         background: theme.bg,
         color: theme.ink,
         display: "flex",
@@ -909,7 +911,7 @@ function ChapterLoadingOverlay({ theme }: { theme: Theme }) {
       style={{
         position: "absolute",
         inset: 0,
-        zIndex: 1,
+        zIndex: Z_LOCAL.base,
         background: `${theme.bg}`,
         // Lean on the same backdrop fade the lightbox uses so the
         // overlay isn't jarring — fades in over 200ms via the
@@ -948,7 +950,7 @@ function ChapterErrorOverlay({
       style={{
         position: "absolute",
         inset: 0,
-        zIndex: 1,
+        zIndex: Z_LOCAL.base,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

@@ -19,7 +19,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { readingSurfaces, type Theme, type ThemeKey } from "../../styles/tokens";
+import {
+  readingSurfaces,
+  type Theme,
+  type ThemeKey,
+  Z_LOCAL,
+} from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
 import { resolveDocxSelection, type DocxSelectionAnchor } from "./docxHighlight";
 import {
@@ -1565,7 +1570,7 @@ export const FixedPageViewer = forwardRef<
             inset: 0,
             overflow: "hidden",
             pointerEvents: "none",
-            zIndex: 5,
+            zIndex: Z_LOCAL.page,
             display: "flex",
             // Mirror the base scroller's box exactly (flex + PAD + margin:auto
             // on the child) so the page lands where the settled page sits and

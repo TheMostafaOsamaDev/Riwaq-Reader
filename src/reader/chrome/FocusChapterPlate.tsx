@@ -24,6 +24,7 @@ import {
   titleFontFor,
   withAlpha,
   type Theme,
+  Z,
 } from "../../styles/tokens";
 import {
   FOCUS_FADE_BOTTOM,
@@ -113,9 +114,9 @@ export function FocusChapterPlate({
         // not on the window — a docked Contents panel narrows the column and
         // the name follows it across with no inset arithmetic of its own.
         height: `calc(${FOCUS_FADE_TOP}px + env(safe-area-inset-top, 0px))`,
-        // Under the chrome bars (45), so a bar revealed at the edge covers the
-        // plate rather than interleaving with it.
-        zIndex: 44,
+        // Under the chrome bars at `Z.focusBar`, so a bar revealed at the edge
+        // covers the plate rather than interleaving with it.
+        zIndex: Z.focusPlate,
         // The plate lies over the page. Claiming the pointer here would break
         // drag-selecting the first lines of a chapter, and would also hide the
         // page from the root's edge tracking, which reads `e.target` to tell
@@ -212,7 +213,7 @@ export function FocusBottomFade({ surface, shown, reducedMotion }: FadeProps) {
         left: 0,
         right: 0,
         height: `calc(${FOCUS_FADE_BOTTOM}px + env(safe-area-inset-bottom, 0px))`,
-        zIndex: 44,
+        zIndex: Z.focusPlate,
         pointerEvents: "none",
         background: fadeTo("top", surface),
         ...reveal(shown, reducedMotion),
