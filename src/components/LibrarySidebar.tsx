@@ -101,7 +101,7 @@ export function LibrarySidebar({
   const dark = themeKey === "dark" || themeKey === "oled";
   const gold = dark ? "#d4a84a" : "#c9a24a";
   const goldSoft = dark ? "rgba(212,168,74,0.22)" : "rgba(201,162,74,0.18)";
-  const markSrc = dark ? "/brand/mark-cream.png" : "/brand/mark-ink.png";
+  const markSrc = dark ? "/brand/mark-cream.webp" : "/brand/mark-ink.webp";
   const dl = useDownloadSummary();
   // Reads the shared import store, so a Store import shows here too and a
   // click during a run re-opens the stepper instead of the file picker.
