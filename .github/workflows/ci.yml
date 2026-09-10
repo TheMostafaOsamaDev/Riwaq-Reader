@@ -1,0 +1,89 @@
+# Continuous integration for Riwaq.
+#
+# Runs on every pull request and every push to `main`. This is the only
+# thing standing between a red commit and a tag: `release.yml` fires on
+# `v*` tags and never re-runs the suite, so a tag is only as verified as
+# the commit it points at. Keep `main` green and the tag is green.
+#
+# Deliberately NOT triggered on tags. The release pipeline builds every
+# platform for real; putting a typecheck in front of that buys nothing.
+#
+# Setup mirrors the `linux` job in release.yml step for step — same pnpm
+# major, same node, same rust action, same cache — so this repo has one
+# CI convention rather than two that quietly drift apart. Two intentional
+# differences:
+#   - no `fetch-depth: 0`. That exists in release.yml only so release-note
+#     generation can diff against the previous tag.
+#   - no `patchelf` / `xdg-utils`. Those are AppImage *bundler* deps, and
+#     `cargo check` never reaches the bundler.
+#
+# pnpm is pinned to 9 to match release.yml, and that pin is load-bearing:
+# `pnpm-workspace.yaml` carries the esbuild build-script approval, is
+# untracked, and has therefore never existed in a CI checkout. pnpm 9 runs
+# build scripts without it; pnpm 10+ refuses with ERR_PNPM_IGNORED_BUILDS.
+# If this pin is ever raised, commit pnpm-workspace.yaml in the same change.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# A new push supersedes the run already in flight; don't pay for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build, test, cargo check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # Tauri's crate links against the system webkit/gtk stack, so
+      # `cargo check` needs the same -dev packages a real Linux build does.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ci
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm build` is `tsc && vite build`, so this is the typecheck too.
+      - name: Typecheck + build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Check Rust
+        run: cargo check --all-targets --locked
+        working-directory: src-tauri
