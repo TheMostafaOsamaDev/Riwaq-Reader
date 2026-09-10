@@ -13,6 +13,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 import type { TocEntry } from "../types/reader";
 import { renameStaged, writeBytesChunked } from "./nativeStaging";
+import { writeCoverThumb } from "./coverThumb";
 import {
   appendIndexEntry,
   bookDir,
@@ -67,7 +68,7 @@ export async function commitPdfBook(
     await writeBytesChunked(`${dir}/book.pdf`, opts.bytes);
   }
 
-  const coverFile = await writeCover(dir, opts.cover);
+  const { coverFile, thumbFile } = await writeCover(id, opts.cover);
 
   const book: PdfBook = {
     id,
@@ -91,6 +92,7 @@ export async function commitPdfBook(
     addedAt: Date.now(),
     progress: 0,
     ...(coverFile ? { coverFile } : {}),
+    ...(thumbFile ? { thumbFile } : {}),
     ...(opts.sourceHash ? { sourceHash: opts.sourceHash } : {}),
   });
 }
@@ -120,7 +122,7 @@ export async function commitDocxBook(opts: {
     }
   }
 
-  const coverFile = await writeCover(dir, opts.cover);
+  const { coverFile, thumbFile } = await writeCover(id, opts.cover);
 
   const book: DocxBook = {
     id,
@@ -143,16 +145,24 @@ export async function commitDocxBook(opts: {
     addedAt: Date.now(),
     progress: 0,
     ...(coverFile ? { coverFile } : {}),
+    ...(thumbFile ? { thumbFile } : {}),
     ...(opts.sourceHash ? { sourceHash: opts.sourceHash } : {}),
   });
 }
 
+/** Write the chosen cover and derive its grid thumbnail. PDF and DOCX go
+ *  through here rather than the EPUB path, so without this a fixed-layout
+ *  book would render its full-size cover in the library until the backfill
+ *  caught it on some later launch. */
 async function writeCover(
-  dir: string,
+  id: string,
   cover: ChosenCover | undefined,
-): Promise<string | undefined> {
-  if (!cover) return undefined;
+): Promise<{ coverFile?: string; thumbFile?: string }> {
+  if (!cover) return {};
   const coverFile = `cover.${cover.ext}`;
-  await writeFile(`${dir}/${coverFile}`, cover.bytes, { baseDir: BASE });
-  return coverFile;
+  await writeFile(`${bookDir(id)}/${coverFile}`, cover.bytes, { baseDir: BASE });
+  // Null when the webview can't encode WebP — coverSrcFor then falls back to
+  // the original, exactly as for a book imported before thumbnails existed.
+  const thumbFile = (await writeCoverThumb(id, coverFile)) ?? undefined;
+  return { coverFile, thumbFile };
 }
