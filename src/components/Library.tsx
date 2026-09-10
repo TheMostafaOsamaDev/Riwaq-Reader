@@ -605,7 +605,14 @@ export function Library({
       errors: res.errors.map((e) => e.message),
       reused: reused.length,
     };
-    if (res.autoImported.length > 0) await refresh();
+    // `pruned` counts as an import too: the run dropped a library entry whose
+    // files were gone (see stagePaths). On the path where the replacement
+    // import then failed there is nothing imported and nothing reused to
+    // refresh on, and the dead book's card would sit there until some other
+    // reload — tapping it would open an id the index no longer has.
+    if (res.autoImported.length > 0 || (res.pruned?.length ?? 0) > 0) {
+      await refresh();
+    }
     // A file opened from outside meant "read this". Land the user in the
     // reader — but only when there's exactly one book to land on. A
     // multi-file drop has no defensible choice, so it stays in the library

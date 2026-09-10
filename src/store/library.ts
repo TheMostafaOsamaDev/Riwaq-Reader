@@ -49,7 +49,7 @@ import { withIndexLock } from "./indexLock";
 import { writeCoverThumb } from "./coverThumb";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
-import { findByHash } from "./dedupe";
+import { findByHash, requiredFilesFor } from "./dedupe";
 
 /** Best-effort current UI locale. This module runs outside the component
  *  tree (plain store functions, no React context available), so it reads
@@ -345,6 +345,11 @@ export interface StagedPick {
   /** Books already in the library that the picked files turned out to be
    *  copies of. Nothing was imported for these; the caller opens them as-is. */
   reused?: BookIndexEntry[];
+  /** Ids of entries dropped from the index because their files were gone (see
+   *  the hash-match branch in `stagePaths`). The library view has to re-read
+   *  on these: a run that pruned and then failed to import reports nothing
+   *  else, and the dead book's card would stay on screen. */
+  pruned?: string[];
 }
 
 /** Progress sink for an import run. Supplied by the caller (the library
@@ -384,6 +389,18 @@ function fixedKindFor(format: BookFormat, path: string): "pdf" | "docx" | null {
   return null;
 }
 
+/** True when every file this entry needs in order to open is on disk.
+ *
+ *  Which files those are is `requiredFilesFor`'s decision (see ./dedupe) —
+ *  it differs by kind, and a book missing one of them can't be read no
+ *  matter what the index says about it. */
+async function bookFilesPresent(entry: BookIndexEntry): Promise<boolean> {
+  for (const file of requiredFilesFor(entry)) {
+    if (!(await exists(file, { baseDir: BASE }))) return false;
+  }
+  return true;
+}
+
 /**
  * Read + classify a list of picked paths: EPUBs import directly, PDF/DOCX are
  * staged (cover candidates ready) for the import dialog.
@@ -403,10 +420,15 @@ async function stagePaths(
   const drafts: FixedImportDraft[] = [];
   const errors: { file: string; message: string }[] = [];
   const reused: BookIndexEntry[] = [];
+  const pruned: string[] = [];
   // Read once, outside the loop: a multi-file drop shouldn't re-read the
   // index per file. Entries imported during this same run are appended
   // below so a batch containing the same book twice still dedupes.
-  const known: BookIndexEntry[] = await listBooks();
+  //
+  // Copied, because this run appends to it and removes from it, and
+  // `listBooks` hands the array it returns to a fire-and-forget cover
+  // backfill that is still filtering it.
+  const known: BookIndexEntry[] = (await listBooks()).slice();
 
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i];
@@ -425,10 +447,29 @@ async function stagePaths(
       // the existing book, so its reading position and highlights survive.
       const existingId = findByHash(known, staged.hash);
       if (existingId) {
-        await deleteStaged(stagedPath);
         const entry = known.find((e) => e.id === existingId);
-        if (entry) reused.push(entry);
-        continue;
+        if (entry && (await bookFilesPresent(entry))) {
+          await deleteStaged(stagedPath);
+          reused.push(entry);
+          continue;
+        }
+        // The match points at a book whose files are gone — an interrupted
+        // delete, a half-finished legacy-root migration, storage cleared
+        // under us. Re-importing the file is the user's only repair gesture,
+        // so honour it: drop the dead entry and import the staged copy as a
+        // new book. Trusting the index here would strand them for good,
+        // because the same stale entry would shadow every future import of
+        // the same file. Nothing is lost by dropping it — the reading state
+        // it pointed at lived in the directory that went missing.
+        //
+        // For a PDF/DOCX the import that follows is a draft, not a book, so a
+        // cancelled dialog leaves the entry dropped with nothing in its
+        // place. Deliberate: it could not open either way, and `pruned` tells
+        // the view to stop showing it.
+        await deleteBook(existingId);
+        pruned.push(existingId);
+        const dead = known.findIndex((e) => e.id === existingId);
+        if (dead >= 0) known.splice(dead, 1);
       }
 
       const fixed = fixedKindFor(staged.format, path);
@@ -479,7 +520,7 @@ async function stagePaths(
       unlisten?.();
     }
   }
-  return { autoImported, drafts, errors, reused };
+  return { autoImported, drafts, errors, reused, pruned };
 }
 
 /**
