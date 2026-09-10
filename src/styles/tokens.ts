@@ -517,6 +517,21 @@ export function shade(hex: string, amount: number): string {
   return toHex(rgb.map((c) => c + (target - c) * k) as [number, number, number]);
 }
 
+/** A hex colour at an arbitrary alpha. Returns it untouched if it is not a
+ *  plain hex, so a caller handed a token that is already `rgba(...)` degrades
+ *  to the opaque colour rather than to an invalid declaration.
+ *
+ *  Chiefly for gradient stops. A gradient written to the CSS keyword
+ *  `transparent` is interpolated in premultiplied space by some engines and
+ *  through transparent BLACK by others, which puts a grey bruise through the
+ *  middle of a fade on the pale themes — so the far stop of a fade has to be
+ *  the surface's own colour at alpha 0, not `transparent`. */
+export function withAlpha(hex: string, alpha: number): string {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return hex;
+  return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+}
+
 /** The theme's ink at an arbitrary alpha.
  *
  *  For hairlines that have to hold contrast over a fill we do not
@@ -525,9 +540,7 @@ export function shade(hex: string, amount: number): string {
  *  against the palest swatches on the pale themes; 0.38 clears it on
  *  all four. Returns the ink untouched if it is not a plain hex. */
 export function inkAlpha(theme: Theme, alpha: number): string {
-  const rgb = parseHexColor(theme.ink);
-  if (!rgb) return theme.ink;
-  return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+  return withAlpha(theme.ink, alpha);
 }
 
 /** How far the surround sits from the page. Small on purpose — enough to read
