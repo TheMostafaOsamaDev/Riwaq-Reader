@@ -13,6 +13,7 @@ import {
   useFocusChrome,
 } from "../reader/chrome/focusChrome";
 import { readingInsets } from "../reader/chrome/focusInsets";
+import { useChapterHeadShown } from "../reader/chrome/useChapterHeadShown";
 import {
   INSET_VAR_BOTTOM,
   INSET_VAR_TOP,
@@ -162,6 +163,9 @@ export function DesktopReader({
 }: Props) {
   const { tr, dir, locale } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The reading column. Focus mode looks inside it for the chapter head — see
+  // useChapterHeadShown, which needs one root that holds it in every mode.
+  const columnRef = useRef<HTMLDivElement>(null);
   const mode = t.readingMode;
   const isPaginated = mode !== "scroll";
   const paginatedColumns: 1 | 2 = mode === "paginated-2" ? 2 : 1;
@@ -247,10 +251,18 @@ export function DesktopReader({
   // column — you are still reading.
   const overlayPanel = panelOpen && !tocDocked;
   const pageDressing = focus.floating && !overlayPanel;
-  // The plate stands in for the top bar's title, so the two are never up at
-  // once: brushing the top edge in focus mode slides the real bar back, and
-  // the plate steps aside for it.
-  const plateShown = pageDressing && !focus.showTop;
+  // Whether the chapter's own display title is still on screen. The running
+  // head is the same name, so it waits for the title to go — and the space
+  // above a chapter's opening title then reads as a chapter drop, which is
+  // what that space is for.
+  const chapterHeadShown = useChapterHeadShown(columnRef);
+  // The running head stands in for the top bar's title, so it is held back
+  // wherever the name would otherwise be on screen twice: under a revealed
+  // bar, which carries the same title, or over the chapter's own opening
+  // title. The FADE it sits in is page furniture and stays up through both.
+  const runningHeadShown =
+    pageDressing && !focus.showTop && !chapterHeadShown;
+
 
   // The live paragraph for the current chapter — updated by both the
   // scroll listener and PaginatedView. Used so that switching reading
@@ -311,6 +323,7 @@ export function DesktopReader({
   onParagraphChangeRef.current = handleParagraphChange;
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
+
   const toggle = (panel: ActivePanel) =>
     setActivePanel(activePanel === panel ? null : panel);
 
@@ -1030,6 +1043,7 @@ export function DesktopReader({
         </SideSheet>
 
         <div
+          ref={columnRef}
           style={{
             flex: 1,
             display: "flex",
@@ -1048,7 +1062,8 @@ export function DesktopReader({
             theme={theme}
             surface={surfaces.page}
             title={chapter.title}
-            shown={plateShown}
+            shown={pageDressing}
+            nameShown={runningHeadShown}
             reducedMotion={reduced}
           />
           {isPaginated ? (
