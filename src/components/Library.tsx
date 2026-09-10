@@ -19,6 +19,7 @@ import { AddToShelfDialog } from "./AddToShelfDialog";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { AnimatedFullScreen } from "./AnimatedFullScreen";
 import { AnimatedSwap } from "./AnimatedSwap";
+import { openIntentFor } from "./importOpenTarget";
 import { onOpenDownloadQueue, openStoreSource } from "../store/uiIntents";
 import {
   useNav,
@@ -613,19 +614,20 @@ export function Library({
     if (res.autoImported.length > 0 || (res.pruned?.length ?? 0) > 0) {
       await refresh();
     }
-    // A file opened from outside meant "read this". Land the user in the
-    // reader — but only when there's exactly one book to land on. A
-    // multi-file drop has no defensible choice, so it stays in the library
-    // and reports through the usual import summary. The "already in
-    // library" note itself is reported from summarizeImport, not here —
-    // firing it here raced with summarizeImport's own toast whenever the
-    // same batch also had something to say about it (see summarizeImport).
+    // The "already in library" note for a batch is reported from
+    // summarizeImport, not here — firing it here raced with summarizeImport's
+    // own toast whenever the same batch also had something to say about it
+    // (see summarizeImport).
     if (reused.length > 0) await refresh();
-    const single =
-      res.autoImported.length + reused.length === 1 && res.drafts.length === 0
-        ? (res.autoImported[0] ?? reused[0])
-        : null;
-    if (opts?.openWhenSingle && single) {
+    // A file opened from outside meant "read this", so a pick holding exactly
+    // one book skips the library and lands there. Everything else — a
+    // multi-file drop, or anything that failed on the way in — stays put and
+    // reports through the usual import summary. openIntentFor owns that whole
+    // rule, including why an error disqualifies a pick from counting as
+    // single: both branches below reach the reader by returning early, and
+    // summarizeImport is the only place res.errors is ever reported.
+    const intent = openIntentFor(res, opts?.openWhenSingle ?? false);
+    if (intent.kind === "now") {
       // A duplicate opened from outside still deserves the "already in
       // your library" note before landing in the reader. Safe to fire
       // directly here, unlike the batch case above: this is provably the
@@ -635,7 +637,7 @@ export function Library({
       if (reused.length === 1) {
         showToast("info", tr("status.alreadyInLibraryOne", { n: 1 }));
       }
-      onOpen(single.id);
+      onOpen(intent.target.id);
       return;
     }
     // A single PDF/DOCX opened from outside still needs the title/cover
@@ -646,12 +648,7 @@ export function Library({
     // and open the reader instead of returning to the library summary. A
     // cancelled dialog never commits, so nothing opens and the ref just
     // gets cleared (see advanceQueue / onQSkipRest).
-    if (
-      opts?.openWhenSingle &&
-      res.drafts.length === 1 &&
-      res.autoImported.length === 0 &&
-      reused.length === 0
-    ) {
+    if (intent.kind === "afterDraft") {
       openAfterQueueRef.current = true;
     }
     if (res.drafts.length > 0) {
