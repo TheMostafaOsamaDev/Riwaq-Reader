@@ -78,7 +78,10 @@ const KEYFRAMES = `
 
 // Light haptic on tap — Android only, no-op on iOS / desktop.
 function tapHaptic() {
-  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.vibrate === "function"
+  ) {
     navigator.vibrate(8);
   }
 }
@@ -729,9 +732,7 @@ export function ContextMenu({
                 onMouseEnter={() => setSubFocus(i)}
                 onClick={() => handlePickStatus(o.value)}
                 trailing={
-                  status === o.value ? (
-                    <Icon name="check" size={13} />
-                  ) : null
+                  status === o.value ? <Icon name="check" size={13} /> : null
                 }
               >
                 {o.label}
@@ -782,7 +783,8 @@ export function ContextMenu({
   );
 
   if (isTouch) {
-    const slideTransform = entered && !leaving ? "translateY(0)" : "translateY(100%)";
+    const slideTransform =
+      entered && !leaving ? "translateY(0)" : "translateY(100%)";
     const slideTransition = `transform ${leaving ? EXIT_MS : ENTER_MS}ms ${
       leaving ? EXIT_EASE : ENTER_EASE
     }`;
@@ -983,13 +985,7 @@ function labelFor(s: BookStatus, tr: Tr): string {
       : tr("sidebar.wishlist");
 }
 
-function SheetCard({
-  theme,
-  children,
-}: {
-  theme: Theme;
-  children: ReactNode;
-}) {
+function SheetCard({ theme, children }: { theme: Theme; children: ReactNode }) {
   return (
     <div
       style={{
@@ -1081,19 +1077,13 @@ function SheetRow({
   // hover entirely so kb focus and mouse hover share one source of truth.
   const highlighted =
     pressed ||
-    (forceHighlight !== undefined
-      ? forceHighlight
-      : hover && !suppressHover);
+    (forceHighlight !== undefined ? forceHighlight : hover && !suppressHover);
   const bg = highlighted ? theme.hover : "transparent";
 
   const padding = compact ? "8px 12px" : "14px 16px";
   const fontSize = compact ? 13 : 15.5;
 
-  const labelColor = destructive
-    ? "#c04a3a"
-    : muted
-      ? theme.muted
-      : theme.ink;
+  const labelColor = destructive ? "#c04a3a" : muted ? theme.muted : theme.ink;
 
   return (
     <div
@@ -1125,9 +1115,7 @@ function SheetRow({
         fontWeight: bold ? 600 : 400,
         // Pressed transitions instantly in, eases out — feels responsive on
         // tap, gentle on release.
-        transition: pressed
-          ? "background 0ms"
-          : "background 160ms ease",
+        transition: pressed ? "background 0ms" : "background 160ms ease",
       }}
     >
       <span
@@ -1151,7 +1139,12 @@ function SheetRow({
               flexShrink: 0,
             }}
           >
-            <Icon name={icon} size={18} stroke={1.7} className={iconClassName} />
+            <Icon
+              name={icon}
+              size={18}
+              stroke={1.7}
+              className={iconClassName}
+            />
           </span>
         )}
         <span style={{ minWidth: 0 }}>{children}</span>

@@ -13,6 +13,11 @@ describe("rect normalization", () => {
 
   it("round-trips through denormalize at a different scale", () => {
     const n = normalizeRect({ x: 50, y: 100, w: 200, h: 20 }, 500, 1000);
-    expect(denormalizeRect(n, 1000, 2000)).toEqual({ x: 100, y: 200, w: 400, h: 40 });
+    expect(denormalizeRect(n, 1000, 2000)).toEqual({
+      x: 100,
+      y: 200,
+      w: 400,
+      h: 40,
+    });
   });
 });

@@ -8,7 +8,12 @@ import {
   type ToolbarAnchor,
 } from "./HighlightToolbar";
 import type { Highlight } from "../store/library";
-import { FONT_STACKS, hlMark, type Theme, type ThemeKey } from "../styles/tokens";
+import {
+  FONT_STACKS,
+  hlMark,
+  type Theme,
+  type ThemeKey,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { Icon } from "./Icon";
 
@@ -133,7 +138,11 @@ export function HighlightActionPopover({
           )}
           <div style={{ height: 1, background: theme.rule }} />
           <div
-            style={{ display: "flex", alignItems: "stretch", height: TOOLBAR_ROW_H }}
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              height: TOOLBAR_ROW_H,
+            }}
           >
             <button
               onClick={() => {

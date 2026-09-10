@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icon";
-import {
-  type Theme,
-  Z_LOCAL,
-} from "../../styles/tokens";
+import { type Theme, Z_LOCAL } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { TABS } from "./tabs";
 import type { LibraryTab } from "./tabs";
@@ -108,7 +105,11 @@ export function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
     const overflowsRight =
       left + width > scroller.scrollLeft + scroller.clientWidth;
     if (overflowsLeft || overflowsRight) {
-      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      el.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
     }
   }, [tab]);
 

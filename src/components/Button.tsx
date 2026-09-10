@@ -49,122 +49,125 @@ export interface ButtonProps
 // buttons in the reader's header — those have their own toolbar feel. Keep
 // this component focused on labelled actions; icon-only chrome buttons
 // stay where they are.
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  {
-    theme,
-    variant = "primary",
-    size = "md",
-    leadingIcon,
-    trailingIcon,
-    fullWidth,
-    type = "button",
-    shape = "rounded",
-    surface = "default",
-    loading = false,
-    loadingProgress,
-    disabled,
-    style,
-    children,
-    onMouseEnter,
-    onMouseLeave,
-    onMouseDown,
-    onMouseUp,
-    onBlur,
-    ...rest
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  function Button(
+    {
+      theme,
+      variant = "primary",
+      size = "md",
+      leadingIcon,
+      trailingIcon,
+      fullWidth,
+      type = "button",
+      shape = "rounded",
+      surface = "default",
+      loading = false,
+      loadingProgress,
+      disabled,
+      style,
+      children,
+      onMouseEnter,
+      onMouseLeave,
+      onMouseDown,
+      onMouseUp,
+      onBlur,
+      ...rest
+    },
+    ref,
+  ) {
+    const [hover, setHover] = useState(false);
+    const [pressed, setPressed] = useState(false);
+    const busy = loading && !!disabled;
+
+    const padding =
+      size === "lg" ? "12px 24px" : size === "sm" ? "7px 12px" : "9px 18px";
+    const fontSize = size === "lg" ? 14 : size === "sm" ? 12 : 13;
+    const gap = size === "sm" ? 6 : 8;
+
+    const interactive = !disabled;
+    // The spinner replaces the leading icon rather than sitting next to it, so
+    // the button's width doesn't jump when a run starts.
+    const lead = loading ? (
+      <Spinner
+        size={size === "lg" ? 15 : size === "sm" ? 12 : 13}
+        {...(typeof loadingProgress === "number"
+          ? { value: loadingProgress }
+          : {})}
+      />
+    ) : (
+      leadingIcon
+    );
+    const v =
+      surface === "onImage"
+        ? onImageVariantStyle(variant, interactive && hover)
+        : variantStyle(variant, theme, interactive && hover);
+
+    const composed: CSSProperties = {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap,
+      padding,
+      fontSize,
+      fontWeight:
+        variant === "primary" || variant === "destructive" ? 600 : 500,
+      fontFamily: FONT_STACKS.sans,
+      letterSpacing: "-0.005em",
+      borderRadius: shape === "pill" ? 999 : 8,
+      // "progress" rather than "not-allowed" while busy: the action isn't
+      // forbidden, it's already under way.
+      cursor: disabled ? (loading ? "progress" : "not-allowed") : "pointer",
+      opacity: disabled ? 0.55 : 1,
+      transition:
+        "transform 90ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease",
+      transform: interactive && pressed ? "scale(0.97)" : "scale(1)",
+      width: fullWidth ? "100%" : undefined,
+      userSelect: "none",
+      // Buttons should never wrap their label across lines — they're sized
+      // by content. If you need a multi-line button you're using the wrong
+      // primitive.
+      whiteSpace: "nowrap",
+      ...v,
+      ...style,
+    };
+
+    return (
+      <button
+        ref={ref}
+        type={type}
+        disabled={disabled}
+        aria-busy={busy || undefined}
+        style={composed}
+        onMouseEnter={(e) => {
+          setHover(true);
+          onMouseEnter?.(e);
+        }}
+        onMouseLeave={(e) => {
+          setHover(false);
+          setPressed(false);
+          onMouseLeave?.(e);
+        }}
+        onMouseDown={(e) => {
+          setPressed(true);
+          onMouseDown?.(e);
+        }}
+        onMouseUp={(e) => {
+          setPressed(false);
+          onMouseUp?.(e);
+        }}
+        onBlur={(e) => {
+          setPressed(false);
+          onBlur?.(e);
+        }}
+        {...rest}
+      >
+        {lead}
+        {children}
+        {trailingIcon}
+      </button>
+    );
   },
-  ref,
-) {
-  const [hover, setHover] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const busy = loading && !!disabled;
-
-  const padding =
-    size === "lg" ? "12px 24px" : size === "sm" ? "7px 12px" : "9px 18px";
-  const fontSize = size === "lg" ? 14 : size === "sm" ? 12 : 13;
-  const gap = size === "sm" ? 6 : 8;
-
-  const interactive = !disabled;
-  // The spinner replaces the leading icon rather than sitting next to it, so
-  // the button's width doesn't jump when a run starts.
-  const lead = loading ? (
-    <Spinner
-      size={size === "lg" ? 15 : size === "sm" ? 12 : 13}
-      {...(typeof loadingProgress === "number"
-        ? { value: loadingProgress }
-        : {})}
-    />
-  ) : (
-    leadingIcon
-  );
-  const v =
-    surface === "onImage"
-      ? onImageVariantStyle(variant, interactive && hover)
-      : variantStyle(variant, theme, interactive && hover);
-
-  const composed: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap,
-    padding,
-    fontSize,
-    fontWeight: variant === "primary" || variant === "destructive" ? 600 : 500,
-    fontFamily: FONT_STACKS.sans,
-    letterSpacing: "-0.005em",
-    borderRadius: shape === "pill" ? 999 : 8,
-    // "progress" rather than "not-allowed" while busy: the action isn't
-    // forbidden, it's already under way.
-    cursor: disabled ? (loading ? "progress" : "not-allowed") : "pointer",
-    opacity: disabled ? 0.55 : 1,
-    transition:
-      "transform 90ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease",
-    transform: interactive && pressed ? "scale(0.97)" : "scale(1)",
-    width: fullWidth ? "100%" : undefined,
-    userSelect: "none",
-    // Buttons should never wrap their label across lines — they're sized
-    // by content. If you need a multi-line button you're using the wrong
-    // primitive.
-    whiteSpace: "nowrap",
-    ...v,
-    ...style,
-  };
-
-  return (
-    <button
-      ref={ref}
-      type={type}
-      disabled={disabled}
-      aria-busy={busy || undefined}
-      style={composed}
-      onMouseEnter={(e) => {
-        setHover(true);
-        onMouseEnter?.(e);
-      }}
-      onMouseLeave={(e) => {
-        setHover(false);
-        setPressed(false);
-        onMouseLeave?.(e);
-      }}
-      onMouseDown={(e) => {
-        setPressed(true);
-        onMouseDown?.(e);
-      }}
-      onMouseUp={(e) => {
-        setPressed(false);
-        onMouseUp?.(e);
-      }}
-      onBlur={(e) => {
-        setPressed(false);
-        onBlur?.(e);
-      }}
-      {...rest}
-    >
-      {lead}
-      {children}
-      {trailingIcon}
-    </button>
-  );
-});
+);
 
 function variantStyle(
   variant: ButtonVariant,
@@ -179,9 +182,7 @@ function variantStyle(
         border: "none",
         // Inset overlay lifts the dark surface a touch on hover without
         // needing a per-theme palette of shades.
-        boxShadow: hover
-          ? "inset 0 0 0 9999px rgba(255,255,255,0.10)"
-          : "none",
+        boxShadow: hover ? "inset 0 0 0 9999px rgba(255,255,255,0.10)" : "none",
       };
     case "secondary":
       return {

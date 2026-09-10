@@ -93,7 +93,15 @@ function Knob({
 
 /** Chapter / outline landmarks. Dots that sit ON the line rather than strokes
  *  cutting through it — same reasoning as the handle's missing ring. */
-function Ticks({ theme, ticks, rtl }: { theme: Theme; ticks: number[]; rtl: boolean }) {
+function Ticks({
+  theme,
+  ticks,
+  rtl,
+}: {
+  theme: Theme;
+  ticks: number[];
+  rtl: boolean;
+}) {
   if (ticks.length > MAX_TICKS) return null;
   return (
     <>
@@ -344,7 +352,10 @@ export function ReaderProgressBar({
           touchAction: "none",
         }}
       >
-        <div ref={trackRef} style={{ position: "relative", width: "100%", height: 3 }}>
+        <div
+          ref={trackRef}
+          style={{ position: "relative", width: "100%", height: 3 }}
+        >
           <div
             style={{
               position: "absolute",

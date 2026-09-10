@@ -186,7 +186,7 @@ export function ReaderDiagnostics({
         padding: "6px 8px",
         borderRadius: 6,
         background: "rgba(0,0,0,0.86)",
-        font: '10.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace',
+        font: "10.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace",
         color: "#cfc6b4",
         pointerEvents: "none",
         direction: "ltr",

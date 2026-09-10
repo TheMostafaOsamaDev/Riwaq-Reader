@@ -20,10 +20,7 @@ import {
   parseNovelPage,
   parseSearchResults,
 } from "./kolnovel-theme";
-import type {
-  Source,
-  SourceHost,
-} from "../types";
+import type { Source, SourceHost } from "../types";
 
 const SOURCE_ID = "kolnovel";
 const BASE_URL = "https://kolnovel.com";

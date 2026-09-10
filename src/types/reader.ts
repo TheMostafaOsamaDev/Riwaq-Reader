@@ -1,12 +1,7 @@
 import type { FontFamilyKey, ThemePref, UiFontKey } from "../styles/tokens";
 import type { UiLangPref } from "../i18n";
 
-export type ActivePanel =
-  | null
-  | "toc"
-  | "highlights"
-  | "settings"
-  | "progress";
+export type ActivePanel = null | "toc" | "highlights" | "settings" | "progress";
 
 /**
  * How the chapter is laid out in the reader.
@@ -99,7 +94,12 @@ export interface Tweaks {
 /** Where the reader is / can go, independent of format. Reflowable books use
  *  the chapter/paragraph anchor; fixed (PDF/DOCX) books use a page index. */
 export type ReaderLocation =
-  | { fmt: "reflow"; chapter: number; paragraphIndex: number; paragraphOffset?: number }
+  | {
+      fmt: "reflow";
+      chapter: number;
+      paragraphIndex: number;
+      paragraphOffset?: number;
+    }
   | { fmt: "page"; page: number; pageOffset?: number };
 
 /** One entry in a Contents / outline list. `level` is 0-based nesting depth. */

@@ -176,10 +176,7 @@ export function PaginatedView({
       const r = relPos(p.offsetLeft, firstOffset);
       if (r > maxRel) maxRel = r;
     }
-    const total = Math.max(
-      1,
-      Math.floor(maxRel / pageStride) + 1,
-    );
+    const total = Math.max(1, Math.floor(maxRel / pageStride) + 1);
     setTotalPages(total);
 
     // Anchor: page containing the tracked paragraph.
@@ -190,7 +187,10 @@ export function PaginatedView({
     const anchorPage = anchorEl
       ? Math.min(
           total - 1,
-          Math.max(0, Math.floor(relPos(anchorEl.offsetLeft, firstOffset) / pageStride)),
+          Math.max(
+            0,
+            Math.floor(relPos(anchorEl.offsetLeft, firstOffset) / pageStride),
+          ),
         )
       : 0;
     setPage((prev) => (prev === anchorPage ? prev : anchorPage));

@@ -1,8 +1,4 @@
-
-import type {
-  BookIndexEntry,
-  BookStatus,
-} from "../../store/library";
+import type { BookIndexEntry, BookStatus } from "../../store/library";
 import type { MsgKey, Tr } from "../../i18n";
 
 /** "store" is a top-level destination, not a book filter — when the tab

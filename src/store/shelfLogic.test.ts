@@ -24,7 +24,11 @@ const shelf = (id: string, name: string, order = 0): Shelf => ({
 describe("buildDefaultShelves", () => {
   it("assigns injected ids, shared timestamp, and incremental order", () => {
     let n = 0;
-    const out = buildDefaultShelves(["Favorites", "To read"], () => `id${n++}`, 5);
+    const out = buildDefaultShelves(
+      ["Favorites", "To read"],
+      () => `id${n++}`,
+      5,
+    );
     expect(out).toEqual([
       { id: "id0", name: "Favorites", createdAt: 5, order: 0 },
       { id: "id1", name: "To read", createdAt: 5, order: 1 },
@@ -48,10 +52,17 @@ describe("isDuplicateName", () => {
 describe("list mutations", () => {
   const list = [shelf("a", "A"), shelf("b", "B")];
   it("appends", () => {
-    expect(appendShelf(list, shelf("c", "C")).map((s) => s.id)).toEqual(["a", "b", "c"]);
+    expect(appendShelf(list, shelf("c", "C")).map((s) => s.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
   });
   it("renames (trimmed) without touching others", () => {
-    expect(renameInList(list, "a", "  New ")).toEqual([shelf("a", "New"), shelf("b", "B")]);
+    expect(renameInList(list, "a", "  New ")).toEqual([
+      shelf("a", "New"),
+      shelf("b", "B"),
+    ]);
   });
   it("removes", () => {
     expect(removeFromList(list, "a").map((s) => s.id)).toEqual(["b"]);

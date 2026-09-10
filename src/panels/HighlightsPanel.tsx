@@ -188,8 +188,7 @@ function HighlightRow({
             dir="auto"
             style={{
               margin: 0,
-              marginBlockEnd:
-                i < group.members.length - 1 ? 8 : 0,
+              marginBlockEnd: i < group.members.length - 1 ? 8 : 0,
             }}
           >
             {m.text}
@@ -198,10 +197,7 @@ function HighlightRow({
       </div>
 
       {editing ? (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{ marginTop: 8 }}
-        >
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8 }}>
           <textarea
             value={draft}
             autoFocus
@@ -303,8 +299,12 @@ function HighlightRow({
             {onUpdateNote && (
               <button
                 onClick={startEdit}
-                aria-label={h.note ? tr("highlights.editNote") : tr("highlights.addNote")}
-                title={h.note ? tr("highlights.editNote") : tr("highlights.addNote")}
+                aria-label={
+                  h.note ? tr("highlights.editNote") : tr("highlights.addNote")
+                }
+                title={
+                  h.note ? tr("highlights.editNote") : tr("highlights.addNote")
+                }
                 style={iconBtn(theme)}
               >
                 <Icon name="pencil" size={12} />

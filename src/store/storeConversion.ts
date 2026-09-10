@@ -33,11 +33,7 @@ import type {
   EpubMeta,
 } from "../docx/buildEpub";
 import type { DocChapter } from "../docx/splitChapters";
-import {
-  BaseDirectory,
-  exists,
-  readFile,
-} from "@tauri-apps/plugin-fs";
+import { BaseDirectory, exists, readFile } from "@tauri-apps/plugin-fs";
 import { createHost } from "../sources/host";
 import { getSource } from "../sources/registry";
 import type { SourceChapter, SourceLine } from "../sources/types";
@@ -66,9 +62,9 @@ interface EnrichedChapter {
   imagesByBasename: Map<string, Uint8Array>;
 }
 
-type ProgressFn = (progress: number, phase?: string) => void
+type ProgressFn = (progress: number, phase?: string) => void;
 
-type CancelledFn = () => boolean
+type CancelledFn = () => boolean;
 
 /**
  * Drive a conversion job to completion. Mutates the supplied job in
@@ -96,9 +92,7 @@ export async function runConversion(
   }
   const source = getSource(snap.sourceId);
   if (!source) {
-    throw new Error(
-      `Source "${snap.sourceId}" isn't installed in this build.`,
-    );
+    throw new Error(`Source "${snap.sourceId}" isn't installed in this build.`);
   }
 
   // Pre-load any unloaded volumes (Cenele-style lazy sources start
@@ -114,8 +108,11 @@ export async function runConversion(
       (v) => v.chaptersLoaded === false && v.chapters.length === 0,
     );
     if (missing.length > 0) {
-      const { setVolumeChapters, snapshotToSourceNovel, readSnapshot: rereadSnapshot } =
-        await import("./sourceLibrary");
+      const {
+        setVolumeChapters,
+        snapshotToSourceNovel,
+        readSnapshot: rereadSnapshot,
+      } = await import("./sourceLibrary");
       const novelForFetch = snapshotToSourceNovel(workingSnap);
       for (let i = 0; i < missing.length; i++) {
         if (isCancelled()) return;
@@ -148,7 +145,11 @@ export async function runConversion(
     (v) => v.chapters.length > 0,
   );
   const flat = orderedVolumes.flatMap((v) =>
-    v.chapters.map((c) => ({ volumeId: v.id, volumeTitle: v.title, chapter: c })),
+    v.chapters.map((c) => ({
+      volumeId: v.id,
+      volumeTitle: v.title,
+      chapter: c,
+    })),
   );
   if (flat.length === 0) {
     throw new Error("This novel has no chapters to convert.");
@@ -226,8 +227,7 @@ export async function runConversion(
       cover,
       host,
       isCancelled,
-      (p, phase) =>
-        onProgress(0.78 + 0.18 * (fraction + p * span), phase),
+      (p, phase) => onProgress(0.78 + 0.18 * (fraction + p * span), phase),
     );
     if (isCancelled()) return;
     onProgress(0.78 + 0.18 * (fraction + 0.9 * span), `Saving volume ${i + 1}`);
@@ -242,7 +242,11 @@ export async function runConversion(
 async function enrichChapter(
   entryId: string,
   source: NonNullable<ReturnType<typeof getSource>>,
-  fc: { volumeId: number; volumeTitle: string; chapter: PersistedSourceChapter },
+  fc: {
+    volumeId: number;
+    volumeTitle: string;
+    chapter: PersistedSourceChapter;
+  },
   host: ReturnType<typeof createHost>,
 ): Promise<EnrichedChapter> {
   const imagesByBasename = new Map<string, Uint8Array>();
@@ -323,7 +327,9 @@ function paddedChapterId(chapterId: number): string {
 
 // ── cover loading ──────────────────────────────────────────────────────
 
-async function readCoverForEntry(entryId: string): Promise<EpubCoverInput | null> {
+async function readCoverForEntry(
+  entryId: string,
+): Promise<EpubCoverInput | null> {
   // The cover filename lives in library.json. The simplest read is
   // to look at the index entry; we duck-type by listing common
   // extensions instead of pulling library.ts's listBooks (which
@@ -368,7 +374,12 @@ async function assembleSingleEpub(
   onProgress: ProgressFn,
 ): Promise<Uint8Array> {
   const multiVolume = new Set(items.map((it) => it.volumeId)).size > 1;
-  const { imageMap, imageFiles } = await collectImages(items, host, isCancelled, onProgress);
+  const { imageMap, imageFiles } = await collectImages(
+    items,
+    host,
+    isCancelled,
+    onProgress,
+  );
   if (isCancelled()) return new Uint8Array();
 
   const docChapters: DocChapter[] = items.map((it, i) => {
@@ -396,7 +407,12 @@ async function assembleVolumeEpub(
   isCancelled: CancelledFn,
   onProgress: ProgressFn,
 ): Promise<Uint8Array> {
-  const { imageMap, imageFiles } = await collectImages(items, host, isCancelled, onProgress);
+  const { imageMap, imageFiles } = await collectImages(
+    items,
+    host,
+    isCancelled,
+    onProgress,
+  );
   if (isCancelled()) return new Uint8Array();
 
   // Per-volume mode never emits volume headings (each EPUB IS the

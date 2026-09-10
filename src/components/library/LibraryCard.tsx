@@ -1,9 +1,7 @@
-import { memo, } from "react";
+import { memo } from "react";
 import { Icon } from "../Icon";
 import { BookCover, BOOK_COVER_DIMS } from "../BookCover";
-import type {
-  BookIndexEntry,
-} from "../../store/library";
+import type { BookIndexEntry } from "../../store/library";
 import { paletteForId } from "../../store/palette";
 import {
   FONT_STACKS,
@@ -68,7 +66,9 @@ export const LibraryCard = memo(function LibraryCard({
             palette={paletteForId(book.id)}
             size="md"
             src={coverSrc}
-            badge={book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null}
+            badge={
+              book.kind === "pdf" ? "PDF" : book.kind === "docx" ? "DOCX" : null
+            }
             cornerMarker={sourceCornerMarker(theme, book)}
           />
           {book.progress === 0 && (

@@ -47,7 +47,18 @@ interface Props {
   onClose: () => void;
 }
 
-const JUMPS: { key: MsgKey; icon: IconProps["name"]; go: "all" | "reading" | "finished" | "wishlist" | "store" | "downloads" | "settings" }[] = [
+const JUMPS: {
+  key: MsgKey;
+  icon: IconProps["name"];
+  go:
+    | "all"
+    | "reading"
+    | "finished"
+    | "wishlist"
+    | "store"
+    | "downloads"
+    | "settings";
+}[] = [
   { key: "sidebar.library", icon: "grid", go: "all" },
   { key: "sidebar.reading", icon: "book", go: "reading" },
   { key: "sidebar.finished", icon: "check", go: "finished" },
@@ -201,8 +212,11 @@ export function SearchOverlay({
             onChange={(e) => setTerm(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                if (results[0]) { remember(term); onOpen(results[0].id); onClose(); }
-                else if (q) applyFilter(term);
+                if (results[0]) {
+                  remember(term);
+                  onOpen(results[0].id);
+                  onClose();
+                } else if (q) applyFilter(term);
               }
             }}
             placeholder={tr("search.placeholder")}
@@ -236,63 +250,37 @@ export function SearchOverlay({
         </div>
 
         {/* Body */}
-        <div style={{ padding: "16px 18px 18px", overflowY: "auto", flex: 1, minHeight: 0 }}>
+        <div
+          style={{
+            padding: "16px 18px 18px",
+            overflowY: "auto",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           {q ? (
             results.length || sourceResults.length ? (
               <>
                 {results.length > 0 && (
                   <>
-                    <OverlayLabel theme={theme} icon="search">{tr("search.results")}</OverlayLabel>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  {results.map((b) => (
-                    <button
-                      key={b.id}
-                      onClick={() => { remember(term); onOpen(b.id); onClose(); }}
+                    <OverlayLabel theme={theme} icon="search">
+                      {tr("search.results")}
+                    </OverlayLabel>
+                    <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: 13,
-                        padding: "8px 10px",
-                        border: 0,
-                        borderRadius: 10,
-                        background: "transparent",
-                        cursor: "pointer",
-                        textAlign: "start",
-                        font: "inherit",
-                        transition: "background-color 120ms ease",
+                        flexDirection: "column",
+                        gap: 2,
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <span
-                        style={{
-                          width: 30,
-                          height: 42,
-                          borderRadius: 4,
-                          flexShrink: 0,
-                          background: covers[b.id]
-                            ? `center/cover no-repeat url(${JSON.stringify(covers[b.id])})`
-                            : `linear-gradient(150deg, ${theme.chromeInk}, ${theme.ink})`,
-                          boxShadow: "0 2px 6px rgba(0,0,0,.2)",
-                        }}
-                      />
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontSize: 14, color: theme.ink, fontWeight: 500 }}>{b.title || tr("common.untitled")}</span>
-                        <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{b.author || tr("common.unknownAuthor")}</span>
-                      </span>
-                    </button>
-                  ))}
-                    </div>
-                  </>
-                )}
-                {sourceResults.length > 0 && (
-                  <div style={{ marginTop: results.length ? 22 : 0 }}>
-                    <OverlayLabel theme={theme} icon="globe">{tr("search.websites")}</OverlayLabel>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      {sourceResults.map((s) => (
+                      {results.map((b) => (
                         <button
-                          key={s.id}
-                          onClick={() => { remember(term); onOpenStoreSource(s.id); onClose(); }}
+                          key={b.id}
+                          onClick={() => {
+                            remember(term);
+                            onOpen(b.id);
+                            onClose();
+                          }}
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -306,13 +294,120 @@ export function SearchOverlay({
                             font: "inherit",
                             transition: "background-color 120ms ease",
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = theme.hover)}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background = theme.hover)
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "transparent")
+                          }
                         >
-                          <SourceIcon theme={theme} iconUrl={s.iconUrl} size={30} radius={7} glyphSize={16} />
+                          <span
+                            style={{
+                              width: 30,
+                              height: 42,
+                              borderRadius: 4,
+                              flexShrink: 0,
+                              background: covers[b.id]
+                                ? `center/cover no-repeat url(${JSON.stringify(covers[b.id])})`
+                                : `linear-gradient(150deg, ${theme.chromeInk}, ${theme.ink})`,
+                              boxShadow: "0 2px 6px rgba(0,0,0,.2)",
+                            }}
+                          />
                           <span style={{ minWidth: 0 }}>
-                            <span style={{ display: "block", fontSize: 14, color: theme.ink, fontWeight: 500 }}>{s.name}</span>
-                            <span style={{ display: "block", fontSize: 12, color: theme.muted, marginTop: 2 }}>{s.baseUrl.replace(/^https?:\/\//, "")}</span>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 14,
+                                color: theme.ink,
+                                fontWeight: 500,
+                              }}
+                            >
+                              {b.title || tr("common.untitled")}
+                            </span>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 12,
+                                color: theme.muted,
+                                marginTop: 2,
+                              }}
+                            >
+                              {b.author || tr("common.unknownAuthor")}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {sourceResults.length > 0 && (
+                  <div style={{ marginTop: results.length ? 22 : 0 }}>
+                    <OverlayLabel theme={theme} icon="globe">
+                      {tr("search.websites")}
+                    </OverlayLabel>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      {sourceResults.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            remember(term);
+                            onOpenStoreSource(s.id);
+                            onClose();
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 13,
+                            padding: "8px 10px",
+                            border: 0,
+                            borderRadius: 10,
+                            background: "transparent",
+                            cursor: "pointer",
+                            textAlign: "start",
+                            font: "inherit",
+                            transition: "background-color 120ms ease",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background = theme.hover)
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "transparent")
+                          }
+                        >
+                          <SourceIcon
+                            theme={theme}
+                            iconUrl={s.iconUrl}
+                            size={30}
+                            radius={7}
+                            glyphSize={16}
+                          />
+                          <span style={{ minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 14,
+                                color: theme.ink,
+                                fontWeight: 500,
+                              }}
+                            >
+                              {s.name}
+                            </span>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 12,
+                                color: theme.muted,
+                                marginTop: 2,
+                              }}
+                            >
+                              {s.baseUrl.replace(/^https?:\/\//, "")}
+                            </span>
                           </span>
                         </button>
                       ))}
@@ -324,29 +419,99 @@ export function SearchOverlay({
               <button
                 onClick={() => applyFilter(term)}
                 style={{
-                  display: "flex", alignItems: "center", gap: 10, width: "100%",
-                  padding: "14px 12px", border: `1px dashed ${theme.rule}`, borderRadius: 12,
-                  background: "transparent", color: theme.muted, cursor: "pointer", font: "inherit", fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  width: "100%",
+                  padding: "14px 12px",
+                  border: `1px dashed ${theme.rule}`,
+                  borderRadius: 12,
+                  background: "transparent",
+                  color: theme.muted,
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontSize: 14,
                 }}
               >
-                <Icon name="search" size={16} /> {tr("search.noMatches", { term: term.trim() })}
+                <Icon name="search" size={16} />{" "}
+                {tr("search.noMatches", { term: term.trim() })}
               </button>
             )
           ) : (
             <>
               {recent.length > 0 && (
                 <>
-                  <OverlayLabel theme={theme} icon="clock" action={{ label: tr("search.clearHistory"), onClick: () => { setRecent([]); saveRecent([]); } }}>
+                  <OverlayLabel
+                    theme={theme}
+                    icon="clock"
+                    action={{
+                      label: tr("search.clearHistory"),
+                      onClick: () => {
+                        setRecent([]);
+                        saveRecent([]);
+                      },
+                    }}
+                  >
                     {tr("search.recentSearches")}
                   </OverlayLabel>
                   {/* Chips are bordered like the Jump-to pills: `chrome` alone
                       is only a few shades off `paper` (sepia especially), so
                       each chip needs the hairline to read as a control. */}
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginBottom: 20,
+                    }}
+                  >
                     {recent.map((r) => (
-                      <span key={r} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: theme.chrome, border: `1px solid ${theme.rule}`, borderRadius: 20, padding: "6px 7px 6px 12px", fontSize: 13, color: theme.ink }}>
-                        <button onClick={() => { setTerm(r); inputRef.current?.focus(); }} style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", font: "inherit", padding: 0 }}>{r}</button>
-                        <button aria-label={tr("search.removeRecent", { term: r })} onClick={() => { const n = recent.filter((x) => x !== r); setRecent(n); saveRecent(n); }} style={{ display: "flex", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", padding: 0 }}>
+                      <span
+                        key={r}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          background: theme.chrome,
+                          border: `1px solid ${theme.rule}`,
+                          borderRadius: 20,
+                          padding: "6px 7px 6px 12px",
+                          fontSize: 13,
+                          color: theme.ink,
+                        }}
+                      >
+                        <button
+                          onClick={() => {
+                            setTerm(r);
+                            inputRef.current?.focus();
+                          }}
+                          style={{
+                            border: 0,
+                            background: "transparent",
+                            color: "inherit",
+                            cursor: "pointer",
+                            font: "inherit",
+                            padding: 0,
+                          }}
+                        >
+                          {r}
+                        </button>
+                        <button
+                          aria-label={tr("search.removeRecent", { term: r })}
+                          onClick={() => {
+                            const n = recent.filter((x) => x !== r);
+                            setRecent(n);
+                            saveRecent(n);
+                          }}
+                          style={{
+                            display: "flex",
+                            border: 0,
+                            background: "transparent",
+                            color: theme.muted,
+                            cursor: "pointer",
+                            padding: 0,
+                          }}
+                        >
                           <Icon name="close" size={13} />
                         </button>
                       </span>
@@ -354,22 +519,42 @@ export function SearchOverlay({
                   </div>
                 </>
               )}
-              <OverlayLabel theme={theme} icon="globe">{tr("search.jumpTo")}</OverlayLabel>
+              <OverlayLabel theme={theme} icon="globe">
+                {tr("search.jumpTo")}
+              </OverlayLabel>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 {JUMPS.map((j) => (
                   <button
                     key={j.key}
                     onClick={() => jump(j.go)}
                     style={{
-                      display: "inline-flex", alignItems: "center", gap: 9,
-                      background: theme.chrome, border: `1px solid ${theme.rule}`, borderRadius: 22,
-                      padding: "9px 15px 9px 13px", cursor: "pointer", font: "inherit", fontSize: 13.5, fontWeight: 500, color: theme.ink,
-                      transition: "background-color 120ms ease, transform 120ms ease",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 9,
+                      background: theme.chrome,
+                      border: `1px solid ${theme.rule}`,
+                      borderRadius: 22,
+                      padding: "9px 15px 9px 13px",
+                      cursor: "pointer",
+                      font: "inherit",
+                      fontSize: 13.5,
+                      fontWeight: 500,
+                      color: theme.ink,
+                      transition:
+                        "background-color 120ms ease, transform 120ms ease",
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = theme.chromeHover; e.currentTarget.style.transform = "translateY(-1px)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = theme.chrome; e.currentTarget.style.transform = "none"; }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = theme.chromeHover;
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = theme.chrome;
+                      e.currentTarget.style.transform = "none";
+                    }}
                   >
-                    <span style={{ color: theme.muted, display: "flex" }}><Icon name={j.icon} size={16} /></span>
+                    <span style={{ color: theme.muted, display: "flex" }}>
+                      <Icon name={j.icon} size={16} />
+                    </span>
                     {tr(j.key)}
                   </button>
                 ))}
@@ -394,11 +579,41 @@ function OverlayLabel({
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11, color: theme.muted }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 11,
+        color: theme.muted,
+      }}
+    >
       <Icon name={icon} size={13} />
-      <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>{children}</span>
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+        }}
+      >
+        {children}
+      </span>
       {action && (
-        <button onClick={action.onClick} style={{ marginInlineStart: "auto", border: 0, background: "transparent", color: theme.muted, cursor: "pointer", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+        <button
+          onClick={action.onClick}
+          style={{
+            marginInlineStart: "auto",
+            border: 0,
+            background: "transparent",
+            color: theme.muted,
+            cursor: "pointer",
+            fontSize: 10.5,
+            fontWeight: 600,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+          }}
+        >
           {action.label}
         </button>
       )}

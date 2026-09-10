@@ -51,8 +51,17 @@ interface Props {
 }
 
 export function VolumeActionsMenu({
-  theme, layout, open, anchor, title, subtitle, actions, note, triggerRef,
-  onPick, onClose,
+  theme,
+  layout,
+  open,
+  anchor,
+  title,
+  subtitle,
+  actions,
+  note,
+  triggerRef,
+  onPick,
+  onClose,
 }: Props) {
   const { tr } = useI18n();
   const rows = (
@@ -162,7 +171,12 @@ export function VolumeActionsMenu({
 }
 
 function DesktopPopover({
-  theme, open, anchor, triggerRef, onClose, children,
+  theme,
+  open,
+  anchor,
+  triggerRef,
+  onClose,
+  children,
 }: {
   theme: Theme;
   open: boolean;

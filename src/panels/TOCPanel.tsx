@@ -95,9 +95,7 @@ export function TOCPanel({
   useEffect(() => {
     if (!currentVolumeId) return;
     setOpenVolumes((prev) =>
-      prev.has(currentVolumeId)
-        ? prev
-        : new Set(prev).add(currentVolumeId),
+      prev.has(currentVolumeId) ? prev : new Set(prev).add(currentVolumeId),
     );
   }, [currentVolumeId]);
 
@@ -221,103 +219,103 @@ export function TOCPanel({
           </div>
         )}
 
-        {grouped === null
-          ? (
-              // Ungrouped books hand the whole spine to one list, so this is
-              // the path that has to survive a 2000-chapter novel. It owns its
-              // own reveal (see VirtualChapterList) because the row to scroll
-              // to is usually not mounted; the effect above handles the
-              // grouped path, where every rendered row is a real element.
-              <VirtualChapterList
-                chapters={filtered}
-                currentChapter={currentChapter}
-                theme={theme}
-                isAr={isAr}
-                onJump={onJump}
-                revealNonce={revealNonce}
-              />
-            )
-          : grouped.rows.map((row) => {
-              const open = isOpen(row.volume.id);
-              const holdsCurrent =
-                currentChapter >= row.volume.start &&
-                currentChapter <= row.volume.end;
-              return (
-                <div
-                  key={row.volume.id}
-                  style={{
-                    // Border and tint only while open, so a collapsed list of
-                    // 40 volumes stays a quiet list of rows instead of 40
-                    // competing cards.
-                    border: `0.5px solid ${open ? theme.rule : "transparent"}`,
-                    borderRadius: 10,
-                    background: open ? theme.chrome : "transparent",
-                    overflow: "hidden",
-                    marginBottom: 4,
-                    transition: transition("background", "fast", "out"),
-                  }}
-                >
-                  <VolumeHeader
-                    theme={theme}
-                    title={row.volume.title}
-                    count={
-                      searching
-                        ? row.chapters.length
-                        : row.volume.end - row.volume.start + 1
+        {grouped === null ? (
+          // Ungrouped books hand the whole spine to one list, so this is
+          // the path that has to survive a 2000-chapter novel. It owns its
+          // own reveal (see VirtualChapterList) because the row to scroll
+          // to is usually not mounted; the effect above handles the
+          // grouped path, where every rendered row is a real element.
+          <VirtualChapterList
+            chapters={filtered}
+            currentChapter={currentChapter}
+            theme={theme}
+            isAr={isAr}
+            onJump={onJump}
+            revealNonce={revealNonce}
+          />
+        ) : (
+          grouped.rows.map((row) => {
+            const open = isOpen(row.volume.id);
+            const holdsCurrent =
+              currentChapter >= row.volume.start &&
+              currentChapter <= row.volume.end;
+            return (
+              <div
+                key={row.volume.id}
+                style={{
+                  // Border and tint only while open, so a collapsed list of
+                  // 40 volumes stays a quiet list of rows instead of 40
+                  // competing cards.
+                  border: `0.5px solid ${open ? theme.rule : "transparent"}`,
+                  borderRadius: 10,
+                  background: open ? theme.chrome : "transparent",
+                  overflow: "hidden",
+                  marginBottom: 4,
+                  transition: transition("background", "fast", "out"),
+                }}
+              >
+                <VolumeHeader
+                  theme={theme}
+                  title={row.volume.title}
+                  count={
+                    searching
+                      ? row.chapters.length
+                      : row.volume.end - row.volume.start + 1
+                  }
+                  open={open}
+                  // The marker moves to the chapter row itself once the
+                  // volume is open, so it never reads twice.
+                  showNow={holdsCurrent && !open}
+                  nowLabel={tr("toc.now")}
+                  isAr={isAr}
+                  onToggle={() => {
+                    const id = row.volume.id;
+                    if (searching) {
+                      // Every match is force-expanded, so a header click
+                      // here can't mean "collapse" — `isOpen` would just
+                      // re-open it. Read it as "take me to this volume in
+                      // the full list" instead, and leave it open there.
+                      setQuery("");
+                      setOpenVolumes((prev) => new Set(prev).add(id));
+                      return;
                     }
-                    open={open}
-                    // The marker moves to the chapter row itself once the
-                    // volume is open, so it never reads twice.
-                    showNow={holdsCurrent && !open}
-                    nowLabel={tr("toc.now")}
-                    isAr={isAr}
-                    onToggle={() => {
-                      const id = row.volume.id;
-                      if (searching) {
-                        // Every match is force-expanded, so a header click
-                        // here can't mean "collapse" — `isOpen` would just
-                        // re-open it. Read it as "take me to this volume in
-                        // the full list" instead, and leave it open there.
-                        setQuery("");
-                        setOpenVolumes((prev) => new Set(prev).add(id));
-                        return;
-                      }
-                      setOpenVolumes((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(id)) next.delete(id);
-                        else next.add(id);
-                        return next;
-                      });
+                    setOpenVolumes((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    });
+                  }}
+                />
+                {open && (
+                  <div
+                    className="riwaq-collapse-enter"
+                    style={{
+                      padding: "3px 4px 6px",
+                      borderTop: `0.5px solid ${theme.rule}`,
                     }}
-                  />
-                  {open && (
-                    <div
-                      className="riwaq-collapse-enter"
-                      style={{
-                        padding: "3px 4px 6px",
-                        borderTop: `0.5px solid ${theme.rule}`,
-                      }}
-                    >
-                      {/* Windowed like the flat list. Normally only the volume
+                  >
+                    {/* Windowed like the flat list. Normally only the volume
                           being read is open, so this is cheap either way — but
                           "expand all", and a search that matches across the
                           book, both open every volume at once, and that put
                           2042 rows in the DOM and 33-40ms on every chapter
                           turn while Contents was docked. Each open volume runs
                           its own window and the off-screen ones mount nothing. */}
-                      <VirtualChapterList
-                        chapters={row.chapters}
-                        currentChapter={currentChapter}
-                        theme={theme}
-                        isAr={isAr}
-                        onJump={onJump}
-                        revealNonce={revealNonce}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    <VirtualChapterList
+                      chapters={row.chapters}
+                      currentChapter={currentChapter}
+                      theme={theme}
+                      isAr={isAr}
+                      onJump={onJump}
+                      revealNonce={revealNonce}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
 
         {grouped !== null && grouped.loose.length > 0 && (
           <div style={{ paddingTop: 4 }}>
@@ -427,7 +425,11 @@ function VirtualChapterList({
         prev.height === scroller.clientHeight &&
         prev.listTop === listTop
           ? prev
-          : { scrollTop: scroller.scrollTop, height: scroller.clientHeight, listTop },
+          : {
+              scrollTop: scroller.scrollTop,
+              height: scroller.clientHeight,
+              listTop,
+            },
       );
     };
     const onScroll = () => {
@@ -457,7 +459,8 @@ function VirtualChapterList({
   // unmeasured list could never grow past its first frame), so without this
   // 40 off-screen volumes would still cost 40 windows' worth of rows.
   // Guarded on a measured height so it can't fire before the first layout.
-  const offscreen = view.height > 0 && (viewTop >= total || viewTop + view.height <= 0);
+  const offscreen =
+    view.height > 0 && (viewTop >= total || viewTop + view.height <= 0);
 
   const { start, end } = offscreen
     ? { start: 0, end: 0 }
@@ -675,7 +678,9 @@ function VolumeHeader({
         e.currentTarget.style.background = "transparent";
       }}
     >
-      <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+      <span
+        style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}
+      >
         {/* Outer span mirrors the chevron in RTL; the inner span rotates it
             between closed (points toward the content) and open (points down).
             Two layers so the rotate transform doesn't clobber the rtl-flip. */}
@@ -706,7 +711,9 @@ function VolumeHeader({
           {title}
         </span>
       </span>
-      <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <span
+        style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}
+      >
         {showNow && (
           <span
             style={{

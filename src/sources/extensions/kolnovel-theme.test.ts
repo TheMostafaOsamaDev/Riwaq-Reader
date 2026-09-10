@@ -26,7 +26,9 @@ const resultsHtml = `
 const parse = (html: string, page = 1) =>
   parseSearchResults(
     new DOMParser().parseFromString(html, "text/html"),
-    BASE, "سيد", page,
+    BASE,
+    "سيد",
+    page,
   );
 
 describe("parseSearchResults", () => {
@@ -43,15 +45,17 @@ describe("parseSearchResults", () => {
   it("reports hasMore false — KolNovel renders one page of results", () => {
     // The theme emits an empty `.pagination` block and no paged links.
     // Any true here would send the UI to a URL that returns HTTP 500.
-    expect(parse(`${resultsHtml}<div class="pagination"> </div>`).hasMore)
-      .toBe(false);
+    expect(parse(`${resultsHtml}<div class="pagination"> </div>`).hasMore).toBe(
+      false,
+    );
   });
 
   it("reports hasMore true when the theme emits a real pager", () => {
     // This is why kolnovel.ts and kolnovel-pro.ts override hasMore to false:
     // the shared parser trusts the DOM, and on broad queries the theme does
     // emit a pager — but every KolNovel pagination URL returns HTTP 500.
-    const withPager = resultsHtml +
+    const withPager =
+      resultsHtml +
       '<div class="pagination"><span class="page-numbers current">1</span>' +
       '<a class="page-numbers" href="#">2</a>' +
       '<a class="next page-numbers" href="#">›</a></div>';

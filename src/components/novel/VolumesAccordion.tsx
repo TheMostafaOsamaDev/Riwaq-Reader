@@ -1,18 +1,9 @@
-
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Source, SourceNovel } from "../../sources/types";
 import { MeasuredVirtualList } from "../VirtualList";
 import { transition } from "../../styles/motion";
 
-import {
-  type Theme,
-  Z,
-} from "../../styles/tokens";
+import { type Theme, Z } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { Icon } from "../Icon";
 import { AnimatedDialog } from "../AnimatedDialog";
@@ -27,10 +18,7 @@ import {
 } from "../../store/chapterDeletion";
 import { CHAPTER_ROW_HEIGHT, ChapterRow } from "./ChapterRow";
 import { buildFlagMap } from "./flagMap";
-import {
-  VolumeChaptersSkeleton,
-  VolumeErrorPanel,
-} from "./VolumePlaceholders";
+import { VolumeChaptersSkeleton, VolumeErrorPanel } from "./VolumePlaceholders";
 export interface VolumesAccordionProps {
   theme: Theme;
   layout: "desktop" | "mobile";
@@ -57,7 +45,9 @@ export interface VolumesAccordionProps {
    *  parent's latest state is, avoiding stale-closure overwrites when
    *  multiple effects race). */
   onNovelPatch: (
-    updater: SourceNovel | ((current: SourceNovel | null) => SourceNovel | null),
+    updater:
+      | SourceNovel
+      | ((current: SourceNovel | null) => SourceNovel | null),
   ) => void;
 }
 
@@ -159,7 +149,9 @@ export function VolumesAccordion({
         // state.novel since our await, we'd overwrite it with the
         // stale closure copy otherwise.
         if (libraryEntryId) {
-          const { setVolumeChapters } = await import("../../store/sourceLibrary");
+          const { setVolumeChapters } = await import(
+            "../../store/sourceLibrary"
+          );
           await setVolumeChapters(libraryEntryId, volumeId, chapters);
         }
         onNovelPatch((current) => {
@@ -195,7 +187,15 @@ export function VolumesAccordion({
         }
       }
     },
-    [isLazy, loadingVolumes, novel, novelUrl, source, libraryEntryId, onNovelPatch],
+    [
+      isLazy,
+      loadingVolumes,
+      novel,
+      novelUrl,
+      source,
+      libraryEntryId,
+      onNovelPatch,
+    ],
   );
 
   // Fire the load when a lazy volume becomes open (initial mount's
@@ -334,9 +334,12 @@ export function VolumesAccordion({
   // downloads in the volume. `volumeMenu` anchors the popover/sheet at the
   // trigger button's rect; `deleteConfirm` stages the chosen chapter ids
   // for the ConfirmDialog.
-  const [volumeMenu, setVolumeMenu] = useState<
-    { id: number; left: number; right: number; y: number } | null
-  >(null);
+  const [volumeMenu, setVolumeMenu] = useState<{
+    id: number;
+    left: number;
+    right: number;
+    y: number;
+  } | null>(null);
   /** The ⋯ button that opened the menu. Handed to VolumeActionsMenu so
    *  its outside-press listener can skip the trigger, letting the
    *  trigger's own click toggle the menu shut. */
@@ -553,7 +556,9 @@ export function VolumesAccordion({
           const fetched = await source.getVolumeChapters(novelUrl, vol);
           if (!aliveRef.current) return;
           chapters = fetched;
-          const { setVolumeChapters } = await import("../../store/sourceLibrary");
+          const { setVolumeChapters } = await import(
+            "../../store/sourceLibrary"
+          );
           await setVolumeChapters(libraryEntryId, volumeId, fetched);
           onNovelPatch((current) =>
             current
@@ -766,8 +771,7 @@ export function VolumesAccordion({
               // the background as the label colour makes this ratio
               // identical to danger-vs-bg, which the token guarantees.
               color: theme.bg,
-              cursor:
-                selected.size === 0 || deleting ? "default" : "pointer",
+              cursor: selected.size === 0 || deleting ? "default" : "pointer",
               opacity: selected.size === 0 || deleting ? 0.45 : 1,
             }}
           >
@@ -812,7 +816,8 @@ export function VolumesAccordion({
       )}
       {novel.volumes.map((v) => {
         const isOpen = open.has(v.id);
-        const count = v.chapters.length > 0 ? v.chapters.length : v.chapterCount ?? 0;
+        const count =
+          v.chapters.length > 0 ? v.chapters.length : (v.chapterCount ?? 0);
         const volLoaded = v.chapters.length > 0;
         const volPending = volLoaded
           ? v.chapters.filter((c) => !chapterFlags.get(c.id)?.downloadedAt)
@@ -857,7 +862,14 @@ export function VolumesAccordion({
                   e.currentTarget.style.background = "transparent";
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 11,
+                    minWidth: 0,
+                  }}
+                >
                   {/* Outer span mirrors the chevron in RTL; the inner span
                       rotates it between closed (points toward content) and open
                       (points down). Two layers so the rotate transform doesn't
@@ -865,7 +877,11 @@ export function VolumesAccordion({
                       rotation via the global transition-duration override. */}
                   <span
                     className="rtl-flip-x"
-                    style={{ display: "inline-flex", flexShrink: 0, color: theme.muted }}
+                    style={{
+                      display: "inline-flex",
+                      flexShrink: 0,
+                      color: theme.muted,
+                    }}
                   >
                     <span
                       style={{
@@ -901,7 +917,9 @@ export function VolumesAccordion({
                     border: `0.5px solid ${theme.rule}`,
                   }}
                 >
-                  {count > 0 ? tr("novel.chapterCountShort", { n: count }) : "—"}
+                  {count > 0
+                    ? tr("novel.chapterCountShort", { n: count })
+                    : "—"}
                 </span>
               </button>
               {libraryEntryId && (
@@ -942,7 +960,9 @@ export function VolumesAccordion({
                     background: "transparent",
                     color: volAllDownloaded ? theme.muted : theme.ink,
                     cursor:
-                      volAllDownloaded || volDownloading ? "default" : "pointer",
+                      volAllDownloaded || volDownloading
+                        ? "default"
+                        : "pointer",
                     opacity: volDownloading ? 0.5 : volAllDownloaded ? 0.55 : 1,
                   }}
                   onMouseEnter={(e) => {
@@ -1001,37 +1021,36 @@ export function VolumesAccordion({
                 </button>
               )}
             </div>
-            {isOpen && (
+            {isOpen &&
               (() => {
-                  const isLoading = loadingVolumes.has(v.id);
-                  const err = errorByVolume.get(v.id);
-                  const empty = v.chapters.length === 0;
-                  if (err && empty) {
-                    return (
-                      <VolumeErrorPanel
-                        theme={theme}
-                        message={err}
-                        onRetry={() => {
-                          // Allow re-attempt: clear the "already
-                          // expanded" memoization so loadVolume runs
-                          // again on the next mount cycle.
-                          expandedRef.current.delete(v.id);
-                          void loadVolume(v.id);
-                        }}
-                      />
-                    );
-                  }
-                  if (isLoading && empty) {
-                    return (
-                      <VolumeChaptersSkeleton
-                        theme={theme}
-                        rows={Math.min(v.chapterCount ?? 8, 12)}
-                      />
-                    );
-                  }
-                  return null;
-                })()
-            )}
+                const isLoading = loadingVolumes.has(v.id);
+                const err = errorByVolume.get(v.id);
+                const empty = v.chapters.length === 0;
+                if (err && empty) {
+                  return (
+                    <VolumeErrorPanel
+                      theme={theme}
+                      message={err}
+                      onRetry={() => {
+                        // Allow re-attempt: clear the "already
+                        // expanded" memoization so loadVolume runs
+                        // again on the next mount cycle.
+                        expandedRef.current.delete(v.id);
+                        void loadVolume(v.id);
+                      }}
+                    />
+                  );
+                }
+                if (isLoading && empty) {
+                  return (
+                    <VolumeChaptersSkeleton
+                      theme={theme}
+                      rows={Math.min(v.chapterCount ?? 8, 12)}
+                    />
+                  );
+                }
+                return null;
+              })()}
             {isOpen && v.chapters.length > 0 && (
               // Windowed: a big volume runs to ~950 chapters, and mounting
               // every row cost ~200ms and ~6.6k DOM nodes — after which every
@@ -1233,42 +1252,42 @@ export function VolumesAccordion({
       >
         {volumeConfirm && (
           <ConfirmDialog
-              theme={theme}
-              title={tr("novel.downloadVolumeConfirmTitle")}
-              // Queuing downloads is additive and cancellable from the queue
-              // page, so this is a primary action, not a destructive one.
-              confirmVariant="primary"
-              confirmLabel={tr("downloads.range.queueButton", {
-                n: volumeConfirm.pending,
-              })}
-              cancelLabel={tr("common.cancel")}
-              message={
-                <>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                    {volumeConfirm.title}
-                  </div>
-                  {tr(
-                    volumeConfirm.pending === 1
-                      ? "downloads.range.queueCountOne"
-                      : "downloads.range.queueCountOther",
-                    {
-                      n: volumeConfirm.pending,
-                      extra:
-                        volumeConfirm.skipped > 0
-                          ? tr("downloads.range.alreadyOnDisk", {
-                              n: volumeConfirm.skipped,
-                            })
-                          : "",
-                    },
-                  )}
-                </>
-              }
-              onConfirm={() => {
-                const id = volumeConfirm.id;
-                setVolumeConfirm(null);
-                void downloadVolume(id);
-              }}
-              onCancel={() => setVolumeConfirm(null)}
+            theme={theme}
+            title={tr("novel.downloadVolumeConfirmTitle")}
+            // Queuing downloads is additive and cancellable from the queue
+            // page, so this is a primary action, not a destructive one.
+            confirmVariant="primary"
+            confirmLabel={tr("downloads.range.queueButton", {
+              n: volumeConfirm.pending,
+            })}
+            cancelLabel={tr("common.cancel")}
+            message={
+              <>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  {volumeConfirm.title}
+                </div>
+                {tr(
+                  volumeConfirm.pending === 1
+                    ? "downloads.range.queueCountOne"
+                    : "downloads.range.queueCountOther",
+                  {
+                    n: volumeConfirm.pending,
+                    extra:
+                      volumeConfirm.skipped > 0
+                        ? tr("downloads.range.alreadyOnDisk", {
+                            n: volumeConfirm.skipped,
+                          })
+                        : "",
+                  },
+                )}
+              </>
+            }
+            onConfirm={() => {
+              const id = volumeConfirm.id;
+              setVolumeConfirm(null);
+              void downloadVolume(id);
+            }}
+            onCancel={() => setVolumeConfirm(null)}
           />
         )}
       </AnimatedDialog>

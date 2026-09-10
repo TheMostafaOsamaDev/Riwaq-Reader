@@ -301,10 +301,7 @@ export interface Source {
    *  stubs in the same shape `getNovel` populates the volumes with —
    *  identity is via `.url`, not `.id`, since search results often span
    *  volumes and a fresh id sequence wouldn't line up. */
-  searchChapters?(
-    novelUrl: string,
-    query: string,
-  ): Promise<SourceChapter[]>;
+  searchChapters?(novelUrl: string, query: string): Promise<SourceChapter[]>;
 
   /** Populate `lines` for one chapter. */
   getChapterContent(chapter: SourceChapter): Promise<SourceLine[]>;

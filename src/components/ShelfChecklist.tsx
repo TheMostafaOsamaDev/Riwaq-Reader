@@ -151,12 +151,15 @@ export function ShelfChecklist({
   );
 }
 
-const ShelfRow = forwardRef<HTMLButtonElement, {
-  theme: Theme;
-  label: string;
-  checked: boolean;
-  onClick: () => void;
-}>(function ShelfRow({ theme, label, checked, onClick }, ref) {
+const ShelfRow = forwardRef<
+  HTMLButtonElement,
+  {
+    theme: Theme;
+    label: string;
+    checked: boolean;
+    onClick: () => void;
+  }
+>(function ShelfRow({ theme, label, checked, onClick }, ref) {
   const [hover, setHover] = useState(false);
   return (
     <button
@@ -217,11 +220,14 @@ const ShelfRow = forwardRef<HTMLButtonElement, {
   );
 });
 
-const NewShelfRow = forwardRef<HTMLButtonElement, {
-  theme: Theme;
-  label: string;
-  onClick: () => void;
-}>(function NewShelfRow({ theme, label, onClick }, ref) {
+const NewShelfRow = forwardRef<
+  HTMLButtonElement,
+  {
+    theme: Theme;
+    label: string;
+    onClick: () => void;
+  }
+>(function NewShelfRow({ theme, label, onClick }, ref) {
   const [hover, setHover] = useState(false);
   return (
     <button

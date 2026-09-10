@@ -17,7 +17,9 @@ function anchor(texts: string[]): SelectionAnchor {
 
 describe("selectionText", () => {
   it("returns a single paragraph's text as-is", () => {
-    expect(selectionText(anchor(["واجه الإخوة ميراث"]))).toBe("واجه الإخوة ميراث");
+    expect(selectionText(anchor(["واجه الإخوة ميراث"]))).toBe(
+      "واجه الإخوة ميراث",
+    );
   });
 
   it("rejoins a multi-paragraph selection with the break the reader sees", () => {

@@ -46,7 +46,11 @@ function load(): Tweaks {
     // Migrate the old `columns: 1 | 2` field into the new `readingMode`
     // shape — pre-readingMode users had two-column scroll if they picked
     // `columns: 2`, otherwise single-column scroll.
-    if (parsed && typeof parsed === "object" && parsed.readingMode === undefined) {
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.readingMode === undefined
+    ) {
       if (parsed.columns === 2) parsed.readingMode = "paginated-2";
       else if (parsed.columns === 1) parsed.readingMode = "scroll";
       delete parsed.columns;

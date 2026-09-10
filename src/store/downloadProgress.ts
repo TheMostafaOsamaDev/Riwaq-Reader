@@ -60,7 +60,11 @@ const listeners = new Set<(p: DownloadProgress) => void>();
  * eviction-proof lifetime counters minus a per-burst baseline, so a
  * clearTerminals() racing a rebase can briefly overshoot the total.
  */
-export function burstPct(resolved: number, partial: number, total: number): number {
+export function burstPct(
+  resolved: number,
+  partial: number,
+  total: number,
+): number {
   if (total <= 0) return 0;
   const raw = ((resolved + partial) / total) * 100;
   return Math.max(0, Math.min(100, Math.round(raw)));

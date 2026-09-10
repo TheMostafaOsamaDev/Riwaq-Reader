@@ -1,16 +1,9 @@
-
-import {
-  Fragment,
-  useState,
-} from "react";
+import { Fragment, useState } from "react";
 import { novelCoverCandidates } from "../novelCoverCandidates";
 import { looksLikeMissingPlaceholder } from "../../sources/images";
 import type { SourceNovel } from "../../sources/types";
 
-import {
-  FONT_SERIF_DISPLAY,
-  type Theme,
-} from "../../styles/tokens";
+import { FONT_SERIF_DISPLAY, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
@@ -293,7 +286,9 @@ export function NovelHero({
                 disabled={working || !libraryCheckDone}
                 leadingIcon={<Icon name="trash" size={14} />}
               >
-                {working ? tr("novel.removing") : tr("library.removeFromLibrary")}
+                {working
+                  ? tr("novel.removing")
+                  : tr("library.removeFromLibrary")}
               </Button>
             ) : (
               <Button

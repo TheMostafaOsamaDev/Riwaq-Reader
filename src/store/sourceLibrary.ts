@@ -167,10 +167,7 @@ function chapterContentPath(entryId: string, chapterId: number): string {
 // entry through a per-entry promise chain so they run strictly sequentially.
 const entryWriteLocks = new Map<string, Promise<unknown>>();
 
-function withEntryLock<T>(
-  entryId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
+function withEntryLock<T>(entryId: string, fn: () => Promise<T>): Promise<T> {
   const prev = entryWriteLocks.get(entryId) ?? Promise.resolve();
   // Chain onto the tail whether it resolved or rejected, so one failed
   // mutation doesn't wedge the queue for the entry.
@@ -624,9 +621,13 @@ export async function writeChapterContent(
     lines,
     fetchedAt: Date.now(),
   };
-  await writeTextFile(chapterContentPath(entryId, chapterId), JSON.stringify(payload), {
-    baseDir: BASE,
-  });
+  await writeTextFile(
+    chapterContentPath(entryId, chapterId),
+    JSON.stringify(payload),
+    {
+      baseDir: BASE,
+    },
+  );
 }
 
 /** Resolve a chapter image basename to an asset:// URL the webview can

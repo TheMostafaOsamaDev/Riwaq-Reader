@@ -254,21 +254,27 @@ export function EditBookModal({
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldTitle")}</FieldLabel>
+            <FieldLabel theme={theme}>
+              {tr("dialog.editBook.fieldTitle")}
+            </FieldLabel>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               style={textInput(theme)}
             />
 
-            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldAuthor")}</FieldLabel>
+            <FieldLabel theme={theme}>
+              {tr("dialog.editBook.fieldAuthor")}
+            </FieldLabel>
             <input
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               style={textInput(theme)}
             />
 
-            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldDescription")}</FieldLabel>
+            <FieldLabel theme={theme}>
+              {tr("dialog.editBook.fieldDescription")}
+            </FieldLabel>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -301,7 +307,12 @@ export function EditBookModal({
             {tr("library.removeFromLibrary")}
           </Button>
           <div style={{ flex: 1 }} />
-          <Button theme={theme} variant="outline" size="sm" onClick={requestClose}>
+          <Button
+            theme={theme}
+            variant="outline"
+            size="sm"
+            onClick={requestClose}
+          >
             {tr("common.cancel")}
           </Button>
           <Button
@@ -365,14 +376,13 @@ function MobileEditPage({
   // handles "nothing changed" gracefully.
   const saveDisabled = saving;
 
-  const slideTransform = entered && !leaving ? "translateY(0)" : "translateY(100%)";
+  const slideTransform =
+    entered && !leaving ? "translateY(0)" : "translateY(100%)";
   const slideTransition = `transform ${leaving ? EXIT_MS : ENTER_MS}ms ${
     leaving ? EXIT_EASE : ENTER_EASE
   }`;
   const backdropOpacity = entered && !leaving ? 1 : 0;
-  const backdropTransition = `opacity ${
-    leaving ? EXIT_MS : ENTER_MS
-  }ms ease`;
+  const backdropTransition = `opacity ${leaving ? EXIT_MS : ENTER_MS}ms ease`;
 
   return (
     <>

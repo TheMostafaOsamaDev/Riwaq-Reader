@@ -171,7 +171,9 @@ export function BookCover({
             "linear-gradient(90deg, rgba(0,0,0,0.3) 0%, transparent 100%)",
         }}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}
+      >
         <div style={{ width: 14, height: 1, background: p3, opacity: 0.5 }} />
         <div
           style={{
@@ -228,7 +230,9 @@ export function BookCover({
           {author || tr("common.unknownAuthor")}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}
+      >
         <div style={{ width: 14, height: 1, background: p3, opacity: 0.5 }} />
         <div
           style={{

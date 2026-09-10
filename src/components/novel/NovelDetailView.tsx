@@ -17,12 +17,7 @@
 // inline error pane; nothing here owns long-running tasks (the importer
 // reports through the global progress modal).
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getSource, getSourceMeta } from "../../sources/registry";
 import {
   addNovelToLibrary,
@@ -33,10 +28,7 @@ import {
 } from "../../store/library";
 import type { Source, SourceNovel } from "../../sources/types";
 
-import {
-  FONT_STACKS,
-  type Theme,
-} from "../../styles/tokens";
+import { FONT_STACKS, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { Icon } from "../Icon";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "../Skeleton";
@@ -48,7 +40,6 @@ import { NovelAbout } from "./NovelAbout";
 import { NovelHero } from "./NovelHero";
 import { VolumesAccordion } from "./VolumesAccordion";
 import { buildFlagMap } from "./flagMap";
-
 
 interface Props {
   theme: Theme;
@@ -117,9 +108,9 @@ export function NovelDetailView({
   // not yet checked (initial mount, before findSourceEntry resolves).
   // When the parent already knows the entry id (Library card open path),
   // we skip the lookup entirely.
-  const [libraryEntryId, setLibraryEntryId] = useState<string | null | undefined>(
-    libraryEntryIdProp ?? undefined,
-  );
+  const [libraryEntryId, setLibraryEntryId] = useState<
+    string | null | undefined
+  >(libraryEntryIdProp ?? undefined);
   // The on-disk cover `addNovelToLibrary` saved, once we know this novel is in
   // the library. Null until resolved (or when it has none), which is why the
   // remote URL stays in the candidate list behind it.
@@ -243,7 +234,8 @@ export function NovelDetailView({
             : null
           : await findSourceEntry(sourceId, novelUrl);
       if (cancelled) return;
-      if (libraryEntryIdProp === undefined) setLibraryEntryId(entry?.id ?? null);
+      if (libraryEntryIdProp === undefined)
+        setLibraryEntryId(entry?.id ?? null);
       // This is what keeps opening a saved novel off the network: the cover
       // was fetched once at save time and has been on disk ever since.
       const local = entry ? await coverSrcFor(entry) : null;
@@ -444,9 +436,7 @@ export function NovelDetailView({
               setState((s) => ({
                 ...s,
                 novel:
-                  typeof updater === "function"
-                    ? updater(s.novel)
-                    : updater,
+                  typeof updater === "function" ? updater(s.novel) : updater,
               }))
             }
           />

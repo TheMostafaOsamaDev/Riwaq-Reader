@@ -43,9 +43,16 @@ export interface PdfDoc {
   /** True when page 1 carries an extractable text layer (selection/search). */
   hasTextLayer: boolean;
   /** Intrinsic CSS-pixel size of page `i` at the given scale. */
-  pageViewport(i: number, scale: number): Promise<{ width: number; height: number }>;
+  pageViewport(
+    i: number,
+    scale: number,
+  ): Promise<{ width: number; height: number }>;
   /** Render page `i` into `canvas` at `scale` (handles devicePixelRatio). */
-  renderPage(i: number, canvas: HTMLCanvasElement, scale: number): Promise<void>;
+  renderPage(
+    i: number,
+    canvas: HTMLCanvasElement,
+    scale: number,
+  ): Promise<void>;
   /** Render page `i`'s selectable text into `container` at `scale`.
    *
    *  A rendered PDF page is pixels, so selection and highlighting need pdf.js's
@@ -53,7 +60,11 @@ export interface PdfDoc {
    *  at the glyph positions the file declares. Styling lives in global.css
    *  (`.textLayer`) — pdf.js positions the spans against a `--scale-factor`
    *  custom property it expects the stylesheet to honour. */
-  renderTextLayer(i: number, container: HTMLElement, scale: number): Promise<void>;
+  renderTextLayer(
+    i: number,
+    container: HTMLElement,
+    scale: number,
+  ): Promise<void>;
   destroy(): void;
 }
 
@@ -126,7 +137,9 @@ export async function openPdfDocument(source: PdfSource): Promise<PdfDoc> {
         canvasContext: ctx,
         viewport: vp,
         transform:
-          outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
+          outputScale !== 1
+            ? [outputScale, 0, 0, outputScale, 0, 0]
+            : undefined,
       });
       renderTasks.set(canvas, task);
       try {
@@ -204,9 +217,14 @@ async function loadDocument(
     // Correctness beats memory: if ranges don't work on this platform, fall
     // back to the old whole-file path rather than failing the import.
     // eslint-disable-next-line no-console
-    console.warn("[pdf] range transport failed, falling back to whole file:", e);
+    console.warn(
+      "[pdf] range transport failed, falling back to whole file:",
+      e,
+    );
     const { BaseDirectory, readFile } = await import("@tauri-apps/plugin-fs");
-    const bytes = await readFile(source.path, { baseDir: BaseDirectory.AppData });
+    const bytes = await readFile(source.path, {
+      baseDir: BaseDirectory.AppData,
+    });
     return pdfjs.getDocument({ data: bytes.slice() }).promise;
   }
 }
@@ -216,7 +234,10 @@ async function readMeta(doc: unknown): Promise<PdfMeta> {
     const { info } = (await (doc as any).getMetadata()) as {
       info?: { Title?: string; Author?: string };
     };
-    return { title: info?.Title || undefined, author: info?.Author || undefined };
+    return {
+      title: info?.Title || undefined,
+      author: info?.Author || undefined,
+    };
   } catch {
     return {};
   }

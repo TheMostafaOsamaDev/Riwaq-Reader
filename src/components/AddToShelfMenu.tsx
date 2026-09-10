@@ -4,13 +4,7 @@
 // animation) — same shape as NewShelfDialog, so it is rendered directly by
 // Library.tsx rather than wrapped in AnimatedDialog.
 
-import {
-  forwardRef,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon, type IconProps } from "./Icon";
 import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
@@ -116,7 +110,13 @@ export function AddToShelfMenu({
             padding: 6,
           }}
         >
-          <MenuRow theme={theme} label={tr("common.cancel")} onClick={onClose} muted centered />
+          <MenuRow
+            theme={theme}
+            label={tr("common.cancel")}
+            onClick={onClose}
+            muted
+            centered
+          />
         </div>
       </div>
     </div>

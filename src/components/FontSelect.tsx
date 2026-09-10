@@ -6,7 +6,13 @@
 // together — a family carrying only one script falls back to Readex Pro for
 // the other, and the row shows that rather than hiding it.
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   ACCENT,
   FONT_GROUP_ORDER,
@@ -107,7 +113,11 @@ function Chevron({ open, color }: { open: boolean; color: string }) {
       strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ flex: "0 0 auto", transform: open ? "rotate(180deg)" : "none", transition: "transform 180ms ease" }}
+      style={{
+        flex: "0 0 auto",
+        transform: open ? "rotate(180deg)" : "none",
+        transition: "transform 180ms ease",
+      }}
       aria-hidden
     >
       <path d="m6 9 6 6 6-6" />
@@ -171,7 +181,15 @@ function Option({
         ["--opt-hover" as string]: theme.hover,
       }}
     >
-      <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
         <span
           style={{
             fontSize: 11,
@@ -182,7 +200,13 @@ function Option({
         >
           {FONT_FAMILY_LABELS[fontKey]}
         </span>
-        <FaceLabel text={`${SAMPLE_AR} · ${SAMPLE_EN}`} stack={stack} size={15} weight={400} dir="rtl" />
+        <FaceLabel
+          text={`${SAMPLE_AR} · ${SAMPLE_EN}`}
+          stack={stack}
+          size={15}
+          weight={400}
+          dir="rtl"
+        />
       </span>
       {selected && <Check color={ACCENT} />}
     </button>
@@ -251,7 +275,12 @@ export function FontSelect({
         {/* No label inside the control — the enclosing Field renders it above,
             the same way every other row in the panel is labelled. */}
         <span style={{ minWidth: 0, flex: 1 }}>
-          <FaceLabel text={FONT_FAMILY_LABELS[value]} stack={FONT_STACKS[value]} size={14} weight={600} />
+          <FaceLabel
+            text={FONT_FAMILY_LABELS[value]}
+            stack={FONT_STACKS[value]}
+            size={14}
+            weight={600}
+          />
         </span>
         <Chevron open={open} color={theme.muted} />
       </button>

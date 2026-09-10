@@ -33,7 +33,8 @@ export const en = {
   "settings.theme": "Theme",
   "settings.theme.system": "System",
   "settings.theme.systemHint": "Follows your OS light / dark setting",
-  "settings.theme.systemHintDevice": "Follows your device's light / dark setting",
+  "settings.theme.systemHintDevice":
+    "Follows your device's light / dark setting",
   "settings.theme.light": "Light",
   "settings.theme.sepia": "Sepia",
   "settings.theme.dark": "Dark",
@@ -100,7 +101,8 @@ export const en = {
   "settings.hyphenation": "Hyphenation",
   "settings.pageTurnAnimation": "Page-turn animation",
   "settings.keepScreenAwake": "Keep screen awake",
-  "settings.keepScreenAwake.hint": "Best-effort — may not work on every device.",
+  "settings.keepScreenAwake.hint":
+    "Best-effort — may not work on every device.",
 
   // behavior
   "settings.startupView": "On startup",
@@ -300,7 +302,8 @@ export const en = {
   "toc.now": "Now",
   "reader.focusMode": "Focus mode",
   "reader.exitFocusMode": "Exit focus mode",
-  "reader.focusHintBody": "Move the pointer to the top or bottom edge to bring the controls back.",
+  "reader.focusHintBody":
+    "Move the pointer to the top or bottom edge to bring the controls back.",
   "toc.collapseAll": "Collapse all volumes",
   "toc.expandAll": "Expand all volumes",
   "toc.goToCurrent": "Go to current chapter",

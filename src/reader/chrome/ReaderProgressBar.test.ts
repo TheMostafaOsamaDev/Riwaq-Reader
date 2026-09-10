@@ -37,7 +37,8 @@ function render(props: Partial<ReaderProgressBarProps> = {}): string {
 const tickCount = (html: string) =>
   (html.match(/width:2px;height:2px/g) || []).length;
 
-const ticksOf = (n: number) => Array.from({ length: n }, (_, i) => (i + 1) / (n + 1));
+const ticksOf = (n: number) =>
+  Array.from({ length: n }, (_, i) => (i + 1) / (n + 1));
 
 describe("ReaderProgressBar landmarks", () => {
   it("draws them while they are far enough apart to read", () => {

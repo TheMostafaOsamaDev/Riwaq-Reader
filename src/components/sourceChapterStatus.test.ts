@@ -6,7 +6,9 @@ const noErrors = new Map<number, string>();
 
 describe("chapterOverlay", () => {
   it("shows loading while the chapter on screen is empty and fetching", () => {
-    expect(chapterOverlay(5, 0, new Set([5]), noErrors)).toEqual({ kind: "loading" });
+    expect(chapterOverlay(5, 0, new Set([5]), noErrors)).toEqual({
+      kind: "loading",
+    });
   });
 
   it("keeps showing loading when a prefetch of the NEXT chapter finishes first", () => {
@@ -15,13 +17,19 @@ describe("chapterOverlay", () => {
     // the overlay vanished and chapter 5 read as a blank page. Chapter 6
     // finishing is not information about chapter 5.
     const inFlight = new Set([5]); // 6 has already completed and left the set
-    expect(chapterOverlay(5, 0, inFlight, noErrors)).toEqual({ kind: "loading" });
+    expect(chapterOverlay(5, 0, inFlight, noErrors)).toEqual({
+      kind: "loading",
+    });
   });
 
   it("never covers a chapter that has content", () => {
     // A background refetch of the chapter being read must not blank it out.
-    expect(chapterOverlay(5, 12, new Set([5]), noErrors)).toEqual({ kind: "none" });
-    expect(chapterOverlay(5, 12, none, new Map([[5, "boom"]]))).toEqual({ kind: "none" });
+    expect(chapterOverlay(5, 12, new Set([5]), noErrors)).toEqual({
+      kind: "none",
+    });
+    expect(chapterOverlay(5, 12, none, new Map([[5, "boom"]]))).toEqual({
+      kind: "none",
+    });
   });
 
   it("does not raise the next chapter's failure over this one", () => {
@@ -29,7 +37,9 @@ describe("chapterOverlay", () => {
     expect(chapterOverlay(5, 0, new Set([5]), new Map([[6, "boom"]]))).toEqual({
       kind: "loading",
     });
-    expect(chapterOverlay(5, 0, none, new Map([[6, "boom"]]))).toEqual({ kind: "none" });
+    expect(chapterOverlay(5, 0, none, new Map([[6, "boom"]]))).toEqual({
+      kind: "none",
+    });
   });
 
   it("reports this chapter's own failure once nothing is in flight", () => {

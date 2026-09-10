@@ -24,7 +24,10 @@ import {
   FocusChapterPlate,
 } from "../reader/chrome/FocusChapterPlate";
 import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
-import { MAX_TICKS, ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
+import {
+  MAX_TICKS,
+  ReaderProgressBar,
+} from "../reader/chrome/ReaderProgressBar";
 import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
 import { BookBody, readingGutter } from "./BookBody";
 import { ChapterEndCard, ChapterStartLink } from "./ChapterEnd";
@@ -260,9 +263,7 @@ export function DesktopReader({
   // wherever the name would otherwise be on screen twice: under a revealed
   // bar, which carries the same title, or over the chapter's own opening
   // title. The FADE it sits in is page furniture and stays up through both.
-  const runningHeadShown =
-    pageDressing && !focus.showTop && !chapterHeadShown;
-
+  const runningHeadShown = pageDressing && !focus.showTop && !chapterHeadShown;
 
   // The live paragraph for the current chapter — updated by both the
   // scroll listener and PaginatedView. Used so that switching reading
@@ -389,7 +390,9 @@ export function DesktopReader({
       // The big one: a jump to the end of a long chapter is exactly the case
       // WKWebView leaves unpainted. See jumpScrollTop.
       jumpScrollTop(el, el.scrollHeight);
-      logEvent("position:landAtEnd", { scrollTopAfter: Math.round(el.scrollTop) });
+      logEvent("position:landAtEnd", {
+        scrollTopAfter: Math.round(el.scrollTop),
+      });
       const ps = el.querySelectorAll<HTMLElement>("[data-p-index]");
       if (ps.length > 0) {
         let lastIdx = 0;
@@ -418,7 +421,11 @@ export function DesktopReader({
     if (target) {
       jumpScrollTop(
         el,
-        restoreScrollTop(target.offsetTop, target.offsetHeight, liveOffset.current),
+        restoreScrollTop(
+          target.offsetTop,
+          target.offsetHeight,
+          liveOffset.current,
+        ),
       );
       logEvent("position:restore", {
         targetOffsetTop: target.offsetTop,
@@ -426,13 +433,21 @@ export function DesktopReader({
       });
     } else {
       jumpScrollTop(el, 0);
-      logEvent("position:noTarget", { scrollTopAfter: Math.round(el.scrollTop) });
+      logEvent("position:noTarget", {
+        scrollTopAfter: Math.round(el.scrollTop),
+      });
     }
     // book.chapters[currentChapter]?.id changes when a streamed chapter's
     // content is spliced in (its `#0` → `#<n>` id bump), re-running this so
     // resume fires once the paragraphs are actually in the DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, book.id, mode, jumpNonce, book.chapters[currentChapter]?.id]);
+  }, [
+    currentChapter,
+    book.id,
+    mode,
+    jumpNonce,
+    book.chapters[currentChapter]?.id,
+  ]);
 
   // Throttled scroll listener — find the topmost-visible paragraph and
   // bubble its index up to the App state for persistence. Only runs in
@@ -459,7 +474,11 @@ export function DesktopReader({
           bestEl = p;
         }
         const intoPara = bestEl
-          ? paragraphScrollOffset(el.scrollTop, bestEl.offsetTop, bestEl.offsetHeight)
+          ? paragraphScrollOffset(
+              el.scrollTop,
+              bestEl.offsetTop,
+              bestEl.offsetHeight,
+            )
           : 0;
         onParagraphChangeRef.current(best, intoPara);
       }, 250);
@@ -521,12 +540,15 @@ export function DesktopReader({
       e.preventDefault();
       if (cooldown) return;
       cooldown = true;
-      window.setTimeout(() => { cooldown = false; }, 380);
+      window.setTimeout(() => {
+        cooldown = false;
+      }, 380);
       const api = paginatedApiRef.current;
       if (e.deltaY > 0) {
         // Forward — next page, or next chapter at the last page.
         if (!api?.nextPage()) {
-          if (currentChapter < chapterCount - 1) onChapterChange(currentChapter + 1);
+          if (currentChapter < chapterCount - 1)
+            onChapterChange(currentChapter + 1);
         }
       } else {
         // Backward — prev page, or prev chapter at the first page.
@@ -575,7 +597,12 @@ export function DesktopReader({
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     logSessionStart({
-      book: { id: book.id, title: book.title, chapters: chapterCount, lang: book.language },
+      book: {
+        id: book.id,
+        title: book.title,
+        chapters: chapterCount,
+        lang: book.language,
+      },
       startChapter: currentChapter,
       readingMode: mode,
       theme: themeKey,
@@ -584,7 +611,10 @@ export function DesktopReader({
       fontSize: t.fontSize,
     });
     const onResize = () =>
-      logEvent("window:resize", { w: window.innerWidth, h: window.innerHeight });
+      logEvent("window:resize", {
+        w: window.innerWidth,
+        h: window.innerHeight,
+      });
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -654,7 +684,12 @@ export function DesktopReader({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable))
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      )
         return;
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
@@ -686,11 +721,18 @@ export function DesktopReader({
   // its chapter begins. The first and last are the track's own ends, so they
   // are dropped rather than drawn under the caps.
   const chapterAt = (f: number) =>
-    Math.min(chapterCount - 1, Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))));
-  const barFraction = chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
+    Math.min(
+      chapterCount - 1,
+      Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))),
+    );
+  const barFraction =
+    chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
   const ticks =
     chapterCount > 2 && chapterCount - 2 <= MAX_TICKS
-      ? Array.from({ length: chapterCount - 2 }, (_, i) => (i + 1) / (chapterCount - 1))
+      ? Array.from(
+          { length: chapterCount - 2 },
+          (_, i) => (i + 1) / (chapterCount - 1),
+        )
       : [];
 
   // Two mutually-exclusive popovers:
@@ -711,8 +753,7 @@ export function DesktopReader({
       const path = (e.composedPath?.() ?? []) as EventTarget[];
       const inPopover = path.some(
         (node) =>
-          node instanceof HTMLElement &&
-          node.dataset.popover === "highlight",
+          node instanceof HTMLElement && node.dataset.popover === "highlight",
       );
       if (inPopover) return;
       // Defer one tick so the browser has finalized the selection.
@@ -757,8 +798,7 @@ export function DesktopReader({
       const path = (e.composedPath?.() ?? []) as EventTarget[];
       const inPopover = path.some(
         (node) =>
-          node instanceof HTMLElement &&
-          node.dataset.popover === "highlight",
+          node instanceof HTMLElement && node.dataset.popover === "highlight",
       );
       if (inPopover) return;
 
@@ -853,70 +893,70 @@ export function DesktopReader({
         }
       >
         <div
-          style={
-            focus.floating ? focus.slide("top", focus.showTop) : undefined
-          }
+          style={focus.floating ? focus.slide("top", focus.showTop) : undefined}
         >
-        <ReaderTopBar
-        theme={theme}
-        onBack={onBack}
-        backLabel={tr("reader.backToLibrary")}
-        title={chapter.title}
-        subtitle={tr("reader.chapterOfTotal", {
-          n: currentChapter + 1,
-          total: chapterCount,
-        })}
-        // Arabic / mixed titles render in Readex Pro (via the sans stack) so
-        // interleaved digits/Latin share the family; no synthetic italic.
-        titleStyle={{ fontFamily: titleFontFor(chapter.title) }}
-        progressFillRef={progressFillRef}
-        fillRtl={rtl}
-        navButtons={
-          <>
-            <ReaderIconButton
-              theme={theme}
-              icon="list"
-              label={tr("reader.toc")}
-              onClick={() => toggle("toc")}
-              active={activePanel === "toc"}
-            />
-            <ReaderIconButton
-              theme={theme}
-              icon="highlight"
-              label={tr("reader.highlights")}
-              onClick={() => toggle("highlights")}
-              active={activePanel === "highlights"}
-            />
-          </>
-        }
-        trailing={
-          <>
-            <ReaderIconButton
-              theme={theme}
-              icon="focus"
-              label={
-                t.focusMode ? tr("reader.exitFocusMode") : tr("reader.focusMode")
-              }
-              onClick={focus.toggle}
-              active={t.focusMode}
-            />
-            <ReaderIconButton
-              theme={theme}
-              icon="clock"
-              label={tr("reader.progress")}
-              onClick={() => toggle("progress")}
-              active={activePanel === "progress"}
-            />
-            <ReaderIconButton
-              theme={theme}
-              icon="type"
-              label={tr("reader.settings")}
-              onClick={() => toggle("settings")}
-              active={activePanel === "settings"}
-            />
-          </>
-        }
-        />
+          <ReaderTopBar
+            theme={theme}
+            onBack={onBack}
+            backLabel={tr("reader.backToLibrary")}
+            title={chapter.title}
+            subtitle={tr("reader.chapterOfTotal", {
+              n: currentChapter + 1,
+              total: chapterCount,
+            })}
+            // Arabic / mixed titles render in Readex Pro (via the sans stack) so
+            // interleaved digits/Latin share the family; no synthetic italic.
+            titleStyle={{ fontFamily: titleFontFor(chapter.title) }}
+            progressFillRef={progressFillRef}
+            fillRtl={rtl}
+            navButtons={
+              <>
+                <ReaderIconButton
+                  theme={theme}
+                  icon="list"
+                  label={tr("reader.toc")}
+                  onClick={() => toggle("toc")}
+                  active={activePanel === "toc"}
+                />
+                <ReaderIconButton
+                  theme={theme}
+                  icon="highlight"
+                  label={tr("reader.highlights")}
+                  onClick={() => toggle("highlights")}
+                  active={activePanel === "highlights"}
+                />
+              </>
+            }
+            trailing={
+              <>
+                <ReaderIconButton
+                  theme={theme}
+                  icon="focus"
+                  label={
+                    t.focusMode
+                      ? tr("reader.exitFocusMode")
+                      : tr("reader.focusMode")
+                  }
+                  onClick={focus.toggle}
+                  active={t.focusMode}
+                />
+                <ReaderIconButton
+                  theme={theme}
+                  icon="clock"
+                  label={tr("reader.progress")}
+                  onClick={() => toggle("progress")}
+                  active={activePanel === "progress"}
+                />
+                <ReaderIconButton
+                  theme={theme}
+                  icon="type"
+                  label={tr("reader.settings")}
+                  onClick={() => toggle("settings")}
+                  active={activePanel === "settings"}
+                />
+              </>
+            }
+          />
         </div>
       </div>
 
@@ -927,7 +967,9 @@ export function DesktopReader({
           lands on the leading edge in flow (and under RTL, on the trailing
           one), with tab order following what the eye sees. The overlay variant
           is absolutely positioned, so its DOM position here costs it nothing. */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+      <div
+        style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}
+      >
         <SideSheet
           open={activePanel !== null}
           onClose={() => setActivePanel(null)}
@@ -1243,40 +1285,40 @@ export function DesktopReader({
               : null),
           }}
         >
-        <ReaderProgressBar
-          theme={theme}
-          rtl={dir === "rtl"}
-          fraction={barFraction}
-          formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
-          formatLabel={(f) =>
-            tr("reader.chapterDash", {
-              n: formatNum(chapterAt(f) + 1, locale),
-              title: book.chapters[chapterAt(f)]?.title ?? "",
-            })
-          }
-          ticks={ticks}
-          prevLabel={tr("reader.prevChapter")}
-          nextLabel={tr("reader.nextChapter")}
-          onPrev={prevChapter}
-          onNext={nextChapter}
-          prevDisabled={currentChapter === 0}
-          nextDisabled={currentChapter >= chapterCount - 1}
-          // No `onScrub`: a chapter change is a load, and firing one per
-          // pointermove made the reader thrash through every chapter the finger
-          // crossed. The handle previews; release commits the one jump.
-          onSeek={(f) => {
-            const next = chapterAt(f);
-            if (next !== currentChapter) onChapterChange(next);
-          }}
-          ariaLabel={tr("reader.chapterProgress")}
-          valueMin={1}
-          valueMax={Math.max(1, chapterCount)}
-          valueNow={currentChapter + 1}
-          valueText={chapter.title}
-          reducedMotion={reduced}
-          labelWidth={200}
-          padding="6px 80px 14px"
-        />
+          <ReaderProgressBar
+            theme={theme}
+            rtl={dir === "rtl"}
+            fraction={barFraction}
+            formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
+            formatLabel={(f) =>
+              tr("reader.chapterDash", {
+                n: formatNum(chapterAt(f) + 1, locale),
+                title: book.chapters[chapterAt(f)]?.title ?? "",
+              })
+            }
+            ticks={ticks}
+            prevLabel={tr("reader.prevChapter")}
+            nextLabel={tr("reader.nextChapter")}
+            onPrev={prevChapter}
+            onNext={nextChapter}
+            prevDisabled={currentChapter === 0}
+            nextDisabled={currentChapter >= chapterCount - 1}
+            // No `onScrub`: a chapter change is a load, and firing one per
+            // pointermove made the reader thrash through every chapter the finger
+            // crossed. The handle previews; release commits the one jump.
+            onSeek={(f) => {
+              const next = chapterAt(f);
+              if (next !== currentChapter) onChapterChange(next);
+            }}
+            ariaLabel={tr("reader.chapterProgress")}
+            valueMin={1}
+            valueMax={Math.max(1, chapterCount)}
+            valueNow={currentChapter + 1}
+            valueText={chapter.title}
+            reducedMotion={reduced}
+            labelWidth={200}
+            padding="6px 80px 14px"
+          />
         </div>
       </div>
 

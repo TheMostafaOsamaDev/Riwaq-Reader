@@ -49,7 +49,9 @@ describe("settleDelta", () => {
     // Most of the way to the next: push on.
     expect(settleDelta(25, LINE)).toBeCloseTo(LINE - 25, 5);
     for (const top of [0, 5, 13.5, 14, 27, 100, 1234.56]) {
-      expect(Math.abs(settleDelta(top, LINE))).toBeLessThanOrEqual(LINE / 2 + 1e-9);
+      expect(Math.abs(settleDelta(top, LINE))).toBeLessThanOrEqual(
+        LINE / 2 + 1e-9,
+      );
     }
   });
 

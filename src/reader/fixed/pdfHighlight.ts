@@ -16,7 +16,8 @@ function pageWrapOf(node: Node | null): HTMLElement | null {
       ? (node as Element)
       : (node?.parentElement ?? null);
   while (el) {
-    if (el instanceof HTMLElement && el.hasAttribute("data-page-index")) return el;
+    if (el instanceof HTMLElement && el.hasAttribute("data-page-index"))
+      return el;
     el = el.parentElement;
   }
   return null;
@@ -82,13 +83,18 @@ export function mergeRects(rects: readonly NormRect[]): NormRect[] {
  *  there is no usable selection (collapsed, outside `root`, or spanning more
  *  than one page — multi-page is deferred, matching the DOCX single-block
  *  rule). */
-export function resolvePdfSelection(root: HTMLElement): PdfSelectionAnchor | null {
+export function resolvePdfSelection(
+  root: HTMLElement,
+): PdfSelectionAnchor | null {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
   const text = sel.toString();
   if (!text.trim()) return null;
   const range = sel.getRangeAt(0);
-  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+  if (
+    !root.contains(range.startContainer) ||
+    !root.contains(range.endContainer)
+  ) {
     return null;
   }
   const wrap = pageWrapOf(range.startContainer);

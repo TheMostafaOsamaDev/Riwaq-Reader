@@ -1,8 +1,4 @@
-
-
-import type {
-  Theme,
-} from "../../styles/tokens";
+import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 
 export interface VolumeChaptersSkeletonProps {
@@ -18,7 +14,10 @@ export interface VolumeChaptersSkeletonProps {
  *  Row count is capped at the volume's reported chapterCount when
  *  it's small (so we don't render 459 ghost rows for vol 10 of
  *  Shadow Slave) and clamped to a sane default otherwise. */
-export function VolumeChaptersSkeleton({ theme, rows }: VolumeChaptersSkeletonProps) {
+export function VolumeChaptersSkeleton({
+  theme,
+  rows,
+}: VolumeChaptersSkeletonProps) {
   return (
     <ul
       style={{
@@ -69,7 +68,11 @@ export interface VolumeErrorPanelProps {
   onRetry: () => void;
 }
 
-export function VolumeErrorPanel({ theme, message, onRetry }: VolumeErrorPanelProps) {
+export function VolumeErrorPanel({
+  theme,
+  message,
+  onRetry,
+}: VolumeErrorPanelProps) {
   const { tr } = useI18n();
   return (
     <div

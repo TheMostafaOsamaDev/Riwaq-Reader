@@ -81,7 +81,9 @@ function indexBooks(): string[] {
 
 describe("concurrent library-index mutations", () => {
   beforeEach(() => {
-    files = { [INDEX]: JSON.stringify({ version: 1, books: [entry("existing")] }) };
+    files = {
+      [INDEX]: JSON.stringify({ version: 1, books: [entry("existing")] }),
+    };
     dirs.clear();
   });
 
@@ -117,7 +119,8 @@ describe("concurrent library-index mutations", () => {
     ]);
 
     const books = JSON.parse(files[INDEX]).books;
-    expect(books.find((b: { id: string }) => b.id === "existing").status)
-      .toBe("finished");
+    expect(books.find((b: { id: string }) => b.id === "existing").status).toBe(
+      "finished",
+    );
   });
 });
