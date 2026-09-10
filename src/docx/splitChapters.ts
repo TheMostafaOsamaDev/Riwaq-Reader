@@ -54,7 +54,8 @@ export function splitHtmlIntoChapters(html: string): DocChapter[] {
   for (const node of Array.from(body.children)) {
     if (node.tagName === breakTag) {
       flush();
-      currentTitle = (node.textContent ?? "").trim() || `Chapter ${chapters.length + 1}`;
+      currentTitle =
+        (node.textContent ?? "").trim() || `Chapter ${chapters.length + 1}`;
       // Keep the heading at the top of the chapter so the reader sees a
       // proper title in-flow as well.
       buffer.push(node.outerHTML);
@@ -75,7 +76,9 @@ export function splitHtmlIntoChapters(html: string): DocChapter[] {
 }
 
 /** The highest-level heading actually present, or null if none. */
-function pickBreakLevel(body: HTMLElement): (typeof HEADING_TAGS)[number] | null {
+function pickBreakLevel(
+  body: HTMLElement,
+): (typeof HEADING_TAGS)[number] | null {
   for (const tag of HEADING_TAGS) {
     if (body.querySelector(tag.toLowerCase())) return tag;
   }
@@ -91,5 +94,5 @@ function firstParagraphText(body: HTMLElement): string | null {
 function truncateTitle(s: string): string {
   const collapsed = s.replace(/\s+/g, " ").trim();
   if (collapsed.length <= 80) return collapsed;
-  return collapsed.slice(0, 77) + "…";
+  return `${collapsed.slice(0, 77)}…`;
 }

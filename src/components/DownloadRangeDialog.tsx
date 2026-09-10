@@ -31,6 +31,8 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
+  Z,
+  Z_LOCAL,
 } from "../styles/tokens";
 import { transition } from "../styles/motion";
 import { useI18n } from "../i18n/useI18n";
@@ -101,7 +103,7 @@ export function DownloadRangeDialog({
     );
   }
   return (
-    <AnimatedDialog open={open} onScrimClick={onCancel} zIndex={9700}>
+    <AnimatedDialog open={open} onScrimClick={onCancel} zIndex={Z.menuDialog}>
       {content}
     </AnimatedDialog>
   );
@@ -346,7 +348,11 @@ function DownloadRangeContent({
   ) : (
     <>
       {preloading && (
-        <PreloadProgress theme={theme} done={preloadDone} total={preloadTotal} />
+        <PreloadProgress
+          theme={theme}
+          done={preloadDone}
+          total={preloadTotal}
+        />
       )}
       {error && (
         <div
@@ -370,9 +376,7 @@ function DownloadRangeContent({
         value={startId}
         onChange={setStartId}
         open={openField === "from"}
-        onToggle={() =>
-          setOpenField((f) => (f === "from" ? null : "from"))
-        }
+        onToggle={() => setOpenField((f) => (f === "from" ? null : "from"))}
         onClose={() => setOpenField(null)}
         disabled={preloading}
         direction={direction}
@@ -453,7 +457,9 @@ function DownloadRangeContent({
             >
               {tr("downloads.range.title")}
             </div>
-            <div style={{ fontSize: 12.5, color: theme.muted, lineHeight: 1.5 }}>
+            <div
+              style={{ fontSize: 12.5, color: theme.muted, lineHeight: 1.5 }}
+            >
               {tr("downloads.range.body")}
             </div>
           </div>
@@ -717,7 +723,9 @@ function ChapterRangeField({
             background: theme.bg,
           }}
         >
-          <div style={{ padding: 8, borderBottom: `0.5px solid ${theme.rule}` }}>
+          <div
+            style={{ padding: 8, borderBottom: `0.5px solid ${theme.rule}` }}
+          >
             <div
               style={{
                 display: "flex",
@@ -785,7 +793,7 @@ function ChapterRangeField({
                           background: theme.chrome,
                           position: "sticky",
                           top: 0,
-                          zIndex: 1,
+                          zIndex: Z_LOCAL.base,
                           direction,
                         }}
                       >
@@ -817,7 +825,8 @@ function ChapterRangeField({
                         direction,
                       }}
                       onMouseEnter={(e) => {
-                        if (!isSel) e.currentTarget.style.background = theme.hover;
+                        if (!isSel)
+                          e.currentTarget.style.background = theme.hover;
                       }}
                       onMouseLeave={(e) => {
                         if (!isSel)
@@ -898,7 +907,9 @@ function PreloadProgress({ theme, done, total }: PreloadProgressProps) {
         }}
       >
         <span>{tr("downloads.range.preloadLabel")}</span>
-        <span style={{ color: theme.muted, fontVariantNumeric: "tabular-nums" }}>
+        <span
+          style={{ color: theme.muted, fontVariantNumeric: "tabular-nums" }}
+        >
           {done} / {total}
         </span>
       </div>

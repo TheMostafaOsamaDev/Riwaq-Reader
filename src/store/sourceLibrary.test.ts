@@ -33,8 +33,9 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
     if (!files.has(p) && !dirs.has(p)) throw new Error(`ENOENT: ${p}`);
     dirs.delete(p);
     files.delete(p);
-    for (const k of [...files.keys()]) if (k.startsWith(p + "/")) files.delete(k);
-    for (const k of [...dirs]) if (k.startsWith(p + "/")) dirs.delete(k);
+    for (const k of [...files.keys()])
+      if (k.startsWith(`${p}/`)) files.delete(k);
+    for (const k of [...dirs]) if (k.startsWith(`${p}/`)) dirs.delete(k);
   },
   readDir: async () => [],
   rename: async () => {},

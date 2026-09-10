@@ -283,9 +283,10 @@ describe("re-importing a book the index already claims to hold", () => {
     // Partial loss counts as broken: PdfPageSource renders pages straight
     // out of books/<id>/book.pdf, so the entry cannot open without it even
     // though book.json is still there.
-    seed([entry({ id: "pdf-1", kind: "pdf", pageCount: 3 })], [
-      `${bookDir("pdf-1")}/book.json`,
-    ]);
+    seed(
+      [entry({ id: "pdf-1", kind: "pdf", pageCount: 3 })],
+      [`${bookDir("pdf-1")}/book.json`],
+    );
     staged = { size: 10, format: "pdf", hash: HASH };
 
     const result = await importPaths(["/picked/book.pdf"]);
@@ -340,10 +341,10 @@ describe("re-importing a book the index already claims to hold", () => {
   });
 
   it("reuses a DOCX whose content and descriptor are both on disk", async () => {
-    seed([entry({ id: "docx-1", kind: "docx" })], [
-      `${bookDir("docx-1")}/book.json`,
-      `${bookDir("docx-1")}/content.html`,
-    ]);
+    seed(
+      [entry({ id: "docx-1", kind: "docx" })],
+      [`${bookDir("docx-1")}/book.json`, `${bookDir("docx-1")}/content.html`],
+    );
     staged = { size: 10, format: "docx", hash: HASH };
 
     const result = await importPaths(["/picked/book.docx"]);

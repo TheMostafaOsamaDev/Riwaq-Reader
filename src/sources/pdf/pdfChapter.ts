@@ -66,19 +66,42 @@ interface TextItemLike {
 //   • Any *unseen* PUA is left as-is and logged — it might be an unmapped
 //     letter, so we surface it rather than silently dropping it.
 const PUA_LETTER: Record<number, string> = {
-  0xe915: "ي", 0xe940: "ك", 0xe913: "ى", 0xe916: "ئ",
-  0xe806: "ل", 0xe807: "ل", 0xe830: "ل", 0xe8d4: "ل",
-  0xe80a: "ا", 0xe80e: "ا",
+  0xe915: "ي",
+  0xe940: "ك",
+  0xe913: "ى",
+  0xe916: "ئ",
+  0xe806: "ل",
+  0xe807: "ل",
+  0xe830: "ل",
+  0xe8d4: "ل",
+  0xe80a: "ا",
+  0xe80e: "ا",
 };
 const PUA_DROP = new Set<number>([
-  0xe823, 0xe86b, 0xe835, 0xe847, 0xe7e0, 0xe864, 0xe8e6, // tanwin
-  0xe826, 0xe824, 0xe7e3, // damma
-  0xe827, 0xe8ea, 0xe7e4, 0xe8f4, // shadda
-  0xe825, 0xe8e8, 0xe863, 0xe7ee, 0xe815, // fatha / other marks
+  0xe823,
+  0xe86b,
+  0xe835,
+  0xe847,
+  0xe7e0,
+  0xe864,
+  0xe8e6, // tanwin
+  0xe826,
+  0xe824,
+  0xe7e3, // damma
+  0xe827,
+  0xe8ea,
+  0xe7e4,
+  0xe8f4, // shadda
+  0xe825,
+  0xe8e8,
+  0xe863,
+  0xe7ee,
+  0xe815, // fatha / other marks
   0xe828, // kasra
   0xe8df, // sukun
   0xe8de, // kasratan
-  0xe816, 0xe813, // hamza decoration over an alef that is its own char
+  0xe816,
+  0xe813, // hamza decoration over an alef that is its own char
   0xe888, // stray standalone mark
 ]);
 
@@ -89,7 +112,10 @@ function foldArabicPua(s: string, onUnknown?: (cp: number) => void): string {
   let hasPua = false;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c >= 0xe000 && c <= 0xf8ff) { hasPua = true; break; }
+    if (c >= 0xe000 && c <= 0xf8ff) {
+      hasPua = true;
+      break;
+    }
   }
   if (!hasPua) return s;
   let out = "";
@@ -99,7 +125,10 @@ function foldArabicPua(s: string, onUnknown?: (cp: number) => void): string {
       const letter = PUA_LETTER[cp];
       if (letter !== undefined) out += letter;
       else if (PUA_DROP.has(cp)) continue;
-      else { out += ch; onUnknown?.(cp); }
+      else {
+        out += ch;
+        onUnknown?.(cp);
+      }
     } else {
       out += ch;
     }
@@ -110,13 +139,23 @@ function foldArabicPua(s: string, onUnknown?: (cp: number) => void): string {
 /** Fold the font's PUA glyph forms (see foldArabicPua) and Arabic presentation
  *  forms (ﻟﺤﻴﺎة, via NFKC) back to base letters and collapse whitespace. Empty
  *  string when nothing remains. */
-function normalizeArabic(s: string, onUnknownPua?: (cp: number) => void): string {
-  return foldArabicPua(s, onUnknownPua).normalize("NFKC").replace(/\s+/g, " ").trim();
+function normalizeArabic(
+  s: string,
+  onUnknownPua?: (cp: number) => void,
+): string {
+  return foldArabicPua(s, onUnknownPua)
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** True for the page-1 header lines we don't want in the body: the printed
  *  chapter URL, and the title line (which the EPUB re-renders as <h1>). */
-function isBoilerplate(text: string, chapterUrl: string, novelTitle?: string): boolean {
+function isBoilerplate(
+  text: string,
+  chapterUrl: string,
+  novelTitle?: string,
+): boolean {
   if (text.includes("kolnovel.com/")) return true; // the printed URL line
   const bare = chapterUrl.replace(/^https?:\/\//, "");
   if (bare && text.includes(bare)) return true;
@@ -184,14 +223,25 @@ function getImageObj(page: any, name: string): Promise<any | null> {
   return new Promise((resolve) => {
     let done = false;
     const t = setTimeout(() => {
-      if (!done) { done = true; resolve(null); }
+      if (!done) {
+        done = true;
+        resolve(null);
+      }
     }, 5000);
     try {
       pool.get(name, (obj: any) => {
-        if (!done) { done = true; clearTimeout(t); resolve(obj); }
+        if (!done) {
+          done = true;
+          clearTimeout(t);
+          resolve(obj);
+        }
       });
     } catch {
-      if (!done) { done = true; clearTimeout(t); resolve(null); }
+      if (!done) {
+        done = true;
+        clearTimeout(t);
+        resolve(null);
+      }
     }
   });
 }
@@ -220,13 +270,16 @@ async function imageObjToBytes(img: any): Promise<ExtractedImage | null> {
       rgba.set(d.subarray(0, rgba.length));
     } else if (img.kind === 2) {
       for (let i = 0, k = 0; i < d.length; i += 3, k += 4) {
-        rgba[k] = d[i]; rgba[k + 1] = d[i + 1]; rgba[k + 2] = d[i + 2]; rgba[k + 3] = 255;
+        rgba[k] = d[i];
+        rgba[k + 1] = d[i + 1];
+        rgba[k + 2] = d[i + 2];
+        rgba[k + 3] = 255;
       }
     } else {
       // GRAYSCALE_1BPP: each byte holds 8 pixels, MSB first.
       for (let i = 0, k = 0; i < d.length && k < rgba.length; i++) {
         for (let b = 7; b >= 0 && k < rgba.length; b--, k += 4) {
-          const v = ((d[i] >> b) & 1) ? 255 : 0;
+          const v = (d[i] >> b) & 1 ? 255 : 0;
           rgba[k] = rgba[k + 1] = rgba[k + 2] = v;
           rgba[k + 3] = 255;
         }
@@ -267,7 +320,10 @@ export async function extractPdfLines(
       const seenNames = new Set<string>();
       for (let i = 0; i < opList.fnArray.length; i++) {
         const fn = opList.fnArray[i];
-        if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject) {
+        if (
+          fn === OPS.paintImageXObject ||
+          fn === OPS.paintInlineImageXObject
+        ) {
           // paintInlineImageXObject carries imgData (not a name string) in
           // args[0]; the typeof guard filters those out — inline images are
           // not extracted (rare in these chapter PDFs).
@@ -281,7 +337,9 @@ export async function extractPdfLines(
 
       // Text.
       const tc = await page.getTextContent();
-      for (const para of reconstructParagraphs(tc.items as unknown as TextItemLike[])) {
+      for (const para of reconstructParagraphs(
+        tc.items as unknown as TextItemLike[],
+      )) {
         const norm = normalizeArabic(para, (cp) => unknownPua.add(cp));
         if (!norm) continue;
         if (isBoilerplate(norm, opts.chapterUrl, opts.novelTitle)) continue;
@@ -295,12 +353,19 @@ export async function extractPdfLines(
         for (const name of imageNames) {
           try {
             const img = await getImageObj(page, name);
-            if (!img || (img.width | 0) < MIN_IMAGE_DIM || (img.height | 0) < MIN_IMAGE_DIM) {
+            if (
+              !img ||
+              (img.width | 0) < MIN_IMAGE_DIM ||
+              (img.height | 0) < MIN_IMAGE_DIM
+            ) {
               continue;
             }
             const extracted = await imageObjToBytes(img);
             if (!extracted) continue;
-            lines.push({ type: "image", content: opts.mintImageRef(extracted) });
+            lines.push({
+              type: "image",
+              content: opts.mintImageRef(extracted),
+            });
           } catch (e) {
             opts.log?.(`image ${name} (page ${p}) failed: ${String(e)}`);
           }
@@ -319,7 +384,7 @@ export async function extractPdfLines(
       `unmapped PUA glyphs left as-is (extend PUA tables in pdfChapter.ts): ${[
         ...unknownPua,
       ]
-        .map((c) => "U+" + c.toString(16).toUpperCase())
+        .map((c) => `U+${c.toString(16).toUpperCase()}`)
         .join(" ")}`,
     );
   }

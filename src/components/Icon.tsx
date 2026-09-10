@@ -39,7 +39,8 @@ export const ICONS = {
   chevronsD: "M7 7l5 5 5-5M7 13l5 5 5-5",
   chevronsU: "M7 11l5-5 5 5M7 17l5-5 5 5",
   /** Focus mode — corners pulling outward, the usual "fill the frame" mark. */
-  focus: "M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M3 16v3a2 2 0 002 2h3",
+  focus:
+    "M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M3 16v3a2 2 0 002 2h3",
   /** Crosshair — "take me to where I am". */
   locate: "M2 12h3M19 12h3M12 2v3M12 19v3M12 19a7 7 0 100-14 7 7 0 000 14z",
   type: "M4 7V5h16v2M9 20h6M12 5v15",
@@ -53,7 +54,8 @@ export const ICONS = {
   download: "M12 3v12M7 10l5 5 5-5M4 21h16",
   moon: "M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z",
   sun: "M12 3v2M12 19v2M5.64 5.64l1.42 1.42M16.95 16.95l1.41 1.41M3 12h2M19 12h2M5.64 18.36l1.42-1.42M16.95 7.05l1.41-1.41M12 7a5 5 0 100 10 5 5 0 000-10z",
-  folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z",
+  folder:
+    "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z",
   image:
     "M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM21 15l-5-5L5 21",
   pencil: "M4 20l4-1 11-11-3-3L5 16l-1 4z",
@@ -75,7 +77,8 @@ export const ICONS = {
   ],
   // Failed download. Distinct from `info`, which stays the neutral notice.
   xCirc: ["M12 22a10 10 0 100-20 10 10 0 000 20z", "M9 9l6 6M15 9l-6 6"],
-  trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6",
+  trash:
+    "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6",
   more: "M12 5h.01M12 12h.01M12 19h.01",
   bookmark: "M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z",
   globe:

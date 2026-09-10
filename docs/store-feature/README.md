@@ -14,7 +14,8 @@ src/
 │   ├── SourcesListView.tsx        # one card per installed source
 │   ├── SourceHomeView.tsx         # one source's homepage + search (type, Enter, results grid)
 │   ├── searchPaging.ts            # search-result pagination: merge/dedupe cards, pick which body to show
-│   ├── NovelDetailView.tsx        # one novel — header, action row, chapter search, volumes accordion
+│   ├── novel/                     # one novel — NovelHero, NovelAbout, ChapterSearch,
+│   │                              #   VolumesAccordion, ChapterRow
 │   ├── SourceStreamReader.tsx     # streaming inline reader (no import needed)
 │   ├── NovelCard.tsx              # cover-art card with thumbnail/full fallback
 │   └── DownloadRangeDialog.tsx    # "download chapters X to Y" picker

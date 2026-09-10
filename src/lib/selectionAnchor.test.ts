@@ -76,14 +76,18 @@ describe("rectForMark", () => {
   });
 
   it("finds the mark a highlight rendered", () => {
-    mountBody(`<p data-p-index="0">The <mark data-h-id="h1">quick</mark> fox</p>`);
+    mountBody(
+      `<p data-p-index="0">The <mark data-h-id="h1">quick</mark> fox</p>`,
+    );
     expect(rectForMark("h1")).not.toBeNull();
   });
 
   it("reports gone when the highlight is no longer rendered", () => {
     // The action popover fades out on null rather than pointing at a
     // mark that was deleted or whose chapter turned.
-    mountBody(`<p data-p-index="0">The <mark data-h-id="h1">quick</mark> fox</p>`);
+    mountBody(
+      `<p data-p-index="0">The <mark data-h-id="h1">quick</mark> fox</p>`,
+    );
     expect(rectForMark("h2")).toBeNull();
   });
 

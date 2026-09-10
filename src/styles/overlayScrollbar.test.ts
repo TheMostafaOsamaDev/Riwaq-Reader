@@ -94,7 +94,12 @@ describe("thumbGeometry", () => {
     // A short, heavily padded box: a stub of a bar is worse than one that
     // overlaps the padding a little, so fall back to the whole box.
     const g = thumbGeometry(
-      metrics({ height: 120, clientHeight: 120, paddingTop: 55, paddingBottom: 55 }),
+      metrics({
+        height: 120,
+        clientHeight: 120,
+        paddingTop: 55,
+        paddingBottom: 55,
+      }),
     );
     expect(g?.top).toBe(50 + BAR.pad);
     expect(g?.track).toBe(120 - BAR.pad * 2);

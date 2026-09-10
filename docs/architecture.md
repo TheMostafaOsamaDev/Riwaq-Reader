@@ -47,47 +47,46 @@ This document covers the project layout, module boundaries, and data flow.
 ## Layout
 
 ```
-Riwaq-ebook-reader/
-├── index.html                      # Vite entry, loads Google Fonts
-├── package.json                    # pnpm-managed; scripts: dev/build/tauri
+riwaq/
+├── index.html                      # Vite entry. Deliberately loads no remote
+│                                   #   font stylesheet — see the comment there
+├── package.json                    # pnpm; dev/build/test/check/tauri scripts
+├── biome.json                      # formatter + linter, and why each rule is off
 ├── vite.config.ts
 ├── tsconfig.json                   # strict TS
 ├── src/
 │   ├── main.tsx                    # React root
 │   ├── App.tsx                     # book load/unload + screen + shell switch
-│   ├── epub/
-│   │   ├── parser.ts               # parseEpub(bytes) → EpubBook
-│   │   └── types.ts                # EpubBook, EpubChapter
-│   ├── store/
-│   │   ├── library.ts              # $APPDATA library: import/list/load/delete/progress/bookmarks
-│   │   └── palette.ts              # deterministic OKLCH palette from book id
+│   ├── epub/                       # parseEpub(bytes) → EpubBook, via jszip
+│   ├── docx/                       # .docx → chapters, and EPUB assembly
+│   ├── pdf/                        # pdf.js wiring
+│   ├── i18n/                       # en.ts + ar.ts (ar is typed against en)
+│   ├── sources/                    # web-novel Store: host, registry,
+│   │   └── extensions/             #   and one module per site
+│   ├── store/                      # all persisted state as JSON in $APPDATA:
+│   │                               #   library, shelves, download queue,
+│   │                               #   snapshots, navigation, updates
 │   ├── styles/
 │   │   ├── global.css              # reset, scrollbar, range input styling
-│   │   └── tokens.ts               # THEMES, HIGHLIGHT_COLORS, FONT_STACKS, hlBg
+│   │   └── tokens.ts               # THEMES, HIGHLIGHT_COLORS, FONT_STACKS,
+│   │                               #   and Z / Z_LOCAL — every z-index
 │   ├── types/reader.ts             # ActivePanel, Tweaks
-│   ├── hooks/
-│   │   ├── useTweaks.ts            # persisted reader preferences
-│   │   └── useMediaQuery.ts        # responsive breakpoint helper
+│   ├── hooks/                      # tweaks, media query, long-press, drop,
+│   │                               #   launch intent, wake lock, update check
+│   ├── reader/
+│   │   ├── chrome/                 # floating bars, focus mode, progress
+│   │   ├── scroll/                 # reflow reader geometry
+│   │   └── fixed/                  # fixed-layout reader (PDF + DOCX pages)
 │   ├── components/
-│   │   ├── Icon.tsx                # stroke-based icon set
-│   │   ├── BookBody.tsx            # chapter renderer (paragraphs)
-│   │   ├── BookCover.tsx           # palette-driven cover spine
-│   │   ├── Library.tsx             # hero + grid + import + empty state
-│   │   ├── DesktopReader.tsx       # topbar + side panels, keyboard nav
-│   │   ├── MobileReader.tsx        # tap-to-toggle chrome + bottom sheets
-│   │   └── MobileSheet.tsx         # reusable bottom-sheet overlay
-│   └── panels/
-│       ├── PanelShell.tsx          # shared panel sidebar frame
-│       ├── TOCPanel.tsx            # table of contents (real chapters)
-│       ├── BookmarksPanel.tsx      # bookmark list + empty state
-│       ├── HighlightsPanel.tsx     # highlights + empty state
-│       ├── SettingsPanel.tsx       # theme / font / spacing / RTL
-│       └── ProgressOverlay.tsx     # chapter-aware progress card
+│   │   ├── library/                # the library shell and everything in it
+│   │   ├── novel/                  # one novel's detail page in the Store
+│   │   └── …                       # readers, dialogs, sheets, shared chrome
+│   └── panels/                     # TOC, highlights, settings, progress
 ├── src-tauri/
-│   ├── Cargo.toml                  # opener + dialog + fs plugins
+│   ├── Cargo.toml                  # opener + dialog + fs + updater plugins
 │   ├── tauri.conf.json             # window size, identifier, bundle targets
 │   ├── capabilities/default.json   # dialog:default + fs scopes for $APPDATA
-│   └── src/lib.rs                  # Builder registers opener + dialog + fs
+│   └── src/lib.rs                  # Builder registers the plugins
 └── docs/                           # this folder
 ```
 
@@ -95,7 +94,7 @@ Riwaq-ebook-reader/
 
 - **Pure-JS EPUB parser, not epub.js.** `src/epub/parser.ts` uses `jszip` to unzip the book and the standard `DOMParser` to parse OPF / nav / NCX / XHTML. This keeps the reader layer independent of epub.js's iframe-based rendering — we emit paragraph-level text that `BookBody.tsx` renders itself, which means typography, RTL, and highlights are all native React.
 - **Tauri owns the filesystem, the webview owns everything else.** Rust only needs to host the webview, surface the system file picker, and serve `$APPDATA/riwaq/**` over `asset://`. No custom Rust commands needed.
-- **State**: no Redux, no zustand. Local `useState` (in `App.tsx`, `Library.tsx`, and the reader components), persisted via `store/library.ts` whenever the user causes a durable change (import, delete, progress tick, bookmark).
+- **State**: no Redux, no zustand. Local `useState` (in `App.tsx`, `components/library/Library.tsx`, and the reader components), persisted via `store/library.ts` whenever the user causes a durable change (import, delete, progress tick, bookmark).
 - **Routing**: a single `view` state in `App.tsx` (`"library" | "reader"`). Mobile-friendly and avoids a router dep.
 
 ## Screens & state
@@ -224,7 +223,7 @@ the Amiri font stack when `tweaks.rtl` is on. The library stays LTR.
 
 ## Mobile-specific notes
 
-- Tauri v2 mobile uses the same bundle — no separate code path beyond the responsive layout split inside `Library.tsx` / the reader components.
+- Tauri v2 mobile uses the same bundle — no separate code path beyond the responsive layout split inside `components/library/` (`DesktopLibrary` / `MobileLibrary`) and the reader components.
 - `plugin-dialog.open` works on Android via the system document picker (`ACTION_OPEN_DOCUMENT`), which grants scoped read on the picked file. That's why we never ask for `READ_EXTERNAL_STORAGE`.
 - `plugin-fs` under Android writes to app-private storage — the same `AppData` dir pattern resolves to the app's internal files dir, inaccessible to other apps, which is what we want for a private reading library.
 

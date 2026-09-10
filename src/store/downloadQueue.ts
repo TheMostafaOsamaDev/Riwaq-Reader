@@ -173,7 +173,11 @@ function isTerminalStatus(s: DownloadJobStatus): boolean {
 /** Adjust the lifetime counters for one job's terminal outcome by `delta`
  *  (+1 on entering a terminal state, -1 on leaving it). Conversions lump
  *  error/cancelled into cvFailed. */
-function bumpResolved(job: DownloadJob, status: DownloadJobStatus, delta: number) {
+function bumpResolved(
+  job: DownloadJob,
+  status: DownloadJobStatus,
+  delta: number,
+) {
   if (job.kind === "chapter") {
     if (status === "done") resolvedCounters.chDone += delta;
     else if (status === "error") resolvedCounters.chFailed += delta;
@@ -404,9 +408,7 @@ export interface EnqueueConversionDescriptor {
  *  may land many library entries from a single job). Duplicate of
  *  same (entryId, mode) is rejected while another is running so the
  *  user can't accidentally fire two conversions at once. */
-export function enqueueConversion(
-  desc: EnqueueConversionDescriptor,
-): string {
+export function enqueueConversion(desc: EnqueueConversionDescriptor): string {
   const dup = state.jobs.find(
     (j) =>
       j.kind === "conversion" &&
@@ -646,25 +648,21 @@ async function runJob(job: DownloadJob): Promise<void> {
 }
 
 async function runChapterJob(job: ChapterDownloadJob): Promise<void> {
-  await downloadChapter(
-    job.libraryEntryId,
-    job.chapterId,
-    (p) => {
-      // Cooperatively poll for cancellation between phases. If the
-      // user cancelled, abandon — the persisted side effects
-      // already-written stay on disk (writes are mid-step), but
-      // the snapshot's downloadedAt only flips after success, so
-      // a cancelled chapter is consistently "not downloaded".
-      if (cancelled.has(job.id)) {
-        throw new CancelledError();
-      }
-      if (typeof p === "number") {
-        job.progress = p;
-        job.updatedAt = Date.now();
-        emit();
-      }
-    },
-  );
+  await downloadChapter(job.libraryEntryId, job.chapterId, (p) => {
+    // Cooperatively poll for cancellation between phases. If the
+    // user cancelled, abandon — the persisted side effects
+    // already-written stay on disk (writes are mid-step), but
+    // the snapshot's downloadedAt only flips after success, so
+    // a cancelled chapter is consistently "not downloaded".
+    if (cancelled.has(job.id)) {
+      throw new CancelledError();
+    }
+    if (typeof p === "number") {
+      job.progress = p;
+      job.updatedAt = Date.now();
+      emit();
+    }
+  });
 }
 
 async function runConversionJob(job: ConversionJob): Promise<void> {

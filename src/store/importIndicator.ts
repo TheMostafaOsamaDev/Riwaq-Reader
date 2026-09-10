@@ -11,7 +11,11 @@
 // store emits ~50 times per import, and Library is a big tree with a cover
 // grid in it, so subscribing in the leaf component is much cheaper.
 
-import { isImportActive, useImportProgress, type ProgressState } from "./importProgress";
+import {
+  isImportActive,
+  useImportProgress,
+  type ProgressState,
+} from "./importProgress";
 
 export interface ImportIndicator {
   /** Render a spinner instead of the "+" glyph. */

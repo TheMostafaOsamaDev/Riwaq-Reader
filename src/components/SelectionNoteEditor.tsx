@@ -1,10 +1,6 @@
 import { Icon } from "./Icon";
 import { HighlightColorRail } from "./HighlightColorRail";
-import {
-  FONT_STACKS,
-  type HighlightColor,
-  type Theme,
-} from "../styles/tokens";
+import { FONT_STACKS, type HighlightColor, type Theme } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 /**
@@ -105,7 +101,7 @@ export function SelectionNoteEditor({
           border: "none",
           outline: "none",
           padding: 0,
-            fontSize: 13,
+          fontSize: 13,
           lineHeight: 1.6,
           fontFamily: FONT_STACKS.sans,
           resize: "none",

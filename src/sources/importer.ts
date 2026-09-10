@@ -118,9 +118,7 @@ export async function importFromSource(
         (c) => c.sourceChapter.id >= start && c.sourceChapter.id <= end,
       );
       if (chapters.length === 0) {
-        throw new Error(
-          `No chapters in range ${start}–${end} for this novel.`,
-        );
+        throw new Error(`No chapters in range ${start}–${end} for this novel.`);
       }
     }
     if (chapters.length === 0) {
@@ -293,10 +291,7 @@ async function fetchAllChapters(
             ];
           } finally {
             done++;
-            setStepLabel(
-              "chapters",
-              `Fetching chapter ${done} / ${total}`,
-            );
+            setStepLabel("chapters", `Fetching chapter ${done} / ${total}`);
           }
         }
       })(),
@@ -415,9 +410,7 @@ function buildChapterHtml(
         )}</h2>\n  `
       : "";
 
-  const title = fc.multiVolume
-    ? `V${fc.volumeId} · ${ch.title}`
-    : ch.title;
+  const title = fc.multiVolume ? `V${fc.volumeId} · ${ch.title}` : ch.title;
 
   const html = `${volumeHeader}<h1${dirAttr}>${escapeHtml(title)}</h1>\n  ${lineHtml}`;
 

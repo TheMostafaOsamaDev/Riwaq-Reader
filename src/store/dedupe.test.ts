@@ -6,15 +6,19 @@ describe("findByHash", () => {
 
   it("finds the book carrying the hash", () => {
     const id = findByHash(
-      [{ id: "one", sourceHash: "b".repeat(64) }, { id: "two", sourceHash: HASH }],
+      [
+        { id: "one", sourceHash: "b".repeat(64) },
+        { id: "two", sourceHash: HASH },
+      ],
       HASH,
     );
     expect(id).toBe("two");
   });
 
   it("returns null when nothing matches", () => {
-    expect(findByHash([{ id: "one", sourceHash: "b".repeat(64) }], HASH))
-      .toBeNull();
+    expect(
+      findByHash([{ id: "one", sourceHash: "b".repeat(64) }], HASH),
+    ).toBeNull();
   });
 
   it("skips entries that predate hashing", () => {
@@ -33,7 +37,10 @@ describe("findByHash", () => {
 
   it("returns the first match when a duplicate slipped in earlier", () => {
     const id = findByHash(
-      [{ id: "first", sourceHash: HASH }, { id: "second", sourceHash: HASH }],
+      [
+        { id: "first", sourceHash: HASH },
+        { id: "second", sourceHash: HASH },
+      ],
       HASH,
     );
     expect(id).toBe("first");

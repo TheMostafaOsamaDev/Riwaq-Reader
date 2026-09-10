@@ -3,7 +3,9 @@ import { evaluateUpdate, fetchManifestVersion } from "./updates";
 
 const ok = (body: unknown) =>
   (async () =>
-    new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
+    new Response(JSON.stringify(body), {
+      status: 200,
+    })) as unknown as typeof fetch;
 
 describe("fetchManifestVersion", () => {
   it("reads the version and notes from a well-formed manifest", async () => {
@@ -22,7 +24,9 @@ describe("fetchManifestVersion", () => {
   it("returns null when the body is not JSON", async () => {
     // A captive portal or a GitHub error page serves HTML with a 200.
     const html = (async () =>
-      new Response("<!DOCTYPE html>", { status: 200 })) as unknown as typeof fetch;
+      new Response("<!DOCTYPE html>", {
+        status: 200,
+      })) as unknown as typeof fetch;
     expect(await fetchManifestVersion(html)).toBeNull();
   });
 

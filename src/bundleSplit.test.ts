@@ -22,7 +22,7 @@ interface BuiltChunk {
 /** Modules that must stay OFF the startup path, and why. */
 const DEFERRED = [
   "src/components/Store.tsx",
-  "src/components/NovelDetailView.tsx",
+  "src/components/novel/NovelDetailView.tsx",
   "src/components/SourceStreamReader.tsx",
   "src/reader/fixed/FixedPageReader.tsx",
 ];

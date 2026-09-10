@@ -16,7 +16,12 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { pushIncoming } from "../store/incomingFiles";
-import { setAccept, setIdle, setRefuse, showReceived } from "../store/dropOverlay";
+import {
+  setAccept,
+  setIdle,
+  setRefuse,
+  showReceived,
+} from "../store/dropOverlay";
 
 interface DropClassification {
   /** Books the drop resolved to, folder contents already expanded. */

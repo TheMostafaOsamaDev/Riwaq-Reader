@@ -81,7 +81,11 @@ export function SettingsPanel(props: Props) {
         value={t.uiLang}
         onChange={(v: UiLangPref) => setTweak("uiLang", v)}
       />
-      <ThemeField theme={theme} pref={t.theme} onChange={(p) => setTweak("theme", p)} />
+      <ThemeField
+        theme={theme}
+        pref={t.theme}
+        onChange={(p) => setTweak("theme", p)}
+      />
       {props.variant === "fixed" ? (
         <FixedPageControls
           theme={theme}
@@ -107,7 +111,12 @@ export function SettingsPanel(props: Props) {
           hint={tr("settings.openFull.hint")}
           onClick={onOpenFullSettings}
           trailing={
-            <Icon name="chevronR" size={16} className="rtl-flip-x" style={{ opacity: 0.5 }} />
+            <Icon
+              name="chevronR"
+              size={16}
+              className="rtl-flip-x"
+              style={{ opacity: 0.5 }}
+            />
           }
         />
       )}

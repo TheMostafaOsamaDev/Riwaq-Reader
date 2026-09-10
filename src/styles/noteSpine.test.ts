@@ -13,8 +13,7 @@ function lum(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-const rect = (top: number, height: number) =>
-  new DOMRect(0, top, 100, height);
+const rect = (top: number, height: number) => new DOMRect(0, top, 100, height);
 
 describe("noteSpineBox", () => {
   const block = rect(100, 400);
@@ -50,7 +49,10 @@ describe("noteSpineBox", () => {
     // Client rects are in line order; a wide middle line must not
     // stretch the bar beyond the run.
     const a = noteSpineBox([rect(140, 20), rect(160, 20)], block);
-    const b = noteSpineBox([rect(140, 20), rect(150, 90), rect(160, 20)], block);
+    const b = noteSpineBox(
+      [rect(140, 20), rect(150, 90), rect(160, 20)],
+      block,
+    );
     expect(a).toEqual(b);
   });
 });

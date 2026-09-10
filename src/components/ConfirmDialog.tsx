@@ -61,48 +61,48 @@ export function ConfirmDialog({
         fontFamily: FONT_STACKS.sans,
       }}
     >
-        <div style={{ padding: "20px 22px 16px" }}>
-          <div
-            id="confirm-dialog-title"
-            style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontSize: 20,
-              color: theme.ink,
-              marginBottom: 8,
-            }}
-          >
-            {title}
-          </div>
-          <div style={{ fontSize: 13.5, color: theme.muted, lineHeight: 1.5 }}>
-            {message}
-          </div>
-        </div>
+      <div style={{ padding: "20px 22px 16px" }}>
         <div
+          id="confirm-dialog-title"
           style={{
-            padding: "12px 22px 16px",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
+            fontFamily: FONT_SERIF_DISPLAY,
+            fontSize: 20,
+            color: theme.ink,
+            marginBottom: 8,
           }}
         >
-          <Button
-            ref={cancelRef}
-            theme={theme}
-            variant="outline"
-            size="sm"
-            onClick={onCancel}
-          >
-            {resolvedCancelLabel}
-          </Button>
-          <Button
-            theme={theme}
-            variant={confirmVariant}
-            size="sm"
-            onClick={onConfirm}
-          >
-            {resolvedConfirmLabel}
-          </Button>
+          {title}
+        </div>
+        <div style={{ fontSize: 13.5, color: theme.muted, lineHeight: 1.5 }}>
+          {message}
         </div>
       </div>
+      <div
+        style={{
+          padding: "12px 22px 16px",
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+        }}
+      >
+        <Button
+          ref={cancelRef}
+          theme={theme}
+          variant="outline"
+          size="sm"
+          onClick={onCancel}
+        >
+          {resolvedCancelLabel}
+        </Button>
+        <Button
+          theme={theme}
+          variant={confirmVariant}
+          size="sm"
+          onClick={onConfirm}
+        >
+          {resolvedConfirmLabel}
+        </Button>
+      </div>
+    </div>
   );
 }

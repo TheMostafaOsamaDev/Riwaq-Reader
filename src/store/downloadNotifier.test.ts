@@ -33,7 +33,13 @@ interface FakeJob {
 }
 
 let jobs: FakeJob[] = [];
-let counters = { chDone: 0, chFailed: 0, chCancelled: 0, cvDone: 0, cvFailed: 0 };
+let counters = {
+  chDone: 0,
+  chFailed: 0,
+  chCancelled: 0,
+  cvDone: 0,
+  cvFailed: 0,
+};
 let listener: ((s: { jobs: FakeJob[] }) => void) | null = null;
 
 vi.mock("./downloadQueue", () => ({
@@ -48,14 +54,23 @@ vi.mock("./downloadQueue", () => ({
 }));
 vi.mock("./importProgress", () => ({
   subscribe: () => () => {},
-  getState: () => ({ overall: 0, finishedAt: null, resultBookId: null, error: null }),
+  getState: () => ({
+    overall: 0,
+    finishedAt: null,
+    resultBookId: null,
+    error: null,
+  }),
   isImportActive: () => false,
 }));
 
 import { startDownloadNotifier } from "./downloadNotifier";
 import { getDownloadProgress } from "./downloadProgress";
 
-function chapter(n: number, status: FakeJob["status"], progress: number): FakeJob {
+function chapter(
+  n: number,
+  status: FakeJob["status"],
+  progress: number,
+): FakeJob {
   return {
     id: `j${n}`,
     kind: "chapter",
@@ -75,7 +90,8 @@ function emit(done: number, running: number[], total: number) {
   jobs = [];
   for (let i = 0; i < done; i++) jobs.push(chapter(i, "done", 1));
   running.forEach((p, i) => jobs.push(chapter(done + i, "running", p)));
-  for (let i = done + running.length; i < total; i++) jobs.push(chapter(i, "queued", 0));
+  for (let i = done + running.length; i < total; i++)
+    jobs.push(chapter(i, "queued", 0));
   counters = { ...counters, chDone: done };
   listener?.({ jobs });
 }
@@ -106,7 +122,12 @@ describe("downloads burst progress", () => {
 
   it("never falls back when a chapter lands and the next starts over", () => {
     const seen: number[] = [];
-    for (const [done, partial] of [[3, 0.95], [4, 0.02], [4, 0.35], [5, 0.05]] as const) {
+    for (const [done, partial] of [
+      [3, 0.95],
+      [4, 0.02],
+      [4, 0.35],
+      [5, 0.05],
+    ] as const) {
       emit(done, [partial], 10);
       seen.push(getDownloadProgress().pct);
     }
@@ -129,8 +150,19 @@ describe("downloads burst progress", () => {
     emit(0, [0.5], 4);
     expect(getDownloadProgress().pct).toBeGreaterThan(0);
     jobs = [];
-    counters = { chDone: 0, chFailed: 0, chCancelled: 0, cvDone: 0, cvFailed: 0 };
+    counters = {
+      chDone: 0,
+      chFailed: 0,
+      chCancelled: 0,
+      cvDone: 0,
+      cvFailed: 0,
+    };
     listener?.({ jobs });
-    expect(getDownloadProgress()).toEqual({ active: 0, resolved: 0, total: 0, pct: 0 });
+    expect(getDownloadProgress()).toEqual({
+      active: 0,
+      resolved: 0,
+      total: 0,
+      pct: 0,
+    });
   });
 });

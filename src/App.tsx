@@ -17,7 +17,7 @@ import { useDropOverlayState } from "./store/dropOverlay";
 import { DesktopReader } from "./components/DesktopReader";
 import { DropOverlay } from "./components/DropOverlay";
 import { ImportProgress } from "./components/ImportProgress";
-import { Library } from "./components/Library";
+import { Library } from "./components/library/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { LazyViewFallback } from "./components/LazyViewFallback";
@@ -64,7 +64,11 @@ import {
   type Highlight,
   type PdfHighlightAnchor,
 } from "./store/library";
-import { MOTION, setReduceMotionOverride, useReducedMotion } from "./styles/motion";
+import {
+  MOTION,
+  setReduceMotionOverride,
+  useReducedMotion,
+} from "./styles/motion";
 import { installOverlayScrollbar } from "./styles/overlayScrollbar";
 import type { HighlightColor } from "./styles/tokens";
 import {
@@ -74,6 +78,7 @@ import {
   THEMES,
   UI_FONT_ADJUST,
   UI_FONT_STACKS,
+  Z,
   resolveTheme,
 } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
@@ -474,41 +479,37 @@ function App() {
   // effect above clears the loaded book once the base leaves the reader.
   const closeBook = useCallback(() => back(), []);
 
-  const changeChapter = useCallback(
-    (order: number) => {
-      setLoaded((prev) => {
-        if (!prev) return prev;
-        const clamped = Math.max(
-          0,
-          Math.min(prev.book.chapters.length - 1, order),
-        );
-        void updateReadingPosition(
-          prev.book.id,
-          clamped,
-          prev.book.chapters.length,
-        );
-        // New chapter starts at the top — clear any pending paragraph save
-        // and reset the resume hint so the reader scrolls to paragraph 0.
-        if (paragraphSaveTimer.current) {
-          clearTimeout(paragraphSaveTimer.current);
-          paragraphSaveTimer.current = null;
-        }
-        return {
-          ...prev,
-          currentChapter: clamped,
-          resumeParagraph: 0,
-          resumeOffset: 0,
-        };
-      });
-    },
-    [],
-  );
+  const changeChapter = useCallback((order: number) => {
+    setLoaded((prev) => {
+      if (!prev) return prev;
+      const clamped = Math.max(
+        0,
+        Math.min(prev.book.chapters.length - 1, order),
+      );
+      void updateReadingPosition(
+        prev.book.id,
+        clamped,
+        prev.book.chapters.length,
+      );
+      // New chapter starts at the top — clear any pending paragraph save
+      // and reset the resume hint so the reader scrolls to paragraph 0.
+      if (paragraphSaveTimer.current) {
+        clearTimeout(paragraphSaveTimer.current);
+        paragraphSaveTimer.current = null;
+      }
+      return {
+        ...prev,
+        currentChapter: clamped,
+        resumeParagraph: 0,
+        resumeOffset: 0,
+      };
+    });
+  }, []);
 
   // Debounce paragraph saves so we don't hammer disk on every scroll event.
   const paragraphSaveTimer = useRef<number | null>(null);
   const onParagraphChange = useCallback((idx: number, offset?: number) => {
-    if (paragraphSaveTimer.current)
-      clearTimeout(paragraphSaveTimer.current);
+    if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
     paragraphSaveTimer.current = window.setTimeout(() => {
       paragraphSaveTimer.current = null;
       setLoaded((prev) => {
@@ -530,8 +531,7 @@ function App() {
 
   useEffect(() => {
     return () => {
-      if (paragraphSaveTimer.current)
-        clearTimeout(paragraphSaveTimer.current);
+      if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
     };
   }, []);
 
@@ -656,7 +656,9 @@ function App() {
   const removeFixedHighlight = useCallback(
     async (highlightId: string) => {
       if (!loadedFixed) return;
-      const target = loadedFixed.state.highlights.find((h) => h.id === highlightId);
+      const target = loadedFixed.state.highlights.find(
+        (h) => h.id === highlightId,
+      );
       if (!target) return;
       const ids = target.groupId
         ? loadedFixed.state.highlights
@@ -671,7 +673,9 @@ function App() {
               ...prev,
               state: {
                 ...prev.state,
-                highlights: prev.state.highlights.filter((h) => !idSet.has(h.id)),
+                highlights: prev.state.highlights.filter(
+                  (h) => !idSet.has(h.id),
+                ),
               },
             }
           : prev,
@@ -784,7 +788,9 @@ function App() {
             onDismiss={update.dismiss}
           />
         )}
-        {loading && <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />}
+        {loading && (
+          <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />
+        )}
         {error && !loading && (
           <div
             style={{
@@ -792,7 +798,7 @@ function App() {
               top: 20,
               left: "50%",
               transform: "translateX(-50%)",
-              zIndex: 50,
+              zIndex: Z.hint,
               padding: "10px 16px",
               background: "rgba(180,60,60,0.12)",
               border: "0.5px solid rgba(180,60,60,0.4)",
@@ -816,26 +822,26 @@ function App() {
           style={{
             position: "absolute",
             inset: 0,
-            zIndex: 30,
+            zIndex: Z.streamLayer,
             pointerEvents: streaming ? "auto" : "none",
           }}
         >
           <AnimatedSwap viewKey={streaming ? "stream" : "none"}>
             {streaming ? (
               <ReaderErrorBoundary theme={theme} onBack={closeStream}>
-              <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
-              <SourceStreamReader
-                theme={theme}
-                themeKey={themeKey}
-                t={t}
-                setTweak={setTweak}
-                layout={isMobile ? "mobile" : "desktop"}
-                sourceId={streaming.sourceId}
-                novelUrl={streaming.novelUrl}
-                startChapterId={streaming.chapterId}
-                onClose={closeStream}
-              />
-              </Suspense>
+                <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+                  <SourceStreamReader
+                    theme={theme}
+                    themeKey={themeKey}
+                    t={t}
+                    setTweak={setTweak}
+                    layout={isMobile ? "mobile" : "desktop"}
+                    sourceId={streaming.sourceId}
+                    novelUrl={streaming.novelUrl}
+                    startChapterId={streaming.chapterId}
+                    onClose={closeStream}
+                  />
+                </Suspense>
               </ReaderErrorBoundary>
             ) : null}
           </AnimatedSwap>
@@ -880,95 +886,97 @@ function App() {
             />
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
-            <FixedPageReader
-              theme={theme}
-              themeKey={themeKey}
-              t={t}
-              setTweak={setTweak}
-              book={loadedFixed.book}
-              state={loadedFixed.state}
-              highlights={loadedFixed.state.highlights}
-              onCreateHighlight={createFixedHighlight}
-              onDeleteHighlight={removeFixedHighlight}
-              onUpdateHighlightNote={editFixedHighlightNote}
-              layout={isMobile ? "mobile" : "desktop"}
-              uiDir={uiDir}
-              createSource={() => {
-                const b = loadedFixed.book;
-                return b.kind === "pdf"
-                  ? createPdfPageSource(b)
-                  : createDocxPageSource(b);
-              }}
-              onLocationChange={(page, off, pageCount) =>
-                savePagePosition(loadedFixed.book.id, pageCount, page, off)
-              }
-              onOpenFullSettings={openSettings}
-              onBack={closeBook}
-            />
+              <FixedPageReader
+                theme={theme}
+                themeKey={themeKey}
+                t={t}
+                setTweak={setTweak}
+                book={loadedFixed.book}
+                state={loadedFixed.state}
+                highlights={loadedFixed.state.highlights}
+                onCreateHighlight={createFixedHighlight}
+                onDeleteHighlight={removeFixedHighlight}
+                onUpdateHighlightNote={editFixedHighlightNote}
+                layout={isMobile ? "mobile" : "desktop"}
+                uiDir={uiDir}
+                createSource={() => {
+                  const b = loadedFixed.book;
+                  return b.kind === "pdf"
+                    ? createPdfPageSource(b)
+                    : createDocxPageSource(b);
+                }}
+                onLocationChange={(page, off, pageCount) =>
+                  savePagePosition(loadedFixed.book.id, pageCount, page, off)
+                }
+                onOpenFullSettings={openSettings}
+                onBack={closeBook}
+              />
             </Suspense>
           ) : loaded && loaded.book.id === base.bookId ? (
             <ReaderErrorBoundary theme={theme} onBack={closeBook}>
-            {isMobile ? (
-              <MobileReader
-                theme={theme}
-                themeKey={themeKey}
-                t={t}
-                setTweak={setTweak}
-                book={loaded.book}
-                state={loaded.state}
-                currentChapter={loaded.currentChapter}
-                resumeParagraph={loaded.resumeParagraph}
-                resumeOffset={loaded.resumeOffset}
-                jumpNonce={loaded.jumpNonce}
-                onChapterChange={changeChapter}
-                onParagraphChange={onParagraphChange}
-                onCreateHighlight={createHighlight}
-                onDeleteHighlight={removeHighlight}
-                onUpdateHighlightNote={editHighlightNote}
-                onJumpToHighlight={jumpToHighlight}
-                nextChapterAvailability="device"
-                onOpenFullSettings={openSettings}
-                onBack={closeBook}
-              />
-            ) : (
-              <DesktopReader
-                theme={theme}
-                themeKey={themeKey}
-                t={t}
-                setTweak={setTweak}
-                book={loaded.book}
-                state={loaded.state}
-                currentChapter={loaded.currentChapter}
-                resumeParagraph={loaded.resumeParagraph}
-                resumeOffset={loaded.resumeOffset}
-                jumpNonce={loaded.jumpNonce}
-                onChapterChange={changeChapter}
-                onParagraphChange={onParagraphChange}
-                onCreateHighlight={createHighlight}
-                onDeleteHighlight={removeHighlight}
-                onUpdateHighlightNote={editHighlightNote}
-                onJumpToHighlight={jumpToHighlight}
-                nextChapterAvailability="device"
-                activePanel={activePanel}
-                setActivePanel={setActivePanel}
-                onOpenFullSettings={openSettings}
-                onBack={closeBook}
-              />
-            )}
+              {isMobile ? (
+                <MobileReader
+                  theme={theme}
+                  themeKey={themeKey}
+                  t={t}
+                  setTweak={setTweak}
+                  book={loaded.book}
+                  state={loaded.state}
+                  currentChapter={loaded.currentChapter}
+                  resumeParagraph={loaded.resumeParagraph}
+                  resumeOffset={loaded.resumeOffset}
+                  jumpNonce={loaded.jumpNonce}
+                  onChapterChange={changeChapter}
+                  onParagraphChange={onParagraphChange}
+                  onCreateHighlight={createHighlight}
+                  onDeleteHighlight={removeHighlight}
+                  onUpdateHighlightNote={editHighlightNote}
+                  onJumpToHighlight={jumpToHighlight}
+                  nextChapterAvailability="device"
+                  onOpenFullSettings={openSettings}
+                  onBack={closeBook}
+                />
+              ) : (
+                <DesktopReader
+                  theme={theme}
+                  themeKey={themeKey}
+                  t={t}
+                  setTweak={setTweak}
+                  book={loaded.book}
+                  state={loaded.state}
+                  currentChapter={loaded.currentChapter}
+                  resumeParagraph={loaded.resumeParagraph}
+                  resumeOffset={loaded.resumeOffset}
+                  jumpNonce={loaded.jumpNonce}
+                  onChapterChange={changeChapter}
+                  onParagraphChange={onParagraphChange}
+                  onCreateHighlight={createHighlight}
+                  onDeleteHighlight={removeHighlight}
+                  onUpdateHighlightNote={editHighlightNote}
+                  onJumpToHighlight={jumpToHighlight}
+                  nextChapterAvailability="device"
+                  activePanel={activePanel}
+                  setActivePanel={setActivePanel}
+                  onOpenFullSettings={openSettings}
+                  onBack={closeBook}
+                />
+              )}
             </ReaderErrorBoundary>
-          ) : (
-            // base is reader but its data isn't loaded yet (browser-forward
-            // into a book / dev reload) — the reader-location effect is
-            // loading it; the full-page spinner covers this blank frame.
-            null
-          )}
+          ) : // base is reader but its data isn't loaded yet (browser-forward
+          // into a book / dev reload) — the reader-location effect is
+          // loading it; the full-page spinner covers this blank frame.
+          null}
         </AnimatedSwap>
         {/* Mounted at the app root so a docx import keeps showing across the
             Library → Reader transition (e.g. user clicks "Continue in
             background" then opens an existing book while the import finishes). */}
         <ImportProgress theme={theme} />
         {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
-        <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+        <Lightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={closeLightbox}
+        />
         {/* Drag-and-drop overlay — last, so it layers above the reader, the
             library, and any open dialog while a drag is in progress. */}
         <DropOverlay state={dropState} theme={theme} />
@@ -996,7 +1004,7 @@ function FullPageSpinner({
         justifyContent: "center",
         fontFamily: FONT_SERIF_DISPLAY,
         fontSize: 20,
-        zIndex: 40,
+        zIndex: Z.floating,
       }}
     >
       {label}

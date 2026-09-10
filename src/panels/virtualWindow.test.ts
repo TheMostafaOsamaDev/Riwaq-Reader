@@ -49,7 +49,10 @@ describe("windowRange", () => {
   });
 
   it("mounts nothing for an empty list", () => {
-    expect(windowRange(rowOffsets([]), 0, 600, 4)).toEqual({ start: 0, end: 0 });
+    expect(windowRange(rowOffsets([]), 0, 600, 4)).toEqual({
+      start: 0,
+      end: 0,
+    });
   });
 
   it("mounts the first row while the container is still unmeasured", () => {

@@ -107,8 +107,7 @@ function useChapterImageUrls(
       if (cancelled) return;
       const entries = await Promise.all(
         srcs.map(
-          async (src) =>
-            [src, await chapterImageSrcFor(bookId, src)] as const,
+          async (src) => [src, await chapterImageSrcFor(bookId, src)] as const,
         ),
       );
       if (cancelled) return;
@@ -284,7 +283,9 @@ export function BookBody({
             key={originalIndex}
             index={originalIndex}
             text={p.text}
-            highlights={highlightsByParagraph.get(originalIndex) ?? NO_HIGHLIGHTS}
+            highlights={
+              highlightsByParagraph.get(originalIndex) ?? NO_HIGHLIGHTS
+            }
             themeKey={themeKey}
             spacing={paragraphSpacing}
             hyphenation={hyphenation}

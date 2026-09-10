@@ -25,7 +25,10 @@ import type {
  *  of `useI18n()` — App.tsx keeps that attribute in sync with the user's
  *  UI-language preference. */
 function currentUiLocale(): Locale {
-  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+  ) {
     return "ar";
   }
   return "en";
@@ -33,7 +36,10 @@ function currentUiLocale(): Locale {
 
 // ── home-page parsing ───────────────────────────────────────────────────────
 
-export function parseHomeSections(doc: Document, baseUrl: string): SourceSection[] {
+export function parseHomeSections(
+  doc: Document,
+  baseUrl: string,
+): SourceSection[] {
   // Walk the homepage in document order so sections come back in the
   // same order the user sees on the site. We support three section
   // shapes:
@@ -81,7 +87,9 @@ function parseSectionElement(
   if (listupd.querySelector(".blogbox, .lexa")) return null;
   const cards = parseCardsInListupd(listupd, baseUrl);
   if (cards.length === 0) return null;
-  const viewMore = el.querySelector(".releases .vl") as HTMLAnchorElement | null;
+  const viewMore = el.querySelector(
+    ".releases .vl",
+  ) as HTMLAnchorElement | null;
   return {
     id,
     title,
@@ -90,7 +98,11 @@ function parseSectionElement(
   };
 }
 
-function parseTrendArea(el: Element, id: string, baseUrl: string): SourceSection | null {
+function parseTrendArea(
+  el: Element,
+  id: string,
+  baseUrl: string,
+): SourceSection | null {
   const title =
     cleanTitle(el.querySelector(".topareatitle")?.textContent) ||
     makeTr(currentUiLocale())("source.section.trendingFallback");
@@ -120,20 +132,28 @@ function parseTrendArea(el: Element, id: string, baseUrl: string): SourceSection
   return cards.length > 0 ? { id, title, cards } : null;
 }
 
-function parseHomeHot(el: Element, id: string, baseUrl: string): SourceSection | null {
+function parseHomeHot(
+  el: Element,
+  id: string,
+  baseUrl: string,
+): SourceSection | null {
   const title =
     cleanTitle(el.querySelector(".topareatitle")?.textContent) ||
     makeTr(currentUiLocale())("source.section.hotUpdatesFallback");
   const cards: NovelCard[] = [];
   for (const item of Array.from(el.querySelectorAll(".hotoday"))) {
-    const link = item.querySelector(".inhotoday > a") as HTMLAnchorElement | null;
+    const link = item.querySelector(
+      ".inhotoday > a",
+    ) as HTMLAnchorElement | null;
     if (!link) continue;
     const href = link.getAttribute("href") || "";
     if (!/\/series\//.test(href)) continue;
     const img = item.querySelector(".todthumb img") as HTMLImageElement | null;
     const status = cleanTitle(item.querySelector(".todstat")?.textContent);
     const titleEl = item.querySelector(".todtitle");
-    const latestChapter = cleanTitle(item.querySelector(".todchap")?.textContent);
+    const latestChapter = cleanTitle(
+      item.querySelector(".todchap")?.textContent,
+    );
     const score = cleanTitle(item.querySelector(".todnum")?.textContent);
     const badges: string[] = [];
     if (score) badges.push(`★ ${score}`);
@@ -174,7 +194,9 @@ function parseCardsInListupd(listupd: Element, baseUrl: string): NovelCard[] {
 }
 
 function parseUtaoCard(el: Element, baseUrl: string): NovelCard | null {
-  const link = el.querySelector(".imgu a, .luf > a") as HTMLAnchorElement | null;
+  const link = el.querySelector(
+    ".imgu a, .luf > a",
+  ) as HTMLAnchorElement | null;
   if (!link) return null;
   const href = link.getAttribute("href") || "";
   if (!/\/series\//.test(href)) return null;
@@ -196,7 +218,9 @@ function parseBsCard(el: Element, baseUrl: string): NovelCard | null {
   // Only surface cards that point at a series page; otherwise the user
   // can't navigate to a novel detail view from this card.
   if (!/\/series\//.test(href)) return null;
-  const img = el.querySelector(".limit img, .bsx img") as HTMLImageElement | null;
+  const img = el.querySelector(
+    ".limit img, .bsx img",
+  ) as HTMLImageElement | null;
   const ntitle = el.querySelector(".tt .ntitle");
   const nchapter = el.querySelector(".tt .nchapter");
   return {
@@ -218,8 +242,9 @@ export function parseSearchResults(
   const cards: NovelCard[] = [];
   const articles = doc.querySelectorAll(".listupd .maindet, article.maindet");
   for (const a of Array.from(articles)) {
-    const link =
-      (a.querySelector(".mdthumb a, .mdinfo h2 a") as HTMLAnchorElement | null);
+    const link = a.querySelector(
+      ".mdthumb a, .mdinfo h2 a",
+    ) as HTMLAnchorElement | null;
     if (!link) continue;
     const href = link.getAttribute("href") || "";
     if (!href) continue;
@@ -228,9 +253,7 @@ export function parseSearchResults(
       a.querySelector(".mdinfo h2 a")?.textContent ||
         link.getAttribute("title"),
     );
-    const excerpt = cleanTitle(
-      a.querySelector(".contexcerpt p")?.textContent,
-    );
+    const excerpt = cleanTitle(a.querySelector(".contexcerpt p")?.textContent);
     const genreLinks = Array.from(a.querySelectorAll(".mdgenre a"))
       .map((g) => (g.textContent || "").replace(/^#\s*/, "").trim())
       .filter((s) => s.length > 0);
@@ -269,7 +292,11 @@ export function parseSearchResults(
 
 // ── novel-page parsing ──────────────────────────────────────────────────────
 
-export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string): SourceNovel {
+export function parseNovelPage(
+  doc: Document,
+  baseUrl: string,
+  pageUrl: string,
+): SourceNovel {
   const sertobig = doc.querySelector(".sertobig") ?? doc;
 
   // Empty (not "Untitled") when neither selector yields a title — a blank
@@ -307,8 +334,7 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
     const valEl = row.querySelector(".serval");
     if (!label || !valEl) continue;
     const linkEl = valEl.querySelector("a");
-    const value =
-      cleanTitle(valEl.textContent).replace(/^[:：]\s*/, "") || "";
+    const value = cleanTitle(valEl.textContent).replace(/^[:：]\s*/, "") || "";
     if (!value) continue;
     meta.push({
       label,
@@ -333,9 +359,7 @@ export function parseNovelPage(doc: Document, baseUrl: string, pageUrl: string):
     sertobig.querySelector(".sersys.entry-content") ||
     sertobig.querySelector(".sersys") ||
     doc.querySelector(".sersys");
-  const description = descEl
-    ? extractDescriptionText(descEl)
-    : undefined;
+  const description = descEl ? extractDescriptionText(descEl) : undefined;
 
   const volumes = parseVolumes(doc, pageUrl);
 
@@ -359,14 +383,15 @@ export function parseVolumes(doc: Document, pageUrl: string): SourceVolume[] {
   // `.ts-chl-collapsible-content` sibling for the chapter list. The
   // sibling isn't always the immediate next element — sometimes there's
   // a wrapper div between them — so walk forward until we find it.
-  const headers = Array.from(
-    doc.querySelectorAll(".ts-chl-collapsible"),
-  );
+  const headers = Array.from(doc.querySelectorAll(".ts-chl-collapsible"));
   const volumeBuckets: { title: string; anchors: HTMLAnchorElement[] }[] = [];
   for (const h of headers) {
     const title = cleanTitle(h.textContent);
     let sibling: Element | null = h.nextElementSibling;
-    while (sibling && !sibling.classList.contains("ts-chl-collapsible-content")) {
+    while (
+      sibling &&
+      !sibling.classList.contains("ts-chl-collapsible-content")
+    ) {
       sibling = sibling.nextElementSibling;
     }
     // One anchor per chapter: the chapter permalink is the direct child of
@@ -427,7 +452,10 @@ function sanitizeTitle(raw: string, fallbackId: number): string {
   );
 }
 
-function pickImageSrc(img: HTMLImageElement | null, baseUrl: string): string | undefined {
+function pickImageSrc(
+  img: HTMLImageElement | null,
+  baseUrl: string,
+): string | undefined {
   if (!img) return undefined;
   const src =
     img.getAttribute("src") ||
@@ -455,7 +483,7 @@ function extractDescriptionText(el: Element): string {
   // Many KolNovel pages prepend a few hundred chars; cap so the UI's
   // description card doesn't grow unbounded — full text is still
   // available in the imported EPUB's content.
-  return text.length > 1200 ? text.slice(0, 1200).trim() + "…" : text;
+  return text.length > 1200 ? `${text.slice(0, 1200).trim()}…` : text;
 }
 
 // ── chapter-body extraction (static HTML) ───────────────────────────────────
@@ -528,7 +556,10 @@ function isDecorativeImage(img: HTMLImageElement): boolean {
   return false;
 }
 
-function absoluteImageSrc(img: HTMLImageElement, baseUrl: string): string | null {
+function absoluteImageSrc(
+  img: HTMLImageElement,
+  baseUrl: string,
+): string | null {
   const raw =
     img.getAttribute("src") ||
     img.getAttribute("data-src") ||
@@ -570,7 +601,10 @@ function stripIgnored(line: string): string {
  *  then `.entry-content`, then body. `baseUrl` absolutizes relative image
  *  srcs. Drops decoy paragraphs (rotating hidden hex classes / inline hide
  *  style), strips the ad string, and dedups repeated text/images. */
-export function parseChapterContent(doc: Document, baseUrl: string): SourceLine[] {
+export function parseChapterContent(
+  doc: Document,
+  baseUrl: string,
+): SourceLine[] {
   const hiddenClasses = collectHiddenClasses(doc);
   const root =
     doc.querySelector("#kol_content") ||

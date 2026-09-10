@@ -12,14 +12,19 @@ function docxBlockOf(node: Node | null): HTMLElement | null {
       ? (node as Element)
       : (node?.parentElement ?? null);
   while (el) {
-    if (el instanceof HTMLElement && el.hasAttribute("data-block-id")) return el;
+    if (el instanceof HTMLElement && el.hasAttribute("data-block-id"))
+      return el;
     el = el.parentElement;
   }
   return null;
 }
 
 /** Char offset of (node, offset) within `block`, counting text-node content. */
-function charOffsetInBlock(block: HTMLElement, node: Node, offset: number): number {
+function charOffsetInBlock(
+  block: HTMLElement,
+  node: Node,
+  offset: number,
+): number {
   const range = document.createRange();
   range.selectNodeContents(block);
   range.setEnd(node, offset);
@@ -38,13 +43,18 @@ export interface DocxSelectionAnchor {
 /** Resolve the current window selection to a single-block DOCX anchor, or null
  *  if there's no usable selection (collapsed, outside `root`, or spanning more
  *  than one block — multi-block is deferred to a later phase). */
-export function resolveDocxSelection(root: HTMLElement): DocxSelectionAnchor | null {
+export function resolveDocxSelection(
+  root: HTMLElement,
+): DocxSelectionAnchor | null {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
   const text = sel.toString();
   if (!text.trim()) return null;
   const range = sel.getRangeAt(0);
-  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+  if (
+    !root.contains(range.startContainer) ||
+    !root.contains(range.endContainer)
+  ) {
     return null;
   }
   const block = docxBlockOf(range.startContainer);
@@ -56,7 +66,13 @@ export function resolveDocxSelection(root: HTMLElement): DocxSelectionAnchor | n
   const charStart = Math.min(a, b);
   const charEnd = Math.max(a, b);
   if (charEnd <= charStart) return null;
-  return { blockId, charStart, charEnd, text, rect: range.getBoundingClientRect() };
+  return {
+    blockId,
+    charStart,
+    charEnd,
+    text,
+    rect: range.getBoundingClientRect(),
+  };
 }
 
 export interface BlockMark {

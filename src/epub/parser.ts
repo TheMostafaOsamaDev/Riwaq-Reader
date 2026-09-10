@@ -327,8 +327,8 @@ async function readCover(
     for (const idref of spine) {
       const item = manifest.get(idref);
       if (!item) continue;
-      const hintId = /(^|[\/_-])cover([\/_-]|\.|$)/i.test(idref);
-      const hintHref = /(^|[\/_-])cover([\/_-]|\.|$)/i.test(item.href);
+      const hintId = /(^|[/_-])cover([/_-]|\.|$)/i.test(idref);
+      const hintHref = /(^|[/_-])cover([/_-]|\.|$)/i.test(item.href);
       const isXhtml =
         item.mediaType.includes("xhtml") || /\.x?html?$/i.test(item.href);
       if (!isXhtml || (!hintId && !hintHref)) continue;
@@ -348,8 +348,8 @@ async function readCover(
     );
     const hit = candidates.find(
       ([id, v]) =>
-        /(^|[\/_-])cover([\/_-]|\.|$)/i.test(id) ||
-        /(^|[\/_-])cover([\/_-]|\.|$)/i.test(v.href),
+        /(^|[/_-])cover([/_-]|\.|$)/i.test(id) ||
+        /(^|[/_-])cover([/_-]|\.|$)/i.test(v.href),
     );
     if (hit) cover = hit[1];
   }
@@ -470,8 +470,10 @@ function parseNavXhtml(
   const navDir = dirname(joinPath(basePath, navHref));
   for (let n = 0; n < navs.length; n++) {
     const nav = navs[n];
-    if ((nav.getAttribute("epub:type") ?? nav.getAttribute("type")) === "toc" ||
-        nav.getAttributeNS("http://www.idpf.org/2007/ops", "type") === "toc") {
+    if (
+      (nav.getAttribute("epub:type") ?? nav.getAttribute("type")) === "toc" ||
+      nav.getAttributeNS("http://www.idpf.org/2007/ops", "type") === "toc"
+    ) {
       collectNavLinks(nav, navDir, basePath, out);
       break;
     }
@@ -516,8 +518,9 @@ function parseNcx(
   const points = doc.getElementsByTagNameNS(NCX_NS, "navPoint");
   const ncxDir = dirname(joinPath(basePath, ncxHref));
   for (let i = 0; i < points.length; i++) {
-    const label =
-      points[i].getElementsByTagNameNS(NCX_NS, "text")[0]?.textContent?.trim();
+    const label = points[i]
+      .getElementsByTagNameNS(NCX_NS, "text")[0]
+      ?.textContent?.trim();
     const content = points[i].getElementsByTagNameNS(NCX_NS, "content")[0];
     const src = content?.getAttribute("src");
     if (!label || !src) continue;
@@ -671,11 +674,7 @@ function firstHeadingText(doc: Document): string | null {
   return h?.textContent?.trim() || null;
 }
 
-function firstText(
-  opf: Document,
-  ns: string,
-  local: string,
-): string | null {
+function firstText(opf: Document, ns: string, local: string): string | null {
   const el = opf.getElementsByTagNameNS(ns, local)[0];
   return el?.textContent?.trim() || null;
 }

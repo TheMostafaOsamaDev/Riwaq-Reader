@@ -54,7 +54,10 @@ import type {
  *  the user's UI-language preference. Mirrors kolnovel-theme.ts's
  *  identically-named helper. */
 function currentUiLocale(): Locale {
-  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+  ) {
     return "ar";
   }
   return "en";
@@ -122,7 +125,7 @@ export function createCeneleSource(host: SourceHost): Source {
 
     async getHomeSections() {
       host.log("info", "getHomeSections");
-      const resp = await host.fetch(BASE_URL + "/");
+      const resp = await host.fetch(`${BASE_URL}/`);
       const doc = parseHtmlDocument(resp.text);
       return parseHomeSections(doc);
     },
@@ -237,7 +240,11 @@ export function createCeneleSource(host: SourceHost): Source {
             "Cenele: couldn't find nhvNovelV2 config — site layout may have changed.",
           );
         }
-        const meta = await fetchVolumeMeta(host, ajax.postId, ajax.chaptersNonce);
+        const meta = await fetchVolumeMeta(
+          host,
+          ajax.postId,
+          ajax.chaptersNonce,
+        );
         const sorted = [...meta].sort((a, b) => {
           if (a.num === 0 && b.num !== 0) return 1;
           if (b.num === 0 && a.num !== 0) return -1;
@@ -599,7 +606,9 @@ function parseChapterListHtml(html: string): SourceChapter[] {
   // structures silently, but explicit is cheaper than hunting parser
   // edge cases.
   const doc = parseHtmlDocument(`<ul>${html}</ul>`);
-  const items = doc.querySelectorAll("li.wp-manga-chapter, li[data-chapter-id]");
+  const items = doc.querySelectorAll(
+    "li.wp-manga-chapter, li[data-chapter-id]",
+  );
   const out: SourceChapter[] = [];
   for (const li of Array.from(items)) {
     const a = li.querySelector("a[href]") as HTMLAnchorElement | null;
@@ -728,7 +737,10 @@ interface ParsedNovelPage {
   volumeShells: VolumeShell[];
 }
 
-export function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage {
+export function parseNovelPage(
+  doc: Document,
+  pageUrl: string,
+): ParsedNovelPage {
   const html = doc.documentElement.outerHTML;
   const config = extractNovelConfig(html);
   if (!config) {
@@ -737,13 +749,17 @@ export function parseNovelPage(doc: Document, pageUrl: string): ParsedNovelPage 
     );
   }
 
-  const title = sanitizeText(doc.querySelector(".nhv-novel-title")?.textContent);
+  const title = sanitizeText(
+    doc.querySelector(".nhv-novel-title")?.textContent,
+  );
 
   // The kicker reads "رواية <Original Title>". Strip the leading word so
   // the stored originalTitle is just the name.
   const originalTitle =
-    sanitizeText(doc.querySelector(".nhv-novel-kicker")?.textContent)
-      .replace(/^رواية\s+/, "") || undefined;
+    sanitizeText(doc.querySelector(".nhv-novel-kicker")?.textContent).replace(
+      /^رواية\s+/,
+      "",
+    ) || undefined;
 
   const coverImg = doc.querySelector(
     ".nhv-novel-cover img",
@@ -822,12 +838,13 @@ function extractDescription(doc: Document): string | undefined {
     .map((p) => sanitizeText(p.textContent))
     .filter((t) => t.length > 0);
   // Fall back to the whole container if the theme ever drops the <p> wrapping.
-  const text = paragraphs.length > 0
-    ? paragraphs.join("\n\n")
-    : sanitizeText(el.textContent);
+  const text =
+    paragraphs.length > 0
+      ? paragraphs.join("\n\n")
+      : sanitizeText(el.textContent);
   if (!text) return undefined;
   const cleaned = text.replace(/Read more$/i, "").trim();
-  return cleaned.length > 1500 ? cleaned.slice(0, 1500).trim() + "…" : cleaned;
+  return cleaned.length > 1500 ? `${cleaned.slice(0, 1500).trim()}…` : cleaned;
 }
 
 /** The redesigned novel page ships no volume markup — the chapters tab
@@ -873,7 +890,9 @@ function parsePopularCards(sec: Element): NovelCard[] {
     const link = a as HTMLAnchorElement;
     const href = link.getAttribute("href") || "";
     if (!isNovelHref(href)) continue;
-    const img = link.querySelector("img.nhv-prog-img") as HTMLImageElement | null;
+    const img = link.querySelector(
+      "img.nhv-prog-img",
+    ) as HTMLImageElement | null;
     const title = sanitizeText(link.querySelector(".nhv-ptitle")?.textContent);
     const badge = sanitizeText(link.querySelector(".nhv-badge")?.textContent);
     out.push({
@@ -888,18 +907,29 @@ function parsePopularCards(sec: Element): NovelCard[] {
 
 function parseNewseriesCards(sec: Element): NovelCard[] {
   const out: NovelCard[] = [];
-  for (const article of Array.from(sec.querySelectorAll("article.nhv-feature"))) {
-    const link = article.querySelector(".nhv-feature__title") as HTMLAnchorElement | null;
-    const cover = article.querySelector(".nhv-cover") as HTMLAnchorElement | null;
-    const href = link?.getAttribute("href") || cover?.getAttribute("href") || "";
+  for (const article of Array.from(
+    sec.querySelectorAll("article.nhv-feature"),
+  )) {
+    const link = article.querySelector(
+      ".nhv-feature__title",
+    ) as HTMLAnchorElement | null;
+    const cover = article.querySelector(
+      ".nhv-cover",
+    ) as HTMLAnchorElement | null;
+    const href =
+      link?.getAttribute("href") || cover?.getAttribute("href") || "";
     if (!isNovelHref(href)) continue;
     const title = sanitizeText(link?.textContent);
-    const img = article.querySelector("img.nhv-prog-img") as HTMLImageElement | null;
+    const img = article.querySelector(
+      "img.nhv-prog-img",
+    ) as HTMLImageElement | null;
     const chips = Array.from(article.querySelectorAll(".nhv-chip"))
       .map((c) => sanitizeText(c.textContent))
       .filter((s) => s.length > 0)
       .slice(0, 3);
-    const desc = sanitizeText(article.querySelector(".nhv-feature__desc")?.textContent);
+    const desc = sanitizeText(
+      article.querySelector(".nhv-feature__desc")?.textContent,
+    );
     out.push({
       url: absolutizeUrl(href, BASE_URL),
       title,
@@ -914,11 +944,17 @@ function parseNewseriesCards(sec: Element): NovelCard[] {
 function parseManualCards(sec: Element): NovelCard[] {
   const out: NovelCard[] = [];
   for (const cap of Array.from(sec.querySelectorAll(".nhv-manual__capsule"))) {
-    const main = cap.querySelector(".nhv-manual__main") as HTMLAnchorElement | null;
+    const main = cap.querySelector(
+      ".nhv-manual__main",
+    ) as HTMLAnchorElement | null;
     const href = main?.getAttribute("href") || "";
     if (!isNovelHref(href)) continue;
-    const title = sanitizeText(main?.querySelector(".nhv-manual__name")?.textContent);
-    const img = main?.querySelector("img.nhv-prog-img") as HTMLImageElement | null;
+    const title = sanitizeText(
+      main?.querySelector(".nhv-manual__name")?.textContent,
+    );
+    const img = main?.querySelector(
+      "img.nhv-prog-img",
+    ) as HTMLImageElement | null;
     out.push({
       url: absolutizeUrl(href, BASE_URL),
       title,
@@ -934,7 +970,9 @@ function parseNewreleasesCards(sec: Element): NovelCard[] {
     const title = row.querySelector(".nhv-nrTitle") as HTMLAnchorElement | null;
     const href = title?.getAttribute("href") || "";
     if (!isNovelHref(href)) continue;
-    const img = row.querySelector("img.nhv-prog-img") as HTMLImageElement | null;
+    const img = row.querySelector(
+      "img.nhv-prog-img",
+    ) as HTMLImageElement | null;
     const latest = row.querySelector(".nhv-chapBtn .nhv-chapBtn__left");
     out.push({
       url: absolutizeUrl(href, BASE_URL),
@@ -1027,7 +1065,9 @@ function isDecoyElement(el: Element): boolean {
 }
 
 function hasHiddenStyle(el: Element): boolean {
-  const style = (el.getAttribute("style") || "").toLowerCase().replace(/\s+/g, "");
+  const style = (el.getAttribute("style") || "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
   if (!style) return false;
   if (!style.includes("position:absolute")) return false;
   // Any one of these dimensions/effects is enough: visible content
@@ -1052,11 +1092,25 @@ function hasHiddenStyle(el: Element): boolean {
 function looksLikePiracyDecoy(text: string): boolean {
   // Strip zero-width joiners/spaces the decoys insert between letters
   // to defeat substring matching.
-  const normalized = text.replace(/[​-‏‪-‮⁠-⁯︀-️]/g, "");
-  if (/مسروقة/.test(normalized) && /فضاء الروايات|cenele\.com/.test(normalized)) {
+  // Written as escapes on purpose: these are zero-width spaces, bidi
+  // controls and variation selectors, and as literal characters they are
+  // invisible in a diff and easy for an editor to eat.
+  // The FE00-FE0F range is meant to strip variation selectors on their own,
+  // not to match a base character together with one \u2014 which is what the lint
+  // below is warning about, and is not what this does.
+  // biome-ignore lint/suspicious/noMisleadingCharacterClass: see above.
+  const INVISIBLES = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFE00-\uFE0F]/g;
+  const normalized = text.replace(INVISIBLES, "");
+  if (
+    /مسروقة/.test(normalized) &&
+    /فضاء الروايات|cenele\.com/.test(normalized)
+  ) {
     return true;
   }
-  if (/فضاء الروايات/.test(normalized) && /تطبيقنا|تطبيق فضاء/.test(normalized)) {
+  if (
+    /فضاء الروايات/.test(normalized) &&
+    /تطبيقنا|تطبيق فضاء/.test(normalized)
+  ) {
     return true;
   }
   return false;

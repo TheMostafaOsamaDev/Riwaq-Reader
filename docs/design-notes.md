@@ -133,7 +133,8 @@ rectangle.
 
 ## Responsive rules
 
-- Desktop: `DesktopLibrary` renders via `Library.tsx`. Two-column hero (cover
+- Desktop: `Library.tsx` renders `DesktopLibrary`, both in
+  `src/components/library/`. Two-column hero (cover
   left, card right), `repeat(auto-fill, minmax(140px, 1fr))` shelf grid.
 - Mobile: `MobileLibrary` — cover inlined next to a compact Continue card;
   shelf collapses to a 3-col grid. Uses `useMediaQuery` to decide which to

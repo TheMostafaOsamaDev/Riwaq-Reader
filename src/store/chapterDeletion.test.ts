@@ -139,9 +139,9 @@ describe("deleteChaptersWithQueue", () => {
 describe("preset predicates", () => {
   const flags = new Map([
     [1, { downloadedAt: 10, readAt: 20 }], // downloaded + read
-    [2, { downloadedAt: 10 }],             // downloaded, unread
-    [3, { readAt: 20 }],                   // read, never downloaded
-    [4, {}],                               // neither
+    [2, { downloadedAt: 10 }], // downloaded, unread
+    [3, { readAt: 20 }], // read, never downloaded
+    [4, {}], // neither
   ]);
 
   it("downloadedChapterIds picks everything on disk", () => {

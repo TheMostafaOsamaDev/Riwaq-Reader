@@ -14,7 +14,10 @@ import {
   fractionToWidth,
 } from "./readerProgress";
 import { MobileSheet } from "./MobileSheet";
-import { MAX_TICKS, ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
+import {
+  MAX_TICKS,
+  ReaderProgressBar,
+} from "../reader/chrome/ReaderProgressBar";
 import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
 import { glassBar } from "../reader/chrome/glass";
 import { SelectionPopover } from "./SelectionPopover";
@@ -32,6 +35,7 @@ import {
   type Theme,
   type ThemeKey,
   readingSurfaces,
+  Z,
 } from "../styles/tokens";
 import {
   anchorFromRange,
@@ -70,20 +74,19 @@ function caretFromPoint(x: number, y: number): RangeEndpoint | null {
   // Prefer the standard caretPositionFromPoint when available, falling
   // back to caretRangeFromPoint (Chromium, Android WebView).
   const fromPos =
-    (document as unknown as {
-      caretPositionFromPoint?: (
-        x: number,
-        y: number,
-      ) => { offsetNode: Node; offset: number } | null;
-    }).caretPositionFromPoint?.(x, y) ?? null;
+    (
+      document as unknown as {
+        caretPositionFromPoint?: (
+          x: number,
+          y: number,
+        ) => { offsetNode: Node; offset: number } | null;
+      }
+    ).caretPositionFromPoint?.(x, y) ?? null;
   if (fromPos && fromPos.offsetNode.nodeType === Node.TEXT_NODE) {
     return { node: fromPos.offsetNode as Text, offset: fromPos.offset };
   }
   const fromRange = document.caretRangeFromPoint?.(x, y) ?? null;
-  if (
-    fromRange &&
-    fromRange.startContainer.nodeType === Node.TEXT_NODE
-  ) {
+  if (fromRange && fromRange.startContainer.nodeType === Node.TEXT_NODE) {
     return {
       node: fromRange.startContainer as Text,
       offset: fromRange.startOffset,
@@ -118,9 +121,7 @@ function wordRangeAt(node: Text, offset: number): [number, number] {
  *  body — returns null if the candidate has no `<p data-p-index>`
  *  ancestor (e.g. chrome). Multi-paragraph selection is allowed,
  *  so we no longer clamp to the original long-press paragraph. */
-function clampToBookBody(
-  candidate: RangeEndpoint,
-): RangeEndpoint | null {
+function clampToBookBody(candidate: RangeEndpoint): RangeEndpoint | null {
   return paragraphOf(candidate.node) ? candidate : null;
 }
 
@@ -130,8 +131,7 @@ function clampToBookBody(
 function comesBefore(a: RangeEndpoint, b: RangeEndpoint): boolean {
   if (a.node === b.node) return a.offset < b.offset;
   return !!(
-    a.node.compareDocumentPosition(b.node) &
-    Node.DOCUMENT_POSITION_FOLLOWING
+    a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING
   );
 }
 
@@ -141,7 +141,8 @@ function buildRange(a: RangeEndpoint, b: RangeEndpoint): Range {
   const cmp =
     a.node === b.node
       ? a.offset - b.offset
-      : a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING
+      : a.node.compareDocumentPosition(b.node) &
+          Node.DOCUMENT_POSITION_FOLLOWING
         ? -1
         : 1;
   if (cmp < 0) {
@@ -448,7 +449,11 @@ export function MobileReader({
           bestEl = p;
         }
         const intoPara = bestEl
-          ? paragraphScrollOffset(el.scrollTop, bestEl.offsetTop, bestEl.offsetHeight)
+          ? paragraphScrollOffset(
+              el.scrollTop,
+              bestEl.offsetTop,
+              bestEl.offsetHeight,
+            )
           : 0;
         onParagraphChangeRef.current(best, intoPara);
       }, 250);
@@ -495,11 +500,18 @@ export function MobileReader({
   // carry its own copy of that logic, and the desktop one carried a different
   // copy that committed on every move.
   const chapterAt = (f: number) =>
-    Math.min(chapterCount - 1, Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))));
-  const barFraction = chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
+    Math.min(
+      chapterCount - 1,
+      Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))),
+    );
+  const barFraction =
+    chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
   const ticks =
     chapterCount > 2 && chapterCount - 2 <= MAX_TICKS
-      ? Array.from({ length: chapterCount - 2 }, (_, i) => (i + 1) / (chapterCount - 1))
+      ? Array.from(
+          { length: chapterCount - 2 },
+          (_, i) => (i + 1) / (chapterCount - 1),
+        )
       : [];
 
   const prevChapter = () => {
@@ -736,8 +748,7 @@ export function MobileReader({
       const clamped = clampToBookBody(currentEp);
       if (!clamped) return;
 
-      const nextStart =
-        draggingHandleRef.current === "start" ? clamped : start;
+      const nextStart = draggingHandleRef.current === "start" ? clamped : start;
       const nextEnd = draggingHandleRef.current === "end" ? clamped : end;
 
       // If the user crossed the other handle, swap so start stays before end.
@@ -852,8 +863,7 @@ export function MobileReader({
       const path = (e.composedPath?.() ?? []) as EventTarget[];
       const inPopover = path.some(
         (node) =>
-          node instanceof HTMLElement &&
-          node.dataset.popover === "highlight",
+          node instanceof HTMLElement && node.dataset.popover === "highlight",
       );
       if (inPopover) return;
 
@@ -945,7 +955,7 @@ export function MobileReader({
           top: 0,
           left: 0,
           right: 0,
-          zIndex: 10,
+          zIndex: Z.readerChrome,
           padding: "env(safe-area-inset-top, 12px) 14px 10px",
           display: "flex",
           alignItems: "center",
@@ -966,59 +976,67 @@ export function MobileReader({
           WebkitUserSelect: "none",
         }}
       >
-          <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
-          <button
-            onClick={onBack}
-            style={{ ...mobileTab(theme), width: 36, height: 36 }}
-            aria-label={tr("reader.backToLibrary")}
-          >
-            {/* `home`, not a back arrow: the other two readers have always used
+        <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
+        <button
+          onClick={onBack}
+          style={{ ...mobileTab(theme), width: 36, height: 36 }}
+          aria-label={tr("reader.backToLibrary")}
+        >
+          {/* `home`, not a back arrow: the other two readers have always used
                 it, and this button leaves the reader for the library rather
                 than stepping back through history. */}
-            <Icon name="home" size={16} />
-          </button>
+          <Icon name="home" size={16} />
+        </button>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 1,
+            minWidth: 0,
+          }}
+        >
           <div
+            // Inherits FONT_STACKS.sans (Readex Pro) from the chrome
+            // wrapper — same UI font used by panel headers / bottom
+            // tabs, and renders Arabic glyphs natively instead of
+            // through Fraunces' Latin-shaped italic.
             style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 1,
-              minWidth: 0,
+              fontSize: 13,
+              fontWeight: 500,
+              color: theme.ink,
+              letterSpacing: "-0.01em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: "100%",
             }}
           >
-            <div
-              // Inherits FONT_STACKS.sans (Readex Pro) from the chrome
-              // wrapper — same UI font used by panel headers / bottom
-              // tabs, and renders Arabic glyphs natively instead of
-              // through Fraunces' Latin-shaped italic.
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: theme.ink,
-                letterSpacing: "-0.01em",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                maxWidth: "100%",
-              }}
-            >
-              {book.title || tr("common.untitled")}
-            </div>
-            <div style={{ fontSize: 10, color: theme.muted }}>
-              {tr("reader.chapterOfTotal", { n: currentChapter + 1, total: chapterCount })}
-            </div>
+            {book.title || tr("common.untitled")}
           </div>
-          {/* Mirrors the back button so the title block is centred on the BAR
+          <div style={{ fontSize: 10, color: theme.muted }}>
+            {tr("reader.chapterOfTotal", {
+              n: currentChapter + 1,
+              total: chapterCount,
+            })}
+          </div>
+        </div>
+        {/* Mirrors the back button so the title block is centred on the BAR
               rather than on the space left over beside the button. Without it
               the flex row is asymmetric — button + gap on one side, nothing on
               the other — and the title sits 22px off-centre (toward the left
               in RTL, where the button is on the right). */}
-          <div
-            aria-hidden
-            style={{ width: 36, height: 36, flexShrink: 0, pointerEvents: "none" }}
-          />
-        </div>
+        <div
+          aria-hidden
+          style={{
+            width: 36,
+            height: 36,
+            flexShrink: 0,
+            pointerEvents: "none",
+          }}
+        />
+      </div>
 
       <div
         ref={scrollRef}
@@ -1102,7 +1120,7 @@ export function MobileReader({
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: 10,
+          zIndex: Z.readerChrome,
           padding: "14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)",
           color: theme.chromeInk,
           ...glassBottom.style,
@@ -1114,50 +1132,57 @@ export function MobileReader({
           WebkitUserSelect: "none",
         }}
       >
-          {showProgress && (
-            <ReaderProgressBar
-              theme={theme}
-              rtl={dir === "rtl"}
-              fraction={barFraction}
-              formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
-              formatLabel={(f) =>
-                tr("reader.chapterDash", {
-                  n: formatNum(chapterAt(f) + 1, locale),
-                  title: book.chapters[chapterAt(f)]?.title ?? "",
-                })
-              }
-              ticks={ticks}
-              prevLabel={tr("reader.prevChapter")}
-              nextLabel={tr("reader.nextChapter")}
-              onPrev={prevChapter}
-              onNext={nextChapter}
-              prevDisabled={currentChapter === 0}
-              nextDisabled={currentChapter >= chapterCount - 1}
-              // No `onScrub`: the reader stays put while the finger moves, so a
-              // sweep across the book doesn't load every chapter it crosses.
-              // The handle and the chip preview the target; release commits.
-              onSeek={(f) => {
-                const next = chapterAt(f);
-                if (next !== currentChapter) onChapterChange(next);
-              }}
-              ariaLabel={tr("reader.chapterProgress")}
-              valueMin={1}
-              valueMax={Math.max(1, chapterCount)}
-              valueNow={currentChapter + 1}
-              valueText={chapter.title}
-              reducedMotion={reduced}
-              labelWidth={0}
-              padding="0 6px 6px"
-            />
-          )}
-          <ReaderTabBar
+        {showProgress && (
+          <ReaderProgressBar
             theme={theme}
-            active={sheet === "toc" || sheet === "highlights" || sheet === "progress" || sheet === "settings" ? sheet : null}
-            onOpen={setSheet}
-            showProgress={showProgress}
-            onToggleProgress={() => setShowProgress((s) => !s)}
+            rtl={dir === "rtl"}
+            fraction={barFraction}
+            formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
+            formatLabel={(f) =>
+              tr("reader.chapterDash", {
+                n: formatNum(chapterAt(f) + 1, locale),
+                title: book.chapters[chapterAt(f)]?.title ?? "",
+              })
+            }
+            ticks={ticks}
+            prevLabel={tr("reader.prevChapter")}
+            nextLabel={tr("reader.nextChapter")}
+            onPrev={prevChapter}
+            onNext={nextChapter}
+            prevDisabled={currentChapter === 0}
+            nextDisabled={currentChapter >= chapterCount - 1}
+            // No `onScrub`: the reader stays put while the finger moves, so a
+            // sweep across the book doesn't load every chapter it crosses.
+            // The handle and the chip preview the target; release commits.
+            onSeek={(f) => {
+              const next = chapterAt(f);
+              if (next !== currentChapter) onChapterChange(next);
+            }}
+            ariaLabel={tr("reader.chapterProgress")}
+            valueMin={1}
+            valueMax={Math.max(1, chapterCount)}
+            valueNow={currentChapter + 1}
+            valueText={chapter.title}
+            reducedMotion={reduced}
+            labelWidth={0}
+            padding="0 6px 6px"
           />
-        </div>
+        )}
+        <ReaderTabBar
+          theme={theme}
+          active={
+            sheet === "toc" ||
+            sheet === "highlights" ||
+            sheet === "progress" ||
+            sheet === "settings"
+              ? sheet
+              : null
+          }
+          onOpen={setSheet}
+          showProgress={showProgress}
+          onToggleProgress={() => setShowProgress((s) => !s)}
+        />
+      </div>
 
       {/* Sheet stays mounted while it animates out — pass `open` so it
           knows whether to show the enter or exit keyframes. */}
@@ -1179,80 +1204,80 @@ export function MobileReader({
         }
       >
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-            {sheet === "toc" && (
-              <TOCPanel
+          {sheet === "toc" && (
+            <TOCPanel
+              theme={theme}
+              onClose={() => setSheet(null)}
+              bookTitle={book.title}
+              chapters={book.chapters}
+              currentChapter={currentChapter}
+              volumes={tocVolumes}
+              onJump={(order) => {
+                onChapterChange(order);
+                setSheet(null);
+              }}
+              // Fluid layout inside the sheet — phone widths vary
+              // (360px to 430px+) and the desktop 340px column would
+              // leave dead space on the right. The sheet itself owns
+              // the rounded chrome, so we drop the panel's side border.
+              width="100%"
+              side={undefined}
+            />
+          )}
+          {sheet === "highlights" && (
+            <HighlightsPanel
+              theme={theme}
+              themeKey={themeKey}
+              onClose={() => setSheet(null)}
+              highlights={state.highlights}
+              onJump={(h) => {
+                onJumpToHighlight(h);
+                setSheet(null);
+              }}
+              onDelete={onDeleteHighlight}
+              onUpdateNote={onUpdateHighlightNote}
+              width="100%"
+              side={undefined}
+            />
+          )}
+          {sheet === "settings" && (
+            <SettingsPanel
+              theme={theme}
+              themeKey={themeKey}
+              t={t}
+              setTweak={setTweak}
+              onClose={() => setSheet(null)}
+              width="100%"
+              side={undefined}
+              mobile
+              onOpenFullSettings={
+                onOpenFullSettings
+                  ? () => {
+                      setSheet(null);
+                      onOpenFullSettings();
+                    }
+                  : undefined
+              }
+            />
+          )}
+          {sheet === "progress" && (
+            <div
+              style={{
+                padding: 22,
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "center",
+              }}
+            >
+              <ProgressOverlay
                 theme={theme}
-                onClose={() => setSheet(null)}
-                bookTitle={book.title}
-                chapters={book.chapters}
+                themeKey={themeKey}
                 currentChapter={currentChapter}
-                volumes={tocVolumes}
-                onJump={(order) => {
-                  onChapterChange(order);
-                  setSheet(null);
-                }}
-                // Fluid layout inside the sheet — phone widths vary
-                // (360px to 430px+) and the desktop 340px column would
-                // leave dead space on the right. The sheet itself owns
-                // the rounded chrome, so we drop the panel's side border.
-                width="100%"
-                side={undefined}
+                chapterCount={chapterCount}
+                chapterTitle={chapter.title}
               />
-            )}
-            {sheet === "highlights" && (
-              <HighlightsPanel
-                theme={theme}
-                themeKey={themeKey}
-                onClose={() => setSheet(null)}
-                highlights={state.highlights}
-                onJump={(h) => {
-                  onJumpToHighlight(h);
-                  setSheet(null);
-                }}
-                onDelete={onDeleteHighlight}
-                onUpdateNote={onUpdateHighlightNote}
-                width="100%"
-                side={undefined}
-              />
-            )}
-            {sheet === "settings" && (
-              <SettingsPanel
-                theme={theme}
-                themeKey={themeKey}
-                t={t}
-                setTweak={setTweak}
-                onClose={() => setSheet(null)}
-                width="100%"
-                side={undefined}
-                mobile
-                onOpenFullSettings={
-                  onOpenFullSettings
-                    ? () => {
-                        setSheet(null);
-                        onOpenFullSettings();
-                      }
-                    : undefined
-                }
-              />
-            )}
-            {sheet === "progress" && (
-              <div
-                style={{
-                  padding: 22,
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "center",
-                }}
-              >
-                <ProgressOverlay
-                  theme={theme}
-                  themeKey={themeKey}
-                  currentChapter={currentChapter}
-                  chapterCount={chapterCount}
-                  chapterTitle={chapter.title}
-                />
-              </div>
-            )}
+            </div>
+          )}
         </div>
       </MobileSheet>
       {selAnchor && (

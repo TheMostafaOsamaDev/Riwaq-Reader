@@ -13,11 +13,19 @@ export interface PxRect {
 }
 
 /** Page-px rect → 0..1 fractions of the page box. */
-export function normalizeRect(r: PxRect, pageW: number, pageH: number): NormRect {
+export function normalizeRect(
+  r: PxRect,
+  pageW: number,
+  pageH: number,
+): NormRect {
   return { x: r.x / pageW, y: r.y / pageH, w: r.w / pageW, h: r.h / pageH };
 }
 
 /** 0..1 fractions → page-px rect at the given display size. */
-export function denormalizeRect(n: NormRect, pageW: number, pageH: number): PxRect {
+export function denormalizeRect(
+  n: NormRect,
+  pageW: number,
+  pageH: number,
+): PxRect {
   return { x: n.x * pageW, y: n.y * pageH, w: n.w * pageW, h: n.h * pageH };
 }

@@ -15,12 +15,10 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
+  Z,
 } from "../styles/tokens";
 import { enqueueConversion } from "../store/downloadQueue";
-import {
-  readSnapshot,
-  type SourceSnapshot,
-} from "../store/sourceLibrary";
+import { readSnapshot, type SourceSnapshot } from "../store/sourceLibrary";
 import { useI18n } from "../i18n/useI18n";
 
 type ConvertMode = "single" | "per-volume";
@@ -72,7 +70,8 @@ export function SaveAsOfflineBookDialog({
   }, [libraryEntryId]);
 
   const stats = useMemo(() => {
-    if (!snapshot) return { volumes: 0, chapters: 0, downloaded: 0, unloaded: 0 };
+    if (!snapshot)
+      return { volumes: 0, chapters: 0, downloaded: 0, unloaded: 0 };
     let chapters = 0;
     let downloaded = 0;
     let unloaded = 0;
@@ -106,7 +105,7 @@ export function SaveAsOfflineBookDialog({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9700,
+        zIndex: Z.menuDialog,
         background: "rgba(0,0,0,0.45)",
         display: "flex",
         alignItems: "center",
@@ -405,7 +404,12 @@ function ModeOption({
 
 interface StatsRowProps {
   theme: Theme;
-  stats: { volumes: number; chapters: number; downloaded: number; unloaded: number };
+  stats: {
+    volumes: number;
+    chapters: number;
+    downloaded: number;
+    unloaded: number;
+  };
 }
 
 function StatsRow({ theme, stats }: StatsRowProps) {

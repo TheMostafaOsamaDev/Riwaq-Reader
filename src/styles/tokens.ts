@@ -236,7 +236,10 @@ export function hlBg(color: HighlightColor, themeKey: ThemeKey): string {
  * than reach for `dot`, or the marker and the popover disagree.
  */
 export function hlMark(color: HighlightColor, themeKey: ThemeKey): string {
-  return shade(HIGHLIGHT_COLORS[color].dot, isDarkTheme(themeKey) ? 0.2 : -0.28);
+  return shade(
+    HIGHLIGHT_COLORS[color].dot,
+    isDarkTheme(themeKey) ? 0.2 : -0.28,
+  );
 }
 
 /** Swatch order for any picker: the record's own declaration order,
@@ -393,18 +396,17 @@ export const FONT_GROUP_ORDER: ReadonlyArray<FontGroup> = [
  *  `dyslexic` named faces that were never shipped, so they were already
  *  rendering as Readex Pro on Android; `markazi` gives `serif` a real serif
  *  for the first time. */
-export const LEGACY_FONT_FAMILY: Record<string, FontFamilyKey | undefined> =
-  {
-    sans: "readex",
-    dyslexic: "readex",
-    serif: "markazi",
-    // Thmanyah Serif Display was dropped: it shipped without a license
-    // file, so it could not be redistributed. Markazi is the closest
-    // bundled face — the same editorial-serif role, carrying both
-    // scripts. Keyed by `string`, not `FontFamilyKey`, precisely so a
-    // retired key can still name its successor here.
-    thmanyah: "markazi",
-  };
+export const LEGACY_FONT_FAMILY: Record<string, FontFamilyKey | undefined> = {
+  sans: "readex",
+  dyslexic: "readex",
+  serif: "markazi",
+  // Thmanyah Serif Display was dropped: it shipped without a license
+  // file, so it could not be redistributed. Markazi is the closest
+  // bundled face — the same editorial-serif role, carrying both
+  // scripts. Keyed by `string`, not `FontFamilyKey`, precisely so a
+  // retired key can still name its successor here.
+  thmanyah: "markazi",
+};
 
 /** Selectable UI (app-chrome) font — distinct from the per-book reading
  *  `FontFamilyKey`. Applied through the `--ui-font` CSS variable that
@@ -469,8 +471,7 @@ export const FONT_CHAPTER_DISPLAY = FONT_STACKS.markazi;
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,
 // presentation forms A & B). Book titles no longer branch on this — see
 // `titleFontFor` — but callers that tune fontStyle per script still do.
-const ARABIC_RANGE =
-  /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+const ARABIC_RANGE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 
 export function isArabicTitle(title: string): boolean {
   return ARABIC_RANGE.test(title);
@@ -520,7 +521,7 @@ function parseHexColor(hex: string): [number, number, number] | null {
 }
 
 function toHex(rgb: [number, number, number]): string {
-  return "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+  return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** Move a colour `amount` (0..1) of the way toward black (negative) or white. */
@@ -529,7 +530,9 @@ export function shade(hex: string, amount: number): string {
   if (!rgb) return hex;
   const target = amount < 0 ? 0 : 255;
   const k = Math.abs(amount);
-  return toHex(rgb.map((c) => c + (target - c) * k) as [number, number, number]);
+  return toHex(
+    rgb.map((c) => c + (target - c) * k) as [number, number, number],
+  );
 }
 
 /** A hex colour at an arbitrary alpha. Returns it untouched if it is not a
@@ -586,4 +589,105 @@ export function readingSurfaces(theme: Theme): ReadingSurfaces {
   return nearBlack
     ? { page: shade(theme.paper, SURFACE_STEP), surround: theme.paper }
     : { page: theme.paper, surround: shade(theme.paper, -SURFACE_STEP) };
+}
+
+/* ── Stacking order ────────────────────────────────────────────────────────
+ *
+ *  Every z-index in the app comes from here. Before this existed the values
+ *  were tuned one at a time at the point of use and had drifted to thirty-one
+ *  distinct numbers between 0 and 11000 — including pairs like 8999/9000 and
+ *  9499/9500, which are not two layers but one layer and the scrim under it,
+ *  written as a number nudged by one. The comments had drifted too: the focus
+ *  chrome still claimed to sit "above SideSheet's overlay (40)" long after
+ *  SideSheet's panel had moved to 1 inside its own stacking context.
+ *
+ *  The numbers below are arbitrary; only their ORDER carries meaning, and no
+ *  call site should read one. Add a rung rather than nudging a neighbour, and
+ *  name it for what the thing is, not for how high it sits.
+ *
+ *  Two bands, and they never mix.
+ *
+ *  `Z_LOCAL` orders siblings INSIDE one component's own stacking context — a
+ *  label over its own button's hover wash, a scrub chip over its own track.
+ *  Its values are not comparable with the app band: a component that needs to
+ *  out-rank something outside itself belongs in the app band instead.
+ *
+ *  `Z` is the real ladder — one screen-wide stack, bottom to top, where any
+ *  rung can be on screen at the same time as the ones near it. */
+
+export const Z_LOCAL = {
+  /** Behind the component's own content — a hover wash under a button label. */
+  under: 0,
+  /** The default: content sitting on top of that wash. */
+  base: 1,
+  /** One step up, for a sibling that has to cover `base`. */
+  raised: 2,
+  /** Top of a component's internal stack. */
+  top: 3,
+  /** A page overlay inside the fixed-layout viewer's own transform context. */
+  page: 5,
+} as const;
+
+export const Z = {
+  /** Reader bars pinned over the page. */
+  readerChrome: 100,
+  /** Sidebar, mobile sheet, detail-view header — furniture beside content. */
+  panel: 200,
+  /** The stream-reader slot, held over the Library through its cross-fade. */
+  streamLayer: 300,
+  /** Floats over the page but under any overlay: side sheets, the font-select
+   *  dropdown, the full-page cover shown while a book loads. */
+  floating: 400,
+  /** The focus-mode chapter plate, deliberately UNDER the bars … */
+  focusPlate: 410,
+  /** … so a bar revealed at the edge covers the plate instead of interleaving. */
+  focusBar: 420,
+  /** Transient centred hints, and the app's inline error strip. */
+  hint: 430,
+  /** The update banner. */
+  banner: 440,
+  /** Full-screen animated views. */
+  fullScreen: 450,
+  /** Ordinary dialogs, and the reader's error boundary. */
+  dialog: 460,
+  /** A dialog raised over another dialog — Settings' reset confirmation. */
+  dialogAbove: 470,
+  /** Search, taking the whole screen. */
+  overlay: 500,
+  /** A dialog opened from inside that overlay. */
+  overlayDialog: 510,
+  /** The reader's text-selection layer. */
+  selection: 600,
+  /** Modals, over everything above. */
+  modal: 700,
+  /** Context menus and popovers, which can open from inside a modal. */
+  menu: 800,
+  /** A dialog raised by one of those menus. */
+  menuDialog: 810,
+  /** A menu raised by that dialog. */
+  menuMenu: 820,
+  /** Toasts: above anything the user can dismiss. */
+  toast: 900,
+  /** Import progress. */
+  progress: 910,
+  /** The dev-build diagnostics panel. Level with `progress`, as it was. */
+  diagnostics: 910,
+  /** The dev-build log marker, one step over that panel. */
+  logMarker: 920,
+  /** The image lightbox. */
+  lightbox: 930,
+  /** The drag-and-drop target. It has to clear the lightbox — a drag begun
+   *  while an image is open still has to read. Nothing else goes above it. */
+  drop: 940,
+  /** The overlay-scrollbar host, and only it. It sits above every layer above
+   *  deliberately, so a scroll area inside a modal still gets its bar.
+   *  Mirrored in `global.css` on `#riwaq-scrollbars` — change both or neither. */
+  scrollbars: 2147483000,
+} as const;
+
+/** A scrim sits one step under the surface it dims, so the two always move
+ *  together. This is the relationship the old 8999 and 9499 literals were
+ *  spelling out by hand. */
+export function scrimUnder(layer: number): number {
+  return layer - 1;
 }

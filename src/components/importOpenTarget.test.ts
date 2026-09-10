@@ -58,7 +58,11 @@ describe("openIntentFor", () => {
     // `open -a Riwaq broken.epub good.pdf` swallowed the error too.
     expect(
       openIntentFor(
-        { autoImported: [], drafts: [draft()], errors: [failure("broken.epub")] },
+        {
+          autoImported: [],
+          drafts: [draft()],
+          errors: [failure("broken.epub")],
+        },
         true,
       ),
     ).toEqual({ kind: "none" });

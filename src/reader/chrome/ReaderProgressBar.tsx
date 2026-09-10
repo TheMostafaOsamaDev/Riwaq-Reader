@@ -18,7 +18,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { ACCENT, type Theme } from "../../styles/tokens";
+import { ACCENT, type Theme, Z_LOCAL } from "../../styles/tokens";
 import { ReaderIconButton } from "./ReaderIconButton";
 
 /** Centre an element on a logical position.
@@ -85,7 +85,7 @@ function Knob({
         transition: reduced
           ? "none"
           : "transform 140ms cubic-bezier(0.2, 0, 0, 1), background-color 160ms ease-out, border-color 160ms ease-out",
-        zIndex: 2,
+        zIndex: Z_LOCAL.raised,
       }}
     />
   );
@@ -93,7 +93,15 @@ function Knob({
 
 /** Chapter / outline landmarks. Dots that sit ON the line rather than strokes
  *  cutting through it — same reasoning as the handle's missing ring. */
-function Ticks({ theme, ticks, rtl }: { theme: Theme; ticks: number[]; rtl: boolean }) {
+function Ticks({
+  theme,
+  ticks,
+  rtl,
+}: {
+  theme: Theme;
+  ticks: number[];
+  rtl: boolean;
+}) {
   if (ticks.length > MAX_TICKS) return null;
   return (
     <>
@@ -152,7 +160,7 @@ function ScrubChip({
         textOverflow: "ellipsis",
         pointerEvents: "none",
         boxShadow: "0 6px 18px rgba(0, 0, 0, 0.22)",
-        zIndex: 3,
+        zIndex: Z_LOCAL.top,
       }}
     >
       {children}
@@ -344,7 +352,10 @@ export function ReaderProgressBar({
           touchAction: "none",
         }}
       >
-        <div ref={trackRef} style={{ position: "relative", width: "100%", height: 3 }}>
+        <div
+          ref={trackRef}
+          style={{ position: "relative", width: "100%", height: 3 }}
+        >
           <div
             style={{
               position: "absolute",

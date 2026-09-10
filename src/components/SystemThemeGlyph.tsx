@@ -26,7 +26,14 @@ export function SystemThemeGlyph({ size = 22 }: { size?: number }) {
       style={{ flexShrink: 0 }}
     >
       {/* ring — the right (hollow/outline) half reads as "light" */}
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.75" />
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
       {/* left half filled solid — reads as "dark"; the straight vertical
           edge against the ring is the light/dark divider */}
       <path d="M12 3A9 9 0 0 0 12 21Z" fill="currentColor" />
