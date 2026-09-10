@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLongPress } from "../hooks/useLongPress";
 import { Icon } from "./Icon";
 import { BookCover, BOOK_COVER_DIMS } from "./BookCover";
@@ -8,7 +17,6 @@ import { ContextMenu } from "./ContextMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "./Button";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
-import { NovelDetailView } from "./NovelDetailView";
 import { DownloadQueueView } from "./DownloadQueueView";
 import { LibrarySidebar } from "./LibrarySidebar";
 import { SearchOverlay } from "./SearchOverlay";
@@ -33,7 +41,7 @@ import {
   subscribe as subscribeToQueue,
 } from "../store/downloadQueue";
 import { Spinner } from "./Spinner";
-import { Store } from "./Store";
+import { LazyViewFallback } from "./LazyViewFallback";
 import {
   createImportReporter,
   failImportRun,
@@ -93,6 +101,23 @@ import {
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel } from "../i18n/statusLabels";
 import type { MsgKey, Tr } from "../i18n";
+
+// Kept off the startup path — neither is needed to paint the library, and a
+// user who only reads their own files never loads either. Together with
+// SourceStreamReader (lazied in App.tsx) this is the whole Store subsystem.
+//
+// NovelDetailView gets its own boundary rather than riding along inside Store,
+// because the library reaches it directly for source-backed entries — not only
+// through the Store tab. Store keeps its own static import of it, so Rollup
+// shares one chunk between the two entry points.
+//
+// `src/bundleSplit.test.ts` fails if a static import pulls either back in.
+const Store = lazy(() =>
+  import("./Store").then((m) => ({ default: m.Store })),
+);
+const NovelDetailView = lazy(() =>
+  import("./NovelDetailView").then((m) => ({ default: m.NovelDetailView })),
+);
 
 function draftDefaultCover(d: FixedImportDraft): CoverChoice {
   return d.defaultCoverId
@@ -1635,40 +1660,44 @@ function DesktopLibrary({
             flexDirection: "column",
           }}
         >
-          <NovelDetailView
-            theme={theme}
-            layout="desktop"
-            sourceId={sourceDetailView.sourceId}
-            novelUrl={sourceDetailView.novelUrl}
-            libraryEntryId={sourceDetailView.libraryEntryId}
-            onBack={onCloseSourceDetailView}
-            onStreamRead={(chapterId) =>
-              onStreamRead(
-                sourceDetailView.sourceId,
-                sourceDetailView.novelUrl,
-                chapterId,
-              )
-            }
-            onImportComplete={onSourceImportComplete}
-            onOpenRangeDialog={onOpenSourceDetailRangeDialog}
-            shelves={shelves}
-            bookShelfIds={
-              books.find((b) => b.id === sourceDetailView.libraryEntryId)
-                ?.shelfIds ?? []
-            }
-            onToggleShelf={(shelfId) =>
-              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
-            }
-            onNewShelfFromDetail={onNewShelf}
-          />
+          <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+            <NovelDetailView
+              theme={theme}
+              layout="desktop"
+              sourceId={sourceDetailView.sourceId}
+              novelUrl={sourceDetailView.novelUrl}
+              libraryEntryId={sourceDetailView.libraryEntryId}
+              onBack={onCloseSourceDetailView}
+              onStreamRead={(chapterId) =>
+                onStreamRead(
+                  sourceDetailView.sourceId,
+                  sourceDetailView.novelUrl,
+                  chapterId,
+                )
+              }
+              onImportComplete={onSourceImportComplete}
+              onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+              shelves={shelves}
+              bookShelfIds={
+                books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                  ?.shelfIds ?? []
+              }
+              onToggleShelf={(shelfId) =>
+                onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+              }
+              onNewShelfFromDetail={onNewShelf}
+            />
+          </Suspense>
         </div>
       ) : tab === "store" ? (
-        <Store
-          theme={theme}
-          layout="desktop"
-          onStreamRead={onStreamRead}
-          onImportComplete={onSourceImportComplete}
-        />
+        <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+          <Store
+            theme={theme}
+            layout="desktop"
+            onStreamRead={onStreamRead}
+            onImportComplete={onSourceImportComplete}
+          />
+        </Suspense>
       ) : activeShelf ? (
         // Single-shelf detail page (Task 10): the same header pattern as
         // ShelvesPage's own title, filtered to one shelf's books. Shares
@@ -2059,32 +2088,34 @@ function MobileLibrary({
             flexDirection: "column",
           }}
         >
-          <NovelDetailView
-            theme={theme}
-            layout="mobile"
-            sourceId={sourceDetailView.sourceId}
-            novelUrl={sourceDetailView.novelUrl}
-            libraryEntryId={sourceDetailView.libraryEntryId}
-            onBack={onCloseSourceDetailView}
-            onStreamRead={(chapterId) =>
-              onStreamRead(
-                sourceDetailView.sourceId,
-                sourceDetailView.novelUrl,
-                chapterId,
-              )
-            }
-            onImportComplete={onSourceImportComplete}
-            onOpenRangeDialog={onOpenSourceDetailRangeDialog}
-            shelves={shelves}
-            bookShelfIds={
-              books.find((b) => b.id === sourceDetailView.libraryEntryId)
-                ?.shelfIds ?? []
-            }
-            onToggleShelf={(shelfId) =>
-              onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
-            }
-            onNewShelfFromDetail={onNewShelf}
-          />
+          <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+            <NovelDetailView
+              theme={theme}
+              layout="mobile"
+              sourceId={sourceDetailView.sourceId}
+              novelUrl={sourceDetailView.novelUrl}
+              libraryEntryId={sourceDetailView.libraryEntryId}
+              onBack={onCloseSourceDetailView}
+              onStreamRead={(chapterId) =>
+                onStreamRead(
+                  sourceDetailView.sourceId,
+                  sourceDetailView.novelUrl,
+                  chapterId,
+                )
+              }
+              onImportComplete={onSourceImportComplete}
+              onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+              shelves={shelves}
+              bookShelfIds={
+                books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                  ?.shelfIds ?? []
+              }
+              onToggleShelf={(shelfId) =>
+                onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+              }
+              onNewShelfFromDetail={onNewShelf}
+            />
+          </Suspense>
         </div>
       ) : tab === "store" ? (
         <div
@@ -2101,12 +2132,14 @@ function MobileLibrary({
             title={tr("sidebar.store")}
             onBack={() => setTab("all")}
           />
-          <Store
-            theme={theme}
-            layout="mobile"
-            onStreamRead={onStreamRead}
-            onImportComplete={onSourceImportComplete}
-          />
+          <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+            <Store
+              theme={theme}
+              layout="mobile"
+              onStreamRead={onStreamRead}
+              onImportComplete={onSourceImportComplete}
+            />
+          </Suspense>
         </div>
       ) : activeShelf ? (
         // Single-shelf detail page (Task 10), mobile: same back-arrow +
