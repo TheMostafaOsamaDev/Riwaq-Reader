@@ -35,6 +35,12 @@ Then paste the printed **public** key into `src-tauri/tauri.conf.json` at
 `plugins.updater.pubkey`. It is compiled into every build; the private half
 never leaves your backup and the CI secret.
 
+`bundle.createUpdaterArtifacts` must also be `true` in that same file — it
+defaults to **false**, and with it off the bundler emits no `.sig` and no
+updater bundle at all, so `latest.json` can never be built no matter which
+secrets are set. `scripts/verify-release-config.sh` checks both, and the
+`preflight` job runs it before any platform builds.
+
 ## Repository secrets
 
 | Secret | Value |
@@ -56,10 +62,21 @@ set after the first signed Android release:
 ## Cutting a release
 
 1. Bump `version` in `package.json`, `src-tauri/tauri.conf.json` and
-   `src-tauri/Cargo.toml`. They must agree: the updater compares against
+   `src-tauri/Cargo.toml`, then run `cargo update --workspace` in `src-tauri/`
+   so **`Cargo.lock`** records it too — CI builds with `--locked` and fails on
+   the drift. All four must agree: the updater compares against
    `tauri.conf.json`, and Android derives its `versionCode` from it as
    `major*1000000 + minor*1000 + patch`.
-2. Push a `v*` tag. The pipeline builds seven targets into a **draft** release.
+
+   Check it before pushing anything:
+
+   ```bash
+   bash scripts/verify-release-config.sh v0.2.0
+   ```
+2. Push a `v*` tag. `preflight` re-runs the config check in seconds, then the
+   pipeline builds seven targets into a **draft** release. A tag containing a
+   hyphen (`v0.2.0-rc1`) is published as a prerelease, so it is not served to
+   updater clients through `/releases/latest/`.
 3. The build fails rather than shipping something broken if: the Android APK
    is debug-signed, `latest.json` is missing a platform, a signature is empty,
    or the manifest version disagrees with the tag.
