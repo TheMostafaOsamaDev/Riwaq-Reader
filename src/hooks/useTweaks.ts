@@ -27,6 +27,7 @@ export const DEFAULT_TWEAKS: Tweaks = {
   keepScreenAwake: false,
   startupView: "library",
   confirmDelete: true,
+  autoCheckUpdates: true,
   reduceMotion: "auto",
   maxConcurrentDownloads: 2,
   wifiOnlyDownloads: false,
