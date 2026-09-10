@@ -8,7 +8,7 @@ import { Icon } from "./Icon";
 import type { IconProps } from "./Icon";
 import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
 import type { BookIndexEntry } from "../store/library";
-import type { LibraryTab } from "./Library";
+import type { LibraryTab } from "./library/tabs";
 import { listSources } from "../sources/registry";
 import { SourceIcon } from "./SourceIcon";
 import { useI18n } from "../i18n/useI18n";

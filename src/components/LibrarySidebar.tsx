@@ -29,7 +29,7 @@ import { useNav, back, forward } from "../store/navigation";
 import { useImportIndicator } from "../store/importIndicator";
 import { setMinimized } from "../store/importProgress";
 import type { Shelf } from "../store/shelves";
-import type { LibraryTab } from "./Library";
+import type { LibraryTab } from "./library/tabs";
 import { useI18n } from "../i18n/useI18n";
 import type { Dir, MsgKey, Tr } from "../i18n";
 
