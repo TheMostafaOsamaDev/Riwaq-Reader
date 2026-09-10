@@ -14,7 +14,6 @@
 // parse (OPF, nav/NCX, chapter XHTML — tens of KB each) and asks Rust to
 // move everything else straight from the archive to disk.
 
-import JSZip from "jszip";
 import { invoke } from "@tauri-apps/api/core";
 
 /** One entry to pull out of the archive and drop on disk. */
@@ -116,80 +115,6 @@ export async function openNativeZip(
 
     dispose() {
       textCache.clear();
-    },
-  };
-}
-
-// ── in-memory (JSZip) ──────────────────────────────────────────────────────
-
-/**
- * Wrap a zip that only exists as bytes in JS. Used by tests; the app's own
- * import paths stage to disk first so they can use `openNativeZip` instead.
- */
-export async function openMemoryZip(
-  bytes: ArrayBuffer | Uint8Array,
-  writeBytes?: (dest: string, data: Uint8Array) => Promise<void>,
-): Promise<ZipSource> {
-  const zip = await JSZip.loadAsync(bytes);
-  const present = new Set<string>();
-  zip.forEach((relPath, file) => {
-    if (!file.dir) present.add(relPath);
-  });
-
-  return {
-    has: (p) => present.has(p),
-
-    async readText(p) {
-      const f = zip.file(p);
-      if (!f) return null;
-      try {
-        return await f.async("string");
-      } catch {
-        return null;
-      }
-    },
-
-    async readBytes(p) {
-      const f = zip.file(p);
-      if (!f) return null;
-      try {
-        return await f.async("uint8array");
-      } catch {
-        return null;
-      }
-    },
-
-    async prefetchText() {
-      // Entries are already decompressed on demand from a local buffer;
-      // there's no round trip to batch away.
-    },
-
-    async extract(items) {
-      if (!writeBytes) {
-        throw new Error("in-memory zip source cannot extract without a writer");
-      }
-      const out: boolean[] = [];
-      for (const item of items) {
-        const f = zip.file(item.entry);
-        if (!f) {
-          out.push(false);
-          continue;
-        }
-        try {
-          // One at a time, and the reference is dropped straight after the
-          // write, so peak memory stays at a single entry rather than the
-          // whole image set.
-          await writeBytes(item.dest, await f.async("uint8array"));
-          out.push(true);
-        } catch {
-          out.push(false);
-        }
-      }
-      return out;
-    },
-
-    dispose() {
-      present.clear();
     },
   };
 }
