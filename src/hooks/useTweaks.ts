@@ -4,7 +4,6 @@ import {
   FONT_STACKS,
   LEGACY_FONT_FAMILY,
   UI_FONT_STACKS,
-  type FontFamilyKey,
 } from "../styles/tokens";
 import { migrateStorageKey } from "../lib/legacyStorage";
 
@@ -71,13 +70,13 @@ function load(): Tweaks {
       delete parsed.mobileTapStride;
     }
     const merged = { ...DEFAULT_TWEAKS, ...parsed };
-    // The reading library replaced the old three-option picker. `serif`,
-    // `sans` and `dyslexic` named faces that were never bundled, so they were
-    // already resolving to Readex Pro (or a system fallback) — point them at
-    // real families instead. Anything unrecognised falls back to the default
-    // so a corrupt or hand-edited value can't leave the reader unstyled.
-    const legacy =
-      LEGACY_FONT_FAMILY[merged.fontFamily as FontFamilyKey];
+    // Retired `fontFamily` values get pointed at a real bundled family
+    // rather than at nothing: `serif`/`sans`/`dyslexic` named faces that were
+    // never bundled (so they already resolved to Readex Pro or a system
+    // fallback), and `thmanyah` names one that was dropped. Anything
+    // unrecognised falls back to the default so a corrupt or hand-edited
+    // value can't leave the reader unstyled.
+    const legacy = LEGACY_FONT_FAMILY[merged.fontFamily];
     if (legacy) merged.fontFamily = legacy;
     if (!(merged.fontFamily in FONT_STACKS)) {
       merged.fontFamily = DEFAULT_TWEAKS.fontFamily;

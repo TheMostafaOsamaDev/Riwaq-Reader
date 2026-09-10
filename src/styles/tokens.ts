@@ -274,8 +274,7 @@ export type FontFamilyKey =
   | "lateef"
   | "notokufi"
   | "changa"
-  | "lalezar"
-  | "thmanyah";
+  | "lalezar";
 
 /** Typographic style, used to group the picker. One selector drives both
  *  scripts, so grouping by script would be meaningless. */
@@ -331,7 +330,6 @@ export const FONT_STACKS: Record<FontFamilyKey, string> = {
   notokufi: '"Noto Kufi Arabic", "Readex Pro", sans-serif',
   changa: '"Changa", "Readex Pro", system-ui, sans-serif',
   lalezar: '"Lalezar", "Readex Pro", system-ui, sans-serif',
-  thmanyah: '"Thmanyah Serif Display", "Readex Pro", Georgia, serif',
 };
 
 export const FONT_FAMILY_LABELS: Record<FontFamilyKey, string> = {
@@ -354,7 +352,6 @@ export const FONT_FAMILY_LABELS: Record<FontFamilyKey, string> = {
   notokufi: "Noto Kufi Arabic",
   changa: "Changa",
   lalezar: "Lalezar",
-  thmanyah: "Thmanyah",
 };
 
 /** The pickable reading library, in picker order. Excludes the legacy
@@ -383,7 +380,6 @@ export const READING_FONTS: ReadonlyArray<{
 
   { key: "changa", group: "display" },
   { key: "lalezar", group: "display" },
-  { key: "thmanyah", group: "display" },
 ];
 
 export const FONT_GROUP_ORDER: ReadonlyArray<FontGroup> = [
@@ -397,11 +393,17 @@ export const FONT_GROUP_ORDER: ReadonlyArray<FontGroup> = [
  *  `dyslexic` named faces that were never shipped, so they were already
  *  rendering as Readex Pro on Android; `markazi` gives `serif` a real serif
  *  for the first time. */
-export const LEGACY_FONT_FAMILY: Partial<Record<FontFamilyKey, FontFamilyKey>> =
+export const LEGACY_FONT_FAMILY: Record<string, FontFamilyKey | undefined> =
   {
     sans: "readex",
     dyslexic: "readex",
     serif: "markazi",
+    // Thmanyah Serif Display was dropped: it shipped without a license
+    // file, so it could not be redistributed. Markazi is the closest
+    // bundled face — the same editorial-serif role, carrying both
+    // scripts. Keyed by `string`, not `FontFamilyKey`, precisely so a
+    // retired key can still name its successor here.
+    thmanyah: "markazi",
   };
 
 /** Selectable UI (app-chrome) font — distinct from the per-book reading
@@ -412,8 +414,7 @@ export type UiFontKey =
   | "alexandria"
   | "almarai"
   | "ibmplex"
-  | "vazirmatn"
-  | "thmanyah";
+  | "vazirmatn";
 
 export const UI_FONT_STACKS: Record<UiFontKey, string> = {
   readex: FONT_READING_SANS,
@@ -421,7 +422,6 @@ export const UI_FONT_STACKS: Record<UiFontKey, string> = {
   almarai: FONT_READING_SANS,
   ibmplex: FONT_READING_SANS,
   vazirmatn: FONT_READING_SANS,
-  thmanyah: FONT_READING_SANS,
 };
 
 export const UI_FONT_LABELS: Record<UiFontKey, string> = {
@@ -430,7 +430,6 @@ export const UI_FONT_LABELS: Record<UiFontKey, string> = {
   almarai: "Almarai",
   ibmplex: "IBM Plex Sans Arabic",
   vazirmatn: "Vazirmatn",
-  thmanyah: "Thmanyah",
 };
 
 /** Per-font `font-size-adjust` so every UI font renders at a consistent
@@ -445,7 +444,6 @@ export const UI_FONT_ADJUST: Record<UiFontKey, number> = {
   almarai: 0.525,
   ibmplex: 0.525,
   vazirmatn: 0.525,
-  thmanyah: 0.525,
 };
 
 // Titles are no longer set in a serif — display text is Readex Pro too.
@@ -458,17 +456,19 @@ export const FONT_SERIF_DISPLAY = FONT_READING_SANS;
  *  (`titleFontFor`, the reader's top bar, generated covers). Widening that
  *  alias would re-face all of them at once.
  *
- *  Thmanyah Serif Display is self-hosted in five weights and carries BOTH
- *  scripts — an editorial serif for Arabic and a high-contrast one for Latin —
- *  which is what removed the original reason titles were dropped onto the
- *  sans. It had been in FONT_STACKS, reachable only as a user-selectable
- *  READING font, and used by nothing else. */
-export const FONT_CHAPTER_DISPLAY = FONT_STACKS.thmanyah;
+ *  Markazi Text is the bundled editorial serif that carries BOTH scripts, so
+ *  an Arabic or Latin chapter name opens in a display face instead of in the
+ *  body sans — which is what removed the original reason titles were dropped
+ *  onto the sans. It is variable across 400–700 and the opener asks for 400.
+ *
+ *  This was Thmanyah Serif Display until that family was dropped for shipping
+ *  without a license file (see LEGACY_FONT_FAMILY). Markazi is also reachable
+ *  as a user-selectable READING font; nothing else resolves through here. */
+export const FONT_CHAPTER_DISPLAY = FONT_STACKS.markazi;
 
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,
-// presentation forms A & B). Used to decide whether to render a book title
-// in the editorial Fraunces stack or fall back to the UI's Readex Pro so
-// digits and punctuation match the Arabic glyphs visually.
+// presentation forms A & B). Book titles no longer branch on this — see
+// `titleFontFor` — but callers that tune fontStyle per script still do.
 const ARABIC_RANGE =
   /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 
@@ -476,11 +476,12 @@ export function isArabicTitle(title: string): boolean {
   return ARABIC_RANGE.test(title);
 }
 
-/** Book-title display stack. Both Latin and Arabic titles now use the
- *  editorial display serif: FONT_SERIF_DISPLAY lists Fraunces then Thmanyah
- *  Serif Display, so per-glyph fallback renders Latin in Fraunces and Arabic
- *  in Thmanyah — Arabic titles no longer fall back to the sans. `isArabicTitle`
- *  stays exported for callers that still tune fontStyle (italic vs upright). */
+/** Book-title display stack. Titles are set in the reading sans in both
+ *  scripts — FONT_SERIF_DISPLAY has resolved to FONT_READING_SANS since
+ *  display text stopped being a serif, so this takes no title argument and
+ *  branches on nothing. A chapter's OPENING title is the exception and goes
+ *  through FONT_CHAPTER_DISPLAY instead. `isArabicTitle` stays exported for
+ *  callers that still tune fontStyle (italic vs upright). */
 export function titleFontFor(_title: string): string {
   return FONT_SERIF_DISPLAY;
 }
