@@ -26,6 +26,19 @@ fn book_paths_from_argv(argv: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// True when this process was launched from an AppImage.
+///
+/// The Linux updater replaces the RUNNING EXECUTABLE in place, which only
+/// works for an AppImage — a .deb/.rpm install puts that binary under
+/// /usr/bin, owned by root. The AppImage runtime exports APPIMAGE, so its
+/// presence is the distinction, and `@tauri-apps/plugin-os` exposes no way to
+/// read an environment variable. Always false off Linux, which is correct:
+/// the frontend only consults this when the OS is linux.
+#[tauri::command]
+fn is_appimage() -> bool {
+    std::env::var_os("APPIMAGE").is_some()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -50,6 +63,14 @@ pub fn run() {
         },
     ));
 
+    // Desktop-only, for the same reason as the Cargo block above: neither
+    // crate is compiled into the Android build. Registered here rather than
+    // in the chain below so the #[cfg] applies to just these two.
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -57,6 +78,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .invoke_handler(tauri::generate_handler![
+            is_appimage,
             sources::source_fetch,
             sources::source_fetch_bytes,
             sources::source_render_and_extract,

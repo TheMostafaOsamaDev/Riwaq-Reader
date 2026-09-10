@@ -72,6 +72,8 @@ import {
 import type { ActivePanel } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
+import { useUpdateCheck } from "./hooks/useUpdateCheck";
+import { UpdateBanner } from "./components/UpdateBanner";
 
 interface Loaded {
   book: EpubBook;
@@ -119,6 +121,7 @@ function App() {
   // mounted.
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
+  const update = useUpdateCheck(t, setTweak);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -747,6 +750,13 @@ function App() {
           overflow: "hidden",
         }}
       >
+        {update.info && (
+          <UpdateBanner
+            info={update.info}
+            theme={theme}
+            onDismiss={update.dismiss}
+          />
+        )}
         {loading && <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />}
         {error && !loading && (
           <div
@@ -824,6 +834,8 @@ function App() {
               applyTweaks={applyTweaks}
               layout={isMobile ? "mobile" : "desktop"}
               onClose={closeSettings}
+              onCheckUpdates={update.check}
+              updateChecking={update.checking}
             />
           ) : base.screen === "library" ? (
             <Library
