@@ -20,7 +20,7 @@ import {
   takePendingStoreSource,
 } from "../store/uiIntents";
 import { SourceHomeView } from "./SourceHomeView";
-import { NovelDetailView } from "./NovelDetailView";
+import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import type { Theme } from "../styles/tokens";
 

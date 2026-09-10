@@ -9,7 +9,7 @@ import { useDropOverlayState } from "./store/dropOverlay";
 import { DesktopReader } from "./components/DesktopReader";
 import { DropOverlay } from "./components/DropOverlay";
 import { ImportProgress } from "./components/ImportProgress";
-import { Library } from "./components/Library";
+import { Library } from "./components/library/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { SourceStreamReader } from "./components/SourceStreamReader";
