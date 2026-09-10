@@ -50,6 +50,14 @@ pub fn run() {
         },
     ));
 
+    // Desktop-only, for the same reason as the Cargo block above: neither
+    // crate is compiled into the Android build. Registered here rather than
+    // in the chain below so the #[cfg] applies to just these two.
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
