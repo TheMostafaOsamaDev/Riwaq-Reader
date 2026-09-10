@@ -1048,7 +1048,6 @@ export function MobileReader({
           <ChapterStartLink
             theme={theme}
             tr={tr}
-            titleFont={FONT_STACKS[t.fontFamily]}
             compact
             prevNumber={currentChapter}
             prevTitle={book.chapters[currentChapter - 1]?.title ?? ""}

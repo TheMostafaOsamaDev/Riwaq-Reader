@@ -1153,7 +1153,6 @@ export function DesktopReader({
                     <ChapterStartLink
                       theme={theme}
                       tr={tr}
-                      titleFont={FONT_STACKS[t.fontFamily]}
                       prevNumber={currentChapter}
                       prevTitle={book.chapters[currentChapter - 1]?.title ?? ""}
                       onPrev={prevChapterAtEnd}
