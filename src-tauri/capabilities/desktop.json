@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "In-app updates. Split out of `default` because these two plugins are compiled ONLY on desktop — Cargo.toml gates them behind cfg(not(any(target_os = \"android\", target_os = \"ios\"))) since tauri-plugin-updater has no Android support. A capability with no `platforms` key applies to every target, so leaving these in `default` makes the Android build fail on a permission whose plugin was never compiled into it. `default` cannot simply be scoped instead: fs, notification and os in there are needed on Android too.",
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main"],
+  "permissions": ["updater:default", "process:default"]
+}
