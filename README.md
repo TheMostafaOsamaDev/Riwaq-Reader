@@ -312,6 +312,7 @@ pnpm install
 pnpm tauri dev          # desktop, with Vite HMR
 pnpm android:dev        # Android, on a device or emulator
 pnpm test               # unit tests (Vitest)
+pnpm check              # format, lint, typecheck, build, test — what CI runs
 pnpm tauri build        # production bundles for the current OS
 ```
 
@@ -319,10 +320,12 @@ Vite serves on port **1420** (HMR on 1421) and a single dev server backs both th
 window and Android at once. For Android, the device must reach the host over your LAN — or
 use `adb reverse tcp:1420 tcp:1420` on an emulator.
 
-More detail lives in [`docs/`](docs/): [`setup.md`](docs/setup.md) for toolchains and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers the conventions worth knowing before the first
+PR. More detail lives in [`docs/`](docs/): [`setup.md`](docs/setup.md) for toolchains and
 bundling, [`architecture.md`](docs/architecture.md) for module boundaries and data flow,
-[`ANDROID.md`](docs/ANDROID.md) for the Android specifics, and
-[`store-feature/`](docs/store-feature/README.md) for how source extensions work.
+[`ANDROID.md`](docs/ANDROID.md) for the Android specifics,
+[`store-feature/`](docs/store-feature/README.md) for how source extensions work, and
+[`maintenance.md`](docs/maintenance.md) for the periodic housekeeping.
 
 ### Stack
 
