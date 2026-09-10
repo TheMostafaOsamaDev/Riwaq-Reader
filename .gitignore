@@ -71,3 +71,13 @@ src-tauri/gen/apple/*.xcworkspace/xcuserdata/
 
 # ui-ux-pro-max CLI mirrors skills here too
 .agents/
+
+# Local only, and load-bearing that it stays that way. It carries the esbuild
+# build-script approval that pnpm 10+ needs to run a local build, but it has no
+# `packages:` field — and pnpm 9, which CI pins, refuses any workspace file
+# without one ("packages field missing or empty") before it even installs.
+# Committing it turns every CI run red at the setup step.
+#
+# If the CI pin is ever raised to pnpm 10+, add `packages:` and commit it
+# deliberately in that same change: `git add -f pnpm-workspace.yaml`.
+pnpm-workspace.yaml
