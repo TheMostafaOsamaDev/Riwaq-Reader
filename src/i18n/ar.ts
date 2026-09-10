@@ -603,4 +603,17 @@ export const ar: Messages = {
   "contextMenu.statusNone": "بلا",
   "contextMenu.editBookInfo": "تعديل معلومات الكتاب",
   "contextMenu.removeBook": "إزالة الكتاب",
+
+  "settings.updates": "التحقق من التحديثات",
+  "settings.updates.hint":
+    "يسأل GitHub مرة واحدة يوميًا عمّا إذا كان هناك إصدار أحدث من رواق. لا يُرسَل أي شيء عنك أو عن كتبك، ولا يُنزَّل شيء حتى تضغط تحديث.",
+  "settings.updates.checkNow": "تحقق الآن",
+  "settings.updates.checking": "جارٍ التحقق…",
+  "update.available": "الإصدار {v} من رواق متاح",
+  "update.action.install": "تحديث",
+  "update.action.download": "تنزيل",
+  "update.action.later": "لاحقًا",
+  "update.downloading": "جارٍ التنزيل…",
+  "update.opening": "جارٍ الفتح…",
+  "update.failed": "تعذّر التحديث. جرّب تنزيله بدلًا من ذلك.",
 };

@@ -738,4 +738,19 @@ export const en = {
   "contextMenu.statusNone": "None",
   "contextMenu.editBookInfo": "Edit book info",
   "contextMenu.removeBook": "Remove book",
+
+  // Updates. The only network request Riwaq makes on its own behalf, so the
+  // hint says plainly what it contacts and what it does not send.
+  "settings.updates": "Check for updates",
+  "settings.updates.hint":
+    "Asks GitHub once a day whether a newer Riwaq exists. Nothing about you or your books is sent, and nothing downloads until you tap Update.",
+  "settings.updates.checkNow": "Check now",
+  "settings.updates.checking": "Checking…",
+  "update.available": "Riwaq {v} is available",
+  "update.action.install": "Update",
+  "update.action.download": "Download",
+  "update.action.later": "Later",
+  "update.downloading": "Downloading…",
+  "update.opening": "Opening…",
+  "update.failed": "Update failed. Try downloading it instead.",
 } as const;
