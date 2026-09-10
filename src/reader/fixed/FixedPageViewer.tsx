@@ -1474,8 +1474,8 @@ export const FixedPageViewer = forwardRef<
         background: surfaces.surround,
         // DOCX cards paint themselves from these.
         ...({
-          ["--reading-ink"]: theme.ink,
-          ["--reading-paper"]: surfaces.page,
+          "--reading-ink": theme.ink,
+          "--reading-paper": surfaces.page,
         } as React.CSSProperties),
       }}
     >

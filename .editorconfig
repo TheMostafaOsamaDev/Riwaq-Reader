@@ -1,0 +1,34 @@
+# Editor defaults, so a contributor's editor agrees with the formatter before
+# the formatter ever runs. Biome (biome.json) is the authority on TS/JS/CSS;
+# this file covers what Biome does not, and the editors that read it natively.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Matches biome.json's lineWidth. Editors that render a ruler will put it in
+# the same place the formatter wraps.
+max_line_length = 80
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.{rs,toml}]
+# rustfmt's default, and what src-tauri/ is already written in.
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+# Scraper fixtures are captured verbatim from the site. Reformatting one would
+# invalidate the thing it exists to reproduce.
+[src/sources/extensions/__fixtures__/**]
+insert_final_newline = false
+trim_trailing_whitespace = false

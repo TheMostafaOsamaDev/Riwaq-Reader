@@ -1,8 +1,8 @@
 
 import { BookCover, } from "../BookCover";
 import { Button } from "../Button";
-import {
-  type BookIndexEntry,
+import type {
+  BookIndexEntry,
 } from "../../store/library";
 import { paletteForId } from "../../store/palette";
 import {

@@ -66,13 +66,9 @@ interface EnrichedChapter {
   imagesByBasename: Map<string, Uint8Array>;
 }
 
-interface ProgressFn {
-  (progress: number, phase?: string): void;
-}
+type ProgressFn = (progress: number, phase?: string) => void
 
-interface CancelledFn {
-  (): boolean;
-}
+type CancelledFn = () => boolean
 
 /**
  * Drive a conversion job to completion. Mutates the supplied job in
@@ -463,7 +459,11 @@ async function collectImages(
   }
   // De-dup while preserving order.
   const seen = new Set<string>();
-  const unique = remoteKeys.filter((k) => (seen.has(k) ? false : (seen.add(k), true)));
+  const unique = remoteKeys.filter((k) => {
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   for (let i = 0; i < unique.length; i++) {
     if (isCancelled()) break;
     const url = unique[i];

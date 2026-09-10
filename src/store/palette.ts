@@ -36,7 +36,7 @@ function oklchToHex(L: number, C: number, h: number): string {
   const gamma = (u: number) =>
     u <= 0.0031308
       ? 12.92 * u
-      : 1.055 * Math.pow(Math.max(0, u), 1 / 2.4) - 0.055;
+      : 1.055 * Math.max(0, u) ** (1 / 2.4) - 0.055;
 
   const to8 = (u: number) =>
     Math.max(0, Math.min(255, Math.round(gamma(u) * 255)));

@@ -8,6 +8,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "lint": "biome lint src scripts",
+    "lint:fix": "biome lint --write src scripts",
+    "format": "biome format --write src scripts",
+    "format:check": "biome format src scripts",
+    "check": "pnpm format:check && pnpm lint && pnpm build && pnpm test",
     "tauri": "tauri",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build --apk --target aarch64 && pnpm verify:jni && pnpm verify:signing",
@@ -33,6 +38,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.12",
     "@tauri-apps/cli": "^2.11.2",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.1.6",

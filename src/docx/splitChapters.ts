@@ -91,5 +91,5 @@ function firstParagraphText(body: HTMLElement): string | null {
 function truncateTitle(s: string): string {
   const collapsed = s.replace(/\s+/g, " ").trim();
   if (collapsed.length <= 80) return collapsed;
-  return collapsed.slice(0, 77) + "…";
+  return `${collapsed.slice(0, 77)}…`;
 }

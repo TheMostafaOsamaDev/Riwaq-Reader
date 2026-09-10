@@ -455,7 +455,7 @@ function extractDescriptionText(el: Element): string {
   // Many KolNovel pages prepend a few hundred chars; cap so the UI's
   // description card doesn't grow unbounded — full text is still
   // available in the imported EPUB's content.
-  return text.length > 1200 ? text.slice(0, 1200).trim() + "…" : text;
+  return text.length > 1200 ? `${text.slice(0, 1200).trim()}…` : text;
 }
 
 // ── chapter-body extraction (static HTML) ───────────────────────────────────

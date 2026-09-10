@@ -1,8 +1,8 @@
 import { memo, useCallback, } from "react";
 import { useLongPress } from "../../hooks/useLongPress";
 import { BookCover, } from "../BookCover";
-import {
-  type BookIndexEntry,
+import type {
+  BookIndexEntry,
 } from "../../store/library";
 import { paletteForId } from "../../store/palette";
 import {

@@ -1,8 +1,8 @@
 import { memo, } from "react";
 import { Icon } from "../Icon";
 import { BookCover, BOOK_COVER_DIMS } from "../BookCover";
-import {
-  type BookIndexEntry,
+import type {
+  BookIndexEntry,
 } from "../../store/library";
 import { paletteForId } from "../../store/palette";
 import {

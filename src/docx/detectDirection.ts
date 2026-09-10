@@ -11,7 +11,7 @@
 // We avoid full XML parsing — these are quick string scans against the
 // extracted XML, which is plenty for this heuristic.
 
-import JSZip from "jszip";
+import type JSZip from "jszip";
 
 export type Dir = "ltr" | "rtl";
 
@@ -91,7 +91,7 @@ function extractLang(xml: string | null): string | null {
 function isRtlLang(tag: string): boolean {
   const lower = tag.toLowerCase();
   return RTL_LANG_PREFIXES.some(
-    (p) => lower === p || lower.startsWith(p + "-"),
+    (p) => lower === p || lower.startsWith(`${p}-`),
   );
 }
 

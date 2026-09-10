@@ -196,7 +196,7 @@ function styleOf(el: Element) {
     opacity: cs.opacity,
     transform: cs.transform,
     filter: cs.filter,
-    backdropFilter: cs.backdropFilter || (cs as unknown as Record<string, string>)["webkitBackdropFilter"],
+    backdropFilter: cs.backdropFilter || (cs as unknown as Record<string, string>).webkitBackdropFilter,
     overflow: `${cs.overflowX}/${cs.overflowY}`,
     clipPath: cs.clipPath,
     contain: cs.contain,

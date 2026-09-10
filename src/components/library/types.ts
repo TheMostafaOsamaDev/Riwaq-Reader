@@ -1,13 +1,13 @@
 
-import {
-  type BookIndexEntry,
+import type {
+  BookIndexEntry,
 } from "../../store/library";
-import {
-  type Shelf,
+import type {
+  Shelf,
 } from "../../store/shelves";
-import {
-  type Theme,
-  type ThemeKey,
+import type {
+  Theme,
+  ThemeKey,
 } from "../../styles/tokens";
 import type { LibraryTab } from "./tabs";
 

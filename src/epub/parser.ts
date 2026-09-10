@@ -327,8 +327,8 @@ async function readCover(
     for (const idref of spine) {
       const item = manifest.get(idref);
       if (!item) continue;
-      const hintId = /(^|[\/_-])cover([\/_-]|\.|$)/i.test(idref);
-      const hintHref = /(^|[\/_-])cover([\/_-]|\.|$)/i.test(item.href);
+      const hintId = /(^|[/_-])cover([/_-]|\.|$)/i.test(idref);
+      const hintHref = /(^|[/_-])cover([/_-]|\.|$)/i.test(item.href);
       const isXhtml =
         item.mediaType.includes("xhtml") || /\.x?html?$/i.test(item.href);
       if (!isXhtml || (!hintId && !hintHref)) continue;
@@ -348,8 +348,8 @@ async function readCover(
     );
     const hit = candidates.find(
       ([id, v]) =>
-        /(^|[\/_-])cover([\/_-]|\.|$)/i.test(id) ||
-        /(^|[\/_-])cover([\/_-]|\.|$)/i.test(v.href),
+        /(^|[/_-])cover([/_-]|\.|$)/i.test(id) ||
+        /(^|[/_-])cover([/_-]|\.|$)/i.test(v.href),
     );
     if (hit) cover = hit[1];
   }
