@@ -45,6 +45,7 @@ import {
   type StageProgress,
 } from "./nativeStaging";
 import type { EpubBook } from "../epub/types";
+import { withIndexLock } from "./indexLock";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
 import { findByHash } from "./dedupe";
@@ -543,10 +544,12 @@ export async function writeInitialState(id: string): Promise<void> {
 export async function appendIndexEntry(
   entry: BookIndexEntry,
 ): Promise<BookIndexEntry> {
-  const idx = await readIndex();
-  idx.books.push(entry);
-  await writeIndex(idx);
-  return entry;
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    idx.books.push(entry);
+    await writeIndex(idx);
+    return entry;
+  });
 }
 
 /** Read a single index entry (used for open-time routing on `kind`). */
@@ -721,79 +724,81 @@ export async function addNovelToLibrary(
   sourceId: string,
   novelUrl: string,
 ): Promise<BookIndexEntry> {
-  const { getSource } = await import("../sources/registry");
-  const { createHost } = await import("../sources/host");
-  const { writeSnapshotFromSourceNovel } = await import("./sourceLibrary");
-  const source = getSource(sourceId);
-  if (!source) throw new Error(`Unknown source: ${sourceId}`);
+  return withIndexLock(async () => {
+    const { getSource } = await import("../sources/registry");
+    const { createHost } = await import("../sources/host");
+    const { writeSnapshotFromSourceNovel } = await import("./sourceLibrary");
+    const source = getSource(sourceId);
+    if (!source) throw new Error(`Unknown source: ${sourceId}`);
 
-  const existing = await findSourceEntry(sourceId, novelUrl);
+    const existing = await findSourceEntry(sourceId, novelUrl);
 
-  const novel = await source.getNovel(novelUrl);
-  const id =
-    existing?.id ??
-    (typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    const novel = await source.getNovel(novelUrl);
+    const id =
+      existing?.id ??
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
-  await ensureRoot();
-  const dir = bookDir(id);
-  if (!(await exists(dir, { baseDir: BASE }))) {
-    await mkdir(dir, { baseDir: BASE, recursive: true });
-  }
-
-  // Download the cover up front so the library card has something to
-  // render without going back over the network on every list refresh.
-  // Cover failure isn't fatal — the entry still works, just without a
-  // thumbnail.
-  let coverFile: string | undefined = existing?.coverFile;
-  if (novel.coverUrl && !existing?.coverFile) {
-    try {
-      const host = createHost(sourceId);
-      const bytes = await host.fetchBytes(novel.coverUrl);
-      const ext = extensionFromCoverUrl(novel.coverUrl);
-      coverFile = `cover.${ext}`;
-      await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("[library] couldn't download cover:", e);
+    await ensureRoot();
+    const dir = bookDir(id);
+    if (!(await exists(dir, { baseDir: BASE }))) {
+      await mkdir(dir, { baseDir: BASE, recursive: true });
     }
-  }
 
-  // Persist the snapshot (volumes + chapters with downloadedAt/readAt
-  // carried over from any prior snapshot).
-  await writeSnapshotFromSourceNovel(id, sourceId, novelUrl, novel);
+    // Download the cover up front so the library card has something to
+    // render without going back over the network on every list refresh.
+    // Cover failure isn't fatal — the entry still works, just without a
+    // thumbnail.
+    let coverFile: string | undefined = existing?.coverFile;
+    if (novel.coverUrl && !existing?.coverFile) {
+      try {
+        const host = createHost(sourceId);
+        const bytes = await host.fetchBytes(novel.coverUrl);
+        const ext = extensionFromCoverUrl(novel.coverUrl);
+        coverFile = `cover.${ext}`;
+        await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[library] couldn't download cover:", e);
+      }
+    }
 
-  const chapterCount = novel.volumes.reduce(
-    (a, v) => a + v.chapters.length,
-    0,
-  );
+    // Persist the snapshot (volumes + chapters with downloadedAt/readAt
+    // carried over from any prior snapshot).
+    await writeSnapshotFromSourceNovel(id, sourceId, novelUrl, novel);
 
-  const entry: BookIndexEntry = {
-    ...(existing ?? {}),
-    id,
-    title: novel.title,
-    author: novel.author,
-    language: novel.language,
-    chapterCount,
-    addedAt: existing?.addedAt ?? Date.now(),
-    progress: existing?.progress ?? 0,
-    kind: "source",
-    sourceId,
-    novelUrl,
-    ...(coverFile ? { coverFile } : {}),
-    ...(novel.description ? { description: novel.description } : {}),
-  };
+    const chapterCount = novel.volumes.reduce(
+      (a, v) => a + v.chapters.length,
+      0,
+    );
 
-  const idx = await readIndex();
-  const at = idx.books.findIndex((b) => b.id === id);
-  if (at === -1) {
-    idx.books.push(entry);
-  } else {
-    idx.books[at] = entry;
-  }
-  await writeIndex(idx);
-  return entry;
+    const entry: BookIndexEntry = {
+      ...(existing ?? {}),
+      id,
+      title: novel.title,
+      author: novel.author,
+      language: novel.language,
+      chapterCount,
+      addedAt: existing?.addedAt ?? Date.now(),
+      progress: existing?.progress ?? 0,
+      kind: "source",
+      sourceId,
+      novelUrl,
+      ...(coverFile ? { coverFile } : {}),
+      ...(novel.description ? { description: novel.description } : {}),
+    };
+
+    const idx = await readIndex();
+    const at = idx.books.findIndex((b) => b.id === id);
+    if (at === -1) {
+      idx.books.push(entry);
+    } else {
+      idx.books[at] = entry;
+    }
+    await writeIndex(idx);
+    return entry;
+  });
 }
 
 /** Find a source-backed entry for the given (sourceId, novelUrl), if
@@ -924,33 +929,35 @@ export async function readImageFile(): Promise<{
 export async function rescanCover(
   id: string,
 ): Promise<BookIndexEntry | null> {
-  const dir = bookDir(id);
-  const epubPath = `${dir}/book.epub`;
-  if (!(await exists(epubPath, { baseDir: BASE }))) return null;
+  return withIndexLock(async () => {
+    const dir = bookDir(id);
+    const epubPath = `${dir}/book.epub`;
+    if (!(await exists(epubPath, { baseDir: BASE }))) return null;
 
-  const src = await openNativeZip(epubPath, newStagingToken());
-  let coverFile: string;
-  try {
-    const { cover } = await parseEpubFromSource(src, id);
-    if (!cover) return null;
-    coverFile = `cover.${cover.extension}`;
-    const [ok] = await src.extract([
-      { entry: cover.entry, dest: `${dir}/${coverFile}` },
-    ]);
-    if (!ok) return null;
-  } finally {
-    src.dispose();
-  }
+    const src = await openNativeZip(epubPath, newStagingToken());
+    let coverFile: string;
+    try {
+      const { cover } = await parseEpubFromSource(src, id);
+      if (!cover) return null;
+      coverFile = `cover.${cover.extension}`;
+      const [ok] = await src.extract([
+        { entry: cover.entry, dest: `${dir}/${coverFile}` },
+      ]);
+      if (!ok) return null;
+    } finally {
+      src.dispose();
+    }
 
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return null;
-  entry.coverFile = coverFile;
-  // Bump addedAt-cachebust-friend so the webview re-fetches. We keep the
-  // original addedAt for sorting, but append a coverBust tag in the URL.
-  (entry as BookIndexEntry & { coverBust?: number }).coverBust = Date.now();
-  await writeIndex(idx);
-  return entry;
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return null;
+    entry.coverFile = coverFile;
+    // Bump addedAt-cachebust-friend so the webview re-fetches. We keep the
+    // original addedAt for sorting, but append a coverBust tag in the URL.
+    (entry as BookIndexEntry & { coverBust?: number }).coverBust = Date.now();
+    await writeIndex(idx);
+    return entry;
+  });
 }
 
 /**
@@ -961,36 +968,38 @@ export async function rescanCover(
 export async function setCoverFromFile(
   id: string,
 ): Promise<BookIndexEntry | null> {
-  const picked = await open({
-    multiple: false,
-    directory: false,
-    filters: [
-      {
-        name: makeTr(currentUiLocale())("picker.filterImage"),
-        extensions: ["jpg", "jpeg", "png", "gif", "webp"],
-      },
-    ],
+  return withIndexLock(async () => {
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [
+        {
+          name: makeTr(currentUiLocale())("picker.filterImage"),
+          extensions: ["jpg", "jpeg", "png", "gif", "webp"],
+        },
+      ],
+    });
+    if (!picked) return null;
+    const bytes = await readFile(picked);
+
+    const ext =
+      picked.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? "jpg";
+    const safeExt = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
+      ? ext
+      : "jpg";
+    const coverFile = `cover.${safeExt}`;
+
+    const dir = bookDir(id);
+    await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
+
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return null;
+    entry.coverFile = coverFile;
+    (entry as BookIndexEntry & { coverBust?: number }).coverBust = Date.now();
+    await writeIndex(idx);
+    return entry;
   });
-  if (!picked) return null;
-  const bytes = await readFile(picked);
-
-  const ext =
-    picked.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? "jpg";
-  const safeExt = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
-    ? ext
-    : "jpg";
-  const coverFile = `cover.${safeExt}`;
-
-  const dir = bookDir(id);
-  await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
-
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return null;
-  entry.coverFile = coverFile;
-  (entry as BookIndexEntry & { coverBust?: number }).coverBust = Date.now();
-  await writeIndex(idx);
-  return entry;
 }
 
 /**
@@ -1072,14 +1081,16 @@ export async function updateBookStatus(
   id: string,
   status: BookStatus | undefined,
 ): Promise<BookIndexEntry | null> {
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return null;
-  if (status === undefined) delete entry.status;
-  else entry.status = status;
-  if (status === "finished") entry.progress = 1;
-  await writeIndex(idx);
-  return entry;
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return null;
+    if (status === undefined) delete entry.status;
+    else entry.status = status;
+    if (status === "finished") entry.progress = 1;
+    await writeIndex(idx);
+    return entry;
+  });
 }
 
 /** Set the shelves a book belongs to. Mirrors updateBookStatus. */
@@ -1087,12 +1098,14 @@ export async function updateBookShelfIds(
   id: string,
   shelfIds: string[],
 ): Promise<BookIndexEntry | null> {
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return null;
-  entry.shelfIds = [...new Set(shelfIds)];
-  await writeIndex(idx);
-  return entry;
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return null;
+    entry.shelfIds = [...new Set(shelfIds)];
+    await writeIndex(idx);
+    return entry;
+  });
 }
 
 // ── shelf membership (delta mutators) ────────────────────────────────────
@@ -1122,15 +1135,17 @@ export async function addBookToShelf(
   bookId: string,
   shelfId: string,
 ): Promise<void> {
-  await serialize(async () => {
-    const idx = await readIndex();
-    const entry = idx.books.find((b) => b.id === bookId);
-    if (!entry) return;
-    const set = new Set(entry.shelfIds ?? []);
-    if (set.has(shelfId)) return;
-    set.add(shelfId);
-    entry.shelfIds = [...set];
-    await writeIndex(idx);
+  return withIndexLock(async () => {
+    await serialize(async () => {
+      const idx = await readIndex();
+      const entry = idx.books.find((b) => b.id === bookId);
+      if (!entry) return;
+      const set = new Set(entry.shelfIds ?? []);
+      if (set.has(shelfId)) return;
+      set.add(shelfId);
+      entry.shelfIds = [...set];
+      await writeIndex(idx);
+    });
   });
 }
 
@@ -1139,28 +1154,32 @@ export async function removeBookFromShelf(
   bookId: string,
   shelfId: string,
 ): Promise<void> {
-  await serialize(async () => {
-    const idx = await readIndex();
-    const entry = idx.books.find((b) => b.id === bookId);
-    if (!entry) return;
-    if (!entry.shelfIds?.includes(shelfId)) return;
-    entry.shelfIds = entry.shelfIds.filter((sid) => sid !== shelfId);
-    await writeIndex(idx);
+  return withIndexLock(async () => {
+    await serialize(async () => {
+      const idx = await readIndex();
+      const entry = idx.books.find((b) => b.id === bookId);
+      if (!entry) return;
+      if (!entry.shelfIds?.includes(shelfId)) return;
+      entry.shelfIds = entry.shelfIds.filter((sid) => sid !== shelfId);
+      await writeIndex(idx);
+    });
   });
 }
 
 /** Strip one shelf id from every book that has it. Called when a shelf is
  *  deleted so no dangling membership remains. */
 export async function removeShelfFromAllBooks(shelfId: string): Promise<void> {
-  const idx = await readIndex();
-  let changed = false;
-  for (const b of idx.books) {
-    if (b.shelfIds?.includes(shelfId)) {
-      b.shelfIds = b.shelfIds.filter((sid) => sid !== shelfId);
-      changed = true;
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    let changed = false;
+    for (const b of idx.books) {
+      if (b.shelfIds?.includes(shelfId)) {
+        b.shelfIds = b.shelfIds.filter((sid) => sid !== shelfId);
+        changed = true;
+      }
     }
-  }
-  if (changed) await writeIndex(idx);
+    if (changed) await writeIndex(idx);
+  });
 }
 
 /**
@@ -1172,27 +1191,31 @@ export async function updateBookMeta(
   id: string,
   patch: { title?: string; author?: string; description?: string },
 ): Promise<BookIndexEntry | null> {
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return null;
-  if (patch.title !== undefined) entry.title = patch.title;
-  if (patch.author !== undefined) entry.author = patch.author;
-  if (patch.description !== undefined) entry.description = patch.description;
-  await writeIndex(idx);
-  return entry;
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return null;
+    if (patch.title !== undefined) entry.title = patch.title;
+    if (patch.author !== undefined) entry.author = patch.author;
+    if (patch.description !== undefined) entry.description = patch.description;
+    await writeIndex(idx);
+    return entry;
+  });
 }
 
 export async function deleteBook(id: string): Promise<void> {
-  const idx = await readIndex();
-  idx.books = idx.books.filter((b) => b.id !== id);
-  await writeIndex(idx);
-  try {
-    // Recursive — books with in-flow images live under an `images/` subdir
-    // that a per-file sweep wouldn't reach.
-    await remove(bookDir(id), { baseDir: BASE, recursive: true });
-  } catch {
-    // best-effort — missing files shouldn't block a delete from the index
-  }
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    idx.books = idx.books.filter((b) => b.id !== id);
+    await writeIndex(idx);
+    try {
+      // Recursive — books with in-flow images live under an `images/` subdir
+      // that a per-file sweep wouldn't reach.
+      await remove(bookDir(id), { baseDir: BASE, recursive: true });
+    } catch {
+      // best-effort — missing files shouldn't block a delete from the index
+    }
+  });
 }
 
 /**
@@ -1205,11 +1228,13 @@ export async function deleteBook(id: string): Promise<void> {
  * book the user previously switched chapters in.
  */
 export async function markBookOpened(id: string): Promise<void> {
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return;
-  entry.lastReadAt = Date.now();
-  await writeIndex(idx);
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return;
+    entry.lastReadAt = Date.now();
+    await writeIndex(idx);
+  });
 }
 
 export async function updateReadingPosition(
@@ -1217,24 +1242,26 @@ export async function updateReadingPosition(
   currentChapter: number,
   chapterCount: number,
 ): Promise<void> {
-  const state = await readState(id);
-  state.currentChapter = currentChapter;
-  // A chapter switch resets paragraph progress for that chapter — the new
-  // chapter starts at the top.
-  state.paragraphIndex = 0;
-  state.paragraphOffset = 0;
-  await writeState(state);
+  return withIndexLock(async () => {
+    const state = await readState(id);
+    state.currentChapter = currentChapter;
+    // A chapter switch resets paragraph progress for that chapter — the new
+    // chapter starts at the top.
+    state.paragraphIndex = 0;
+    state.paragraphOffset = 0;
+    await writeState(state);
 
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (entry) {
-    entry.progress =
-      chapterCount > 0
-        ? Math.min(1, (currentChapter + 1) / chapterCount)
-        : 0;
-    entry.lastReadAt = Date.now();
-    await writeIndex(idx);
-  }
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (entry) {
+      entry.progress =
+        chapterCount > 0
+          ? Math.min(1, (currentChapter + 1) / chapterCount)
+          : 0;
+      entry.lastReadAt = Date.now();
+      await writeIndex(idx);
+    }
+  });
 }
 
 /**
@@ -1254,13 +1281,15 @@ export async function updateSourceReadingPosition(
   currentChapter: number,
   chapterCount: number,
 ): Promise<void> {
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return;
-  entry.progress =
-    chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
-  entry.lastReadAt = Date.now();
-  await writeIndex(idx);
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return;
+    entry.progress =
+      chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
+    entry.lastReadAt = Date.now();
+    await writeIndex(idx);
+  });
 }
 
 /**
@@ -1306,13 +1335,15 @@ export async function updatePageProgress(
   currentPage: number,
   pageCount: number,
 ): Promise<void> {
-  const idx = await readIndex();
-  const entry = idx.books.find((b) => b.id === id);
-  if (!entry) return;
-  entry.progress =
-    pageCount > 0 ? Math.min(1, (currentPage + 1) / pageCount) : 0;
-  entry.lastReadAt = Date.now();
-  await writeIndex(idx);
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return;
+    entry.progress =
+      pageCount > 0 ? Math.min(1, (currentPage + 1) / pageCount) : 0;
+    entry.lastReadAt = Date.now();
+    await writeIndex(idx);
+  });
 }
 
 export async function saveHighlight(
