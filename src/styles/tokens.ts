@@ -451,6 +451,20 @@ export const UI_FONT_ADJUST: Record<UiFontKey, number> = {
 // Titles are no longer set in a serif — display text is Readex Pro too.
 export const FONT_SERIF_DISPLAY = FONT_READING_SANS;
 
+/** The face a CHAPTER'S OPENING TITLE is set in — see ChapterOpener.
+ *
+ *  Deliberately not `FONT_SERIF_DISPLAY`, which the line above collapsed onto
+ *  the reading sans and which ~everything else still resolves through
+ *  (`titleFontFor`, the reader's top bar, generated covers). Widening that
+ *  alias would re-face all of them at once.
+ *
+ *  Thmanyah Serif Display is self-hosted in five weights and carries BOTH
+ *  scripts — an editorial serif for Arabic and a high-contrast one for Latin —
+ *  which is what removed the original reason titles were dropped onto the
+ *  sans. It had been in FONT_STACKS, reachable only as a user-selectable
+ *  READING font, and used by nothing else. */
+export const FONT_CHAPTER_DISPLAY = FONT_STACKS.thmanyah;
+
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,
 // presentation forms A & B). Used to decide whether to render a book title
 // in the editorial Fraunces stack or fall back to the UI's Readex Pro so

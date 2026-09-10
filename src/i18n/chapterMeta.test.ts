@@ -11,13 +11,19 @@ import { en } from "./en";
 // digits.
 
 const KEY = "reader.chapterOfTotal";
+/** The chapter OPENER's line, which carries the number and not the total. */
+const OPENER_KEY = "reader.chapterNumber";
 
-/** What BookBody now builds. */
+/** The chrome's form — the reader's top-bar subtitle. */
 const metaLine = (locale: "ar" | "en", n: number, total: number) =>
   makeTr(locale)(KEY, {
     n: formatNum(n, locale),
     total: formatNum(total, locale),
   });
+
+/** What ChapterOpener builds. */
+const openerLine = (locale: "ar" | "en", n: number) =>
+  makeTr(locale)(OPENER_KEY, { n: formatNum(n, locale) });
 
 describe("chapter meta line", () => {
   it("is translated, not the English string in both locales", () => {
@@ -57,5 +63,46 @@ describe("chapter meta line", () => {
   it("handles a single-chapter book without reading oddly", () => {
     expect(metaLine("ar", 1, 1)).toBe("الفصل ١ من ١");
     expect(metaLine("en", 1, 1)).toBe("Chapter 1 of 1");
+  });
+});
+
+describe("chapter opener line", () => {
+  // The opener drops the total on purpose: over a chapter's own display title
+  // "of 24" is noise, and both the scrubber and focus mode's running head
+  // still carry it. Separate key rather than a variant of `chapterOfTotal`,
+  // so neither can be changed on the other's behalf.
+  it("carries the number and nothing else", () => {
+    expect(openerLine("ar", 3)).toBe("الفصل ٣");
+    expect(openerLine("en", 3)).toBe("Chapter 3");
+  });
+
+  it("says nothing about the total", () => {
+    for (const locale of ["ar", "en"] as const) {
+      const line = openerLine(locale, 3);
+      expect(line).not.toContain("24");
+      expect(line).not.toContain("٢٤");
+      expect(line).not.toMatch(/of|من/);
+    }
+  });
+
+  it("uses Arabic-Indic digits under ar", () => {
+    expect(openerLine("ar", 12)).toBe("الفصل ١٢");
+    expect(openerLine("ar", 12)).not.toMatch(/[0-9]/);
+  });
+
+  it("has the key in both catalogues with the one placeholder", () => {
+    for (const catalogue of [ar, en]) {
+      expect(catalogue[OPENER_KEY]).toBeDefined();
+      expect(catalogue[OPENER_KEY]).toContain("{n}");
+      expect(catalogue[OPENER_KEY]).not.toContain("{total}");
+    }
+    expect(openerLine("ar", 1)).not.toBe(OPENER_KEY);
+    expect(openerLine("ar", 1)).not.toMatch(/[{}]/);
+  });
+
+  it("stays distinct from the chrome's own line", () => {
+    // Both exist and both are used; a refactor that collapsed them would
+    // silently put "of 24" back over every chapter title.
+    expect(openerLine("en", 3)).not.toBe(metaLine("en", 3, 24));
   });
 });
