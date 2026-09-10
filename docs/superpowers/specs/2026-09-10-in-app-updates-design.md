@@ -215,14 +215,21 @@ step proves to be where people actually fall off.
    is the step whose absence must fail loudly, exactly like the Android
    keystore.
 2. **Remove the MSI target** from the Windows job.
-3. **Generate `latest.json`** in a new job that `needs:` every desktop build,
-   reading each `.sig` and composing the manifest. It runs before `checksums`.
-4. **`checksums` gains `latest.json`** in its `needs:` and in the manifest it
-   hashes, so `SHA256SUMS` covers every published asset.
-5. **A guard**, in the spirit of `verify-apk-signing.sh`: fail the release if
-   any platform key is missing from `latest.json`, if any signature is empty, or
-   if the manifest's `version` does not match the tag. A manifest that silently
-   omits `linux-aarch64` strands those users with no error anywhere.
+3. **Let `tauri-action` write `latest.json`.** *(Corrected during
+   implementation: the five desktop jobs already use `tauri-apps/tauri-action@v0`
+   — only the Android job is hand-rolled — and the action generates and uploads
+   the manifest itself once the signing vars are present. Writing our own
+   manifest job would have duplicated it.)* Set `updaterJsonPreferNsis: true`
+   as insurance against MSI ever being re-added.
+4. **Verify what it produced.** Five jobs upload to the same draft release and
+   each writes `latest.json`; whether that merges platform entries or
+   overwrites them is not documented. So a `manifest` job downloads the shipped
+   manifest and runs a guard, in the spirit of `verify-apk-signing.sh`: fail if
+   any platform key is missing, if any signature is empty, or if the version
+   disagrees with the tag. A manifest that silently omits `linux-aarch64` is
+   valid JSON that strands those users with no error anywhere.
+5. **`checksums` gains `manifest`** in its `needs:`, so `SHA256SUMS` covers
+   `latest.json` too.
 
 The Android job is untouched. Its APK is what the manual channel links to.
 
@@ -328,11 +335,13 @@ pointing a manifest at an older version — at the cost of another deploy step a
 another thing to be out of sync. GitHub's `/releases/latest/` gives the same
 publish gate for free, and staged rollout is not a problem this project has.
 
-**`tauri-action` for the whole release.** It generates `latest.json` natively and
-would replace much of the hand-written workflow. Rejected because the existing
-workflow is heavily customized — seven targets, arm64 runners, the JNI check,
-APK signing verification — and folding all of that into the action's model is a
-larger and riskier change than writing one manifest-generation step.
+**~~`tauri-action` for the whole release.~~** *Withdrawn — this rejection rested
+on a false premise. The five desktop jobs **already** use
+`tauri-apps/tauri-action@v0`; only the Android job is hand-rolled. So the action
+generates `latest.json` for free once the signing vars are set, and the
+implementation uses it rather than composing a manifest by hand. What survives
+of the original concern is the undocumented multi-job merge behaviour, which is
+why the manifest is verified after the fact instead of trusted.*
 
 **Auto-download in the background.** Rejected with the user: it spends bandwidth
 without asking, which matters on a metered mobile connection, and it sits least
