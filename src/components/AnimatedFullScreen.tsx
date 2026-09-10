@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MOTION, useReducedMotion } from "../styles/motion";
+import { Z } from "../styles/tokens";
 
 interface Props {
   open: boolean;
@@ -29,7 +30,7 @@ export function AnimatedFullScreen({
   layout,
   onScrimClick,
   children,
-  zIndex = 150,
+  zIndex = Z.fullScreen,
 }: Props) {
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState<Phase | null>(open ? "enter" : null);

@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { ACCENT, FONT_SERIF_DISPLAY, FONT_READING_SANS, isArabicTitle } from "../styles/tokens";
+import {
+  ACCENT,
+  FONT_SERIF_DISPLAY,
+  FONT_READING_SANS,
+  isArabicTitle,
+  Z_LOCAL,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -53,7 +59,7 @@ export function BookCover({
         insetInlineEnd: 6,
         display: "inline-flex",
         pointerEvents: "none",
-        zIndex: 1,
+        zIndex: Z_LOCAL.base,
       }}
     >
       {cornerMarker}

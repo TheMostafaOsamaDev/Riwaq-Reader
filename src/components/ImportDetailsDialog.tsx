@@ -16,6 +16,7 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
+  Z,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import type {
@@ -129,7 +130,7 @@ export function ImportDetailsDialog({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9000,
+        zIndex: Z.modal,
         background: "rgba(0,0,0,0.5)",
         display: "flex",
         alignItems: "center",

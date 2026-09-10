@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n/useI18n";
+import { Z } from "../styles/tokens";
 
 interface Props {
   /** URL the lightbox displays. When null, the lightbox is unmounted. */
@@ -69,7 +70,7 @@ export function Lightbox({ src, alt, onClose }: Props) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 10500,
+        zIndex: Z.lightbox,
         background: "rgba(0,0,0,0.86)",
         opacity: entered ? 1 : 0,
         transition: "opacity 220ms ease",

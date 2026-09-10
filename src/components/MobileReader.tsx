@@ -32,6 +32,7 @@ import {
   type Theme,
   type ThemeKey,
   readingSurfaces,
+  Z,
 } from "../styles/tokens";
 import {
   anchorFromRange,
@@ -945,7 +946,7 @@ export function MobileReader({
           top: 0,
           left: 0,
           right: 0,
-          zIndex: 10,
+          zIndex: Z.readerChrome,
           padding: "env(safe-area-inset-top, 12px) 14px 10px",
           display: "flex",
           alignItems: "center",
@@ -1102,7 +1103,7 @@ export function MobileReader({
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: 10,
+          zIndex: Z.readerChrome,
           padding: "14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)",
           color: theme.chromeInk,
           ...glassBottom.style,

@@ -3,7 +3,7 @@
 // own branch.)
 
 import { useEffect, useRef, useState } from "react";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -52,7 +52,7 @@ export function NewShelfDialog({
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, zIndex: 1100,
+        position: "fixed", inset: 0, zIndex: Z.overlayDialog,
         background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
         display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16vh 20px 20px",
         fontFamily: FONT_STACKS.sans, animation: "riwaqFadeIn 130ms ease",

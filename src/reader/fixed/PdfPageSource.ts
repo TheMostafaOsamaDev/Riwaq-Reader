@@ -9,7 +9,7 @@
 import { BaseDirectory, stat } from "@tauri-apps/plugin-fs";
 import { openPdfDocument, type PdfDoc } from "../../pdf/pdfjs";
 import { bookDir, type Highlight, type PdfBook } from "../../store/library";
-import { hlBg, hlMark, type ThemeKey } from "../../styles/tokens";
+import { hlBg, hlMark, Z_LOCAL, type ThemeKey } from "../../styles/tokens";
 
 import type { FixedPageSource } from "./FixedPageSource";
 
@@ -136,9 +136,11 @@ async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
     // without importing global.css laid the layer out in flow BELOW the page,
     // doubling the wrap's height and putting every glyph elsewhere.
     text.className = "textLayer";
+    // The layer sits over the canvas inside the page wrap's own stacking
+    // context — a local ordering, not an app layer.
     text.style.cssText =
       "position:absolute; inset:0; overflow:clip; line-height:1; " +
-      "text-align:initial; transform-origin:0 0; z-index:1;";
+      `text-align:initial; transform-origin:0 0; z-index:${Z_LOCAL.base};`;
     wrap.append(canvas, marks, text);
     applySelectable(text);
     return { wrap, canvas, marks, text, scale: 0, bytes: 0 };

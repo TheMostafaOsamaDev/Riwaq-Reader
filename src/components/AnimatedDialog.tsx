@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MOTION, useReducedMotion } from "../styles/motion";
+import { Z } from "../styles/tokens";
 
 interface Props {
   open: boolean;
@@ -25,7 +26,7 @@ export function AnimatedDialog({
   open,
   onScrimClick,
   children,
-  zIndex = 200,
+  zIndex = Z.dialog,
 }: Props) {
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState<Phase | null>(open ? "enter" : null);

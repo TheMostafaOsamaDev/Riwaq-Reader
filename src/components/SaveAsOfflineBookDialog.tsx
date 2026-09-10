@@ -15,6 +15,7 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
+  Z,
 } from "../styles/tokens";
 import { enqueueConversion } from "../store/downloadQueue";
 import {
@@ -106,7 +107,7 @@ export function SaveAsOfflineBookDialog({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9700,
+        zIndex: Z.menuDialog,
         background: "rgba(0,0,0,0.45)",
         display: "flex",
         alignItems: "center",

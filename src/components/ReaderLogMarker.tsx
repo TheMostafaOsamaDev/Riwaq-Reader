@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { eventCount, flushNow, log, snapshotReader } from "../lib/devLog";
+import { Z } from "../styles/tokens";
 
 interface Props {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -47,7 +48,7 @@ export function ReaderLogMarker({ scrollRef }: Props) {
         left: "50%",
         top: 90,
         transform: "translateX(-50%)",
-        zIndex: 10001,
+        zIndex: Z.logMarker,
         padding: "10px 18px",
         borderRadius: 10,
         background: "rgba(0,0,0,0.86)",

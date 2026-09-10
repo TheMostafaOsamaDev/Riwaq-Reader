@@ -89,6 +89,8 @@ import {
   titleFontFor,
   type Theme,
   type ThemeKey,
+  Z,
+  Z_LOCAL,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel } from "../i18n/statusLabels";
@@ -1155,12 +1157,13 @@ export function Library({
           mounted while the close animation plays. Keep the children
           conditional so the inner component only mounts when the data
           backing it (pendingDelete, sourceDetailRangeDialog) actually
-          exists. zIndex stack roughly: dialog 9500-9700 (above
-          EditBookModal at 9000), full-screen 200, on top of the shelf. */}
+          exists. Stacking: these dialogs open from a menu, so they ride
+          `Z.menu`/`Z.menuDialog`, above EditBookModal's `Z.modal`; the
+          full-screen wrapper sits at `Z.dialog`, on top of the shelf. */}
       <AnimatedDialog
         open={pendingDelete !== null}
         onScrimClick={cancelDelete}
-        zIndex={9500}
+        zIndex={Z.menu}
       >
         {pendingDelete && (
           <ConfirmDialog
@@ -1191,7 +1194,7 @@ export function Library({
       <AnimatedDialog
         open={orphanRemoval !== null}
         onScrimClick={() => setOrphanRemoval(null)}
-        zIndex={9500}
+        zIndex={Z.menu}
       >
         {orphanRemoval && (
           <ConfirmDialog
@@ -1220,7 +1223,7 @@ export function Library({
       <AnimatedDialog
         open={deletingShelf !== null}
         onScrimClick={() => setDeletingShelf(null)}
-        zIndex={9500}
+        zIndex={Z.menu}
       >
         {deletingShelf && (
           <ConfirmDialog
@@ -1252,7 +1255,7 @@ export function Library({
       <AnimatedDialog
         open={pickerShelf !== null}
         onScrimClick={() => setPickerShelf(null)}
-        zIndex={9500}
+        zIndex={Z.menu}
       >
         {pickerShelf && (
           <AddToShelfDialog
@@ -1279,7 +1282,7 @@ export function Library({
         open={queueOpen}
         layout={layout}
         onScrimClick={() => back()}
-        zIndex={200}
+        zIndex={Z.dialog}
       >
         {queueOpen && (
           <DownloadQueueView
@@ -2625,8 +2628,8 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
           paddingBottom: 2,
         }}
       >
-        {/* Animated active-pill background. Sits underneath the
-            buttons (zIndex 0); button text stays on top (zIndex 1).
+        {/* Animated active-pill background. Sits underneath the buttons at
+            `Z_LOCAL.under`; button text stays on top at `Z_LOCAL.base`.
             Color picks up the theme's ink + bg switch like the old
             inline fill did. */}
         <div
@@ -2642,7 +2645,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
             background: theme.ink,
             borderRadius: 18,
             pointerEvents: "none",
-            zIndex: 0,
+            zIndex: Z_LOCAL.under,
           }}
         />
         {items.map(({ key, msgKey }) => {
@@ -2658,7 +2661,7 @@ function MobileTabRow({ theme, tab, setTab }: MobileTabRowProps) {
               style={{
                 flexShrink: 0,
                 position: "relative",
-                zIndex: 1,
+                zIndex: Z_LOCAL.base,
                 border: `0.5px solid ${active ? "transparent" : theme.rule}`,
                 background: "transparent",
                 color: active ? theme.bg : theme.muted,
@@ -2732,11 +2735,11 @@ function PillScrollArrow({
         // arrow appeared on the right, pointing away from the content.
         [edge === "start" ? "insetInlineStart" : "insetInlineEnd"]: 0,
         transform: "translateY(-50%)",
-        // Above the pills, which carry z-index 1 of their own. Without this
+        // Above the pills, which carry `Z_LOCAL.base` of their own. Without this
         // the arrow rendered *under* them: at the start edge it sat behind a
         // half-scrolled pill and read as simply missing, which is why only the
         // end-edge arrow was ever noticed.
-        zIndex: 2,
+        zIndex: Z_LOCAL.raised,
         width: 28,
         height: 28,
         borderRadius: 14,

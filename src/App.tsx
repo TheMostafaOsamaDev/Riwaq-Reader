@@ -68,6 +68,7 @@ import {
   UI_FONT_ADJUST,
   UI_FONT_STACKS,
   resolveTheme,
+  Z,
 } from "./styles/tokens";
 import type { ActivePanel } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
@@ -765,7 +766,7 @@ function App() {
               top: 20,
               left: "50%",
               transform: "translateX(-50%)",
-              zIndex: 50,
+              zIndex: Z.hint,
               padding: "10px 16px",
               background: "rgba(180,60,60,0.12)",
               border: "0.5px solid rgba(180,60,60,0.4)",
@@ -789,7 +790,7 @@ function App() {
           style={{
             position: "absolute",
             inset: 0,
-            zIndex: 30,
+            zIndex: Z.streamLayer,
             pointerEvents: streaming ? "auto" : "none",
           }}
         >
@@ -965,7 +966,7 @@ function FullPageSpinner({
         justifyContent: "center",
         fontFamily: FONT_SERIF_DISPLAY,
         fontSize: 20,
-        zIndex: 40,
+        zIndex: Z.floating,
       }}
     >
       {label}

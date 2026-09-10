@@ -34,11 +34,7 @@ import {
 } from "./SettingsSection";
 import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
 import { useReducedMotion } from "../styles/motion";
-import {
-  FONT_STACKS,
-  type Theme,
-  type ThemeKey,
-} from "../styles/tokens";
+import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
@@ -654,7 +650,7 @@ export function SettingsPage({
     return (
       <>
         <Toast theme={theme} toast={toast} onDismiss={() => setToast(null)} />
-        <AnimatedDialog open={resetOpen} onScrimClick={() => setResetOpen(false)} zIndex={300}>
+        <AnimatedDialog open={resetOpen} onScrimClick={() => setResetOpen(false)} zIndex={Z.dialogAbove}>
           {resetOpen && (
             <ConfirmDialog
               theme={theme}

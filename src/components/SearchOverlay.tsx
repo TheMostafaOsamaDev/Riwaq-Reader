@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import type { IconProps } from "./Icon";
-import { FONT_STACKS, type Theme, type ThemeKey } from "../styles/tokens";
+import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
 import type { BookIndexEntry } from "../store/library";
 import type { LibraryTab } from "./Library";
 import { listSources } from "../sources/registry";
@@ -144,7 +144,7 @@ export function SearchOverlay({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1000,
+        zIndex: Z.overlay,
         background: dark ? "rgba(0,0,0,0.55)" : "rgba(20,15,8,0.4)",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",

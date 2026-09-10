@@ -55,7 +55,13 @@ function buildFlagMap(snapshot: SourceSnapshot): Map<number, ChapterFlags> {
   }
   return out;
 }
-import { ACCENT, FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  ACCENT,
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  Z,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
@@ -2344,7 +2350,7 @@ function VolumesAccordion({
             borderBottom: `0.5px solid ${theme.rule}`,
             position: "sticky",
             top: 0,
-            zIndex: 20,
+            zIndex: Z.panel,
           }}
         >
           <button
@@ -2826,7 +2832,7 @@ function VolumesAccordion({
       <AnimatedDialog
         open={deleteConfirm !== null}
         onScrimClick={() => setDeleteConfirm(null)}
-        zIndex={9700}
+        zIndex={Z.menuDialog}
       >
         {deleteConfirm && (
           <ConfirmDialog
@@ -2886,7 +2892,7 @@ function VolumesAccordion({
       <AnimatedDialog
         open={volumeConfirm !== null}
         onScrimClick={() => setVolumeConfirm(null)}
-        zIndex={9700}
+        zIndex={Z.menuDialog}
       >
         {volumeConfirm && (
           <ConfirmDialog

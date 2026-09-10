@@ -2,6 +2,8 @@
 // rects. Pointer-transparent so taps fall through to BookBody for
 // outside-tap dismissal handled by MobileReader's click listener.
 
+import { Z } from "../styles/tokens";
+
 interface Props {
   rects: DOMRect[];
 }
@@ -15,7 +17,7 @@ export function SelectionOverlay({ rects }: Props) {
         position: "fixed",
         inset: 0,
         pointerEvents: "none",
-        zIndex: 8500, // below SelectionPopover (9000), above content
+        zIndex: Z.selection,
       }}
     >
       {rects.map((r, i) => (

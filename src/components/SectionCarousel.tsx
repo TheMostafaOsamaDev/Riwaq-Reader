@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 import type { Theme } from "../styles/tokens";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n/useI18n";
+import { Z_LOCAL } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
@@ -206,7 +207,7 @@ function ArrowButton({ theme, edge, visible, onClick }: ArrowProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 2,
+        zIndex: Z_LOCAL.raised,
         // Carousel arrows compete with the scroller behind for hover
         // events; the arrow stays above by virtue of z-index but we
         // also disable text-selection on it so a quick drag doesn't
