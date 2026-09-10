@@ -233,7 +233,15 @@ export function BookBody({
         touchAction: selectable ? undefined : "pan-y",
       }}
     >
-      <div style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}>
+      {/* The chapter's opening block: its number, then its display title.
+          Marked so focus mode can tell when it is on screen and hold its
+          running head back — the two are the same chapter name, and a printed
+          book does not repeat it on the page it opens on. See
+          reader/chrome/useChapterHeadShown.ts. */}
+      <div
+        data-chapter-head
+        style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}
+      >
         <div
           style={{
             // Reading-surface meta label: stays on the fixed reading sans, not

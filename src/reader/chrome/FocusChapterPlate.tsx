@@ -52,11 +52,16 @@ interface PlateProps {
    *  one of the two leaves a visible seam across the top of the page. */
   surface: string;
   title: string;
-  /** True while the plate should be showing: focus mode is on AND the real
-   *  top bar is not currently revealed under the pointer. The two never show
-   *  together — the bar carries the same title, and stacking them would put
-   *  the name on screen twice. */
+  /** True while focus mode is dressing the page at all. Governs the FADE,
+   *  which is page furniture: it is what lets the text dissolve at the top
+   *  edge instead of being cut by one, and it stays up even where the name
+   *  does not. */
   shown: boolean;
+  /** True while the running head itself belongs on screen. Narrower than
+   *  `shown`, and false in the two cases where this name would be the second
+   *  copy of itself: the real top bar is revealed under the pointer, or the
+   *  chapter's own display title is still in view. */
+  nameShown: boolean;
   reducedMotion: boolean;
 }
 
@@ -89,6 +94,7 @@ export function FocusChapterPlate({
   surface,
   title,
   shown,
+  nameShown,
   reducedMotion,
 }: PlateProps) {
   // Arabic is cursive: tracking prises the joins apart and there is no case to
@@ -131,10 +137,26 @@ export function FocusChapterPlate({
           background: fadeTo("bottom", surface),
         }}
       />
+      {/* The running head, on its own visibility. It comes and goes inside a
+          fade that stays, so the top edge of the page never loses its
+          dissolve just because the name has stepped back.
+          `alignSelf: stretch` because the plate centres its children, which
+          would otherwise shrink-wrap this group — and the title's percentage
+          max-width would then resolve against that shrink-to-fit width
+          instead of the column's, truncating names that fit perfectly well. */}
+      <div
+        style={{
+          position: "relative",
+          alignSelf: "stretch",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          ...reveal(nameShown, reducedMotion),
+        }}
+      >
       <div
         title={title}
         style={{
-          position: "relative",
           marginTop: `calc(${PLATE_AIR_TOP}px + env(safe-area-inset-top, 0px))`,
           maxWidth: "min(76%, 560px)",
           // The name is book content, so it keeps the display stack the top
@@ -160,13 +182,13 @@ export function FocusChapterPlate({
       <div
         aria-hidden
         style={{
-          position: "relative",
           marginTop: PLATE_GAP,
           width: PLATE_RULE_W,
           height: 1,
           background: `linear-gradient(to right, ${withAlpha(theme.ink, 0)}, ${inkAlpha(theme, 0.3)}, ${withAlpha(theme.ink, 0)})`,
         }}
       />
+      </div>
     </div>
   );
 }
