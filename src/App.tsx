@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
@@ -12,10 +20,9 @@ import { ImportProgress } from "./components/ImportProgress";
 import { Library } from "./components/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
-import { SourceStreamReader } from "./components/SourceStreamReader";
+import { LazyViewFallback } from "./components/LazyViewFallback";
 import { ReaderErrorBoundary } from "./components/ReaderErrorBoundary";
 import { SettingsPage } from "./components/SettingsPage";
-import { FixedPageReader } from "./reader/fixed/FixedPageReader";
 import { createPdfPageSource } from "./reader/fixed/PdfPageSource";
 import { createDocxPageSource } from "./reader/fixed/DocxPageSource";
 import { startBackgroundTaskCoordinator } from "./store/backgroundTasks";
@@ -74,6 +81,26 @@ import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { UpdateBanner } from "./components/UpdateBanner";
+
+// Kept off the startup path — neither of these is needed to paint the library,
+// and a user who only reads EPUBs from their device never loads either.
+// `src/bundleSplit.test.ts` fails if a static import pulls them back in.
+//
+// The fixed reader's page-source factories (createPdfPageSource /
+// createDocxPageSource above) stay eager on purpose: they're ~10 kB combined,
+// and `createSource` is a synchronous prop, so deferring them would mean
+// reshaping FixedPageReader's interface for no measurable gain. The bulk —
+// FixedPageViewer, 32 kB — travels with FixedPageReader into its chunk.
+const SourceStreamReader = lazy(() =>
+  import("./components/SourceStreamReader").then((m) => ({
+    default: m.SourceStreamReader,
+  })),
+);
+const FixedPageReader = lazy(() =>
+  import("./reader/fixed/FixedPageReader").then((m) => ({
+    default: m.FixedPageReader,
+  })),
+);
 
 interface Loaded {
   book: EpubBook;
@@ -796,6 +823,7 @@ function App() {
           <AnimatedSwap viewKey={streaming ? "stream" : "none"}>
             {streaming ? (
               <ReaderErrorBoundary theme={theme} onBack={closeStream}>
+              <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
               <SourceStreamReader
                 theme={theme}
                 themeKey={themeKey}
@@ -807,6 +835,7 @@ function App() {
                 startChapterId={streaming.chapterId}
                 onClose={closeStream}
               />
+              </Suspense>
               </ReaderErrorBoundary>
             ) : null}
           </AnimatedSwap>
@@ -850,6 +879,7 @@ function App() {
               confirmDelete={t.confirmDelete}
             />
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
+            <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
             <FixedPageReader
               theme={theme}
               themeKey={themeKey}
@@ -875,6 +905,7 @@ function App() {
               onOpenFullSettings={openSettings}
               onBack={closeBook}
             />
+            </Suspense>
           ) : loaded && loaded.book.id === base.bookId ? (
             <ReaderErrorBoundary theme={theme} onBack={closeBook}>
             {isMobile ? (
