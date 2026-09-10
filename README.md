@@ -273,6 +273,23 @@ Every release ships a `SHA256SUMS` manifest. Put it next to your download and ch
 - macOS: `shasum -a 256 <file>`, then compare with the matching line in `SHA256SUMS`
 </details>
 
+### Updates
+
+Riwaq asks GitHub, at most once a day, whether a newer version exists. That is
+the only network request the app makes on its own behalf, and it is a single
+unauthenticated GET for one static file. **Nothing about you or your books is
+sent** — no identifiers, no library contents, no reading data — and nothing is
+downloaded until you tap Update.
+
+Turn it off in **Settings → About → Check for updates**, and the app stays
+fully functional with it off.
+
+Where a new version can be installed from inside the app, it is: Windows, macOS,
+and Linux via the AppImage. The other three — Android, and Linux `.deb`/`.rpm`
+— can't be updated in place, so Riwaq shows the same notice and takes you to the
+download instead. That is a limitation of how those packages install, not a
+choice about who gets updates.
+
 ---
 
 ## Sources
