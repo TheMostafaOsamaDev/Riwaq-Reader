@@ -21,9 +21,13 @@
 #
 # No secrets required. Default GITHUB_TOKEN is sufficient.
 #
-# Out of scope (deferred): iOS builds, in-app auto-updater, code signing
-# (Windows cert, Apple Dev ID notarization, Android release keystore),
-# F-Droid metadata. Because nothing is signed, the macOS .dmg trips
+# Android IS release-signed, from the four ANDROID_* secrets, and the build
+# FAILS on a tag if they are missing rather than quietly falling back to the
+# debug key (see the android job and scripts/verify-apk-signing.sh).
+#
+# Out of scope (deferred): iOS builds, in-app auto-updater, DESKTOP code
+# signing (Windows cert, Apple Dev ID notarization), F-Droid metadata.
+# Because the desktop bundles are unsigned, the macOS .dmg trips
 # Gatekeeper and the Windows .exe trips SmartScreen on first launch —
 # see the README for the one-time "open anyway" steps users follow.
 #
@@ -312,9 +316,14 @@ jobs:
   # two ABIs below are packed into ONE app-universal-release.apk that
   # installs on any phone regardless of architecture. x86/x86_64 skipped
   # — phones are ARM (add `x86_64` to --target, plus the matching rustup
-  # target, only for emulator / Chromebook coverage). Still DEBUG-signed
-  # (no release keystore in CI) — fine for sideloading; a release
-  # keystore is the deferred next step.
+  # target, only for emulator / Chromebook coverage).
+  #
+  # SIGNING. Release-signed from ANDROID_KEYSTORE_BASE64 +
+  # ANDROID_KEYSTORE_PASSWORD + ANDROID_KEY_ALIAS + ANDROID_KEY_PASSWORD.
+  # build.gradle.kts falls back to the DEBUG key when key.properties is
+  # missing, and says nothing — which is how earlier releases went out
+  # debug-signed. So a tag push with no keystore fails here, and the built
+  # APK is checked before it is uploaded anywhere.
   # ──────────────────────────────────────────────────────────────────
   android:
     runs-on: ubuntu-22.04
@@ -378,6 +387,50 @@ jobs:
         # nonexistent path.
         run: sed -i '/^org\.gradle\.java\.home=/d' src-tauri/gen/android/gradle.properties
 
+      - name: Materialize the release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          set -euo pipefail
+          android_dir="$GITHUB_WORKSPACE/src-tauri/gen/android"
+
+          if [ -z "${KEYSTORE_B64:-}" ]; then
+            if [ "$IS_TAG" = "true" ]; then
+              echo "::error title=No release keystore::ANDROID_KEYSTORE_BASE64 is not set, so this APK would be debug-signed. A tagged release must never be. See docs/ANDROID.md."
+              exit 1
+            fi
+            echo "::warning title=Debug-signed APK::No signing secrets on this run, so the APK will be DEBUG-signed. Fine for a smoke test; do not publish it."
+            exit 0
+          fi
+
+          # A half-configured secret set is worse than none: Gradle would take
+          # the debug branch and the run would look green.
+          for v in STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error title=Incomplete signing secrets::ANDROID_KEYSTORE_BASE64 is set but $v is empty."
+              exit 1
+            fi
+          done
+
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$android_dir/release.jks"
+
+          # Written line by line rather than with a heredoc: inside a YAML
+          # block scalar a heredoc body carries its indentation into the file.
+          # Gradle resolves storeFile relative to the app module, so the path
+          # is absolute rather than relative to an assumed working directory.
+          {
+            echo "storeFile=$android_dir/release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > "$android_dir/key.properties"
+
+          echo "key.properties written; keystore is $(stat -c%s "$android_dir/release.jks") bytes"
+
       - name: Build universal Android APK (arm64-v8a + armeabi-v7a)
         # Tauri's android `--target` takes the short ABI names
         # (aarch64, armv7, i686, x86_64), NOT the full Rust target
@@ -386,6 +439,29 @@ jobs:
         # single `--target` flag; comma-separated is rejected. WITHOUT
         # --split-per-abi, both ABIs are packed into ONE universal APK.
         run: pnpm tauri android build --apk --target aarch64 armv7
+
+      - name: Check the signing guard itself
+        # The guard is a text parser over apksigner output. If its parsing
+        # silently stopped matching, every check below would pass vacuously.
+        run: bash scripts/verify-apk-signing.sh --self-test
+
+      - name: Verify the APK is release-signed
+        # Runs BEFORE either upload: a debug-signed APK must never reach a
+        # release or an artifact anyone could mistake for one.
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: bash scripts/verify-apk-signing.sh
+
+      - name: Report APK signing (smoke-test builds)
+        # Same check, non-fatal: workflow_dispatch is allowed to produce a
+        # debug-signed APK, but must say so out loud.
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          bash scripts/verify-apk-signing.sh \
+            || echo "::warning title=Not release-signed::This APK is a smoke-test build only — do not publish it."
 
       - name: Upload APK to draft release (on tag push only)
         if: startsWith(github.ref, 'refs/tags/')
@@ -410,6 +486,12 @@ jobs:
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove the keystore from the runner
+        if: always()
+        run: |
+          rm -f "$GITHUB_WORKSPACE/src-tauri/gen/android/release.jks" \
+                "$GITHUB_WORKSPACE/src-tauri/gen/android/key.properties"
 
   # ──────────────────────────────────────────────────────────────────
   # Checksums — runs LAST. Downloads every asset attached to the draft
