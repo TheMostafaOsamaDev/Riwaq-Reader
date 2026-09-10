@@ -57,7 +57,7 @@ Move the pointer to the top or bottom edge and the controls come back.
 
 ### ✍️ Typography you can actually tune
 
-**17 reading faces** in four groups — Naskh book faces, modern sans, Kufi, and display.
+**16 reading faces** in four groups — Naskh book faces, modern sans, Kufi, and display.
 One picker drives both scripts: every row previews Arabic and Latin side by side, and a
 family that only carries one of them shows the fallback rather than hiding it. You pick by
 eye, not by name.
@@ -329,8 +329,7 @@ license text alongside it in [`public/fonts/`](public/fonts):
 **IBM Plex Sans Arabic** · **Alexandria** · **Vazirmatn** · **El Messiri** ·
 **Noto Kufi Arabic** · **Changa** · **Lalezar**
 
-**Thmanyah Serif Display** is also bundled but ships without a license file — its terms
-still need to be confirmed before any distribution that relies on it.
+Every bundled face carries its license text. Nothing ships without one.
 
 ---
 
