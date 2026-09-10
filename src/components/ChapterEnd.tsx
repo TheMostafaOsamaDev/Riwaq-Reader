@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_READING_SANS,
+  FONT_STACKS,
+  inkAlpha,
+  type Theme,
+} from "../styles/tokens";
+import { formatNum } from "../i18n";
 import type { Tr } from "../i18n";
+import { useI18n } from "../i18n/useI18n";
 
 /**
  * The end of a chapter, and the way out of it.
@@ -196,8 +203,8 @@ export function ChapterEndCard({
 interface StartProps {
   theme: Theme;
   tr: Tr;
-  /** Font the chapter's own text is set in — the title is book content. */
-  titleFont: string;
+  /** Phone: a taller hit area, since 26px is fine for a cursor and not for a
+   *  thumb. Everything else is identical. */
   compact?: boolean;
   /** 1-based number of the previous chapter. */
   prevNumber: number;
@@ -224,77 +231,99 @@ interface StartProps {
 export function ChapterStartLink({
   theme,
   tr,
-  titleFont,
   compact = false,
   prevNumber,
   prevTitle,
   onPrev,
 }: StartProps) {
   const [pressed, press] = usePressed();
+  // The number is a numeral on the reading surface, so it follows the UI
+  // language's digits the way the chapter opener's does. It used to be
+  // interpolated raw, which put Latin "239" inside an Arabic line.
+  const { locale } = useI18n();
+  const arabic = locale === "ar";
   return (
-    <button
-      onClick={onPrev}
-      {...press}
-      aria-label={`${tr("reader.prevChapter")}: ${prevTitle}`}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        width: "100%",
-        minHeight: compact ? 60 : 56,
-        padding: compact ? "10px 12px" : "10px 14px",
-        marginBottom: compact ? 10 : 14,
-        borderRadius: 10,
-        cursor: "pointer",
-        font: "inherit",
-        textAlign: "start",
-        background: pressed ? theme.hover : "transparent",
-        border: "none",
-        borderBottom: `1px solid ${theme.rule}`,
-        color: theme.ink,
-        transition: "background 120ms ease-out",
-      }}
-    >
-      {/* Backward, so the forward glyph is mirrored on top of the RTL flip. */}
-      <span
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: compact ? 12 : 14 }}>
+      <button
+        onClick={onPrev}
+        {...press}
+        // The visible text is a number and a title; the accessible name has to
+        // say what the control DOES.
+        aria-label={`${tr("reader.prevChapter")}: ${prevTitle}`}
+        title={`${tr("reader.prevChapter")}: ${prevTitle}`}
         style={{
           display: "inline-flex",
-          transform: "scaleX(-1)",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 7,
+          maxWidth: "min(100%, 520px)",
+          // A capsule outline and no fill. The outline is the whole point: at
+          // this size a bare line of tracked type reads as a caption, and a
+          // caption does not look clickable. A border says "control" for one
+          // hairline's worth of ink — where the 56px filled-ish card this
+          // replaced said it with 59px of vertical space.
+          //
+          // Phone gets the vertical padding instead of the compactness: 26px
+          // is a fine target for a cursor and half of the 44pt minimum for a
+          // thumb.
+          // 13px of vertical padding is what takes the phone's target to a
+          // measured 44px — the platform minimum — around the same 18px of
+          // content the desktop capsule wraps in 3px. Measured, not guessed:
+          // the first pass used 9px and came out at 36px.
+          padding: compact ? "13px 16px" : "3px 11px",
+          borderRadius: 999,
+          // NOT `theme.rule` or `ruleStrong`. Measured against the reading
+          // page those two land at 1.16-1.72:1 — on the OLED theme a `rule`
+          // border is 1.16:1, which is to say invisible, and an invisible
+          // border cannot be the thing that says "clickable". 0.35 measures
+          // 1.95-2.30:1 across the four themes: unmistakably an outline,
+          // still a hairline rather than a chip.
+          //
+          // Short of the 3:1 that WCAG 1.4.11 asks of a boundary which is the
+          // ONLY way to identify a control — it is not one here, since the
+          // chevron and the label identify it too, and 3:1 needs an alpha
+          // that reads as a solid button on a page of paper and type.
+          border: `1px solid ${inkAlpha(theme, pressed ? 0.55 : 0.35)}`,
+          background: pressed ? theme.hover : "transparent",
           color: theme.muted,
-          flexShrink: 0,
+          cursor: "pointer",
+          font: "inherit",
+          transition: "background 120ms ease-out, border-color 120ms ease-out",
         }}
       >
-        <Forward size={16} />
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span
-          style={{
-            display: "block",
-            fontSize: 10,
-            letterSpacing: "0.1em",
-            color: theme.muted,
-            fontFamily: FONT_STACKS.sans,
-            marginBottom: 3,
-          }}
-        >
-          {`${tr("reader.prevChapter")} · ${prevNumber}`}
+        {/* A DOUBLE chevron pointing UP, not a mirrored horizontal one.
+            Direction-neutral, so it needs neither the RTL flip nor the second
+            flip that turned "forward" into "backward" — two chances to point
+            the arrow at the wrong chapter, both gone. It also matches the
+            gesture: this link exists only where the reader scrolls, and there
+            the previous chapter genuinely is up. Two chevrons rather than one
+            because it lands at that chapter's END — a section jump, not a
+            step. */}
+        <span style={{ display: "inline-flex", flexShrink: 0, opacity: 0.9 }}>
+          <Icon name="chevronsU" size={13} />
         </span>
         <span
           style={{
-            display: "block",
-            fontSize: compact ? 14.5 : 15,
-            fontWeight: 500,
-            fontFamily: titleFont,
-            color: theme.muted,
+            fontFamily: FONT_READING_SANS,
+            fontSize: arabic ? 12 : 10.5,
+            fontWeight: 600,
+            // Latin-only tracking and casing: Arabic is cursive, so
+            // letter-spacing prises the joins apart, and it has no case to
+            // upper. Same split the chapter opener and the focus running head
+            // make.
+            letterSpacing: arabic ? "normal" : "0.12em",
+            textTransform: arabic ? "none" : "uppercase",
             lineHeight: 1.3,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            // The FULL title, never truncated — an ellipsis here would hide
+            // the one piece of information the control carries. A very long
+            // one wraps inside the capsule instead of being cut.
+            minWidth: 0,
+            textAlign: "center",
           }}
         >
-          {prevTitle}
+          {`${formatNum(prevNumber, locale)} · ${prevTitle}`}
         </span>
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }

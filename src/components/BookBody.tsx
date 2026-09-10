@@ -13,7 +13,6 @@ import { ensureEpubImages } from "../store/epubImages";
 import { open as openLightbox } from "../store/lightbox";
 import {
   FONT_READING_SANS,
-  FONT_SERIF_DISPLAY,
   FONT_STACKS,
   hlBg,
   type FontFamilyKey,
@@ -21,6 +20,8 @@ import {
   type ThemeKey,
 } from "../styles/tokens";
 import { useFontScale } from "../hooks/useFontScale";
+import { useI18n } from "../i18n/useI18n";
+import { ChapterOpener } from "./ChapterOpener";
 import { NoteSpines } from "./NoteSpines";
 import { useNoteSpines } from "../hooks/useNoteSpines";
 
@@ -46,7 +47,6 @@ interface Props {
   /** Book id — needed to resolve image item `src` to an asset:// URL. */
   bookId: string;
   chapter: EpubChapter;
-  chapterCount: number;
   theme: Theme;
   themeKey: ThemeKey;
   fontFamily: FontFamilyKey;
@@ -124,7 +124,6 @@ function useChapterImageUrls(
 export function BookBody({
   bookId,
   chapter,
-  chapterCount,
   theme,
   themeKey,
   fontFamily,
@@ -140,6 +139,10 @@ export function BookBody({
   highlights = [],
   selectable = true,
 }: Props) {
+  // Threaded into ChapterOpener, whose meta line is the one thing in the
+  // reading surface that is ABOUT the book rather than of it — so it follows
+  // the UI language, the way the reader's top bar does.
+  const { tr, locale } = useI18n();
   const clampedPercent = Math.max(50, Math.min(100, widthPercent));
   const resolvedAlign =
     textAlign === "auto" ? (rtl ? "right" : "justify") : textAlign;
@@ -233,40 +236,19 @@ export function BookBody({
         touchAction: selectable ? undefined : "pan-y",
       }}
     >
-      <div style={{ marginBottom: "1.4em", breakInside: "avoid-column" }}>
-        <div
-          style={{
-            // Reading-surface meta label: stays on the fixed reading sans, not
-            // the selectable chrome font (var(--ui-font)).
-            fontFamily: FONT_READING_SANS,
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: theme.muted,
-            marginBottom: 6,
-          }}
-        >
-          Chapter {chapter.order + 1} of {chapterCount}
-        </div>
-        <h2
-          style={{
-            // In RTL, match the body font so the chapter title doesn't
-            // jump to a different typeface than the paragraphs. In LTR,
-            // keep the italic display serif for the editorial look.
-            fontFamily: rtl ? bodyFont : FONT_SERIF_DISPLAY,
-            fontSize: (rtl ? scaledFontSize : fontSize) * 1.7,
-            fontWeight: 500,
-            fontStyle: "normal",
-            margin: 0,
-            color: theme.ink,
-            letterSpacing: "-0.01em",
-            lineHeight: 1.15,
-          }}
-        >
-          {chapter.title}
-        </h2>
-      </div>
+      {/* The chapter's opening block. Marked (inside ChapterOpener) so focus
+          mode can tell when it is on screen and hold its running head back —
+          the two are the same chapter name, and a printed book does not repeat
+          it on the page it opens on. See
+          reader/chrome/useChapterHeadShown.ts. */}
+      <ChapterOpener
+        theme={theme}
+        order={chapter.order}
+        title={chapter.title}
+        bodySize={scaledFontSize}
+        tr={tr}
+        locale={locale}
+      />
       {paragraphs.map(({ p, originalIndex }) =>
         isImageItem(p) ? (
           <figure

@@ -240,6 +240,7 @@ export const ar: Messages = {
   "reader.progress": "التقدّم",
   "reader.settings": "الإعدادات",
   "reader.chapterOfTotal": "الفصل {n} من {total}",
+  "reader.chapterNumber": "الفصل {n}",
   "reader.chapterDash": "الفصل {n} — {title}",
   "reader.keepScrollingNext": "استمر بالتمرير للفصل التالي",
   "reader.keepScrollingPrev": "استمر بالتمرير للفصل السابق",
