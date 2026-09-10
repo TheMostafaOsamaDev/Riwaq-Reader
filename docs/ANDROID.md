@@ -48,14 +48,106 @@ First run is slow (Gradle + NDK). Subsequent runs are a normal Vite HMR loop.
 ## Release build
 
 ```bash
-pnpm tauri android build
+pnpm android:build            # arm64 only, then verifies JNI + signing
+pnpm android:build:universal  # arm64 + armeabi-v7a in one APK
 ```
 
 Outputs:
 - `src-tauri/gen/android/app/build/outputs/apk/release/app-release.apk`
 - `src-tauri/gen/android/app/build/outputs/bundle/release/app-release.aab` (for Play Store)
 
-You'll need to sign release builds. Tauri honours `keystore.properties` in `src-tauri/gen/android/` — see the Tauri mobile docs.
+## Release signing
+
+**The keystore is irreplaceable.** Android refuses to install an update whose
+signing certificate differs from the installed one, so if you lose this file
+nobody who installed Riwaq can ever upgrade — they have to uninstall first,
+which deletes their library. Back it up somewhere that survives losing your
+laptop, and keep the passwords with it.
+
+### The silent-fallback trap
+
+`gen/android/app/build.gradle.kts` falls back to the **debug** signing config
+when `key.properties` is absent:
+
+```kotlin
+signingConfig = if (keystorePropertiesFile.exists()) {
+    signingConfigs.getByName("release")
+} else {
+    signingConfigs.getByName("debug")
+}
+```
+
+The build succeeds and says nothing. Every release built before this was set
+up went out debug-signed for exactly that reason, and a missing or misspelled
+CI secret reproduces it perfectly. So the guard is a check on the artifact,
+not on the configuration — see `scripts/verify-apk-signing.sh`, which runs
+automatically after `pnpm android:build` and in CI before anything is
+uploaded.
+
+### Creating the keystore (once)
+
+Run this yourself, in your own terminal, and choose your own passwords:
+
+```bash
+keytool -genkeypair -v \
+  -keystore riwaq-release.jks \
+  -alias riwaq \
+  -keyalg RSA -keysize 4096 \
+  -validity 10000 \
+  -dname "CN=Riwaq, O=Riwaq, C=EG"
+```
+
+10000 days (~27 years) matters: an expired key can't sign updates either.
+
+### Building locally with it
+
+Create `src-tauri/gen/android/key.properties` — gitignored, along with
+`*.jks` and `*.keystore`:
+
+```properties
+storeFile=/absolute/path/to/riwaq-release.jks
+storePassword=…
+keyAlias=riwaq
+keyPassword=…
+```
+
+### CI secrets
+
+Four repository secrets, under Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -i riwaq-release.jks` (one line, no newlines) |
+| `ANDROID_KEYSTORE_PASSWORD` | the store password |
+| `ANDROID_KEY_ALIAS` | `riwaq` |
+| `ANDROID_KEY_PASSWORD` | the key password |
+
+On macOS, `base64 -i file | pbcopy` puts it straight on the clipboard.
+
+A **tag push with no keystore fails the build.** A `workflow_dispatch` smoke
+test without one still builds, debug-signed, with a loud warning — it must not
+be published.
+
+### Pinning the certificate (recommended, after the first release)
+
+Rejecting debug signing catches the common mistake, but not signing with the
+*wrong* real key. Capture the fingerprint once:
+
+```bash
+pnpm verify:signing --print   # or: bash scripts/verify-apk-signing.sh --print
+```
+
+and set the `SHA256` value as a repository **variable** (not a secret — a
+public-key fingerprint isn't one) named `ANDROID_SIGNING_CERT_SHA256`. From
+then on the build fails unless the APK is signed by exactly that key.
+
+### Verifying by hand
+
+```bash
+bash scripts/verify-apk-signing.sh              # newest release APK
+bash scripts/verify-apk-signing.sh path/to.apk
+bash scripts/verify-apk-signing.sh --self-test  # check the guard itself
+```
 
 ## Launcher icon
 
