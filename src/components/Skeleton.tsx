@@ -60,13 +60,7 @@ export function ThemedSkeleton({
   // (the surface) and `rule` (subtle hairlines) so we lean on `rule`
   // as the base shade and the hover color as the shine — both already
   // tuned to the surrounding palette.
-  return (
-    <Skeleton
-      {...rest}
-      baseColor={theme.rule}
-      shineColor={theme.hover}
-    />
-  );
+  return <Skeleton {...rest} baseColor={theme.rule} shineColor={theme.hover} />;
 }
 
 // ── composites ──────────────────────────────────────────────────────────────
@@ -141,7 +135,14 @@ export function SectionRowSkeleton({
  *  rows; the rest fade in as the network resolves. */
 export function SectionsListSkeleton({ theme }: { theme: Theme }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28, marginTop: 18 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 28,
+        marginTop: 18,
+      }}
+    >
       {Array.from({ length: 3 }).map((_, i) => (
         <SectionRowSkeleton key={i} theme={theme} count={14} />
       ))}
@@ -175,7 +176,12 @@ export function NovelHeaderSkeleton({
         }}
       >
         <div style={{ width: "100%", aspectRatio: "2 / 3" }}>
-          <ThemedSkeleton theme={theme} width="100%" height="100%" radius={12} />
+          <ThemedSkeleton
+            theme={theme}
+            width="100%"
+            height="100%"
+            radius={12}
+          />
         </div>
       </div>
       <div style={{ flex: 1, width: "100%" }}>
@@ -183,11 +189,23 @@ export function NovelHeaderSkeleton({
         <div style={{ height: 8 }} />
         <ThemedSkeleton theme={theme} width="40%" height={14} radius={4} />
         <div style={{ height: 18 }} />
-        <div style={{ display: "grid", gap: 6, gridTemplateColumns: "auto 1fr", maxWidth: 360 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 6,
+            gridTemplateColumns: "auto 1fr",
+            maxWidth: 360,
+          }}
+        >
           {Array.from({ length: 4 }).map((_, i) => (
             <Fragment key={i}>
               <ThemedSkeleton theme={theme} width={80} height={11} radius={3} />
-              <ThemedSkeleton theme={theme} width="80%" height={11} radius={3} />
+              <ThemedSkeleton
+                theme={theme}
+                width="80%"
+                height={11}
+                radius={3}
+              />
             </Fragment>
           ))}
         </div>
@@ -228,7 +246,13 @@ export function VolumesSkeleton({
     >
       <ThemedSkeleton theme={theme} width={120} height={16} radius={4} />
       {Array.from({ length: 3 }).map((_, i) => (
-        <ThemedSkeleton key={i} theme={theme} width="100%" height={46} radius={10} />
+        <ThemedSkeleton
+          key={i}
+          theme={theme}
+          width="100%"
+          height={46}
+          radius={10}
+        />
       ))}
     </div>
   );

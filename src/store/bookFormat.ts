@@ -51,7 +51,10 @@ export function detectBookFormat(bytes: Uint8Array): BookFormat {
   if (asciiAt(bytes, 0, 5) === "%PDF-") return "pdf";
 
   if (startsWith(bytes, ZIP_LOCAL_HEADER)) {
-    if (asciiAt(bytes, EPUB_MIMETYPE_OFFSET, EPUB_MIMETYPE.length) === EPUB_MIMETYPE) {
+    if (
+      asciiAt(bytes, EPUB_MIMETYPE_OFFSET, EPUB_MIMETYPE.length) ===
+      EPUB_MIMETYPE
+    ) {
       return "epub";
     }
     // Fall back to entry names: EPUBs that skip the `mimetype` convention are

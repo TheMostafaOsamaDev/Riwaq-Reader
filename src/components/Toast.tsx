@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 
 export type ToastKind = "info" | "warn" | "error";
 
@@ -46,7 +46,7 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
         bottom: 24,
         left: "50%",
         transform: "translateX(-50%)",
-        zIndex: 9999,
+        zIndex: Z.toast,
         background: theme.chrome,
         color: theme.ink,
         border: `0.5px solid ${theme.rule}`,

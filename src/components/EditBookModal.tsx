@@ -5,7 +5,13 @@ import { Button } from "./Button";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { paletteForId } from "../store/palette";
 import type { BookIndexEntry } from "../store/library";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  Z,
+  scrimUnder,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -141,7 +147,7 @@ export function EditBookModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9000,
+        zIndex: Z.modal,
         background: "rgba(0,0,0,0.45)",
         display: "flex",
         alignItems: "center",
@@ -248,21 +254,27 @@ export function EditBookModal({
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldTitle")}</FieldLabel>
+            <FieldLabel theme={theme}>
+              {tr("dialog.editBook.fieldTitle")}
+            </FieldLabel>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               style={textInput(theme)}
             />
 
-            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldAuthor")}</FieldLabel>
+            <FieldLabel theme={theme}>
+              {tr("dialog.editBook.fieldAuthor")}
+            </FieldLabel>
             <input
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               style={textInput(theme)}
             />
 
-            <FieldLabel theme={theme}>{tr("dialog.editBook.fieldDescription")}</FieldLabel>
+            <FieldLabel theme={theme}>
+              {tr("dialog.editBook.fieldDescription")}
+            </FieldLabel>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -295,7 +307,12 @@ export function EditBookModal({
             {tr("library.removeFromLibrary")}
           </Button>
           <div style={{ flex: 1 }} />
-          <Button theme={theme} variant="outline" size="sm" onClick={requestClose}>
+          <Button
+            theme={theme}
+            variant="outline"
+            size="sm"
+            onClick={requestClose}
+          >
             {tr("common.cancel")}
           </Button>
           <Button
@@ -359,14 +376,13 @@ function MobileEditPage({
   // handles "nothing changed" gracefully.
   const saveDisabled = saving;
 
-  const slideTransform = entered && !leaving ? "translateY(0)" : "translateY(100%)";
+  const slideTransform =
+    entered && !leaving ? "translateY(0)" : "translateY(100%)";
   const slideTransition = `transform ${leaving ? EXIT_MS : ENTER_MS}ms ${
     leaving ? EXIT_EASE : ENTER_EASE
   }`;
   const backdropOpacity = entered && !leaving ? 1 : 0;
-  const backdropTransition = `opacity ${
-    leaving ? EXIT_MS : ENTER_MS
-  }ms ease`;
+  const backdropTransition = `opacity ${leaving ? EXIT_MS : ENTER_MS}ms ease`;
 
   return (
     <>
@@ -377,7 +393,7 @@ function MobileEditPage({
           position: "fixed",
           inset: 0,
           background: "rgba(0,0,0,0.32)",
-          zIndex: 8999,
+          zIndex: scrimUnder(Z.modal),
           opacity: backdropOpacity,
           transition: backdropTransition,
           pointerEvents: leaving ? "none" : "auto",
@@ -396,7 +412,7 @@ function MobileEditPage({
           // Cap at the visual viewport. Using min-height: 100% would push the
           // bottom past safe-area; explicit bounds keep us tidy.
           top: 0,
-          zIndex: 9000,
+          zIndex: Z.modal,
           background: theme.bg,
           color: theme.ink,
           fontFamily: FONT_STACKS.sans,

@@ -27,30 +27,38 @@ describe("novelCoverCandidates", () => {
       remote: REMOTE,
       height: 600,
     });
-    expect(candidates).toEqual([LOCAL, expect.stringContaining("450x600"), REMOTE]);
+    expect(candidates).toEqual([
+      LOCAL,
+      expect.stringContaining("450x600"),
+      REMOTE,
+    ]);
   });
 
   it("uses the site's resized variant before its original when not in the library", () => {
-    expect(novelCoverCandidates({ local: null, remote: REMOTE, height: 600 }))
-      .toEqual([expect.stringContaining("450x600"), REMOTE]);
+    expect(
+      novelCoverCandidates({ local: null, remote: REMOTE, height: 600 }),
+    ).toEqual([expect.stringContaining("450x600"), REMOTE]);
   });
 
   it("does not repeat a URL the resizer left unchanged", () => {
     // optimizedCoverUrl returns the input for anything it can't rewrite, so a
     // naive [optimized, original] would load the same URL twice on failure.
     const opaque = "https://example.com/cover";
-    expect(novelCoverCandidates({ local: null, remote: opaque, height: 600 }))
-      .toEqual([opaque]);
+    expect(
+      novelCoverCandidates({ local: null, remote: opaque, height: 600 }),
+    ).toEqual([opaque]);
   });
 
   it("has nothing to show when the novel has no cover anywhere", () => {
-    expect(novelCoverCandidates({ local: null, remote: undefined, height: 600 }))
-      .toEqual([]);
+    expect(
+      novelCoverCandidates({ local: null, remote: undefined, height: 600 }),
+    ).toEqual([]);
   });
 
   it("skips the network entirely for a local cover with no remote URL", () => {
     // A novel saved offline whose source page is gone.
-    expect(novelCoverCandidates({ local: LOCAL, remote: undefined, height: 600 }))
-      .toEqual([LOCAL]);
+    expect(
+      novelCoverCandidates({ local: LOCAL, remote: undefined, height: 600 }),
+    ).toEqual([LOCAL]);
   });
 });

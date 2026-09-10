@@ -28,7 +28,10 @@ const FILE = `${ROOT}/shelves.json`;
 
 // Same locale probe pattern as library.ts's currentUiLocale().
 function currentUiLocale(): Locale {
-  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+  ) {
     return "ar";
   }
   return "en";
@@ -52,7 +55,9 @@ async function read(): Promise<Shelf[]> {
 
 async function write(shelves: Shelf[]): Promise<void> {
   await ensureRoot();
-  await writeTextFile(FILE, JSON.stringify({ shelves }, null, 2), { baseDir: BASE });
+  await writeTextFile(FILE, JSON.stringify({ shelves }, null, 2), {
+    baseDir: BASE,
+  });
 }
 
 /** Load shelves. On the very first run (file absent) seed the two defaults

@@ -58,7 +58,10 @@ import { findByHash, requiredFilesFor } from "./dedupe";
  *  pattern as `currentUiLocale()` in kolnovel-theme.ts / cenele.ts /
  *  downloadNotifier.ts. */
 function currentUiLocale(): Locale {
-  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+  ) {
     return "ar";
   }
   return "en";
@@ -269,15 +272,12 @@ async function readState(id: string): Promise<BookState> {
     const parsed = JSON.parse(raw);
     return {
       bookId: id,
-      currentChapter: typeof parsed.currentChapter === "number"
-        ? parsed.currentChapter
-        : 0,
-      paragraphIndex: typeof parsed.paragraphIndex === "number"
-        ? parsed.paragraphIndex
-        : 0,
-      paragraphOffset: typeof parsed.paragraphOffset === "number"
-        ? parsed.paragraphOffset
-        : 0,
+      currentChapter:
+        typeof parsed.currentChapter === "number" ? parsed.currentChapter : 0,
+      paragraphIndex:
+        typeof parsed.paragraphIndex === "number" ? parsed.paragraphIndex : 0,
+      paragraphOffset:
+        typeof parsed.paragraphOffset === "number" ? parsed.paragraphOffset : 0,
       currentPage:
         typeof parsed.currentPage === "number" ? parsed.currentPage : undefined,
       pageOffset:
@@ -370,8 +370,7 @@ export interface ImportReporter {
 
 /** Thrown when a picked file's bytes aren't any format we can read.
  *  Localized at the display site via `errorLabel` (see i18n/statusLabels.ts). */
-export const UNSUPPORTED_FILE =
-  "Unsupported file — not an EPUB, PDF or DOCX.";
+export const UNSUPPORTED_FILE = "Unsupported file — not an EPUB, PDF or DOCX.";
 
 /** Resolve a staged file's format to the fixed-layout kind we should stage
  *  for the import dialog, or null when it's an EPUB (imported directly).
@@ -689,9 +688,7 @@ async function commitEpubAt(
     // Derive the grid thumbnail once, here, instead of decoding a multi-MB
     // cover on every library paint. A failure is not fatal: coverSrcFor falls
     // back to the original and the backfill retries on a later launch.
-    const thumbFile = coverFile
-      ? await writeCoverThumb(id, coverFile)
-      : null;
+    const thumbFile = coverFile ? await writeCoverThumb(id, coverFile) : null;
 
     return appendIndexEntry({
       id: book.id,
@@ -917,9 +914,12 @@ export async function importFromSourceUrl(
   if (!source) {
     throw new Error(`Unknown source: ${sourceId}`);
   }
-  return runFullSourceImport(source, url, importEpubBytes, options) as Promise<
-    BookIndexEntry
-  >;
+  return runFullSourceImport(
+    source,
+    url,
+    importEpubBytes,
+    options,
+  ) as Promise<BookIndexEntry>;
 }
 
 /**
@@ -988,9 +988,7 @@ export async function readImageFile(): Promise<{
  *
  * Returns the updated index entry, or null if nothing could be done.
  */
-export async function rescanCover(
-  id: string,
-): Promise<BookIndexEntry | null> {
+export async function rescanCover(id: string): Promise<BookIndexEntry | null> {
   return withIndexLock(async () => {
     const dir = bookDir(id);
     const epubPath = `${dir}/book.epub`;
@@ -1067,8 +1065,7 @@ export async function setCoverFromFile(
     if (!picked) return null;
     const bytes = await readFile(picked);
 
-    const ext =
-      picked.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? "jpg";
+    const ext = picked.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? "jpg";
     const safeExt = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
       ? ext
       : "jpg";
@@ -1375,9 +1372,7 @@ export async function updateReadingPosition(
     const entry = idx.books.find((b) => b.id === id);
     if (entry) {
       entry.progress =
-        chapterCount > 0
-          ? Math.min(1, (currentChapter + 1) / chapterCount)
-          : 0;
+        chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
       entry.lastReadAt = Date.now();
       await writeIndex(idx);
     }
@@ -1517,4 +1512,3 @@ export async function updateHighlightNote(
   );
   await writeState(state);
 }
-

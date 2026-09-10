@@ -61,8 +61,7 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
   );
   const activeDownloads = jobs.filter(
     (j) =>
-      j.kind === "chapter" &&
-      (j.status === "queued" || j.status === "running"),
+      j.kind === "chapter" && (j.status === "queued" || j.status === "running"),
   );
   const interrupted = jobs
     .filter((j) => j.status === "interrupted")
@@ -112,85 +111,85 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
           : null),
       }}
     >
-        <Header
-          theme={theme}
-          activeCount={activeCount}
-          interruptedCount={interrupted.length}
-          onClose={onClose}
-          onClearCompleted={recent.length > 0 ? clearTerminals : undefined}
-        />
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            padding: "8px 0 16px",
-          }}
-        >
-          {activeCount === 0 &&
-            interrupted.length === 0 &&
-            recent.length === 0 && (
-              <div
-                style={{
-                  padding: "40px 24px",
-                  textAlign: "center",
-                  color: theme.muted,
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                }}
-              >
-                {tr("downloads.emptyState")}
-              </div>
-            )}
-          {interrupted.length > 0 && (
-            <Section
-              title={tr("downloads.sectionInterrupted")}
-              tone="warn"
-              theme={theme}
-              action={
-                interrupted.length > 1 ? (
-                  <Button
-                    theme={theme}
-                    variant="ghost"
-                    size="sm"
-                    onClick={retryAll}
-                  >
-                    {tr("downloads.retryAll")}
-                  </Button>
-                ) : null
-              }
+      <Header
+        theme={theme}
+        activeCount={activeCount}
+        interruptedCount={interrupted.length}
+        onClose={onClose}
+        onClearCompleted={recent.length > 0 ? clearTerminals : undefined}
+      />
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          padding: "8px 0 16px",
+        }}
+      >
+        {activeCount === 0 &&
+          interrupted.length === 0 &&
+          recent.length === 0 && (
+            <div
+              style={{
+                padding: "40px 24px",
+                textAlign: "center",
+                color: theme.muted,
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
             >
-              {interrupted.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
-              ))}
-            </Section>
+              {tr("downloads.emptyState")}
+            </div>
           )}
-          {activeConversions.length > 0 && (
-            <Section
-              title={tr("downloads.sectionSavingOffline")}
-              tone="accent"
-              theme={theme}
-            >
-              {activeConversions.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
-              ))}
-            </Section>
-          )}
-          {activeDownloads.length > 0 && (
-            <Section title={tr("downloads.sectionDownloading")} theme={theme}>
-              {activeDownloads.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
-              ))}
-            </Section>
-          )}
-          {recent.length > 0 && (
-            <Section title={tr("downloads.sectionRecent")} theme={theme}>
-              {recent.map((j) => (
-                <JobRow key={j.id} theme={theme} job={j} tr={tr} />
-              ))}
-            </Section>
-          )}
-        </div>
+        {interrupted.length > 0 && (
+          <Section
+            title={tr("downloads.sectionInterrupted")}
+            tone="warn"
+            theme={theme}
+            action={
+              interrupted.length > 1 ? (
+                <Button
+                  theme={theme}
+                  variant="ghost"
+                  size="sm"
+                  onClick={retryAll}
+                >
+                  {tr("downloads.retryAll")}
+                </Button>
+              ) : null
+            }
+          >
+            {interrupted.map((j) => (
+              <JobRow key={j.id} theme={theme} job={j} tr={tr} />
+            ))}
+          </Section>
+        )}
+        {activeConversions.length > 0 && (
+          <Section
+            title={tr("downloads.sectionSavingOffline")}
+            tone="accent"
+            theme={theme}
+          >
+            {activeConversions.map((j) => (
+              <JobRow key={j.id} theme={theme} job={j} tr={tr} />
+            ))}
+          </Section>
+        )}
+        {activeDownloads.length > 0 && (
+          <Section title={tr("downloads.sectionDownloading")} theme={theme}>
+            {activeDownloads.map((j) => (
+              <JobRow key={j.id} theme={theme} job={j} tr={tr} />
+            ))}
+          </Section>
+        )}
+        {recent.length > 0 && (
+          <Section title={tr("downloads.sectionRecent")} theme={theme}>
+            {recent.map((j) => (
+              <JobRow key={j.id} theme={theme} job={j} tr={tr} />
+            ))}
+          </Section>
+        )}
+      </div>
     </div>
   );
 }
@@ -294,7 +293,12 @@ function Header({
         </div>
       </div>
       {onClearCompleted && (
-        <Button theme={theme} variant="ghost" size="sm" onClick={onClearCompleted}>
+        <Button
+          theme={theme}
+          variant="ghost"
+          size="sm"
+          onClick={onClearCompleted}
+        >
           {tr("downloads.clearCompleted")}
         </Button>
       )}
@@ -375,13 +379,7 @@ function Section({
               style={{ color: theme.ink, opacity: 0.85 }}
             />
           )}
-          {warn && (
-            <Icon
-              name="info"
-              size={12}
-              style={{ color: "#b75050" }}
-            />
-          )}
+          {warn && <Icon name="info" size={12} style={{ color: "#b75050" }} />}
           {title}
         </h3>
         {action}

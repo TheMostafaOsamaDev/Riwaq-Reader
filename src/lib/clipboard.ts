@@ -60,7 +60,9 @@ function legacyCopy(text: string): boolean {
   // it, and the highlight toolbar is anchored to it.
   const previous = document.getSelection();
   const saved =
-    previous && previous.rangeCount > 0 ? previous.getRangeAt(0).cloneRange() : null;
+    previous && previous.rangeCount > 0
+      ? previous.getRangeAt(0).cloneRange()
+      : null;
   let ok = false;
   try {
     ta.select();

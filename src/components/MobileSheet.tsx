@@ -32,6 +32,7 @@ import {
   type Snap,
   type SnapDims,
 } from "./sheetSnap";
+import { Z } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
@@ -226,10 +227,7 @@ export function MobileSheet({
   // Unmount once the exit transition has finished.
   useEffect(() => {
     if (phase !== "exit") return;
-    const t = setTimeout(
-      () => setPhase(null),
-      reduced ? 0 : MOTION.fast,
-    );
+    const t = setTimeout(() => setPhase(null), reduced ? 0 : MOTION.fast);
     return () => clearTimeout(t);
   }, [phase, reduced]);
 
@@ -303,8 +301,7 @@ export function MobileSheet({
     if (!s.claimed) {
       const el = s.scrollable!;
       const atTop = el.scrollTop <= 0;
-      const atBottom =
-        el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
       let shouldClaim = false;
       if (sheetOffset < -TAP_THRESHOLD) {
         // Pulling up past the inner content's bottom expands the sheet.
@@ -491,7 +488,12 @@ export function MobileSheet({
     // account.
     <div
       className="riwaq-clip-window"
-      style={{ position: "absolute", inset: 0, zIndex: 20, overflow: "hidden" }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: Z.panel,
+        overflow: "hidden",
+      }}
     >
       <div
         onClick={onClose}

@@ -35,18 +35,12 @@ export function AnimatedPanel({ open, side, children }: Props) {
   useEffect(() => {
     if (open) {
       setPhase("enter");
-      const t = setTimeout(
-        () => setPhase("open"),
-        reduced ? 0 : MOTION.med,
-      );
+      const t = setTimeout(() => setPhase("open"), reduced ? 0 : MOTION.med);
       return () => clearTimeout(t);
     }
     if (phase !== null) {
       setPhase("exit");
-      const t = setTimeout(
-        () => setPhase(null),
-        reduced ? 0 : MOTION.fast,
-      );
+      const t = setTimeout(() => setPhase(null), reduced ? 0 : MOTION.fast);
       return () => clearTimeout(t);
     }
   }, [open, reduced]);

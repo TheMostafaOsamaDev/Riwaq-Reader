@@ -58,9 +58,7 @@ beforeEach(() => {
 describe("readFileRange", () => {
   it("asks Rust for exactly the requested slice", async () => {
     const bytes = await readFileRange(PDF, 1024, 512);
-    expect(calls).toEqual([
-      { path: PDF, offset: 1024, length: 512 },
-    ]);
+    expect(calls).toEqual([{ path: PDF, offset: 1024, length: 512 }]);
     expect(Array.from(bytes)).toEqual([1, 2, 3]);
   });
 });
@@ -75,9 +73,7 @@ describe("createFileRangeTransport", () => {
     ) as unknown as FakeTransport;
     t.requestDataRange(100, 356);
     await vi.waitFor(() => expect(t.ranges).toHaveLength(1));
-    expect(calls).toEqual([
-      { path: PDF, offset: 100, length: 256 },
-    ]);
+    expect(calls).toEqual([{ path: PDF, offset: 100, length: 256 }]);
     expect(t.ranges[0][0]).toBe(100);
   });
 

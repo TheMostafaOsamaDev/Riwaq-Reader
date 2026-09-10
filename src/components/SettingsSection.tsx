@@ -124,7 +124,12 @@ export function Field({
   const { locale } = useI18n();
   const isAr = locale === "ar";
   return (
-    <div style={{ padding: "12px 18px", borderBottom: `0.5px solid ${theme.rule}` }}>
+    <div
+      style={{
+        padding: "12px 18px",
+        borderBottom: `0.5px solid ${theme.rule}`,
+      }}
+    >
       <div
         style={{
           fontSize: 10.5,
@@ -500,7 +505,6 @@ export function ThemeField({
   );
 }
 
-
 /** The reading typography/layout controls as individually-searchable entries,
  *  shared by the reader quick-panel and the Settings page's Reading section.
  *  `showPageTurn` surfaces the page-flip toggle (desktop paginated only —
@@ -529,12 +533,25 @@ export function readingItems(ctx: {
           value={value ? "on" : "off"}
           onChange={(v) => onChange(v === "on")}
           options={[
-            { value: "on", label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span> },
-            { value: "off", label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span> },
+            {
+              value: "on",
+              label: <span style={{ fontSize: 11 }}>{tr("settings.on")}</span>,
+            },
+            {
+              value: "off",
+              label: <span style={{ fontSize: 11 }}>{tr("settings.off")}</span>,
+            },
           ]}
         />
         {hint && (
-          <p style={{ margin: "8px 2px 0", fontSize: 10.5, color: theme.muted, lineHeight: 1.5 }}>
+          <p
+            style={{
+              margin: "8px 2px 0",
+              fontSize: 10.5,
+              color: theme.muted,
+              lineHeight: 1.5,
+            }}
+          >
             {hint}
           </p>
         )}
@@ -588,8 +605,23 @@ export function readingItems(ctx: {
       label: tr("settings.fontSize", { n: t.fontSize }),
       node: (
         <Field label={tr("settings.fontSize", { n: t.fontSize })} theme={theme}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, color: theme.ink }}>
-            <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 12, color: theme.muted }}>A</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              color: theme.ink,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontSize: 12,
+                color: theme.muted,
+              }}
+            >
+              A
+            </span>
             <Slider
               theme={theme}
               min={14}
@@ -598,15 +630,55 @@ export function readingItems(ctx: {
               onChange={(n) => setTweak("fontSize", n)}
               ariaLabel={tr("settings.fontSize", { n: t.fontSize })}
             />
-            <span style={{ fontFamily: FONT_SERIF_DISPLAY, fontSize: 22, color: theme.ink }}>A</span>
+            <span
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontSize: 22,
+                color: theme.ink,
+              }}
+            >
+              A
+            </span>
           </div>
         </Field>
       ),
     },
-    slider("lineHeight", tr("settings.lineHeight", { n: t.lineHeight.toFixed(2) }), 1.3, 2.0, 0.05, t.lineHeight, (n) => setTweak("lineHeight", n)),
-    slider("letterSpacing", tr("settings.letterSpacing", { n: t.letterSpacing.toFixed(2) }), -0.02, 0.08, 0.005, t.letterSpacing, (n) => setTweak("letterSpacing", n)),
-    slider("paragraphSpacing", tr("settings.paragraphSpacing", { n: t.paragraphSpacing.toFixed(1) }), 0.4, 2.4, 0.1, t.paragraphSpacing, (n) => setTweak("paragraphSpacing", n)),
-    slider("contentWidth", tr("settings.contentWidth", { n: t.contentWidth }), 50, 100, 1, t.contentWidth, (n) => setTweak("contentWidth", n)),
+    slider(
+      "lineHeight",
+      tr("settings.lineHeight", { n: t.lineHeight.toFixed(2) }),
+      1.3,
+      2.0,
+      0.05,
+      t.lineHeight,
+      (n) => setTweak("lineHeight", n),
+    ),
+    slider(
+      "letterSpacing",
+      tr("settings.letterSpacing", { n: t.letterSpacing.toFixed(2) }),
+      -0.02,
+      0.08,
+      0.005,
+      t.letterSpacing,
+      (n) => setTweak("letterSpacing", n),
+    ),
+    slider(
+      "paragraphSpacing",
+      tr("settings.paragraphSpacing", { n: t.paragraphSpacing.toFixed(1) }),
+      0.4,
+      2.4,
+      0.1,
+      t.paragraphSpacing,
+      (n) => setTweak("paragraphSpacing", n),
+    ),
+    slider(
+      "contentWidth",
+      tr("settings.contentWidth", { n: t.contentWidth }),
+      50,
+      100,
+      1,
+      t.contentWidth,
+      (n) => setTweak("contentWidth", n),
+    ),
     {
       id: "alignment",
       label: tr("settings.alignment"),
@@ -617,10 +689,47 @@ export function readingItems(ctx: {
             value={t.textAlign}
             onChange={(v) => setTweak("textAlign", v)}
             options={[
-              { value: "auto", label: <span style={{ fontSize: 11 }}>{tr("settings.align.auto")}</span> },
-              { value: "left", ariaLabel: tr("settings.align.left"), label: <Icon name="alignLeft" size={16} style={{ display: "block", margin: "0 auto" }} /> },
-              { value: "justify", ariaLabel: tr("settings.align.justify"), label: <Icon name="alignJustify" size={16} style={{ display: "block", margin: "0 auto" }} /> },
-              { value: "right", ariaLabel: tr("settings.align.right"), label: <Icon name="alignRight" size={16} style={{ display: "block", margin: "0 auto" }} /> },
+              {
+                value: "auto",
+                label: (
+                  <span style={{ fontSize: 11 }}>
+                    {tr("settings.align.auto")}
+                  </span>
+                ),
+              },
+              {
+                value: "left",
+                ariaLabel: tr("settings.align.left"),
+                label: (
+                  <Icon
+                    name="alignLeft"
+                    size={16}
+                    style={{ display: "block", margin: "0 auto" }}
+                  />
+                ),
+              },
+              {
+                value: "justify",
+                ariaLabel: tr("settings.align.justify"),
+                label: (
+                  <Icon
+                    name="alignJustify"
+                    size={16}
+                    style={{ display: "block", margin: "0 auto" }}
+                  />
+                ),
+              },
+              {
+                value: "right",
+                ariaLabel: tr("settings.align.right"),
+                label: (
+                  <Icon
+                    name="alignRight"
+                    size={16}
+                    style={{ display: "block", margin: "0 auto" }}
+                  />
+                ),
+              },
             ]}
           />
         </Field>
@@ -644,13 +753,30 @@ export function readingItems(ctx: {
         </Field>
       ),
     },
-    onOff("hyphenation", tr("settings.hyphenation"), t.hyphenation, (on) => setTweak("hyphenation", on)),
+    onOff("hyphenation", tr("settings.hyphenation"), t.hyphenation, (on) =>
+      setTweak("hyphenation", on),
+    ),
   ];
 
   if (showPageTurn) {
-    items.push(onOff("pageTurnAnimation", tr("settings.pageTurnAnimation"), t.pageTurnAnimation, (on) => setTweak("pageTurnAnimation", on)));
+    items.push(
+      onOff(
+        "pageTurnAnimation",
+        tr("settings.pageTurnAnimation"),
+        t.pageTurnAnimation,
+        (on) => setTweak("pageTurnAnimation", on),
+      ),
+    );
   }
-  items.push(onOff("keepScreenAwake", tr("settings.keepScreenAwake"), t.keepScreenAwake, (on) => setTweak("keepScreenAwake", on), tr("settings.keepScreenAwake.hint")));
+  items.push(
+    onOff(
+      "keepScreenAwake",
+      tr("settings.keepScreenAwake"),
+      t.keepScreenAwake,
+      (on) => setTweak("keepScreenAwake", on),
+      tr("settings.keepScreenAwake.hint"),
+    ),
+  );
 
   return items;
 }
@@ -668,7 +794,9 @@ export function ReadingControls({
   showPageTurn?: boolean;
 }) {
   const { tr } = useI18n();
-  return <>{renderEntries(readingItems({ theme, t, setTweak, tr, showPageTurn }))}</>;
+  return (
+    <>{renderEntries(readingItems({ theme, t, setTweak, tr, showPageTurn }))}</>
+  );
 }
 
 /** Zoom stepper button. Sized to the platform's touch minimum on mobile
@@ -828,7 +956,13 @@ export function FixedPageControls(props: {
   mobile?: boolean;
 }) {
   const { tr, locale } = useI18n();
-  return <>{renderEntries(fixedItems({ ...props, tr, locale, mobile: props.mobile ?? false }))}</>;
+  return (
+    <>
+      {renderEntries(
+        fixedItems({ ...props, tr, locale, mobile: props.mobile ?? false }),
+      )}
+    </>
+  );
 }
 
 /** A tappable full-width row (used for "All settings" in the reader panel and
@@ -869,13 +1003,28 @@ export function ActionRow({
       }}
     >
       {icon && (
-        <span style={{ display: "flex", color: danger ? "#c04a3a" : theme.chromeInk }}>
+        <span
+          style={{
+            display: "flex",
+            color: danger ? "#c04a3a" : theme.chromeInk,
+          }}
+        >
           {icon}
         </span>
       )}
-      <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
+      <span
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
         <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
-        {hint && <span style={{ fontSize: 11, color: theme.muted }}>{hint}</span>}
+        {hint && (
+          <span style={{ fontSize: 11, color: theme.muted }}>{hint}</span>
+        )}
       </span>
       {trailing}
     </button>

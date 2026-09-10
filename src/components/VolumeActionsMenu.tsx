@@ -9,7 +9,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { MobileSheet } from "./MobileSheet";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n/useI18n";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 
 /** Rendered box width of the desktop popover: minWidth 250 + 5px
  *  padding and a 0.5px border on each side. Used both to mirror the
@@ -51,8 +51,17 @@ interface Props {
 }
 
 export function VolumeActionsMenu({
-  theme, layout, open, anchor, title, subtitle, actions, note, triggerRef,
-  onPick, onClose,
+  theme,
+  layout,
+  open,
+  anchor,
+  title,
+  subtitle,
+  actions,
+  note,
+  triggerRef,
+  onPick,
+  onClose,
 }: Props) {
   const { tr } = useI18n();
   const rows = (
@@ -162,7 +171,12 @@ export function VolumeActionsMenu({
 }
 
 function DesktopPopover({
-  theme, open, anchor, triggerRef, onClose, children,
+  theme,
+  open,
+  anchor,
+  triggerRef,
+  onClose,
+  children,
 }: {
   theme: Theme;
   open: boolean;
@@ -225,7 +239,7 @@ function DesktopPopover({
             window.innerWidth - MENU_BOX_WIDTH - VIEWPORT_MARGIN,
           ),
         ),
-        zIndex: 9800,
+        zIndex: Z.menuMenu,
         // Pinned, not minWidth: the note line's copy can be wider than
         // 250 and a box that outgrows MENU_BOX_WIDTH invalidates both
         // the RTL mirror and the viewport clamp above — measured at 304

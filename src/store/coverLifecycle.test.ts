@@ -37,7 +37,8 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
       for (const k of Object.keys(files)) {
         if (k === p || k.startsWith(`${p}/`)) delete files[k];
       }
-      for (const d of [...dirs]) if (d === p || d.startsWith(`${p}/`)) dirs.delete(d);
+      for (const d of [...dirs])
+        if (d === p || d.startsWith(`${p}/`)) dirs.delete(d);
       return;
     }
     if (!(p in files)) throw new Error(`ENOENT ${p}`);
@@ -113,7 +114,9 @@ describe("replacing a cover", () => {
     await setCoverFromFile(ID);
 
     expect(bookFiles()).toContain(`${bookDir(ID)}/cover.png`);
-    expect(files[`${bookDir(ID)}/cover.png`]).toEqual(new Uint8Array([9, 9, 9]));
+    expect(files[`${bookDir(ID)}/cover.png`]).toEqual(
+      new Uint8Array([9, 9, 9]),
+    );
   });
 
   it("points the index at the new cover", async () => {
@@ -124,7 +127,9 @@ describe("replacing a cover", () => {
     const entry = await setCoverFromFile(ID);
 
     expect(entry?.coverFile).toBe("cover.webp");
-    expect(JSON.parse(String(files[INDEX])).books[0].coverFile).toBe("cover.webp");
+    expect(JSON.parse(String(files[INDEX])).books[0].coverFile).toBe(
+      "cover.webp",
+    );
   });
 });
 

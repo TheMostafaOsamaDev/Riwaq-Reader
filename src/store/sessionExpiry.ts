@@ -20,7 +20,10 @@ const SESSION_EXPIRED_MARKER = "SESSION_EXPIRED:";
  *  module runs outside the component tree, so it reads the lang
  *  attribute App.tsx keeps in sync rather than useI18n(). */
 function currentUiLocale(): Locale {
-  if (typeof document !== "undefined" && document.documentElement.lang === "ar") {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+  ) {
     return "ar";
   }
   return "en";

@@ -66,7 +66,8 @@ export async function createDocxPageSourceFromParts(
   // Correct heights need the reading font + images loaded first (both bounded
   // so a slow font/broken image can't hang pagination).
   try {
-    if (document.fonts?.ready) await Promise.race([document.fonts.ready, delay(2000)]);
+    if (document.fonts?.ready)
+      await Promise.race([document.fonts.ready, delay(2000)]);
   } catch {
     /* fonts API unavailable — fall through */
   }
@@ -169,29 +170,32 @@ export async function createDocxPageSourceFromParts(
       // so the mutation isn't visible mid-render).
       const noted: SpineTarget[] = [];
       if (curHighlights.length > 0) {
-        card.querySelectorAll<HTMLElement>("[data-block-id]").forEach((blockEl) => {
-          const blockId = blockEl.getAttribute("data-block-id");
-          if (!blockId) return;
-          const marks: BlockMark[] = [];
-          for (const hl of curHighlights) {
-            if (hl.fixed?.fmt === "docx" && hl.fixed.blockId === blockId) {
-              marks.push({
-                id: hl.id,
-                charStart: hl.fixed.charStart,
-                charEnd: hl.fixed.charEnd,
-                color: hl.color,
-              });
-              if (hl.note?.trim()) {
-                noted.push({ id: hl.id, color: hl.color });
-                // Containing block for the note bar, set by the builder
-                // that owns this block's styling rather than patched on
-                // from the painter afterwards.
-                blockEl.style.position = "relative";
+        card
+          .querySelectorAll<HTMLElement>("[data-block-id]")
+          .forEach((blockEl) => {
+            const blockId = blockEl.getAttribute("data-block-id");
+            if (!blockId) return;
+            const marks: BlockMark[] = [];
+            for (const hl of curHighlights) {
+              if (hl.fixed?.fmt === "docx" && hl.fixed.blockId === blockId) {
+                marks.push({
+                  id: hl.id,
+                  charStart: hl.fixed.charStart,
+                  charEnd: hl.fixed.charEnd,
+                  color: hl.color,
+                });
+                if (hl.note?.trim()) {
+                  noted.push({ id: hl.id, color: hl.color });
+                  // Containing block for the note bar, set by the builder
+                  // that owns this block's styling rather than patched on
+                  // from the painter afterwards.
+                  blockEl.style.position = "relative";
+                }
               }
             }
-          }
-          if (marks.length) applyHighlightsToBlock(blockEl, marks, curThemeKey);
-        });
+            if (marks.length)
+              applyHighlightsToBlock(blockEl, marks, curThemeKey);
+          });
       }
       host.replaceChildren(card);
       // Note bars come AFTER attaching: a bar's position can only be

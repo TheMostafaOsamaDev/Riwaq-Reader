@@ -44,7 +44,11 @@ interface Options {
  * broken. So mobile never intercepts a gesture; it waits for the fling to
  * finish and then settles.
  */
-export function useLineScroll({ scrollRef, mode, reducedMotion }: Options): void {
+export function useLineScroll({
+  scrollRef,
+  mode,
+  reducedMotion,
+}: Options): void {
   const lineBox = useRef(0);
   const target = useRef(0);
   const applied = useRef(0);

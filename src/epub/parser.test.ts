@@ -176,7 +176,9 @@ describe("parseEpubFromSource", () => {
          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"/>
          <manifest/><spine/></package>`,
     );
-    const src = await openMemoryZip(await zip.generateAsync({ type: "uint8array" }));
+    const src = await openMemoryZip(
+      await zip.generateAsync({ type: "uint8array" }),
+    );
     await expect(parseEpubFromSource(src, "id")).rejects.toThrow(
       /no readable chapters/,
     );

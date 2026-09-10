@@ -75,7 +75,6 @@ export const ar: Messages = {
   "settings.search": "بحث في الإعدادات",
   "settings.searchNoResults": "لا إعدادات مطابقة",
 
-
   "settings.paragraphSpacing": "تباعد الفقرات · {n}",
   "settings.hyphenation": "فصل الكلمات",
   "settings.pageTurnAnimation": "حركة تقليب الصفحات",
@@ -257,7 +256,8 @@ export const ar: Messages = {
   "toc.now": "الآن",
   "reader.focusMode": "وضع التركيز",
   "reader.exitFocusMode": "إنهاء وضع التركيز",
-  "reader.focusHintBody": "حرِّك المؤشر إلى الحد العلوي أو السفلي لإظهار الأدوات.",
+  "reader.focusHintBody":
+    "حرِّك المؤشر إلى الحد العلوي أو السفلي لإظهار الأدوات.",
   "toc.collapseAll": "طيّ كل المجلدات",
   "toc.expandAll": "توسيع كل المجلدات",
   "toc.goToCurrent": "الانتقال إلى الفصل الحالي",
@@ -332,8 +332,7 @@ export const ar: Messages = {
   "import.choice.title": "استيراد مستند Word",
   "import.choice.subtitle": "كيف تريد التعامل مع هذا المستند؟",
   "import.choice.directTitle": "إضافة مباشرة إلى المكتبة",
-  "import.choice.directDesc":
-    "تحويل واستيراد كما هو. تصبح أول صورة هي الغلاف.",
+  "import.choice.directDesc": "تحويل واستيراد كما هو. تصبح أول صورة هي الغلاف.",
   "import.choice.manageTitle": "إدارة قبل الاستيراد",
   "import.choice.manageDesc":
     "اختر الغلاف، وقصّ الصفحات، وراجع الصور قبل الإضافة.",
@@ -361,7 +360,8 @@ export const ar: Messages = {
   "downloads.range.selectChapter": "اختر فصلًا",
   "downloads.range.searchPlaceholder": "ابحث عن فصل…",
   "downloads.range.noMatches": "لا فصول مطابقة",
-  "downloads.range.queueCountOne": "سيتم إضافة {n} فصل إلى قائمة التنزيل{extra}.",
+  "downloads.range.queueCountOne":
+    "سيتم إضافة {n} فصل إلى قائمة التنزيل{extra}.",
   "downloads.range.queueCountOther":
     "سيتم إضافة {n} فصول إلى قائمة التنزيل{extra}.",
   "downloads.range.alreadyOnDisk": " ({n} على القرص مسبقًا)",
@@ -390,8 +390,7 @@ export const ar: Messages = {
   "downloads.delete.exitSelection": "إنهاء التحديد",
   "downloads.delete.selectChapter": "تحديد الفصل {n}: {title}",
   "downloads.delete.downloadedCount": "{n} فصل منزَّل",
-  "downloads.delete.volumeNotLoaded":
-    "افتح هذا المجلد لإدارة تنزيلاته.",
+  "downloads.delete.volumeNotLoaded": "افتح هذا المجلد لإدارة تنزيلاته.",
   "downloads.delete.nothingRemoved": "لا يوجد تنزيل على القرص للفصل «{title}»",
   "downloads.delete.failed": "تعذّر الحذف: {error}",
   "downloads.delete.deleting": "جارٍ الحذف… {done} من {total}",
@@ -446,7 +445,8 @@ export const ar: Messages = {
   "downloads.statusCancelled": "أُلغي",
   "downloads.statusInterruptedPartialOne": "توقف — تم حفظ {n} كتاب بالفعل",
   "downloads.statusInterruptedPartialOther": "توقف — تم حفظ {n} كتب بالفعل",
-  "downloads.statusInterruptedResume": "توقف — اضغط على إعادة المحاولة للمتابعة",
+  "downloads.statusInterruptedResume":
+    "توقف — اضغط على إعادة المحاولة للمتابعة",
 
   "store.title": "المصادر",
   "store.subtitle":
@@ -558,9 +558,11 @@ export const ar: Messages = {
   "error.anotherImportRunning": "عملية استيراد أخرى قيد التشغيل بالفعل",
   "error.unsupportedFile":
     "هذا الملف ليس EPUB أو PDF أو DOCX — لا شيء لاستيراده.",
-  "error.anotherImportInProgress": "لا تزال هناك عملية استيراد أخرى قيد التنفيذ.",
+  "error.anotherImportInProgress":
+    "لا تزال هناك عملية استيراد أخرى قيد التنفيذ.",
   "error.novelNoChaptersToConvert": "لا تحتوي هذه الرواية على فصول لتحويلها.",
-  "error.sourceNotInstalledBuild": "المصدر “{sourceId}” غير مثبَّت في هذا الإصدار.",
+  "error.sourceNotInstalledBuild":
+    "المصدر “{sourceId}” غير مثبَّت في هذا الإصدار.",
   "error.sourceNotInstalledDownload":
     "المصدر “{sourceId}” غير مثبَّت — يتعذّر تنزيل هذا الفصل.",
 
@@ -568,7 +570,8 @@ export const ar: Messages = {
   "status.notif.reauthBody":
     "يحتاج {host} إلى إكمال فحص المتصفح مرة أخرى. افتح التطبيق وأعد فتح الرواية لمتابعة التنزيل.",
   "status.notif.channelName": "التنزيلات",
-  "status.notif.channelDescription": "تنزيلات الفصول وتحويلات الكتب غير المتصلة",
+  "status.notif.channelDescription":
+    "تنزيلات الفصول وتحويلات الكتب غير المتصلة",
   "status.notif.convertingTitle": "جارٍ تحويل {novel}",
   "status.notif.percentDone": "اكتمل {pct}٪",
   "status.notif.preparingOfflineBook": "جارٍ تجهيز كتاب غير متصل",

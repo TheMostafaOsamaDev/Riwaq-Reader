@@ -438,7 +438,8 @@ export function installOverlayScrollbar(): () => void {
           (ev: PointerEvent) => {
             if (travel <= 0) return;
             const ratio = (ev.clientY - startY) / travel;
-            el.scrollTop = startTop + ratio * (el.scrollHeight - el.clientHeight);
+            el.scrollTop =
+              startTop + ratio * (el.scrollHeight - el.clientHeight);
           },
           { signal: drag.signal },
         );

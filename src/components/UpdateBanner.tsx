@@ -3,6 +3,7 @@ import type { Theme } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import { RELEASES_PAGE_URL, type UpdateInfo } from "../store/updates";
+import { Z } from "../styles/tokens";
 
 type Phase = "idle" | "working" | "failed";
 
@@ -80,7 +81,7 @@ export function UpdateBanner({
         insetInlineStart: 16,
         insetInlineEnd: 16,
         bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-        zIndex: 60,
+        zIndex: Z.banner,
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -94,7 +95,9 @@ export function UpdateBanner({
       }}
     >
       <span style={{ flex: 1, minWidth: 140, fontSize: 13, lineHeight: 1.45 }}>
-        {failed ? tr("update.failed") : tr("update.available", { v: info.version })}
+        {failed
+          ? tr("update.failed")
+          : tr("update.available", { v: info.version })}
       </span>
       <Button theme={theme} variant="ghost" size="sm" onClick={onDismiss}>
         {tr("update.action.later")}

@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MOTION, useReducedMotion } from "../styles/motion";
+import { Z } from "../styles/tokens";
 
 interface Props {
   open: boolean;
@@ -25,7 +26,7 @@ export function AnimatedDialog({
   open,
   onScrimClick,
   children,
-  zIndex = 200,
+  zIndex = Z.dialog,
 }: Props) {
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState<Phase | null>(open ? "enter" : null);
@@ -35,18 +36,12 @@ export function AnimatedDialog({
   useEffect(() => {
     if (open) {
       setPhase("enter");
-      const t = setTimeout(
-        () => setPhase("open"),
-        reduced ? 0 : MOTION.med,
-      );
+      const t = setTimeout(() => setPhase("open"), reduced ? 0 : MOTION.med);
       return () => clearTimeout(t);
     }
     if (phase !== null) {
       setPhase("exit");
-      const t = setTimeout(
-        () => setPhase(null),
-        reduced ? 0 : MOTION.fast,
-      );
+      const t = setTimeout(() => setPhase(null), reduced ? 0 : MOTION.fast);
       return () => clearTimeout(t);
     }
   }, [open, reduced]);

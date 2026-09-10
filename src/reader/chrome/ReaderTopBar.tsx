@@ -97,8 +97,20 @@ export function ReaderTopBar({
           gap: 10,
         }}
       >
-        <ReaderIconButton theme={theme} icon={backIcon} label={backLabel} onClick={onBack} />
-        <div style={{ width: 1, height: 18, background: theme.rule, margin: "0 4px" }} />
+        <ReaderIconButton
+          theme={theme}
+          icon={backIcon}
+          label={backLabel}
+          onClick={onBack}
+        />
+        <div
+          style={{
+            width: 1,
+            height: 18,
+            background: theme.rule,
+            margin: "0 4px",
+          }}
+        />
         {navButtons}
       </div>
 

@@ -40,9 +40,7 @@ describe("glassBar", () => {
     // A theme missing `chromeGlass` would render a bar with no fill at all —
     // transparent over the text — rather than failing loudly.
     for (const [key, theme] of Object.entries(THEMES)) {
-      expect(glassBar(theme, "top").style.background, key).toMatch(
-        /^rgba\(/,
-      );
+      expect(glassBar(theme, "top").style.background, key).toMatch(/^rgba\(/);
     }
   });
 });

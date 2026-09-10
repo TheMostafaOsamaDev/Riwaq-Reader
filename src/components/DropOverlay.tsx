@@ -20,7 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DropState } from "../store/dropOverlay";
 import { useI18n } from "../i18n/useI18n";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
-import { FONT_STACKS, HIGHLIGHT_COLORS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, HIGHLIGHT_COLORS, type Theme, Z } from "../styles/tokens";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -111,12 +111,11 @@ export function DropOverlay({ state, theme }: Props) {
         pointerEvents: "none",
         display: "grid",
         placeItems: "center",
-        // Highest z-index in the app, deliberately: it must clear
-        // Lightbox's 10500 (the tallest layer before this one existed) so
-        // a drag started while an image lightbox is open still reads. If
-        // you're about to raise some other layer past this, that's a
-        // choice to make on purpose, not a number to bump past by habit.
-        zIndex: 11000,
+        // The top of the app band, deliberately: it must clear `Z.lightbox`,
+        // the tallest layer before this one existed, so a drag started while
+        // an image lightbox is open still reads. Raising something past this
+        // is a choice to make in `tokens.ts`, on purpose.
+        zIndex: Z.drop,
         // Deliberately theme-independent — the same flat black scrim
         // AnimatedDialog.tsx uses behind every dialog in the app. A
         // theme-tinted scrim (`${theme.bg}e0`) collapses to the SAME

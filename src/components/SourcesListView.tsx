@@ -29,7 +29,9 @@ export function SourcesListView({ theme, onOpenSource }: Props) {
   const filtered = useMemo(() => {
     if (!q) return sources;
     return sources.filter((s) => {
-      const desc = s.descriptionKey ? tr(s.descriptionKey) : s.description ?? "";
+      const desc = s.descriptionKey
+        ? tr(s.descriptionKey)
+        : (s.description ?? "");
       return (
         s.name.toLowerCase().includes(q) ||
         s.baseUrl.toLowerCase().includes(q) ||

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import { useTrackedAnchor } from "../hooks/useTrackedAnchor";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 
 /** Toolbar width. Narrow enough for a phone, wide enough that the note
  *  field reads as a field — and, by design, narrower than the colour
@@ -70,7 +70,7 @@ export function HighlightToolbar({
       }}
       style={{
         ...track.style,
-        zIndex: 9000,
+        zIndex: Z.modal,
         width: TOOLBAR_WIDTH,
         maxWidth: "calc(100vw - 24px)",
         background: theme.bg,

@@ -44,7 +44,16 @@ describe("findIndexForOffset", () => {
       while (i < heights.length && table[i + 1] <= offset) i++;
       return i;
     };
-    for (const probe of [0, 1, 35.4, 35.5, 500, 1234.5, 20000, table[1000] - 1]) {
+    for (const probe of [
+      0,
+      1,
+      35.4,
+      35.5,
+      500,
+      1234.5,
+      20000,
+      table[1000] - 1,
+    ]) {
       expect(findIndexForOffset(table, probe)).toBe(linear(probe));
     }
   });

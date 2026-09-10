@@ -20,10 +20,7 @@ import {
   parseNovelPage,
   parseSearchResults,
 } from "./kolnovel-theme";
-import type {
-  Source,
-  SourceHost,
-} from "../types";
+import type { Source, SourceHost } from "../types";
 
 const SOURCE_ID = "kolnovel";
 const BASE_URL = "https://kolnovel.com";
@@ -55,7 +52,7 @@ export function createKolNovelSource(host: SourceHost): Source {
 
     async getHomeSections() {
       host.log("info", "getHomeSections");
-      const resp = await host.fetch(BASE_URL + "/");
+      const resp = await host.fetch(`${BASE_URL}/`);
       return parseHomeSections(parseHtmlDocument(resp.text), BASE_URL);
     },
 

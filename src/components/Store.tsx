@@ -15,12 +15,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { SourcesListView } from "./SourcesListView";
-import {
-  onOpenStoreSource,
-  takePendingStoreSource,
-} from "../store/uiIntents";
+import { onOpenStoreSource, takePendingStoreSource } from "../store/uiIntents";
 import { SourceHomeView } from "./SourceHomeView";
-import { NovelDetailView } from "./NovelDetailView";
+import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import type { Theme } from "../styles/tokens";
 
@@ -29,7 +26,11 @@ interface Props {
   layout: "desktop" | "mobile";
   /** Open the source streaming reader for a novel at the given chapter
    *  (defaults to the first chapter when not specified). */
-  onStreamRead: (sourceId: string, novelUrl: string, chapterId?: number) => void;
+  onStreamRead: (
+    sourceId: string,
+    novelUrl: string,
+    chapterId?: number,
+  ) => void;
   /** Called once a source-import finishes so the parent library can
    *  refresh its shelf — the new book is already persisted by the
    *  importer; the parent just needs to re-list. */
@@ -41,7 +42,12 @@ type StoreView =
   | { kind: "source"; sourceId: string }
   | { kind: "novel"; sourceId: string; novelUrl: string };
 
-export function Store({ theme, layout, onStreamRead, onImportComplete }: Props) {
+export function Store({
+  theme,
+  layout,
+  onStreamRead,
+  onImportComplete,
+}: Props) {
   const [view, setView] = useState<StoreView>({ kind: "sources" });
   const [rangeDialog, setRangeDialog] = useState<{
     sourceId: string;
@@ -52,12 +58,9 @@ export function Store({ theme, layout, onStreamRead, onImportComplete }: Props) 
     setView({ kind: "source", sourceId });
   }, []);
 
-  const openNovel = useCallback(
-    (sourceId: string, novelUrl: string) => {
-      setView({ kind: "novel", sourceId, novelUrl });
-    },
-    [],
-  );
+  const openNovel = useCallback((sourceId: string, novelUrl: string) => {
+    setView({ kind: "novel", sourceId, novelUrl });
+  }, []);
 
   const backToSources = useCallback(() => {
     setView({ kind: "sources" });

@@ -332,7 +332,10 @@ export function MeasuredVirtualList<T>({
   }, []);
 
   const total = offsets.current[count] ?? 0;
-  const first = Math.max(0, findIndexForOffset(offsets.current, viewport.scrollTop) - overscan);
+  const first = Math.max(
+    0,
+    findIndexForOffset(offsets.current, viewport.scrollTop) - overscan,
+  );
   const last = Math.min(
     count,
     findIndexForOffset(offsets.current, viewport.scrollTop + viewport.height) +

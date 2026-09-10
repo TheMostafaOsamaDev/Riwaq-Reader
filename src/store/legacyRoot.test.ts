@@ -74,7 +74,10 @@ function seedLegacyInstall(shelfName: string) {
   files[`${LEGACY_ROOT}/shelves.json`] = JSON.stringify({
     shelves: [{ id: "s1", name: shelfName, createdAt: 1, order: 0 }],
   });
-  files[`${LEGACY_ROOT}/library.json`] = JSON.stringify({ version: 1, books: [] });
+  files[`${LEGACY_ROOT}/library.json`] = JSON.stringify({
+    version: 1,
+    books: [],
+  });
 }
 
 describe("migrateLegacyRoot", () => {
@@ -116,7 +119,11 @@ describe("migrateLegacyRoot", () => {
     const { migrateLegacyRoot } = await import("./legacyRoot");
 
     // A second rename of an already-moved root would throw ENOENT.
-    await Promise.all([migrateLegacyRoot(), migrateLegacyRoot(), migrateLegacyRoot()]);
+    await Promise.all([
+      migrateLegacyRoot(),
+      migrateLegacyRoot(),
+      migrateLegacyRoot(),
+    ]);
 
     expect(files[`${ROOT}/shelves.json`]).toContain("Once");
   });

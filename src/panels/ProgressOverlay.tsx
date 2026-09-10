@@ -23,19 +23,22 @@ export function ProgressOverlay({
 }: Props) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
-  const pct = chapterCount > 0
-    ? Math.round(((currentChapter + 1) / chapterCount) * 100)
-    : 0;
+  const pct =
+    chapterCount > 0
+      ? Math.round(((currentChapter + 1) / chapterCount) * 100)
+      : 0;
   const chaptersLeft = Math.max(0, chapterCount - currentChapter - 1);
 
-  const shadow =
-    themeKey === "light" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.5)";
+  const shadow = themeKey === "light" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.5)";
 
   // Evenly-spaced chapter ticks — skip the tick at the current position so
   // the scrubber reads cleanly on top of it.
   const ticks =
     chapterCount > 1
-      ? Array.from({ length: chapterCount - 1 }, (_, i) => (i + 1) / chapterCount)
+      ? Array.from(
+          { length: chapterCount - 1 },
+          (_, i) => (i + 1) / chapterCount,
+        )
       : [];
 
   return (
@@ -89,7 +92,11 @@ export function ProgressOverlay({
           %
         </span>
         <span
-          style={{ fontSize: 11, color: theme.muted, marginInlineStart: "auto" }}
+          style={{
+            fontSize: 11,
+            color: theme.muted,
+            marginInlineStart: "auto",
+          }}
         >
           {tr("progress.ofBook")}
         </span>

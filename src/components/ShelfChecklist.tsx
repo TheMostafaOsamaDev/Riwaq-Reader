@@ -12,7 +12,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import type { Shelf } from "../store/shelves";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 
 interface Props {
@@ -52,7 +52,7 @@ export function ShelfChecklist({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9500,
+        zIndex: Z.menu,
         background: "rgba(0,0,0,0.42)",
         display: "flex",
         alignItems: "center",
@@ -151,12 +151,15 @@ export function ShelfChecklist({
   );
 }
 
-const ShelfRow = forwardRef<HTMLButtonElement, {
-  theme: Theme;
-  label: string;
-  checked: boolean;
-  onClick: () => void;
-}>(function ShelfRow({ theme, label, checked, onClick }, ref) {
+const ShelfRow = forwardRef<
+  HTMLButtonElement,
+  {
+    theme: Theme;
+    label: string;
+    checked: boolean;
+    onClick: () => void;
+  }
+>(function ShelfRow({ theme, label, checked, onClick }, ref) {
   const [hover, setHover] = useState(false);
   return (
     <button
@@ -217,11 +220,14 @@ const ShelfRow = forwardRef<HTMLButtonElement, {
   );
 });
 
-const NewShelfRow = forwardRef<HTMLButtonElement, {
-  theme: Theme;
-  label: string;
-  onClick: () => void;
-}>(function NewShelfRow({ theme, label, onClick }, ref) {
+const NewShelfRow = forwardRef<
+  HTMLButtonElement,
+  {
+    theme: Theme;
+    label: string;
+    onClick: () => void;
+  }
+>(function NewShelfRow({ theme, label, onClick }, ref) {
   const [hover, setHover] = useState(false);
   return (
     <button

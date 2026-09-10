@@ -30,7 +30,9 @@ describe("placePopover", () => {
   });
 
   it("flips below when the selection is near the top of the reading region", () => {
-    const p = placePopover(input({ anchor: { top: 50, bottom: 70, left: 400, width: 200 } }));
+    const p = placePopover(
+      input({ anchor: { top: 50, bottom: 70, left: 400, width: 200 } }),
+    );
     expect(p.top).toBe(78); // anchor.bottom + margin
   });
 
@@ -42,17 +44,23 @@ describe("placePopover", () => {
   });
 
   it("goes back above when below would collide with the bottom chrome", () => {
-    const p = placePopover(input({ anchor: { top: 600, bottom: 620, left: 400, width: 200 } }));
+    const p = placePopover(
+      input({ anchor: { top: 600, bottom: 620, left: 400, width: 200 } }),
+    );
     expect(p.top).toBe(548);
   });
 
   it("clamps to the left edge instead of hanging off it", () => {
-    const p = placePopover(input({ anchor: { top: 300, bottom: 320, left: 0, width: 40 } }));
+    const p = placePopover(
+      input({ anchor: { top: 300, bottom: 320, left: 0, width: 40 } }),
+    );
     expect(p.left).toBe(8);
   });
 
   it("clamps to the right edge instead of hanging off it", () => {
-    const p = placePopover(input({ anchor: { top: 300, bottom: 320, left: 960, width: 40 } }));
+    const p = placePopover(
+      input({ anchor: { top: 300, bottom: 320, left: 960, width: 40 } }),
+    );
     // 1000 - 200 - 8
     expect(p.left).toBe(792);
   });
@@ -62,32 +70,44 @@ describe("placePopover", () => {
   // region. `visible: false` is the caller's cue to fade it out.
 
   it("hides once the selection has scrolled off the top", () => {
-    const p = placePopover(input({ anchor: { top: -80, bottom: -60, left: 400, width: 200 } }));
+    const p = placePopover(
+      input({ anchor: { top: -80, bottom: -60, left: 400, width: 200 } }),
+    );
     expect(p.visible).toBe(false);
   });
 
   it("hides once the selection has scrolled off the bottom", () => {
-    const p = placePopover(input({ anchor: { top: 700, bottom: 720, left: 400, width: 200 } }));
+    const p = placePopover(
+      input({ anchor: { top: 700, bottom: 720, left: 400, width: 200 } }),
+    );
     expect(p.visible).toBe(false);
   });
 
   it("hides a selection hidden behind the chrome bars, not just off-window", () => {
     // Sitting under the top bar is as invisible to the reader as being
     // off-window — the bar is opaque frosted glass.
-    const p = placePopover(input({ anchor: { top: 4, bottom: 24, left: 400, width: 200 } }));
+    const p = placePopover(
+      input({ anchor: { top: 4, bottom: 24, left: 400, width: 200 } }),
+    );
     expect(p.visible).toBe(false);
   });
 
   it("stays visible while the selection is only partly in view", () => {
     // Half a line showing is still a line the reader can see themselves
     // highlighting; yanking the menu away there would feel broken.
-    const p = placePopover(input({ anchor: { top: 30, bottom: 55, left: 400, width: 200 } }));
+    const p = placePopover(
+      input({ anchor: { top: 30, bottom: 55, left: 400, width: 200 } }),
+    );
     expect(p.visible).toBe(true);
   });
 
   it("tracks the selection as it scrolls, keeping the same gap", () => {
-    const a = placePopover(input({ anchor: { top: 300, bottom: 320, left: 400, width: 200 } }));
-    const b = placePopover(input({ anchor: { top: 225, bottom: 245, left: 400, width: 200 } }));
+    const a = placePopover(
+      input({ anchor: { top: 300, bottom: 320, left: 400, width: 200 } }),
+    );
+    const b = placePopover(
+      input({ anchor: { top: 225, bottom: 245, left: 400, width: 200 } }),
+    );
     expect(a.top - b.top).toBe(75);
   });
 
@@ -99,7 +119,9 @@ describe("placePopover", () => {
   it("reports which side it chose", () => {
     expect(placePopover(input()).side).toBe("above");
     expect(
-      placePopover(input({ anchor: { top: 50, bottom: 70, left: 400, width: 200 } })).side,
+      placePopover(
+        input({ anchor: { top: 50, bottom: 70, left: 400, width: 200 } }),
+      ).side,
     ).toBe("below");
   });
 
@@ -130,7 +152,10 @@ describe("placePopover", () => {
   it("never places itself outside the reading region", () => {
     for (const top of [-200, -20, 0, 40, 300, 620, 700, 900]) {
       const p = placePopover(
-        input({ anchor: { top, bottom: top + 20, left: 400, width: 200 }, lockedSide: "above" }),
+        input({
+          anchor: { top, bottom: top + 20, left: 400, width: 200 },
+          lockedSide: "above",
+        }),
       );
       expect(p.top).toBeGreaterThanOrEqual(40);
       expect(p.top + 44).toBeLessThanOrEqual(640);
@@ -139,7 +164,9 @@ describe("placePopover", () => {
 
   it("returns whole pixels, so nothing shimmers as it tracks", () => {
     const p = placePopover(
-      input({ anchor: { top: 300.4, bottom: 320.7, left: 400.3, width: 199.5 } }),
+      input({
+        anchor: { top: 300.4, bottom: 320.7, left: 400.3, width: 199.5 },
+      }),
     );
     expect(Number.isInteger(p.top)).toBe(true);
     expect(Number.isInteger(p.left)).toBe(true);

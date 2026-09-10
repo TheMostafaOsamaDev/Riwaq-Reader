@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Z } from "../styles/tokens";
 
 interface Props {
   /** The reader's scroll container. */
@@ -180,12 +181,12 @@ export function ReaderDiagnostics({
         position: "fixed",
         left: 6,
         bottom: 6,
-        zIndex: 10000,
+        zIndex: Z.diagnostics,
         maxWidth: "min(96vw, 1100px)",
         padding: "6px 8px",
         borderRadius: 6,
         background: "rgba(0,0,0,0.86)",
-        font: '10.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace',
+        font: "10.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace",
         color: "#cfc6b4",
         pointerEvents: "none",
         direction: "ltr",

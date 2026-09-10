@@ -77,6 +77,16 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
+      # Before the build, deliberately: these take about a second between
+      # them, and failing on a stray blank line after a five-minute Rust
+      # build wastes everyone's afternoon. `pnpm format` fixes the first;
+      # the linter's config is biome.json, which documents why each rule
+      # that is off is off.
+      - name: Format + lint
+        run: |
+          pnpm format:check
+          pnpm lint
+
       # `pnpm build` is `tsc && vite build`, so this is the typecheck too.
       - name: Typecheck + build
         run: pnpm build

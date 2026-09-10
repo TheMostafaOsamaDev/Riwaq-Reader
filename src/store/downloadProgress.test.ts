@@ -47,9 +47,15 @@ describe("reportBurst", () => {
     // resolves, and the next starts over at 0.02 — the readout must
     // not fall back.
     const seen: number[] = [];
-    seen.push(reportBurst({ active: 10, resolved: 0, partial: 0.95, total: 10 }));
-    seen.push(reportBurst({ active: 9, resolved: 1, partial: 0.02, total: 10 }));
-    seen.push(reportBurst({ active: 9, resolved: 1, partial: 0.35, total: 10 }));
+    seen.push(
+      reportBurst({ active: 10, resolved: 0, partial: 0.95, total: 10 }),
+    );
+    seen.push(
+      reportBurst({ active: 9, resolved: 1, partial: 0.02, total: 10 }),
+    );
+    seen.push(
+      reportBurst({ active: 9, resolved: 1, partial: 0.35, total: 10 }),
+    );
     expect(seen).toEqual([10, 10, 14]);
     for (let i = 1; i < seen.length; i++) {
       expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
@@ -60,7 +66,9 @@ describe("reportBurst", () => {
     reportBurst({ active: 4, resolved: 2, partial: 0, total: 4 });
     expect(getDownloadProgress().pct).toBe(50);
     rebaseBurst();
-    expect(reportBurst({ active: 8, resolved: 0, partial: 0.1, total: 8 })).toBe(1);
+    expect(
+      reportBurst({ active: 8, resolved: 0, partial: 0.1, total: 8 }),
+    ).toBe(1);
   });
 
   it("does not raise the high-water mark once the burst has settled", () => {
@@ -69,7 +77,9 @@ describe("reportBurst", () => {
     reportBurst({ active: 0, resolved: 4, partial: 0, total: 4 });
     // A burst that resumes without a summary having been shown must
     // not inherit 100%.
-    expect(reportBurst({ active: 2, resolved: 2, partial: 0, total: 4 })).toBe(50);
+    expect(reportBurst({ active: 2, resolved: 2, partial: 0, total: 4 })).toBe(
+      50,
+    );
   });
 
   it("publishes the reading to subscribers", () => {
@@ -82,12 +92,22 @@ describe("reportBurst", () => {
     reportBurst({ active: 2, resolved: 3, partial: 0, total: 4 });
     // Duplicate readings don't re-notify; nothing lands after unsubscribe.
     expect(seen).toEqual([25, 50]);
-    expect(getDownloadProgress()).toMatchObject({ active: 2, resolved: 3, total: 4, pct: 75 });
+    expect(getDownloadProgress()).toMatchObject({
+      active: 2,
+      resolved: 3,
+      total: 4,
+      pct: 75,
+    });
   });
 
   it("clears to idle when the burst ends", () => {
     reportBurst({ active: 4, resolved: 3, partial: 0, total: 4 });
     endBurst();
-    expect(getDownloadProgress()).toEqual({ active: 0, resolved: 0, total: 0, pct: 0 });
+    expect(getDownloadProgress()).toEqual({
+      active: 0,
+      resolved: 0,
+      total: 0,
+      pct: 0,
+    });
   });
 });

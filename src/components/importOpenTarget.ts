@@ -60,7 +60,10 @@ export function openIntentFor<T>(
   const reused = pick.reused ?? [];
   // A hash-dedupe match imports nothing, so the book the user asked for can
   // arrive under either list — but never both, and never more than one here.
-  if (pick.autoImported.length + reused.length === 1 && pick.drafts.length === 0) {
+  if (
+    pick.autoImported.length + reused.length === 1 &&
+    pick.drafts.length === 0
+  ) {
     const target = pick.autoImported[0] ?? reused[0];
     if (target) return { kind: "now", target };
   }

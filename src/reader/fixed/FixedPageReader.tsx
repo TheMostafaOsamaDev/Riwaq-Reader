@@ -11,13 +11,7 @@
 // Both readers therefore share one panel surface AND one settings body
 // (panels/SettingsPanel.tsx) — see its `variant` prop.
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
@@ -25,6 +19,7 @@ import {
   type HighlightColor,
   type Theme,
   type ThemeKey,
+  Z,
 } from "../../styles/tokens";
 import { useReducedMotion } from "../../styles/motion";
 import type { Tweaks, TocEntry } from "../../types/reader";
@@ -61,7 +56,11 @@ import {
 } from "../chrome/focusChrome";
 import { FOCUS_INSET_BARE } from "../chrome/focusInsets";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { DOCK_QUERY, DOCK_WIDTH, shouldDockContents } from "../chrome/dockContents";
+import {
+  DOCK_QUERY,
+  DOCK_WIDTH,
+  shouldDockContents,
+} from "../chrome/dockContents";
 import { useI18n } from "../../i18n/useI18n";
 import { formatNum } from "../../i18n";
 
@@ -99,7 +98,11 @@ export interface FixedPageReaderProps {
   /** Persist the reading position (debounced upstream in App). `pageCount` is
    *  the source's total — needed for docx, whose count is only known after
    *  pagination at read time. */
-  onLocationChange?: (page: number, pageOffset: number, pageCount: number) => void;
+  onLocationChange?: (
+    page: number,
+    pageOffset: number,
+    pageCount: number,
+  ) => void;
   onOpenFullSettings?: () => void;
   onBack: () => void;
 }
@@ -140,15 +143,20 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // you want the page and nothing else.
   const [showProgress, setShowProgress] = useState(true);
   const [zoom, setZoom] = useState(1);
-  const [progress, setProgress] = useState<{ page: number; fraction: number; label: string }>(
-    () => ({ page: state.currentPage ?? 0, fraction: 0, label: "" }),
-  );
+  const [progress, setProgress] = useState<{
+    page: number;
+    fraction: number;
+    label: string;
+  }>(() => ({ page: state.currentPage ?? 0, fraction: 0, label: "" }));
   const viewerRef = useRef<FixedPageViewerHandle>(null);
 
   // Highlighting popovers: `sel` drives the create-color popover after a text
   // selection; `activeHl` drives the edit/delete popover after clicking a mark.
   const [sel, setSel] = useState<FixedSelection | null>(null);
-  const [activeHl, setActiveHl] = useState<{ id: string; rect: DOMRect } | null>(null);
+  const [activeHl, setActiveHl] = useState<{
+    id: string;
+    rect: DOMRect;
+  } | null>(null);
 
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!sel) return;
@@ -222,12 +230,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     ? `calc(${FOCUS_INSET_BARE}px + env(safe-area-inset-bottom, 0px))`
     : padBottom;
   // Where the floating bars sit relative to an open panel, which differs by
-  // platform because the panels do. Desktop keeps `pin`'s default 45, above
-  // SideSheet's scrim — that is what leaves a revealed bar undimmed with its
-  // buttons still clickable. A phone raises MobileSheet (zIndex 20) instead,
-  // which is meant to cover the chrome the way it does in the reflow reader
-  // (whose bars sit at 10), so the bars go under it.
-  const barLayer = isMobile ? { zIndex: 10 } : null;
+  // platform because the panels do. Desktop keeps `pin`'s default `Z.focusBar`,
+  // above SideSheet's scrim — that is what leaves a revealed bar undimmed with
+  // its buttons still clickable. A phone raises MobileSheet to `Z.panel`
+  // instead, which is meant to cover the chrome the way it does in the reflow
+  // reader, so the bars drop to `Z.readerChrome` and go under it.
+  const barLayer = isMobile ? { zIndex: Z.readerChrome } : null;
 
   // Content/page-flip direction: DOCX carries its own; PDF follows the UI.
   const contentDir = book.kind === "docx" ? book.dir : uiDir;
@@ -251,10 +259,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
 
-  const fmt = useCallback(
-    (n: number) => formatNum(n, locale),
-    [locale],
-  );
+  const fmt = useCallback((n: number) => formatNum(n, locale), [locale]);
   const formatCounter = useCallback(
     (page1: number, total: number) => `${fmt(page1)} / ${fmt(total)}`,
     [fmt],
@@ -279,7 +284,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   const jumpToFixedHighlight = (h: Highlight) => {
     if (!h.fixed) return;
     const page =
-      h.fixed.fmt === "pdf" ? h.fixed.page : source?.pageForBlock?.(h.fixed.blockId);
+      h.fixed.fmt === "pdf"
+        ? h.fixed.page
+        : source?.pageForBlock?.(h.fixed.blockId);
     if (page != null) jumpToPage(page);
   };
 
@@ -289,7 +296,11 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // edge-to-edge — so panels get `side: undefined` and a fluid width, exactly
   // as MobileReader passes them.
   const panelSide = (p: Panel): "left" | "right" | undefined =>
-    isMobile ? undefined : p === "settings" || p === "progress" ? "right" : "left";
+    isMobile
+      ? undefined
+      : p === "settings" || p === "progress"
+        ? "right"
+        : "left";
 
   // Body for the currently-open panel, reused by the desktop SideSheet and the
   // mobile bottom sheet so the panel content lives in exactly one place.
@@ -399,7 +410,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // start, the last page at the end — so that the counter under a dragged
   // handle names the page the release will actually go to.
   const pageAt = useCallback(
-    (f: number) => Math.min(total - 1, Math.max(0, Math.round(f * Math.max(0, total - 1)))),
+    (f: number) =>
+      Math.min(total - 1, Math.max(0, Math.round(f * Math.max(0, total - 1)))),
     [total],
   );
   const barFraction = total > 1 ? progress.page / (total - 1) : 0;
@@ -472,65 +484,67 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         <div
           style={focus.floating ? focus.slide("top", focus.showTop) : undefined}
         >
-      <ReaderTopBar
-        theme={theme}
-        onBack={onBack}
-        backLabel={tr("common.back")}
-        title={title}
-        subtitle={pageCounter}
-        titleStyle={{ fontFamily: titleFontFor(title) }}
-        progressFraction={progress.fraction}
-        fillRtl={contentDir === "rtl"}
-        navButtons={
-          isMobile ? undefined : (
-          <>
-            <ReaderIconButton
-              theme={theme}
-              icon="list"
-              label={tr("reader.toc")}
-              onClick={() => openPanel("toc")}
-              active={panel === "toc"}
-            />
-            <ReaderIconButton
-              theme={theme}
-              icon="highlight"
-              label={tr("reader.highlights")}
-              onClick={() => openPanel("highlights")}
-              active={panel === "highlights"}
-            />
-          </>
-          )
-        }
-        trailing={
-          isMobile ? undefined : (
-          <>
-            <ReaderIconButton
-              theme={theme}
-              icon="focus"
-              label={
-                t.focusMode ? tr("reader.exitFocusMode") : tr("reader.focusMode")
-              }
-              onClick={focus.toggle}
-              active={t.focusMode}
-            />
-            <ReaderIconButton
-              theme={theme}
-              icon="clock"
-              label={tr("reader.readingProgress")}
-              onClick={() => openPanel("progress")}
-              active={panel === "progress"}
-            />
-            <ReaderIconButton
-              theme={theme}
-              icon="type"
-              label={tr("settings.title")}
-              onClick={() => openPanel("settings")}
-              active={panel === "settings"}
-            />
-          </>
-          )
-        }
-      />
+          <ReaderTopBar
+            theme={theme}
+            onBack={onBack}
+            backLabel={tr("common.back")}
+            title={title}
+            subtitle={pageCounter}
+            titleStyle={{ fontFamily: titleFontFor(title) }}
+            progressFraction={progress.fraction}
+            fillRtl={contentDir === "rtl"}
+            navButtons={
+              isMobile ? undefined : (
+                <>
+                  <ReaderIconButton
+                    theme={theme}
+                    icon="list"
+                    label={tr("reader.toc")}
+                    onClick={() => openPanel("toc")}
+                    active={panel === "toc"}
+                  />
+                  <ReaderIconButton
+                    theme={theme}
+                    icon="highlight"
+                    label={tr("reader.highlights")}
+                    onClick={() => openPanel("highlights")}
+                    active={panel === "highlights"}
+                  />
+                </>
+              )
+            }
+            trailing={
+              isMobile ? undefined : (
+                <>
+                  <ReaderIconButton
+                    theme={theme}
+                    icon="focus"
+                    label={
+                      t.focusMode
+                        ? tr("reader.exitFocusMode")
+                        : tr("reader.focusMode")
+                    }
+                    onClick={focus.toggle}
+                    active={t.focusMode}
+                  />
+                  <ReaderIconButton
+                    theme={theme}
+                    icon="clock"
+                    label={tr("reader.readingProgress")}
+                    onClick={() => openPanel("progress")}
+                    active={panel === "progress"}
+                  />
+                  <ReaderIconButton
+                    theme={theme}
+                    icon="type"
+                    label={tr("settings.title")}
+                    onClick={() => openPanel("settings")}
+                    active={panel === "settings"}
+                  />
+                </>
+              )
+            }
+          />
         </div>
       </div>
 
@@ -539,7 +553,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           positioning context an OVERLAY sheet fills. The sheet comes first so
           a docked panel lands on the leading edge in flow, matching the
           reflowable reader. */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+      <div
+        style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}
+      >
         {/* Desktop: panels either dock beside the viewer (Contents) or slide
             in over it. Mobile keeps its own bottom-anchored sheet below. */}
         {!isMobile && (
@@ -552,7 +568,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             chromeInset={
               focus.floating ? undefined : { top: padTop, bottom: padBottom }
             }
-            side={panel === "settings" || panel === "progress" ? "right" : "left"}
+            side={
+              panel === "settings" || panel === "progress" ? "right" : "left"
+            }
             label={panelLabel}
           >
             {renderPanelBody()}
@@ -797,8 +815,18 @@ function OutlinePanel({
     >
       <div style={{ padding: "8px 6px" }}>
         {outline.length === 0 && (
-          <div style={{ padding: "32px 18px", textAlign: "center", color: theme.muted, fontSize: 12.5, lineHeight: 1.5 }}>
-            {locale === "ar" ? "لا يحتوي هذا المستند على فهرس." : "This document has no contents."}
+          <div
+            style={{
+              padding: "32px 18px",
+              textAlign: "center",
+              color: theme.muted,
+              fontSize: 12.5,
+              lineHeight: 1.5,
+            }}
+          >
+            {locale === "ar"
+              ? "لا يحتوي هذا المستند على فهرس."
+              : "This document has no contents."}
           </div>
         )}
         {outline.map((entry, i) => {
