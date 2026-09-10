@@ -6,10 +6,10 @@ import type { ThemeKey } from "../styles/tokens";
 // the same phoenix used for the OS launcher icon, so the in-app brand
 // matches the installed icon and flips with the active (resolved) theme.
 const SRC: Record<ThemeKey, string> = {
-  light: "/brand/icon-light.png",
-  sepia: "/brand/icon-light.png",
-  dark: "/brand/icon-dark.png",
-  oled: "/brand/icon-dark.png",
+  light: "/brand/icon-light.webp",
+  sepia: "/brand/icon-light.webp",
+  dark: "/brand/icon-dark.webp",
+  oled: "/brand/icon-dark.webp",
 };
 
 export function BrandMark({
