@@ -122,7 +122,7 @@ export function createCeneleSource(host: SourceHost): Source {
 
     async getHomeSections() {
       host.log("info", "getHomeSections");
-      const resp = await host.fetch(BASE_URL + "/");
+      const resp = await host.fetch(`${BASE_URL}/`);
       const doc = parseHtmlDocument(resp.text);
       return parseHomeSections(doc);
     },
@@ -827,7 +827,7 @@ function extractDescription(doc: Document): string | undefined {
     : sanitizeText(el.textContent);
   if (!text) return undefined;
   const cleaned = text.replace(/Read more$/i, "").trim();
-  return cleaned.length > 1500 ? cleaned.slice(0, 1500).trim() + "…" : cleaned;
+  return cleaned.length > 1500 ? `${cleaned.slice(0, 1500).trim()}…` : cleaned;
 }
 
 /** The redesigned novel page ships no volume markup — the chapters tab
@@ -1052,7 +1052,15 @@ function hasHiddenStyle(el: Element): boolean {
 function looksLikePiracyDecoy(text: string): boolean {
   // Strip zero-width joiners/spaces the decoys insert between letters
   // to defeat substring matching.
-  const normalized = text.replace(/[​-‏‪-‮⁠-⁯︀-️]/g, "");
+  // Written as escapes on purpose: these are zero-width spaces, bidi
+  // controls and variation selectors, and as literal characters they are
+  // invisible in a diff and easy for an editor to eat.
+  // The FE00-FE0F range is meant to strip variation selectors on their own,
+  // not to match a base character together with one \u2014 which is what the lint
+  // below is warning about, and is not what this does.
+  // biome-ignore lint/suspicious/noMisleadingCharacterClass: see above.
+  const INVISIBLES = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFE00-\uFE0F]/g;
+  const normalized = text.replace(INVISIBLES, "");
   if (/مسروقة/.test(normalized) && /فضاء الروايات|cenele\.com/.test(normalized)) {
     return true;
   }

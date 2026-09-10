@@ -7,8 +7,8 @@ import {
 import { Spinner } from "../Spinner";
 import { useImportIndicator } from "../../store/importIndicator";
 import { setMinimized } from "../../store/importProgress";
-import {
-  type Theme,
+import type {
+  Theme,
 } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import type { LibraryTab } from "./tabs";

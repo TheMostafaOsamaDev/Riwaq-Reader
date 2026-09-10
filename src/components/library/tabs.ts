@@ -1,7 +1,7 @@
 
-import {
-  type BookIndexEntry,
-  type BookStatus,
+import type {
+  BookIndexEntry,
+  BookStatus,
 } from "../../store/library";
 import type { MsgKey, Tr } from "../../i18n";
 

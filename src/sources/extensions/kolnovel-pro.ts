@@ -52,7 +52,7 @@ export function createKolNovelProSource(host: SourceHost): Source {
 
     async getHomeSections() {
       host.log("info", "getHomeSections");
-      const resp = await host.fetch(BASE_URL + "/");
+      const resp = await host.fetch(`${BASE_URL}/`);
       return parseHomeSections(parseHtmlDocument(resp.text), BASE_URL);
     },
 

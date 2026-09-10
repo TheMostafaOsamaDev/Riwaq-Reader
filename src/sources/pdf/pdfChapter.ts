@@ -319,7 +319,7 @@ export async function extractPdfLines(
       `unmapped PUA glyphs left as-is (extend PUA tables in pdfChapter.ts): ${[
         ...unknownPua,
       ]
-        .map((c) => "U+" + c.toString(16).toUpperCase())
+        .map((c) => `U+${c.toString(16).toUpperCase()}`)
         .join(" ")}`,
     );
   }

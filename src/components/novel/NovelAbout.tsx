@@ -1,8 +1,8 @@
 
 import type { SourceNovel } from "../../sources/types";
 
-import {
-  type Theme,
+import type {
+  Theme,
 } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 
@@ -32,7 +32,7 @@ export function NovelAbout({
 
   const isLongDesc = desc.length > 300;
   const visibleDesc =
-    showFullDesc || !isLongDesc ? desc : desc.slice(0, 300) + "…";
+    showFullDesc || !isLongDesc ? desc : `${desc.slice(0, 300)}…`;
 
   return (
     <div

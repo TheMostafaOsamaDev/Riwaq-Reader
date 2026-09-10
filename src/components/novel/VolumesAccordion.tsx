@@ -183,12 +183,16 @@ export function VolumesAccordion({
           return next;
         });
       } finally {
-        if (!aliveRef.current) return;
-        setLoadingVolumes((s) => {
-          const next = new Set(s);
-          next.delete(volumeId);
-          return next;
-        });
+        // Guarded rather than an early `return`: a return inside `finally`
+        // discards anything still propagating out of the try/catch, which
+        // here would mean losing a throw from the catch block itself.
+        if (aliveRef.current) {
+          setLoadingVolumes((s) => {
+            const next = new Set(s);
+            next.delete(volumeId);
+            return next;
+          });
+        }
       }
     },
     [isLazy, loadingVolumes, novel, novelUrl, source, libraryEntryId, onNovelPatch],
@@ -998,8 +1002,7 @@ export function VolumesAccordion({
               )}
             </div>
             {isOpen && (
-              <>
-                {(() => {
+              (() => {
                   const isLoading = loadingVolumes.has(v.id);
                   const err = errorByVolume.get(v.id);
                   const empty = v.chapters.length === 0;
@@ -1027,8 +1030,7 @@ export function VolumesAccordion({
                     );
                   }
                   return null;
-                })()}
-              </>
+                })()
             )}
             {isOpen && v.chapters.length > 0 && (
               // Windowed: a big volume runs to ~950 chapters, and mounting

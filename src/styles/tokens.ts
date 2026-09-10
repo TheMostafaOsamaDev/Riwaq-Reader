@@ -520,7 +520,7 @@ function parseHexColor(hex: string): [number, number, number] | null {
 }
 
 function toHex(rgb: [number, number, number]): string {
-  return "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+  return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** Move a colour `amount` (0..1) of the way toward black (negative) or white. */

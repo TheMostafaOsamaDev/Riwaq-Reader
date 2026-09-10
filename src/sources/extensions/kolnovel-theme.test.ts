@@ -43,7 +43,7 @@ describe("parseSearchResults", () => {
   it("reports hasMore false — KolNovel renders one page of results", () => {
     // The theme emits an empty `.pagination` block and no paged links.
     // Any true here would send the UI to a URL that returns HTTP 500.
-    expect(parse(resultsHtml + '<div class="pagination"> </div>').hasMore)
+    expect(parse(`${resultsHtml}<div class="pagination"> </div>`).hasMore)
       .toBe(false);
   });
 
