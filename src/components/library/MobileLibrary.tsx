@@ -1,12 +1,13 @@
+import { Suspense } from "react";
+import { LazyViewFallback } from "../LazyViewFallback";
+import { NovelDetailView, Store } from "./lazyViews";
 import { useLongPress } from "../../hooks/useLongPress";
 import { Icon } from "../Icon";
 import { BookCover } from "../BookCover";
 import { Button } from "../Button";
-import { NovelDetailView } from "../novel/NovelDetailView";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
 import { AnimatedSwap } from "../AnimatedSwap";
 import { back } from "../../store/navigation";
-import { Store } from "../Store";
 import { booksOnShelf } from "../../store/shelfLogic";
 import { paletteForId } from "../../store/palette";
 import {
@@ -219,32 +220,34 @@ export function MobileLibrary({
                 flexDirection: "column",
               }}
             >
-              <NovelDetailView
-                theme={theme}
-                layout="mobile"
-                sourceId={sourceDetailView.sourceId}
-                novelUrl={sourceDetailView.novelUrl}
-                libraryEntryId={sourceDetailView.libraryEntryId}
-                onBack={onCloseSourceDetailView}
-                onStreamRead={(chapterId) =>
-                  onStreamRead(
-                    sourceDetailView.sourceId,
-                    sourceDetailView.novelUrl,
-                    chapterId,
-                  )
-                }
-                onImportComplete={onSourceImportComplete}
-                onOpenRangeDialog={onOpenSourceDetailRangeDialog}
-                shelves={shelves}
-                bookShelfIds={
-                  books.find((b) => b.id === sourceDetailView.libraryEntryId)
-                    ?.shelfIds ?? []
-                }
-                onToggleShelf={(shelfId) =>
-                  onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
-                }
-                onNewShelfFromDetail={onNewShelf}
-              />
+              <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+                <NovelDetailView
+                  theme={theme}
+                  layout="mobile"
+                  sourceId={sourceDetailView.sourceId}
+                  novelUrl={sourceDetailView.novelUrl}
+                  libraryEntryId={sourceDetailView.libraryEntryId}
+                  onBack={onCloseSourceDetailView}
+                  onStreamRead={(chapterId) =>
+                    onStreamRead(
+                      sourceDetailView.sourceId,
+                      sourceDetailView.novelUrl,
+                      chapterId,
+                    )
+                  }
+                  onImportComplete={onSourceImportComplete}
+                  onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+                  shelves={shelves}
+                  bookShelfIds={
+                    books.find((b) => b.id === sourceDetailView.libraryEntryId)
+                      ?.shelfIds ?? []
+                  }
+                  onToggleShelf={(shelfId) =>
+                    onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
+                  }
+                  onNewShelfFromDetail={onNewShelf}
+                />
+              </Suspense>
             </div>
           ) : tab === "store" ? (
             <div
@@ -261,12 +264,14 @@ export function MobileLibrary({
                 title={tr("sidebar.store")}
                 onBack={() => setTab("all")}
               />
-              <Store
-                theme={theme}
-                layout="mobile"
-                onStreamRead={onStreamRead}
-                onImportComplete={onSourceImportComplete}
-              />
+              <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+                <Store
+                  theme={theme}
+                  layout="mobile"
+                  onStreamRead={onStreamRead}
+                  onImportComplete={onSourceImportComplete}
+                />
+              </Suspense>
             </div>
           ) : activeShelf ? (
             // Single-shelf detail page (Task 10), mobile: same back-arrow +

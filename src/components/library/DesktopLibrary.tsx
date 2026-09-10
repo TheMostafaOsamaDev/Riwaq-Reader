@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { LazyViewFallback } from "../LazyViewFallback";
+import { NovelDetailView, Store } from "./lazyViews";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
-import { NovelDetailView } from "../novel/NovelDetailView";
 import { LibrarySidebar } from "../LibrarySidebar";
 import { SearchOverlay } from "../SearchOverlay";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
 import { AnimatedSwap } from "../AnimatedSwap";
 import { openStoreSource } from "../../store/uiIntents";
-import { Store } from "../Store";
 import { booksOnShelf } from "../../store/shelfLogic";
 import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
@@ -191,40 +191,48 @@ export function DesktopLibrary({
                   flexDirection: "column",
                 }}
               >
-                <NovelDetailView
-                  theme={theme}
-                  layout="desktop"
-                  sourceId={sourceDetailView.sourceId}
-                  novelUrl={sourceDetailView.novelUrl}
-                  libraryEntryId={sourceDetailView.libraryEntryId}
-                  onBack={onCloseSourceDetailView}
-                  onStreamRead={(chapterId) =>
-                    onStreamRead(
-                      sourceDetailView.sourceId,
-                      sourceDetailView.novelUrl,
-                      chapterId,
-                    )
-                  }
-                  onImportComplete={onSourceImportComplete}
-                  onOpenRangeDialog={onOpenSourceDetailRangeDialog}
-                  shelves={shelves}
-                  bookShelfIds={
-                    books.find((b) => b.id === sourceDetailView.libraryEntryId)
-                      ?.shelfIds ?? []
-                  }
-                  onToggleShelf={(shelfId) =>
-                    onToggleBookShelf(sourceDetailView.libraryEntryId!, shelfId)
-                  }
-                  onNewShelfFromDetail={onNewShelf}
-                />
+                <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+                  <NovelDetailView
+                    theme={theme}
+                    layout="desktop"
+                    sourceId={sourceDetailView.sourceId}
+                    novelUrl={sourceDetailView.novelUrl}
+                    libraryEntryId={sourceDetailView.libraryEntryId}
+                    onBack={onCloseSourceDetailView}
+                    onStreamRead={(chapterId) =>
+                      onStreamRead(
+                        sourceDetailView.sourceId,
+                        sourceDetailView.novelUrl,
+                        chapterId,
+                      )
+                    }
+                    onImportComplete={onSourceImportComplete}
+                    onOpenRangeDialog={onOpenSourceDetailRangeDialog}
+                    shelves={shelves}
+                    bookShelfIds={
+                      books.find(
+                        (b) => b.id === sourceDetailView.libraryEntryId,
+                      )?.shelfIds ?? []
+                    }
+                    onToggleShelf={(shelfId) =>
+                      onToggleBookShelf(
+                        sourceDetailView.libraryEntryId!,
+                        shelfId,
+                      )
+                    }
+                    onNewShelfFromDetail={onNewShelf}
+                  />
+                </Suspense>
               </div>
             ) : tab === "store" ? (
-              <Store
-                theme={theme}
-                layout="desktop"
-                onStreamRead={onStreamRead}
-                onImportComplete={onSourceImportComplete}
-              />
+              <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
+                <Store
+                  theme={theme}
+                  layout="desktop"
+                  onStreamRead={onStreamRead}
+                  onImportComplete={onSourceImportComplete}
+                />
+              </Suspense>
             ) : activeShelf ? (
               // Single-shelf detail page (Task 10): the same header pattern as
               // ShelvesPage's own title, filtered to one shelf's books. Shares
