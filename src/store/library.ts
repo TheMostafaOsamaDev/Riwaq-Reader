@@ -46,6 +46,7 @@ import {
 } from "./nativeStaging";
 import type { EpubBook } from "../epub/types";
 import { withIndexLock } from "./indexLock";
+import { writeCoverThumb } from "./coverThumb";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
 import { findByHash } from "./dedupe";
@@ -82,6 +83,10 @@ export interface BookIndexEntry {
   progress: number;
   /** Filename of the cover under `books/<id>/`, when the EPUB shipped one. */
   coverFile?: string;
+  /** Grid-sized WebP derived from `coverFile` at save time. Every surface in
+   *  the app renders this; the original is kept but never loaded. Absent for
+   *  books imported before thumbnails, until the backfill catches them. */
+  thumbFile?: string;
   /**
    * Timestamp set whenever the cover file is rewritten — appended to the
    * asset URL so the webview's cache doesn't hide the new image.
@@ -640,6 +645,12 @@ async function commitEpubAt(
       ]);
       if (ok) coverFile = name;
     }
+    // Derive the grid thumbnail once, here, instead of decoding a multi-MB
+    // cover on every library paint. A failure is not fatal: coverSrcFor falls
+    // back to the original and the backfill retries on a later launch.
+    const thumbFile = coverFile
+      ? await writeCoverThumb(id, coverFile)
+      : null;
 
     return appendIndexEntry({
       id: book.id,
@@ -650,6 +661,7 @@ async function commitEpubAt(
       addedAt: Date.now(),
       progress: 0,
       ...(coverFile ? { coverFile } : {}),
+      ...(thumbFile ? { thumbFile } : {}),
       ...(sourceHash ? { sourceHash } : {}),
     });
   } finally {
@@ -763,6 +775,14 @@ export async function addNovelToLibrary(
         console.warn("[library] couldn't download cover:", e);
       }
     }
+    // Reuse the existing thumbnail when the cover didn't change; derive one
+    // when it did (or when an older entry never had one).
+    const thumbFile =
+      coverFile && coverFile === existing?.coverFile && existing?.thumbFile
+        ? existing.thumbFile
+        : coverFile
+          ? await writeCoverThumb(id, coverFile)
+          : null;
 
     // Persist the snapshot (volumes + chapters with downloadedAt/readAt
     // carried over from any prior snapshot).
@@ -786,6 +806,7 @@ export async function addNovelToLibrary(
       sourceId,
       novelUrl,
       ...(coverFile ? { coverFile } : {}),
+      ...(thumbFile ? { thumbFile } : {}),
       ...(novel.description ? { description: novel.description } : {}),
     };
 
@@ -951,13 +972,36 @@ export async function rescanCover(
     const idx = await readIndex();
     const entry = idx.books.find((b) => b.id === id);
     if (!entry) return null;
+    await discardSupersededCover(id, entry.coverFile, coverFile);
     entry.coverFile = coverFile;
+    entry.thumbFile = (await writeCoverThumb(id, coverFile)) ?? undefined;
     // Bump addedAt-cachebust-friend so the webview re-fetches. We keep the
     // original addedAt for sorting, but append a coverBust tag in the URL.
     (entry as BookIndexEntry & { coverBust?: number }).coverBust = Date.now();
     await writeIndex(idx);
     return entry;
   });
+}
+
+/** Remove a cover file the book has stopped pointing at.
+ *
+ *  Covers are named after their source extension, so replacing a `.jpg` with
+ *  a `.png` writes a NEW file and repoints the entry — leaving the old one on
+ *  disk forever, invisible to the UI and to `deleteBook`'s own bookkeeping.
+ *  (The book directory is removed recursively on delete, so this leaks space
+ *  for the life of the book rather than past it.) Same-name replacements
+ *  overwrite in place and must not be touched. */
+async function discardSupersededCover(
+  id: string,
+  previous: string | undefined,
+  next: string,
+): Promise<void> {
+  if (!previous || previous === next) return;
+  try {
+    await remove(`${bookDir(id)}/${previous}`, { baseDir: BASE });
+  } catch {
+    // best-effort — a cover we can't delete must not fail the replacement
+  }
 }
 
 /**
@@ -995,7 +1039,9 @@ export async function setCoverFromFile(
     const idx = await readIndex();
     const entry = idx.books.find((b) => b.id === id);
     if (!entry) return null;
+    await discardSupersededCover(id, entry.coverFile, coverFile);
     entry.coverFile = coverFile;
+    entry.thumbFile = (await writeCoverThumb(id, coverFile)) ?? undefined;
     (entry as BookIndexEntry & { coverBust?: number }).coverBust = Date.now();
     await writeIndex(idx);
     return entry;
@@ -1008,15 +1054,43 @@ export async function setCoverFromFile(
  * nothing for books without saved EPUB bytes (pre-0.2 imports).
  */
 async function backfillMissingCovers(entries: BookIndexEntry[]): Promise<void> {
-  const missing = entries.filter((e) => !e.coverFile);
-  if (missing.length === 0) return;
-  for (const entry of missing) {
+  for (const entry of entries.filter((e) => !e.coverFile)) {
     try {
       await rescanCover(entry.id);
     } catch {
       // best-effort — one bad book shouldn't block the rest
     }
   }
+  // Books imported before thumbnails existed have a cover but no thumb, and
+  // would otherwise decode the full-size original on every paint forever.
+  // One pass fixes a library permanently: once `thumbFile` is set the filter
+  // is a field check, so later calls cost nothing.
+  for (const entry of entries.filter((e) => e.coverFile && !e.thumbFile)) {
+    try {
+      await attachCoverThumb(entry.id);
+    } catch {
+      // best-effort — a cover we can't re-encode just stays full-size
+    }
+  }
+}
+
+/** Derive and record a thumbnail for a book that already has a cover. */
+async function attachCoverThumb(id: string): Promise<void> {
+  const current = await getEntry(id);
+  if (!current?.coverFile || current.thumbFile) return;
+  const thumbFile = await writeCoverThumb(id, current.coverFile);
+  if (!thumbFile) return;
+  await withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    // Re-read inside the lock: the cover may have been replaced while the
+    // encode was running, in which case that path wrote its own thumbnail.
+    if (!entry || entry.coverFile !== current.coverFile || entry.thumbFile) {
+      return;
+    }
+    entry.thumbFile = thumbFile;
+    await writeIndex(idx);
+  });
 }
 
 // ── cover URLs ────────────────────────────────────────────────────────────
@@ -1036,9 +1110,14 @@ async function getAppDataDir(): Promise<string> {
 export async function coverSrcFor(
   entry: BookIndexEntry,
 ): Promise<string | null> {
-  if (!entry.coverFile) return null;
+  // The thumbnail is what every surface renders. The largest a cover appears
+  // anywhere is the library's `lg` card at 200x296 CSS px and the novel-detail
+  // hero at 152, both inside the 592px box — so there is nowhere the original
+  // would look better, only places it would decode slower. It stays on disk.
+  const file = entry.thumbFile ?? entry.coverFile;
+  if (!file) return null;
   const root = await getAppDataDir();
-  const abs = await join(root, ROOT, "books", entry.id, entry.coverFile);
+  const abs = await join(root, ROOT, "books", entry.id, file);
   // Cache-bust on coverBust first (bumps when the cover is replaced via
   // rescanCover / setCoverFromFile), else on addedAt.
   const v = entry.coverBust ?? entry.addedAt;
