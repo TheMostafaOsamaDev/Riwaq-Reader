@@ -48,13 +48,25 @@ die() { echo "verify-apk-signing: $*" >&2; exit 1; }
 # SHA-256 digest (lowercase, no separators). Empty output means no signer
 # certificate was found, which callers treat as unsigned.
 signer_digest() {
-  sed -n 's/^Signer #1 certificate SHA-256 digest: *//p' \
+  # apksigner labels the signer differently depending on which signature
+  # schemes the APK carries:
+  #
+  #   Signer #1 certificate SHA-256 digest: …   (v1 / JAR signature present)
+  #   V2 Signer: certificate SHA-256 digest: …  (v2-only, what Gradle emits
+  #   V3 Signer: certificate SHA-256 digest: …   for minSdk 24+, which needs
+  #                                               no v1 signature)
+  #
+  # Matching only the first form made this reject a correctly signed release
+  # APK — it failed CLOSED, which is the right direction, but it still blocked
+  # a good build. Anchor on the part both forms share instead.
+  sed -n 's/^.*certificate SHA-256 digest: *//p' \
     | head -n1 | tr 'A-Z' 'a-z' | tr -d ' :'
 }
 
 # Prints the signer's DN, or nothing.
 signer_dn() {
-  sed -n 's/^Signer #1 certificate DN: *//p' | head -n1
+  # Same two label forms as signer_digest above.
+  sed -n 's/^.*certificate DN: *//p' | head -n1
 }
 
 # Is this DN the Android debug identity? Both the self-test and the real check
@@ -97,6 +109,23 @@ Signer #1 certificate SHA-1 digest: 1111111111111111111111111111111111111111'
         "ffee0011223344556677889900aabbccddeeff00112233445566778899aabbcc" \
         "$(printf '%s\n' "$release_out" | signer_digest)"
   check "unsigned output yields no digest" "" "$(printf 'DOES NOT VERIFY\n' | signer_digest)"
+  # The real output from a Gradle-built release APK (minSdk 24, v2-only).
+  # This exact shape is what slipped past the original parser.
+  v2_out='V2 Signer: certificate DN: CN=Riwaq, O=Riwaq, C=EG
+V2 Signer: certificate SHA-256 digest: 83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d10291e2
+V2 Signer: certificate SHA-1 digest: c79ab541f88dd6cd5e71547fe4752ed888d84120'
+  v2_debug='V2 Signer: certificate DN: CN=Android Debug, O=Android, C=US
+V2 Signer: certificate SHA-256 digest: AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555FFFF6666AAAA7777BBBB8888'
+  check "V2-only DN is read" \
+        "CN=Riwaq, O=Riwaq, C=EG" "$(printf '%s\n' "$v2_out" | signer_dn)"
+  check "V2-only digest is read" \
+        "83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d10291e2" \
+        "$(printf '%s\n' "$v2_out" | signer_digest)"
+  check "V2-only debug cert is still classified as debug" \
+        "yes" "$(yn "$(printf '%s\n' "$v2_debug" | signer_dn)")"
+  check "V3 label is read too" \
+        "CN=Riwaq, O=Riwaq, C=EG" \
+        "$(printf 'V3 Signer: certificate DN: CN=Riwaq, O=Riwaq, C=EG\n' | signer_dn)"
   check "only the FIRST signer is read" \
         "ffee0011223344556677889900aabbccddeeff00112233445566778899aabbcc" \
         "$(printf '%s\nSigner #2 certificate SHA-256 digest: DEADBEEF\n' "$release_out" | signer_digest)"
