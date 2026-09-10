@@ -42,10 +42,11 @@ import {
 import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
+import { Button } from "./Button";
 
-const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-ebook-reader";
+const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 const LICENSE_URL =
-  "https://github.com/TheMostafaOsamaDev/Riwaq-ebook-reader/blob/main/LICENSE";
+  "https://github.com/TheMostafaOsamaDev/Riwaq-Reader/blob/main/LICENSE";
 
 interface Props {
   theme: Theme;
@@ -55,6 +56,12 @@ interface Props {
   applyTweaks: (partial: Partial<Tweaks>) => void;
   layout: "mobile" | "desktop";
   onClose: () => void;
+  /** Run an update check now, bypassing both the toggle and the 24h throttle
+   *  — pressing the button IS the consent the toggle otherwise withholds.
+   *  Threaded from App so this page shares the one check, rather than
+   *  running a second, independent one. */
+  onCheckUpdates: () => void;
+  updateChecking: boolean;
 }
 
 export function SettingsPage({
@@ -65,6 +72,8 @@ export function SettingsPage({
   applyTweaks,
   layout,
   onClose,
+  onCheckUpdates,
+  updateChecking,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -331,6 +340,40 @@ export function SettingsPage({
               </span>
             )}
           </div>
+        ),
+      },
+      {
+        id: "updates",
+        label: tr("settings.updates"),
+        node: (
+          <Field label={tr("settings.updates")} theme={theme}>
+            <SegRow<"on" | "off">
+              theme={theme}
+              value={t.autoCheckUpdates ? "on" : "off"}
+              onChange={(v) => setTweak("autoCheckUpdates", v === "on")}
+              options={[
+                { value: "on", label: tr("settings.on") },
+                { value: "off", label: tr("settings.off") },
+              ]}
+            />
+            <div style={{ marginTop: 10 }}>
+              <Button
+                theme={theme}
+                variant="secondary"
+                size="sm"
+                loading={updateChecking}
+                disabled={updateChecking}
+                onClick={onCheckUpdates}
+              >
+                {updateChecking
+                  ? tr("settings.updates.checking")
+                  : tr("settings.updates.checkNow")}
+              </Button>
+            </div>
+            <p style={{ margin: "8px 2px 0", fontSize: 10.5, color: theme.muted, lineHeight: 1.5 }}>
+              {tr("settings.updates.hint")}
+            </p>
+          </Field>
         ),
       },
       {
