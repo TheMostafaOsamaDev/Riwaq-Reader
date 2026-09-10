@@ -25,13 +25,13 @@ import {
 import { getSource, getSourceMeta } from "../sources/registry";
 import {
   addNovelToLibrary,
+  coverSrcFor,
   deleteBook,
   findSourceEntry,
+  getEntry,
 } from "../store/library";
-import {
-  looksLikeMissingPlaceholder,
-  optimizedCoverUrl,
-} from "../sources/images";
+import { novelCoverCandidates } from "./novelCoverCandidates";
+import { looksLikeMissingPlaceholder } from "../sources/images";
 import type { Source, SourceChapter, SourceNovel } from "../sources/types";
 import type { DownloadJob } from "../store/downloadQueue";
 import { MeasuredVirtualList } from "./VirtualList";
@@ -154,6 +154,10 @@ export function NovelDetailView({
   const [libraryEntryId, setLibraryEntryId] = useState<string | null | undefined>(
     libraryEntryIdProp ?? undefined,
   );
+  // The on-disk cover `addNovelToLibrary` saved, once we know this novel is in
+  // the library. Null until resolved (or when it has none), which is why the
+  // remote URL stays in the candidate list behind it.
+  const [localCoverUrl, setLocalCoverUrl] = useState<string | null>(null);
   // Persisted chapter flags (downloadedAt, readAt) keyed by chapter id.
   // Refreshed on snapshot load and after a download mutation. Always an
   // empty map when there's no library entry (the Store-side detail
@@ -261,15 +265,23 @@ export function NovelDetailView({
   // the lookup is only for the Store-side detail view where we
   // didn't navigate from a shelf card.
   useEffect(() => {
-    if (libraryEntryIdProp !== undefined) {
-      setLibraryEntryId(libraryEntryIdProp);
-      return;
-    }
+    // The id is known synchronously on the Library-card path, so set it
+    // without waiting — only the cover lookup needs to be async.
+    if (libraryEntryIdProp !== undefined) setLibraryEntryId(libraryEntryIdProp);
     let cancelled = false;
     (async () => {
-      const entry = await findSourceEntry(sourceId, novelUrl);
+      const entry =
+        libraryEntryIdProp !== undefined
+          ? libraryEntryIdProp
+            ? await getEntry(libraryEntryIdProp)
+            : null
+          : await findSourceEntry(sourceId, novelUrl);
       if (cancelled) return;
-      setLibraryEntryId(entry?.id ?? null);
+      if (libraryEntryIdProp === undefined) setLibraryEntryId(entry?.id ?? null);
+      // This is what keeps opening a saved novel off the network: the cover
+      // was fetched once at save time and has been on disk ever since.
+      const local = entry ? await coverSrcFor(entry) : null;
+      if (!cancelled) setLocalCoverUrl(local);
     })();
     return () => {
       cancelled = true;
@@ -386,6 +398,7 @@ export function NovelDetailView({
       ) : (
         <>
           <NovelHero
+            localCoverUrl={localCoverUrl}
             theme={theme}
             layout={layout}
             novel={state.novel}
@@ -489,6 +502,10 @@ interface NovelHeroProps {
   chapterCount: number;
   /** True when the novel is already a library entry — swaps Add for Remove. */
   inLibrary: boolean;
+  /** The saved cover on disk, when this novel is in the library. Preferred
+   *  over `novel.coverUrl` so opening a saved novel never waits on the
+   *  source site. Null while unresolved, or when there is no local file. */
+  localCoverUrl: string | null;
   /** False while the library lookup is in flight — Add/Remove stays disabled
    *  so a fast click can't double-add before we know which to render. */
   libraryCheckDone: boolean;
@@ -517,6 +534,7 @@ function NovelHero({
   working,
   chapterCount,
   inLibrary,
+  localCoverUrl,
   libraryCheckDone,
   onRead,
   onAddToLibrary,
@@ -548,8 +566,16 @@ function NovelHero({
     metaItems.push(novel.author);
   }
 
+  // One resolved list drives both the sharp cover and the blurred backdrop,
+  // so the header never fetches the same image twice.
+  const coverCandidates = novelCoverCandidates({
+    local: localCoverUrl,
+    remote: novel.coverUrl,
+    height: isMobile ? 400 : 600,
+  });
+
   return (
-    <Hero layout={layout} backdropUrl={novel.coverUrl}>
+    <Hero layout={layout} backdropUrl={coverCandidates[0]}>
       <div
         style={{
           display: "flex",
@@ -579,10 +605,13 @@ function NovelHero({
               justifyContent: "center",
             }}
           >
-            {novel.coverUrl ? (
+            {coverCandidates.length > 0 ? (
+              // Keyed on the best candidate so a cover that resolves to a
+              // local file after mount restarts the walk rather than sticking
+              // with whatever the network had already begun loading.
               <NovelCoverImage
-                coverUrl={novel.coverUrl}
-                size={isMobile ? 400 : 600}
+                key={coverCandidates[0]}
+                candidates={coverCandidates}
                 theme={theme}
               />
             ) : (
@@ -894,22 +923,21 @@ function NovelAbout({
   );
 }
 
-/** Cover with the same thumbnail-first / original-fallback flow the
- *  card uses, sized for the novel-detail header. Bigger `size` than a
- *  card thumbnail since the cover renders larger here. */
+/** Cover for the novel-detail header, walking `novelCoverCandidates` from the
+ *  local file down to the source site's original. Each step is a strictly
+ *  worse-but-still-valid source, so any failure just advances the index. */
 function NovelCoverImage({
-  coverUrl,
-  size,
+  candidates,
   theme,
 }: {
-  coverUrl: string;
-  size: number;
+  candidates: string[];
   theme: Theme;
 }) {
   const { tr } = useI18n();
-  const [src, setSrc] = useState(() => optimizedCoverUrl(coverUrl, size));
-  const [failed, setFailed] = useState(false);
-  if (failed) {
+  const [i, setI] = useState(0);
+  const src = candidates[i];
+  const hasNext = i < candidates.length - 1;
+  if (!src) {
     return (
       <span style={{ color: theme.muted, fontSize: 12 }}>
         {tr("novel.noCover")}
@@ -923,17 +951,14 @@ function NovelCoverImage({
       decoding="async"
       referrerPolicy="no-referrer"
       onLoad={(e) => {
-        // Same 200-OK placeholder detection as NovelCard — KolNovel
-        // serves a 600×330 landscape "Could not get image" graphic
-        // when the requested thumbnail size doesn't exist.
-        if (src !== coverUrl && looksLikeMissingPlaceholder(e.currentTarget)) {
-          setSrc(coverUrl);
+        // Same 200-OK placeholder detection as NovelCard — KolNovel serves a
+        // 600×330 landscape "Could not get image" graphic when the requested
+        // thumbnail size doesn't exist, so a load is not proof of a cover.
+        if (hasNext && looksLikeMissingPlaceholder(e.currentTarget)) {
+          setI(i + 1);
         }
       }}
-      onError={() => {
-        if (src !== coverUrl) setSrc(coverUrl);
-        else setFailed(true);
-      }}
+      onError={() => setI(hasNext ? i + 1 : candidates.length)}
       style={{ width: "100%", height: "100%", objectFit: "cover" }}
     />
   );
