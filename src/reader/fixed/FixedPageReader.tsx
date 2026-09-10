@@ -59,6 +59,7 @@ import {
   FocusHint,
   useFocusChrome,
 } from "../chrome/focusChrome";
+import { FOCUS_INSET_BARE } from "../chrome/focusInsets";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { DOCK_QUERY, DOCK_WIDTH, shouldDockContents } from "../chrome/dockContents";
 import { useI18n } from "../../i18n/useI18n";
@@ -207,6 +208,19 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   const padBottom = isMobile
     ? `calc(${8 + (showProgress ? 50 : 0) + 44 + 6}px + env(safe-area-inset-bottom, 0px))`
     : `${CHROME_INSET_BOTTOM}px`;
+  // What the PAGE reserves, which is the same thing only while the bars are
+  // in the layout. In focus mode they are not, and reserving their height
+  // anyway is what left a blank band above and below every page — permanently
+  // blank here, since a fitted sheet has nothing to scroll through it. The
+  // page takes the space instead; FOCUS_INSET_BARE is why it takes a plain
+  // margin rather than the reflow reader's plate inset. `focus.floating` is
+  // always false on a phone, so the tab-bar arithmetic above is untouched.
+  const pageTop = focus.floating
+    ? `calc(${FOCUS_INSET_BARE}px + env(safe-area-inset-top, 0px))`
+    : padTop;
+  const pageBottom = focus.floating
+    ? `calc(${FOCUS_INSET_BARE}px + env(safe-area-inset-bottom, 0px))`
+    : padBottom;
   // Where the floating bars sit relative to an open panel, which differs by
   // platform because the panels do. Desktop keeps `pin`'s default 45, above
   // SideSheet's scrim — that is what leaves a revealed bar undimmed with its
@@ -564,8 +578,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             position: "relative",
             minHeight: 0,
             minWidth: 0,
-            marginTop: padTop,
-            marginBottom: padBottom,
+            marginTop: pageTop,
+            marginBottom: pageBottom,
           }}
         >
           {source ? (

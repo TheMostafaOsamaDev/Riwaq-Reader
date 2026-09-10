@@ -79,13 +79,32 @@ export function ReaderTopBar({
         flexShrink: 0,
       }}
     >
-      <ReaderIconButton theme={theme} icon={backIcon} label={backLabel} onClick={onBack} />
-      <div style={{ width: 1, height: 18, background: theme.rule, margin: "0 4px" }} />
-      {navButtons}
-
+      {/* The title used to be a `flex: 1` block between the two clusters,
+          which centres it in the LEFTOVER space rather than in the bar: any
+          difference in cluster width pushes it off by half of that. It shows
+          worst on the fixed reader's phone branch, where both clusters are
+          omitted and the title sat a whole back-button right of centre.
+          Giving each cluster `flex: 1` from a zero basis makes the two sides
+          exactly equal whatever is in them, so the middle is the middle. The
+          clusters keep their automatic min-width, and only the title carries a
+          shrinkable basis, so a long one ellipsises instead of squeezing the
+          buttons. */}
       <div
         style={{
           flex: 1,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <ReaderIconButton theme={theme} icon={backIcon} label={backLabel} onClick={onBack} />
+        <div style={{ width: 1, height: 18, background: theme.rule, margin: "0 4px" }} />
+        {navButtons}
+      </div>
+
+      <div
+        style={{
+          flex: "0 1 auto",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -101,7 +120,7 @@ export function ReaderTopBar({
             fontWeight: 500,
             color: theme.ink,
             letterSpacing: "-0.01em",
-            width: "100%",
+            maxWidth: "100%",
             textAlign: "center",
             whiteSpace: "nowrap",
             overflow: "hidden",
@@ -116,7 +135,17 @@ export function ReaderTopBar({
         )}
       </div>
 
-      {trailing}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: 10,
+        }}
+      >
+        {trailing}
+      </div>
 
       {/* 2px progress fill pinned to the bottom edge (indicative only). */}
       <div

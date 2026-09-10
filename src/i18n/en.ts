@@ -277,6 +277,10 @@ export const en = {
   "reader.progress": "Progress",
   "reader.settings": "Settings",
   "reader.chapterOfTotal": "Chapter {n} of {total}",
+  // The chapter opener's meta line. Deliberately WITHOUT the total, unlike
+  // `chapterOfTotal` above: over a chapter's own display title the total is
+  // noise, and the scrubber and focus running head both still carry it.
+  "reader.chapterNumber": "Chapter {n}",
   "reader.chapterDash": "Chapter {n} — {title}",
   "reader.keepScrollingNext": "Keep scrolling for next chapter",
   "reader.keepScrollingPrev": "Keep scrolling for previous chapter",

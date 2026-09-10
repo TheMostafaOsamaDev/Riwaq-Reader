@@ -12,6 +12,17 @@ import {
   FocusHint,
   useFocusChrome,
 } from "../reader/chrome/focusChrome";
+import { readingInsets } from "../reader/chrome/focusInsets";
+import { useChapterHeadShown } from "../reader/chrome/useChapterHeadShown";
+import {
+  INSET_VAR_BOTTOM,
+  INSET_VAR_TOP,
+  useInsetGlide,
+} from "../reader/chrome/useInsetGlide";
+import {
+  FocusBottomFade,
+  FocusChapterPlate,
+} from "../reader/chrome/FocusChapterPlate";
 import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
 import { MAX_TICKS, ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
 import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
@@ -152,6 +163,9 @@ export function DesktopReader({
 }: Props) {
   const { tr, dir, locale } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The reading column. Focus mode looks inside it for the chapter head — see
+  // useChapterHeadShown, which needs one root that holds it in every mode.
+  const columnRef = useRef<HTMLDivElement>(null);
   const mode = t.readingMode;
   const isPaginated = mode !== "scroll";
   const paginatedColumns: 1 | 2 = mode === "paginated-2" ? 2 : 1;
@@ -205,6 +219,50 @@ export function DesktopReader({
   // The top bar frosts itself (ReaderTopBar); the bottom one is assembled here
   // out of ReaderProgressBar, so its wrapper carries the glass.
   const glassBottom = focus.glass("bottom");
+
+  // Room the reading surface keeps at each edge. Out of focus mode that is a
+  // bar plus the margin the text has always had under it — 60px at the head,
+  // 30px at the foot — with the text scrolling on UNDER the bar, which is
+  // what the frost samples. In focus mode there is no bar to clear, so the
+  // insets come down to what the chapter plate needs and the page gets the
+  // rest; see reader/chrome/focusInsets.ts for why that band was worth
+  // reclaiming.
+  const insets = readingInsets(focus.floating, {
+    top: CHROME_INSET_TOP + 60,
+    bottom: CHROME_INSET_BOTTOM + 30,
+  });
+  // Scroll mode animates the change and holds the reading line still through
+  // it. In the paginated modes this ref is empty — the scrolling surface is
+  // the one element that isn't rendered — so the hook no-ops there of its own
+  // accord; see the note on it for why that is the right answer and not just
+  // a convenient one.
+  useInsetGlide({
+    scrollRef,
+    top: insets.top,
+    bottom: insets.bottom,
+    reducedMotion: reduced,
+  });
+  // An OVERLAY panel dims the page behind a scrim, and the plate and the
+  // bottom fade are part of the page — they sit above that scrim (like the
+  // bars, so a revealed bar is never dimmed) and left showing they painted
+  // bright strips across the top and bottom of a modal, the top one over the
+  // panel's own header. A DOCKED panel raises no scrim and takes width
+  // instead, so there they stay up and simply re-centre on the narrower
+  // column — you are still reading.
+  const overlayPanel = panelOpen && !tocDocked;
+  const pageDressing = focus.floating && !overlayPanel;
+  // Whether the chapter's own display title is still on screen. The running
+  // head is the same name, so it waits for the title to go — and the space
+  // above a chapter's opening title then reads as a chapter drop, which is
+  // what that space is for.
+  const chapterHeadShown = useChapterHeadShown(columnRef);
+  // The running head stands in for the top bar's title, so it is held back
+  // wherever the name would otherwise be on screen twice: under a revealed
+  // bar, which carries the same title, or over the chapter's own opening
+  // title. The FADE it sits in is page furniture and stays up through both.
+  const runningHeadShown =
+    pageDressing && !focus.showTop && !chapterHeadShown;
+
 
   // The live paragraph for the current chapter — updated by both the
   // scroll listener and PaginatedView. Used so that switching reading
@@ -265,6 +323,7 @@ export function DesktopReader({
   onParagraphChangeRef.current = handleParagraphChange;
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
+
   const toggle = (panel: ActivePanel) =>
     setActivePanel(activePanel === panel ? null : panel);
 
@@ -984,6 +1043,7 @@ export function DesktopReader({
         </SideSheet>
 
         <div
+          ref={columnRef}
           style={{
             flex: 1,
             display: "flex",
@@ -992,16 +1052,32 @@ export function DesktopReader({
             minWidth: 0,
           }}
         >
+          {/* Focus mode's header and footer. Rendered INSIDE the reading
+              column, so they span the text and not the window — a docked
+              Contents panel narrows this element and the chapter name stays
+              centred on what is left, with no inset arithmetic of its own.
+              Ahead of the surface in the DOM because the name is a heading
+              for the text that follows; it paints over it on z-index. */}
+          <FocusChapterPlate
+            theme={theme}
+            surface={surfaces.page}
+            title={chapter.title}
+            shown={pageDressing}
+            nameShown={runningHeadShown}
+            reducedMotion={reduced}
+          />
           {isPaginated ? (
             <div
               ref={paginatedWrapRef}
               style={{
                 flex: 1,
-                // Pads clear of the floating bars, so the first line still sits
-                // 60px below the top bar the way it did when the bar was in
-                // the flow — but the text now scrolls UNDER it rather than
-                // stopping at its edge, which is what the blur samples.
-                padding: `calc(${CHROME_INSET_TOP + 60}px + env(safe-area-inset-top, 0px)) ${readingGutter(t.contentWidth, 24, 80)}px ${CHROME_INSET_BOTTOM + 30}px`,
+                // Pads clear of the floating bars, so the first line still
+                // sits 60px below the top bar the way it did when the bar was
+                // in the flow — but the text now scrolls UNDER it rather than
+                // stopping at its edge, which is what the blur samples. In
+                // focus mode there is no bar to clear and the numbers drop to
+                // the plate's own; see `insets` above.
+                padding: `calc(${insets.top}px + env(safe-area-inset-top, 0px)) ${readingGutter(t.contentWidth, 24, 80)}px ${insets.bottom}px`,
                 position: "relative",
                 minHeight: 0,
                 minWidth: 0,
@@ -1021,7 +1097,6 @@ export function DesktopReader({
                   <BookBody
                     bookId={book.id}
                     chapter={chapter}
-                    chapterCount={chapterCount}
                     theme={contentTheme}
                     themeKey={themeKey}
                     fontFamily={t.fontFamily}
@@ -1044,11 +1119,19 @@ export function DesktopReader({
               style={{
                 flex: 1,
                 overflow: "auto",
-                // Pads clear of the floating bars, so the first line still sits
-                // 60px below the top bar the way it did when the bar was in
-                // the flow — but the text now scrolls UNDER it rather than
-                // stopping at its edge, which is what the blur samples.
-                padding: `calc(${CHROME_INSET_TOP + 60}px + env(safe-area-inset-top, 0px)) ${readingGutter(t.contentWidth, 24, 80)}px ${CHROME_INSET_BOTTOM + 30}px`,
+                // Pads clear of the floating bars, so the first line still
+                // sits 60px below the top bar the way it did when the bar was
+                // in the flow — but the text now scrolls UNDER it rather than
+                // stopping at its edge, which is what the blur samples. In
+                // focus mode there is no bar to clear and the numbers drop to
+                // the plate's own; see `insets` above.
+                //
+                // Through a custom property, with the current inset as its
+                // fallback, so useInsetGlide can animate the value without
+                // this re-render wiping it out — and so the surface is still
+                // correct on the very first paint, before any property is
+                // set. See the note on that hook.
+                padding: `calc(var(${INSET_VAR_TOP}, ${insets.top}px) + env(safe-area-inset-top, 0px)) ${readingGutter(t.contentWidth, 24, 80)}px var(${INSET_VAR_BOTTOM}, ${insets.bottom}px)`,
                 position: "relative",
                 background: surfaces.page,
                 // overscroll-behavior: contain stops the browser's own
@@ -1070,7 +1153,6 @@ export function DesktopReader({
                     <ChapterStartLink
                       theme={theme}
                       tr={tr}
-                      titleFont={FONT_STACKS[t.fontFamily]}
                       prevNumber={currentChapter}
                       prevTitle={book.chapters[currentChapter - 1]?.title ?? ""}
                       onPrev={prevChapterAtEnd}
@@ -1080,7 +1162,6 @@ export function DesktopReader({
                 <BookBody
                   bookId={book.id}
                   chapter={chapter}
-                  chapterCount={chapterCount}
                   theme={contentTheme}
                   themeKey={themeKey}
                   fontFamily={t.fontFamily}
@@ -1107,6 +1188,17 @@ export function DesktopReader({
               </div>
             </div>
           )}
+          {/* The foot of the same idea: the last lines dissolve into the page
+              rather than stopping dead at the window's edge, which is what
+              lets the bottom inset come down to the fade's own height. Unlike
+              the plate it stays up while the scrubber is revealed — it
+              duplicates nothing the bar carries, and it is what keeps the text
+              from appearing to run out from under the bar's hairline. */}
+          <FocusBottomFade
+            surface={surfaces.page}
+            shown={pageDressing}
+            reducedMotion={reduced}
+          />
           {/* Dev-only, and off unless asked for: a blank reading pane has
               several possible causes that look identical in a screenshot, so
               this measures rather than guesses. Switch it on for a session
