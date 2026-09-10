@@ -30,7 +30,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVDOUJFRjIzRDg4OEJBMUMKUldRY3VvallJKytiWEdFalA1UURjdzZQTnVyZll3elRxUzJLOHVuS0pXTVVHT1JCY0k1elFqTDMK",
       "endpoints": [
         "https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/latest.json"
       ]
