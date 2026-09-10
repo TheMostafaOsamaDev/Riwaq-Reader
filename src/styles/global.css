@@ -3,53 +3,64 @@
    the same palette can drive per-surface overrides. The :root vars here are
    shared primitives only. */
 
-/* Readex Pro — single variable file covers weights 200–700 and both Latin
-   and Arabic scripts. Self-hosted from /public/fonts so the app works
-   offline (matters for Tauri builds). */
+/* Every face below is self-hosted from /public/fonts so the app works offline
+   (matters for Tauri builds), and every one is WOFF2 — as TrueType the same
+   set was 5.7 MB, the largest single thing in the bundle, and it ships inside
+   every desktop installer and the APK. Convert a new face with
+   `woff2_compress` (brew install woff2) before adding it here;
+   src/styles/fontAssets.test.ts fails on anything still TrueType.
+
+   Variable faces name the same file twice: `woff2-variations` for engines old
+   enough to need the hint, then plain `woff2`. An engine that doesn't know the
+   first string skips that entry and takes the second, so the cost is one line,
+   not one download.
+
+   Readex Pro — single variable file covers weights 200–700 and both Latin and
+   Arabic scripts. */
 @font-face {
   font-family: "Readex Pro";
-  src: url("/fonts/ReadexPro-Variable.ttf") format("truetype-variations"),
-       url("/fonts/ReadexPro-Variable.ttf") format("truetype");
+  src: url("/fonts/ReadexPro-Variable.woff2") format("woff2-variations"),
+       url("/fonts/ReadexPro-Variable.woff2") format("woff2");
   font-weight: 200 700;
   font-style: normal;
   font-display: swap;
 }
 
 /* Arabic-capable reading fonts — exposed as FontFamilyKey options in the
-   reader's settings panel. Static TTFs for Lateef/Tajawal keep total
-   payload smallish while still covering the 400/700 reading weights. */
+   reader's settings panel. Lateef/Tajawal ship as static 400/700 pairs, which
+   is every weight the reader asks of them. */
 @font-face {
   font-family: "Cairo";
-  src: url("/fonts/reading/Cairo-Variable.ttf") format("truetype-variations"),
-       url("/fonts/reading/Cairo-Variable.ttf") format("truetype");
+  src: url("/fonts/reading/Cairo-Variable.woff2") format("woff2-variations"),
+       url("/fonts/reading/Cairo-Variable.woff2") format("woff2");
   font-weight: 200 900;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Lateef";
-  src: url("/fonts/reading/Lateef-Regular.ttf") format("truetype");
+  src: url("/fonts/reading/Lateef-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Lateef";
-  src: url("/fonts/reading/Lateef-Bold.ttf") format("truetype");
+  src: url("/fonts/reading/Lateef-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Tajawal";
-  src: url("/fonts/reading/Tajawal-Regular.ttf") format("truetype");
+  src: url("/fonts/reading/Tajawal-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Tajawal";
-  src: url("/fonts/reading/Tajawal-Bold.ttf") format("truetype");
+  src: url("/fonts/reading/Tajawal-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -62,75 +73,75 @@
    static 400/700 pairs otherwise. All OFL, licences alongside the files. */
 @font-face {
   font-family: "El Messiri";
-  src: url("/fonts/reading/ElMessiri-VariableFont_wght.ttf") format("truetype-variations"),
-       url("/fonts/reading/ElMessiri-VariableFont_wght.ttf") format("truetype");
+  src: url("/fonts/reading/ElMessiri-VariableFont_wght.woff2") format("woff2-variations"),
+       url("/fonts/reading/ElMessiri-VariableFont_wght.woff2") format("woff2");
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Noto Naskh Arabic";
-  src: url("/fonts/reading/NotoNaskhArabic-VariableFont_wght.ttf") format("truetype-variations"),
-       url("/fonts/reading/NotoNaskhArabic-VariableFont_wght.ttf") format("truetype");
+  src: url("/fonts/reading/NotoNaskhArabic-VariableFont_wght.woff2") format("woff2-variations"),
+       url("/fonts/reading/NotoNaskhArabic-VariableFont_wght.woff2") format("woff2");
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Markazi Text";
-  src: url("/fonts/reading/MarkaziText-VariableFont_wght.ttf") format("truetype-variations"),
-       url("/fonts/reading/MarkaziText-VariableFont_wght.ttf") format("truetype");
+  src: url("/fonts/reading/MarkaziText-VariableFont_wght.woff2") format("woff2-variations"),
+       url("/fonts/reading/MarkaziText-VariableFont_wght.woff2") format("woff2");
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Noto Kufi Arabic";
-  src: url("/fonts/reading/NotoKufiArabic-VariableFont_wght.ttf") format("truetype-variations"),
-       url("/fonts/reading/NotoKufiArabic-VariableFont_wght.ttf") format("truetype");
+  src: url("/fonts/reading/NotoKufiArabic-VariableFont_wght.woff2") format("woff2-variations"),
+       url("/fonts/reading/NotoKufiArabic-VariableFont_wght.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Changa";
-  src: url("/fonts/reading/Changa-VariableFont_wght.ttf") format("truetype-variations"),
-       url("/fonts/reading/Changa-VariableFont_wght.ttf") format("truetype");
+  src: url("/fonts/reading/Changa-VariableFont_wght.woff2") format("woff2-variations"),
+       url("/fonts/reading/Changa-VariableFont_wght.woff2") format("woff2");
   font-weight: 200 800;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Lalezar";
-  src: url("/fonts/reading/Lalezar-Regular.ttf") format("truetype");
+  src: url("/fonts/reading/Lalezar-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Scheherazade New";
-  src: url("/fonts/reading/ScheherazadeNew-Regular.ttf") format("truetype");
+  src: url("/fonts/reading/ScheherazadeNew-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Scheherazade New";
-  src: url("/fonts/reading/ScheherazadeNew-Bold.ttf") format("truetype");
+  src: url("/fonts/reading/ScheherazadeNew-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Mirza";
-  src: url("/fonts/reading/Mirza-Regular.ttf") format("truetype");
+  src: url("/fonts/reading/Mirza-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Mirza";
-  src: url("/fonts/reading/Mirza-Bold.ttf") format("truetype");
+  src: url("/fonts/reading/Mirza-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -142,58 +153,58 @@
    400/700 (Almarai) or 400/500/600/700 (IBM Plex Sans Arabic) otherwise. */
 @font-face {
   font-family: "Alexandria";
-  src: url("/fonts/ui/Alexandria-Variable.ttf") format("truetype-variations"),
-       url("/fonts/ui/Alexandria-Variable.ttf") format("truetype");
+  src: url("/fonts/ui/Alexandria-Variable.woff2") format("woff2-variations"),
+       url("/fonts/ui/Alexandria-Variable.woff2") format("woff2");
   font-weight: 200 900;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Vazirmatn";
-  src: url("/fonts/ui/Vazirmatn-Variable.ttf") format("truetype-variations"),
-       url("/fonts/ui/Vazirmatn-Variable.ttf") format("truetype");
+  src: url("/fonts/ui/Vazirmatn-Variable.woff2") format("woff2-variations"),
+       url("/fonts/ui/Vazirmatn-Variable.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Almarai";
-  src: url("/fonts/ui/Almarai-Regular.ttf") format("truetype");
+  src: url("/fonts/ui/Almarai-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Almarai";
-  src: url("/fonts/ui/Almarai-Bold.ttf") format("truetype");
+  src: url("/fonts/ui/Almarai-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "IBM Plex Sans Arabic";
-  src: url("/fonts/ui/IBMPlexSansArabic-Regular.ttf") format("truetype");
+  src: url("/fonts/ui/IBMPlexSansArabic-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "IBM Plex Sans Arabic";
-  src: url("/fonts/ui/IBMPlexSansArabic-Medium.ttf") format("truetype");
+  src: url("/fonts/ui/IBMPlexSansArabic-Medium.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "IBM Plex Sans Arabic";
-  src: url("/fonts/ui/IBMPlexSansArabic-SemiBold.ttf") format("truetype");
+  src: url("/fonts/ui/IBMPlexSansArabic-SemiBold.woff2") format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "IBM Plex Sans Arabic";
-  src: url("/fonts/ui/IBMPlexSansArabic-Bold.ttf") format("truetype");
+  src: url("/fonts/ui/IBMPlexSansArabic-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
