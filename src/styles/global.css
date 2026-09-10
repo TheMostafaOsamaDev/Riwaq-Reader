@@ -6,8 +6,9 @@
 /* Every face below is self-hosted from /public/fonts so the app works offline
    (matters for Tauri builds), and every one is WOFF2 — as TrueType the same
    set was 5.7 MB, the largest single thing in the bundle, and it ships inside
-   every desktop installer and the APK. scripts/fonts-to-woff2.py does the
-   conversion and src/styles/fontAssets.test.ts holds the line.
+   every desktop installer and the APK. Convert a new face with
+   `woff2_compress` (brew install woff2) before adding it here;
+   src/styles/fontAssets.test.ts fails on anything still TrueType.
 
    Variable faces name the same file twice: `woff2-variations` for engines old
    enough to need the hint, then plain `woff2`. An engine that doesn't know the
