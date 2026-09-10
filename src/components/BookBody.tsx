@@ -21,6 +21,8 @@ import {
   type ThemeKey,
 } from "../styles/tokens";
 import { useFontScale } from "../hooks/useFontScale";
+import { useI18n } from "../i18n/useI18n";
+import { formatNum } from "../i18n";
 import { NoteSpines } from "./NoteSpines";
 import { useNoteSpines } from "../hooks/useNoteSpines";
 
@@ -140,6 +142,12 @@ export function BookBody({
   highlights = [],
   selectable = true,
 }: Props) {
+  // The chapter's meta line is the one thing in this component that is ABOUT
+  // the book rather than of it, so it follows the UI language the way the top
+  // bar's subtitle does — it used to be a hardcoded English string, and read
+  // "CHAPTER 1 OF 3" over an Arabic title.
+  const { tr, locale } = useI18n();
+  const arabicUi = locale === "ar";
   const clampedPercent = Math.max(50, Math.min(100, widthPercent));
   const resolvedAlign =
     textAlign === "auto" ? (rtl ? "right" : "justify") : textAlign;
@@ -247,15 +255,21 @@ export function BookBody({
             // Reading-surface meta label: stays on the fixed reading sans, not
             // the selectable chrome font (var(--ui-font)).
             fontFamily: FONT_READING_SANS,
-            fontSize: 10,
+            fontSize: arabicUi ? 11.5 : 10,
             fontWeight: 600,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
+            // Arabic is cursive and caseless: tracking prises the joins apart
+            // and there is no case to upper. Same split the reader makes in
+            // FocusChapterPlate and the first-run focus hint.
+            letterSpacing: arabicUi ? "normal" : "0.14em",
+            textTransform: arabicUi ? "none" : "uppercase",
             color: theme.muted,
             marginBottom: 6,
           }}
         >
-          Chapter {chapter.order + 1} of {chapterCount}
+          {tr("reader.chapterOfTotal", {
+            n: formatNum(chapter.order + 1, locale),
+            total: formatNum(chapterCount, locale),
+          })}
         </div>
         <h2
           style={{
