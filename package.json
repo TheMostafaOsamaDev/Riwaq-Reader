@@ -10,9 +10,10 @@
     "test": "vitest run",
     "tauri": "tauri",
     "android:dev": "tauri android dev",
-    "android:build": "tauri android build --apk --target aarch64 && pnpm verify:jni",
-    "android:build:universal": "tauri android build --apk && pnpm verify:jni",
+    "android:build": "tauri android build --apk --target aarch64 && pnpm verify:jni && pnpm verify:signing",
+    "android:build:universal": "tauri android build --apk && pnpm verify:jni && pnpm verify:signing",
     "verify:jni": "bash scripts/verify-jni-bridge.sh",
+    "verify:signing": "bash scripts/verify-apk-signing.sh",
     "android:build:debug": "tauri android build --apk --debug --target aarch64",
     "test:watch": "vitest"
   },
