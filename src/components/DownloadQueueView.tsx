@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  activeLibraryAddJobs,
   cancel as cancelJob,
   clearTerminals,
   getState as getQueueState,
@@ -63,10 +64,17 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
     (j) =>
       j.kind === "chapter" && (j.status === "queued" || j.status === "running"),
   );
+  // A queued-or-running add used to render nowhere on this page — it's
+  // neither a conversion nor a chapter download, and `recent` only holds
+  // terminal jobs — so the page claimed "All caught up" while a cover
+  // fetch was in flight and Cancel was unreachable. Own section, own
+  // filter, shared with the FAB ring via the same exported predicate.
+  const activeAdds = activeLibraryAddJobs(jobs);
   const interrupted = jobs
     .filter((j) => j.status === "interrupted")
     .sort((a, b) => b.updatedAt - a.updatedAt);
-  const activeCount = activeConversions.length + activeDownloads.length;
+  const activeCount =
+    activeConversions.length + activeDownloads.length + activeAdds.length;
   const recent = jobs
     .filter(
       (j) =>
@@ -171,6 +179,13 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
             theme={theme}
           >
             {activeConversions.map((j) => (
+              <JobRow key={j.id} theme={theme} job={j} tr={tr} />
+            ))}
+          </Section>
+        )}
+        {activeAdds.length > 0 && (
+          <Section title={tr("downloads.sectionAddingToLibrary")} theme={theme}>
+            {activeAdds.map((j) => (
               <JobRow key={j.id} theme={theme} job={j} tr={tr} />
             ))}
           </Section>

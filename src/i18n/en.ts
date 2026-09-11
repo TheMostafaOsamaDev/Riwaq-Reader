@@ -497,6 +497,7 @@ export const en = {
   "downloads.sectionInterrupted": "Interrupted",
   "downloads.retryAll": "Retry all",
   "downloads.sectionSavingOffline": "Saving as offline book",
+  "downloads.sectionAddingToLibrary": "Adding to library",
   "downloads.sectionDownloading": "Downloading chapters",
   "downloads.sectionRecent": "Recent",
   "downloads.cancelDownload": "Cancel download",

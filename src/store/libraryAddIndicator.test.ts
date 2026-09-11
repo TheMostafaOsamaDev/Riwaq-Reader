@@ -74,10 +74,13 @@ describe("importIndicator", () => {
     });
   });
 
-  it("spins for an in-flight library add", () => {
+  it("spins for an in-flight library add, but leaves the tap on 'pick'", () => {
+    // Not "details": an add has no stepper to open (ImportProgress is null
+    // while the import store is idle), so "details" made the FAB/Import
+    // button advertise "Open details" and do nothing when pressed.
     const ind = importIndicator(idle, false, 1);
     expect(ind.busy).toBe(true);
-    expect(ind.action).toBe("details");
+    expect(ind.action).toBe("pick");
   });
 
   it("reports an add as indeterminate — one cover has no meaningful ratio", () => {
@@ -171,7 +174,9 @@ describe("useImportIndicator", () => {
     });
 
     expect(latest().busy).toBe(true);
-    expect(latest().action).toBe("details");
+    // "pick", not "details" — an add has no detail view for the tap to
+    // open, so the control must stay a live file-picker trigger.
+    expect(latest().action).toBe("pick");
     root.unmount();
   });
 

@@ -1000,10 +1000,21 @@ export function Library({
   // come back to see them. Subscribing once at the parent + diffing
   // terminal-conversion timestamps keeps the side-effect surface
   // small.
+  //
+  // A finished `library-add` cover fetch needs the same treatment: it
+  // patches coverFile/thumbFile onto an index entry that's already on
+  // screen (the card exists instantly; only the art is missing), and
+  // nothing else re-reads the shelf afterwards — onSourceImportComplete
+  // already fired, before the queue job even started. Without this, the
+  // placeholder cover would outlive the whole session instead of the
+  // "a second or two" the add flow promises. Tracked with its own
+  // last-terminal timestamp (seeded the same way) so the two kinds can't
+  // shadow each other's baseline.
   useEffect(() => {
     let lastConversionTerminalTs = 0;
-    // Seed from current state so a conversion that finished BEFORE
-    // mount doesn't trigger a spurious refresh.
+    let lastLibraryAddTerminalTs = 0;
+    // Seed from current state so a job that finished BEFORE mount
+    // doesn't trigger a spurious refresh.
     for (const j of getQueueState().jobs) {
       if (
         j.kind === "conversion" &&
@@ -1014,20 +1025,41 @@ export function Library({
       ) {
         lastConversionTerminalTs = j.updatedAt;
       }
+      if (
+        j.kind === "library-add" &&
+        (j.status === "done" ||
+          j.status === "error" ||
+          j.status === "cancelled") &&
+        j.updatedAt > lastLibraryAddTerminalTs
+      ) {
+        lastLibraryAddTerminalTs = j.updatedAt;
+      }
     }
     const off = subscribeToQueue((s) => {
-      let newestTerminal = lastConversionTerminalTs;
+      let newestConversionTerminal = lastConversionTerminalTs;
+      let newestLibraryAddTerminal = lastLibraryAddTerminalTs;
       let triggered = false;
       for (const j of s.jobs) {
-        if (j.kind !== "conversion") continue;
-        if (j.status !== "done") continue;
-        if (j.updatedAt > lastConversionTerminalTs) {
-          triggered = true;
-          if (j.updatedAt > newestTerminal) newestTerminal = j.updatedAt;
+        if (j.kind === "conversion" && j.status === "done") {
+          if (j.updatedAt > lastConversionTerminalTs) {
+            triggered = true;
+            if (j.updatedAt > newestConversionTerminal) {
+              newestConversionTerminal = j.updatedAt;
+            }
+          }
+        }
+        if (j.kind === "library-add" && j.status === "done") {
+          if (j.updatedAt > lastLibraryAddTerminalTs) {
+            triggered = true;
+            if (j.updatedAt > newestLibraryAddTerminal) {
+              newestLibraryAddTerminal = j.updatedAt;
+            }
+          }
         }
       }
       if (triggered) {
-        lastConversionTerminalTs = newestTerminal;
+        lastConversionTerminalTs = newestConversionTerminal;
+        lastLibraryAddTerminalTs = newestLibraryAddTerminal;
         void refresh();
       }
     });
