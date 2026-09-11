@@ -33,9 +33,10 @@ vi.mock("./styles/global.css", () => ({}));
 /** A migration that never settles — the stall this bug is about. */
 let settle: (() => void) | null = null;
 const migrateLegacyRoot = vi.fn(
-  () => new Promise<void>((resolve) => {
-    settle = () => resolve();
-  }),
+  () =>
+    new Promise<void>((resolve) => {
+      settle = () => resolve();
+    }),
 );
 vi.mock("./store/legacyRoot", () => ({ migrateLegacyRoot }));
 
