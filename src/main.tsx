@@ -16,12 +16,28 @@ import { migrateLegacyRoot } from "./store/legacyRoot";
 // default shelves because the file "didn't exist" yet, and its write (which did
 // trigger the migration) then overwrote the freshly-migrated real shelves.
 //
-// `migrateLegacyRoot()` is memoized and never rejects, so the store-side calls
-// are kept as cheap defence-in-depth rather than removed.
-void migrateLegacyRoot().finally(() => {
-  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
-});
+// `migrateLegacyRoot()` is memoized, so every one of those call sites shares
+// this single promise — which is why the migration is STARTED here but not
+// WAITED ON before mounting.
+//
+// It used to gate the mount (`.finally(() => render())`). The reasoning was
+// that the call "never rejects", which is true and beside the point: never
+// rejecting is not the same as always settling. Its first act is `exists()`
+// over Tauri's IPC, and on Android that bridge can stall at cold start — while
+// it does, the user sees the boot background and nothing else. No spinner, no
+// timeout, no fallback, for as long as the stall lasts. That is the Android
+// blank-launch bug; reproduced on the emulator sitting blank past 70s having
+// made three IPC calls and created no app-data directory at all.
+//
+// Mounting immediately is safe because the ordering guarantee does not live
+// here. It lives at each store entry point, which awaits this same memoized
+// promise before its first read — library.ts (via ensureRoot, 9 call sites),
+// downloadQueue.ts, sourceLibrary.ts, shelves.ts. The gate was redundant with
+// the thing that actually enforces correctness, and cost first paint.
+void migrateLegacyRoot();
+
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
