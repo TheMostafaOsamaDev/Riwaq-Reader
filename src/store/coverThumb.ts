@@ -121,7 +121,9 @@ export async function writeCoverThumbFromBytes(
     const thumb = await encodeThumb(bytes);
     if (!thumb) return null;
     const name = `${THUMB_STEM}.${thumb.ext}`;
-    await writeFile(`${bookDir(bookId)}/${name}`, thumb.bytes, { baseDir: BASE });
+    await writeFile(`${bookDir(bookId)}/${name}`, thumb.bytes, {
+      baseDir: BASE,
+    });
     return name;
   } catch {
     return null;
