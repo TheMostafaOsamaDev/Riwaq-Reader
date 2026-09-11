@@ -118,7 +118,21 @@ export interface ConversionJob extends JobBase {
   producedEntryIds: string[];
 }
 
-export type DownloadJob = ChapterDownloadJob | ConversionJob;
+/** Fetching and storing a novel's cover after `addNovelToLibrary` has
+ *  already written the entry and its chapter listing. The entry is usable
+ *  the moment the tap returns; this is the part that needs the network.
+ *
+ *  The payload is deliberately three strings and an id — no parsed novel,
+ *  no in-memory handle — so a job reloaded as "interrupted" after an app
+ *  kill can resume without refetching anything. */
+export interface LibraryAddJob extends JobBase {
+  kind: "library-add";
+  sourceId: string;
+  novelUrl: string;
+  coverUrl: string;
+}
+
+export type DownloadJob = ChapterDownloadJob | ConversionJob | LibraryAddJob;
 
 interface QueueState {
   jobs: DownloadJob[];
@@ -151,6 +165,8 @@ const resolvedCounters = {
   chCancelled: 0,
   cvDone: 0,
   cvFailed: 0,
+  addDone: 0,
+  addFailed: 0,
 };
 
 /** Snapshot of the lifetime resolved counters (see `resolvedCounters`).
@@ -162,6 +178,8 @@ export function getResolvedCounters(): {
   chCancelled: number;
   cvDone: number;
   cvFailed: number;
+  addDone: number;
+  addFailed: number;
 } {
   return { ...resolvedCounters };
 }
@@ -171,20 +189,28 @@ function isTerminalStatus(s: DownloadJobStatus): boolean {
 }
 
 /** Adjust the lifetime counters for one job's terminal outcome by `delta`
- *  (+1 on entering a terminal state, -1 on leaving it). Conversions lump
- *  error/cancelled into cvFailed. */
+ *  (+1 on entering a terminal state, -1 on leaving it). Conversions and
+ *  library-adds lump error/cancelled together; only chapters distinguish
+ *  them, because only chapters get bulk-cancelled. */
 function bumpResolved(
   job: DownloadJob,
   status: DownloadJobStatus,
   delta: number,
 ) {
-  if (job.kind === "chapter") {
-    if (status === "done") resolvedCounters.chDone += delta;
-    else if (status === "error") resolvedCounters.chFailed += delta;
-    else if (status === "cancelled") resolvedCounters.chCancelled += delta;
-  } else {
-    if (status === "done") resolvedCounters.cvDone += delta;
-    else resolvedCounters.cvFailed += delta; // error or cancelled
+  switch (job.kind) {
+    case "chapter":
+      if (status === "done") resolvedCounters.chDone += delta;
+      else if (status === "error") resolvedCounters.chFailed += delta;
+      else if (status === "cancelled") resolvedCounters.chCancelled += delta;
+      return;
+    case "conversion":
+      if (status === "done") resolvedCounters.cvDone += delta;
+      else resolvedCounters.cvFailed += delta; // error or cancelled
+      return;
+    case "library-add":
+      if (status === "done") resolvedCounters.addDone += delta;
+      else resolvedCounters.addFailed += delta; // error or cancelled
+      return;
   }
 }
 
@@ -436,6 +462,56 @@ export function enqueueConversion(desc: EnqueueConversionDescriptor): string {
   return job.id;
 }
 
+export interface EnqueueLibraryAddDescriptor {
+  libraryEntryId: string;
+  novelTitle: string;
+  sourceId: string;
+  novelUrl: string;
+  coverUrl: string;
+}
+
+/** Queue the cover fetch for a novel that is already in the library.
+ *  Deduped per entry: re-tapping Add while one is in flight returns the
+ *  running job rather than fetching the same cover twice. */
+export function enqueueLibraryAdd(desc: EnqueueLibraryAddDescriptor): string {
+  const dup = state.jobs.find(
+    (j) =>
+      j.kind === "library-add" &&
+      j.libraryEntryId === desc.libraryEntryId &&
+      (j.status === "queued" || j.status === "running"),
+  );
+  if (dup) return dup.id;
+  const job: LibraryAddJob = {
+    id: genId(),
+    kind: "library-add",
+    libraryEntryId: desc.libraryEntryId,
+    novelTitle: desc.novelTitle,
+    sourceId: desc.sourceId,
+    novelUrl: desc.novelUrl,
+    coverUrl: desc.coverUrl,
+    status: "queued",
+    progress: 0,
+    enqueuedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  state.jobs.push(job);
+  emit();
+  pump();
+  return job.id;
+}
+
+/** Queued-or-running library adds. Mirrors `activeQueueCount` in
+ *  backgroundTasks.ts: one rule, exported, so the FAB ring and any future
+ *  consumer can't drift apart on what "an add is happening" means. */
+export function activeLibraryAddCount(jobs: DownloadJob[]): number {
+  let n = 0;
+  for (const j of jobs) {
+    if (j.kind !== "library-add") continue;
+    if (j.status === "queued" || j.status === "running") n++;
+  }
+  return n;
+}
+
 /** Cancel a job. If queued, removes it; if running, marks it
  *  cancelled and the worker drops the result once the in-flight
  *  fetch resolves. Idempotent. */
@@ -616,10 +692,16 @@ async function runJob(job: DownloadJob): Promise<void> {
       setStatus(job, "cancelled");
       return;
     }
-    if (job.kind === "chapter") {
-      await runChapterJob(job);
-    } else {
-      await runConversionJob(job);
+    switch (job.kind) {
+      case "chapter":
+        await runChapterJob(job);
+        break;
+      case "conversion":
+        await runConversionJob(job);
+        break;
+      case "library-add":
+        await runLibraryAddJob(job);
+        break;
     }
     if (cancelled.has(job.id)) {
       cancelled.delete(job.id);
@@ -688,6 +770,31 @@ async function runConversionJob(job: ConversionJob): Promise<void> {
       emit();
     },
   );
+}
+
+/** Memoized so two library-add jobs started in the same tick (the default
+ *  concurrency is 2) share one in-flight `import()` instead of each
+ *  issuing their own — worth doing because a second concurrent dynamic
+ *  import of the same not-yet-resolved specifier is unreliable under
+ *  Vitest's module mocking (vitest-dev/vitest#7040): the first caller
+ *  gets the mock, a second one racing it can get the real module. */
+let libraryModulePromise: Promise<typeof import("./library")> | undefined;
+function importLibraryModule(): Promise<typeof import("./library")> {
+  if (!libraryModulePromise) libraryModulePromise = import("./library");
+  return libraryModulePromise;
+}
+
+async function runLibraryAddJob(job: LibraryAddJob): Promise<void> {
+  // Dynamic import for the same reason runConversionJob uses one: library.ts
+  // pulls in the EPUB pipeline, and the queue module is loaded at boot.
+  const { saveNovelCover } = await importLibraryModule();
+  if (cancelled.has(job.id)) throw new CancelledError();
+  // One network fetch with no sub-steps to report, so the bar just shows
+  // motion rather than a fake breakdown.
+  job.progress = 0.15;
+  job.updatedAt = Date.now();
+  emit();
+  await saveNovelCover(job.libraryEntryId, job.sourceId, job.coverUrl);
 }
 
 class CancelledError extends Error {
