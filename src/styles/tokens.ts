@@ -26,12 +26,47 @@ export interface Theme {
   ruleStrong: string;
   chrome: string;
   /** Translucent `chrome`, for reader bars that float over the page and blur
-   *  it (see reader/chrome/glass.ts). Alpha is deliberately high — 0.78-0.80
-   *  rather than the ~0.6 a "glass" panel usually gets — because the thing
-   *  behind these bars is body text, and the 10px subtitle in the top bar has
-   *  to stay legible over the brightest patch of it. At 0.78 with a 24px blur
-   *  the effective backdrop of a text page lands around 4.8:1 for `muted`,
-   *  which clears AA; dropping much lower does not.
+   *  it (see reader/chrome/glass.ts).
+   *
+   *  The rule is one alpha for every theme: the sheerest the bars were wanted
+   *  at, applied uniformly. The four themes previously carried 0.78/0.78/0.78/
+   *  0.82, and that 0.82 was never explained — carrying the offset forward
+   *  would have meant four numbers that look derived and are not.
+   *
+   *  The old value came with the reasoning that the thing behind these bars is
+   *  body text and the 10px subtitle has to stay legible over the brightest
+   *  patch of it, so a "glass" alpha of ~0.6 was assumed not to clear AA.
+   *  Rendering every combination and measuring the worst pixel under a bar
+   *  says otherwise: across alphas 0.50-0.78 the worst contrast `muted` faces
+   *  moves by about a quarter of a ratio point. A blur this wide has already
+   *  flattened the page into a near-uniform wash of its own paper colour, and
+   *  a wash is what the fill is averaged against no matter how sheer it is.
+   *
+   *  Note what that does NOT say. Sweeping the blur 24-48 at a fixed alpha
+   *  barely moves contrast either, so neither number is load-bearing for the
+   *  ratio and it would be wrong to describe the radius as compensating for
+   *  the fill. They answer different questions: the alpha sets how much page
+   *  shows through, the radius sets whether what shows through is light and
+   *  colour or the ghosts of particular words. See styles/global.css.
+   *
+   *  Measured at the shipped value, blur 32, worst pixel anywhere under a bar
+   *  laid over dense body text:
+   *
+   *      dark  -> muted 4.45   chromeInk 7.29
+   *      oled  -> muted 4.74   chromeInk 7.01
+   *      sepia -> muted 4.72   chromeInk 6.17
+   *      light -> muted 4.78   chromeInk 9.99
+   *
+   *  `dark` is knowingly 0.05 under AA for the 10px subtitle — the bars were
+   *  wanted sheerer than `muted` strictly allows on that one theme, chosen
+   *  with that number known. It is the only theme the uniform alpha costs
+   *  anything: the other three clear AA, and `chromeInk` (the title and icons,
+   *  which is what the eye actually goes to) is nowhere near the line on any
+   *  of them. If that trade stops being worth it the fix is 0.56 — measured
+   *  above AA on every theme — not a per-theme exception.
+   *
+   *  Re-measure before going lower: 0.50 is where the evidence stops, not a
+   *  value shown to be safe. glass.test.ts pins the band.
    *
    *  Only for surfaces that actually carry `backdrop-filter`. Without the blur
    *  this is just a washed-out `chrome` with the raw text showing through it —
@@ -77,7 +112,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     rule: "rgba(58,47,31,0.14)",
     ruleStrong: "rgba(58,47,31,0.22)",
     chrome: "#ebe0c5",
-    chromeGlass: "rgba(235,224,197,0.78)",
+    chromeGlass: "rgba(235,224,197,0.52)",
     chromeInk: "#5a4a2e",
     hover: "rgba(58,47,31,0.06)",
     chromeHover: "#e0d3b2",
@@ -93,7 +128,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     rule: "rgba(31,26,20,0.10)",
     ruleStrong: "rgba(31,26,20,0.18)",
     chrome: "#f0ece2",
-    chromeGlass: "rgba(240,236,226,0.78)",
+    chromeGlass: "rgba(240,236,226,0.52)",
     chromeInk: "#3a332a",
     hover: "rgba(31,26,20,0.05)",
     chromeHover: "#e5ded0",
@@ -110,7 +145,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     rule: "rgba(216,203,176,0.14)",
     ruleStrong: "rgba(216,203,176,0.22)",
     chrome: "#24201c",
-    chromeGlass: "rgba(36,32,28,0.78)",
+    chromeGlass: "rgba(36,32,28,0.52)",
     chromeInk: "#c4b89c",
     hover: "rgba(216,203,176,0.06)",
     chromeHover: "#322d27",
@@ -127,7 +162,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     rule: "rgba(184,173,148,0.10)",
     ruleStrong: "rgba(184,173,148,0.18)",
     chrome: "#0c0a08",
-    chromeGlass: "rgba(12,10,8,0.82)",
+    chromeGlass: "rgba(12,10,8,0.52)",
     chromeInk: "#a89d84",
     hover: "rgba(184,173,148,0.05)",
     chromeHover: "#211d17",
