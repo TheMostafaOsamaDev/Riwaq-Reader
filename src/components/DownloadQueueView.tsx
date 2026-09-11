@@ -552,50 +552,61 @@ function ProgressBar({ theme, job }: { theme: Theme; job: DownloadJob }) {
   );
 }
 
+/** Label for a job mid-flight, by kind. A standalone function (rather than
+ *  a switch nested inside describe()'s) because a linter's fallthrough
+ *  check can't see into a nested switch and prove it always returns — it
+ *  can see that a whole function does. Exhaustive over job.kind: adding a
+ *  fourth kind without a case here is a compile error (this returns
+ *  string, so a missing branch is a "not all code paths return a value"
+ *  failure), not a silent fall-through to the wrong copy. */
+function runningLabel(job: DownloadJob, tr: Tr): string {
+  switch (job.kind) {
+    case "conversion":
+      // Conversion jobs carry a free-form `phase` label that's more
+      // useful than a bare percentage ("Building EPUB" / "Saving to
+      // library" / "Fetching chapter 47 / 213"). That label is produced
+      // deep in the conversion pipeline (store/storeConversion.ts) as a
+      // stable English string with no `tr` access there — `phaseLabel`
+      // maps it to a localized string here, at the point it's rendered.
+      return tr("status.phaseWithPercent", {
+        phase: phaseLabel(job.phase, tr),
+        pct: Math.round(job.progress * 100),
+      });
+    case "library-add":
+      // One cover fetch has no sub-steps worth a percentage.
+      return tr("downloads.statusFetchingCover");
+    case "chapter":
+      // For chapter jobs we just show the percent.
+      return tr("status.percentOnly", { pct: Math.round(job.progress * 100) });
+  }
+}
+
+/** Label for a finished job, by kind. Same exhaustiveness rationale as
+ *  runningLabel above. */
+function doneLabel(job: DownloadJob, tr: Tr): string {
+  switch (job.kind) {
+    case "conversion": {
+      const n = job.producedEntryIds.length;
+      return tr(
+        n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
+        { n },
+      );
+    }
+    case "library-add":
+      return tr("downloads.statusCoverSaved");
+    case "chapter":
+      return tr("downloads.statusDownloaded");
+  }
+}
+
 function describe(job: DownloadJob, tr: Tr): string {
   switch (job.status) {
     case "queued":
       return tr("downloads.statusWaiting");
     case "running":
-      // Exhaustive over job.kind: adding a fourth kind without a case here
-      // is a compile error (describe returns string, so a missing branch
-      // is a "not all code paths return a value" failure), not a silent
-      // fall-through to the wrong copy.
-      switch (job.kind) {
-        case "conversion":
-          // Conversion jobs carry a free-form `phase` label that's more
-          // useful than a bare percentage ("Building EPUB" / "Saving to
-          // library" / "Fetching chapter 47 / 213"). That label is produced
-          // deep in the conversion pipeline (store/storeConversion.ts) as a
-          // stable English string with no `tr` access there — `phaseLabel`
-          // maps it to a localized string here, at the point it's rendered.
-          return tr("status.phaseWithPercent", {
-            phase: phaseLabel(job.phase, tr),
-            pct: Math.round(job.progress * 100),
-          });
-        case "library-add":
-          // One cover fetch has no sub-steps worth a percentage.
-          return tr("downloads.statusFetchingCover");
-        case "chapter":
-          // For chapter jobs we just show the percent.
-          return tr("status.percentOnly", {
-            pct: Math.round(job.progress * 100),
-          });
-      }
+      return runningLabel(job, tr);
     case "done":
-      switch (job.kind) {
-        case "conversion": {
-          const n = job.producedEntryIds.length;
-          return tr(
-            n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
-            { n },
-          );
-        }
-        case "library-add":
-          return tr("downloads.statusCoverSaved");
-        case "chapter":
-          return tr("downloads.statusDownloaded");
-      }
+      return doneLabel(job, tr);
     case "error":
       return tr("downloads.statusFailed", {
         error: job.error
