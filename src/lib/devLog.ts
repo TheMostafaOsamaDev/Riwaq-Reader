@@ -16,7 +16,7 @@
 //   $APPDATA/debug/reader-debug.log        (JSON, one event per line)
 //
 // which on macOS is
-//   ~/Library/Application Support/com.leaflet.reader/debug/reader-debug.log
+//   ~/Library/Application Support/com.riwaq.reader/debug/reader-debug.log
 //
 // The file is truncated when the session starts, so it always describes the
 // run in front of you. In a plain browser (no Tauri) the events stay in memory
