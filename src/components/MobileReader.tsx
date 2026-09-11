@@ -1072,7 +1072,24 @@ export function MobileReader({
           // Horizontal inset scales with the content-width setting so 100%
           // actually reaches the edges — see readingGutter. Vertical padding
           // stays constant per the note above.
-          padding: `44px ${readingGutter(t.contentWidth, 8, 28)}px 44px`,
+          //
+          // The TOP inset clears the top chrome rather than merely spacing
+          // the text. Because the bar overlays the scroll area, 44px put the
+          // first thing in the chapter — the previous-chapter link — entirely
+          // underneath it: measured, a 98px bar over a capsule spanning
+          // 44–85px, so toggling the chrome on hid the control completely.
+          // It has to be a constant, not a padding that appears with the bar,
+          // for the reflow reason above.
+          //
+          // 94 + env() tracks the bar exactly: the chrome's own padding is
+          // `env(safe-area-inset-top, 12px)` over 86px of content, so this
+          // stays 8px clear of it on a notched phone and on the emulator
+          // alike. A flat number would be right on one and wrong on the other.
+          padding: `calc(env(safe-area-inset-top, 12px) + 94px) ${readingGutter(
+            t.contentWidth,
+            8,
+            28,
+          )}px 44px`,
           position: "relative",
         }}
         className="no-scrollbar"
