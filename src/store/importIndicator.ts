@@ -31,9 +31,19 @@ export interface ImportIndicator {
   /** What a tap does. "none" while the file dialog is up — there is no run
    *  to show yet, and re-opening the picker would be wrong. */
   action: "pick" | "details" | "none";
+  /** Why the ring is spinning. A library add's cover fetch has nothing to
+   *  do with "importing" — callers need this to label the busy state
+   *  honestly instead of defaulting to the import copy. Meaningless while
+   *  `busy` is false. */
+  reason: "import" | "add" | "local";
 }
 
-const IDLE: ImportIndicator = { busy: false, ratio: null, action: "pick" };
+const IDLE: ImportIndicator = {
+  busy: false,
+  ratio: null,
+  action: "pick",
+  reason: "import",
+};
 
 /** useSyncExternalStore compares snapshots with Object.is, and the queue's
  *  state object is a module-scope const that is mutated in place — its
@@ -50,7 +60,12 @@ export function importIndicator(
   // A real import knows its ratio, so it wins the ring even when an add is
   // also in flight.
   if (isImportActive(progress)) {
-    return { busy: true, ratio: progress.overall, action: "details" };
+    return {
+      busy: true,
+      ratio: progress.overall,
+      action: "details",
+      reason: "import",
+    };
   }
   // One cover fetch has no meaningful fraction, so the ring is
   // indeterminate rather than pretending to a percentage.
@@ -62,10 +77,12 @@ export function importIndicator(
   // only; picking another file to import is still perfectly legitimate
   // while a cover fetches in the background. Do not change this back to
   // "details" without first giving the add its own detail view to open.
-  if (addsActive > 0) return { busy: true, ratio: null, action: "pick" };
+  if (addsActive > 0)
+    return { busy: true, ratio: null, action: "pick", reason: "add" };
   // Local-only: the picker is open, or a commit is still finishing after the
   // reporter already settled.
-  if (localImporting) return { busy: true, ratio: null, action: "none" };
+  if (localImporting)
+    return { busy: true, ratio: null, action: "none", reason: "local" };
   return IDLE;
 }
 

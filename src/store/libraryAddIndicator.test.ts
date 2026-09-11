@@ -71,6 +71,7 @@ describe("importIndicator", () => {
       busy: false,
       ratio: null,
       action: "pick",
+      reason: "import",
     });
   });
 
@@ -90,6 +91,28 @@ describe("importIndicator", () => {
   it("lets a real import's determinate ratio win over an add", () => {
     const importing = { ...idle, active: true, overall: 0.4 };
     expect(importIndicator(importing, false, 1).ratio).toBe(0.4);
+  });
+
+  // The discriminator callers use to pick a label: an add's busy state is
+  // a background cover fetch, not an import, and must not be captioned
+  // as one. This is the bug item 3 fixed — the FAB/Import button used to
+  // say "Importing…" while only a cover was being fetched.
+  it("tags a real import's busy state as reason 'import'", () => {
+    const importing = { ...idle, active: true, overall: 0.4 };
+    expect(importIndicator(importing, false, 0).reason).toBe("import");
+  });
+
+  it("tags an in-flight library add's busy state as reason 'add'", () => {
+    expect(importIndicator(idle, false, 1).reason).toBe("add");
+  });
+
+  it("tags a local-only busy state (picker open, commit finishing) as reason 'local'", () => {
+    expect(importIndicator(idle, true, 0).reason).toBe("local");
+  });
+
+  it("lets a real import's reason win over a concurrent add", () => {
+    const importing = { ...idle, active: true, overall: 0.4 };
+    expect(importIndicator(importing, false, 1).reason).toBe("import");
   });
 });
 
@@ -141,14 +164,23 @@ describe("chapterDownloadCount", () => {
 // is the only way to catch that class of bug; asserting on `importIndicator`
 // directly cannot, no matter how many cases are added.
 describe("useImportIndicator", () => {
+  // Each mount() appends its own container to document.body; nothing else
+  // in this suite tracks or removes them, so they'd otherwise pile up
+  // across tests (and leak past this file, since happy-dom's document
+  // survives between test files in the same worker).
+  const containers: HTMLElement[] = [];
+
   afterEach(() => {
     queueState.jobs = [];
     queueListeners.clear();
+    for (const c of containers) c.remove();
+    containers.length = 0;
   });
 
   function mount(): { latest: () => ImportIndicator; root: Root } {
     const container = document.createElement("div");
     document.body.appendChild(container);
+    containers.push(container);
     const root = createRoot(container);
     let latest!: ImportIndicator;
     act(() => {

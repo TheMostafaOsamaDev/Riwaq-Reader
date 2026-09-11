@@ -509,7 +509,14 @@ export function LibrarySidebar({
               ) : (
                 <Icon name="plus" size={16} />
               )}
-              {ind.busy ? tr("sidebar.importing") : tr("sidebar.importBook")}
+              {ind.busy
+                ? // An add's busy state is a background cover fetch, not an
+                  // import — reuse the Downloads copy instead of claiming
+                  // otherwise.
+                  ind.reason === "add"
+                  ? tr("downloads.statusFetchingCover")
+                  : tr("sidebar.importing")
+                : tr("sidebar.importBook")}
             </button>
             <button
               onClick={() => setMenuOpen((v) => !v)}
