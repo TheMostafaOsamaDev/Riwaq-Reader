@@ -108,6 +108,23 @@ export async function encodeThumb(
   }
 }
 
+/** Shared by both public entry points below so a book's directory is only
+ *  ever looked up once per call, whichever one the caller used. */
+async function writeThumbInDir(
+  dir: string,
+  bytes: Uint8Array,
+): Promise<string | null> {
+  try {
+    const thumb = await encodeThumb(bytes);
+    if (!thumb) return null;
+    const name = `${THUMB_STEM}.${thumb.ext}`;
+    await writeFile(`${dir}/${name}`, thumb.bytes, { baseDir: BASE });
+    return name;
+  } catch {
+    return null;
+  }
+}
+
 /** Write `cover-thumb.<ext>` for a book from cover bytes the caller already
  *  holds. Returns the thumbnail's filename, or null if the environment can't
  *  encode or the image won't decode — in which case the UI falls back to the
@@ -117,17 +134,7 @@ export async function writeCoverThumbFromBytes(
   bookId: string,
   bytes: Uint8Array,
 ): Promise<string | null> {
-  try {
-    const thumb = await encodeThumb(bytes);
-    if (!thumb) return null;
-    const name = `${THUMB_STEM}.${thumb.ext}`;
-    await writeFile(`${bookDir(bookId)}/${name}`, thumb.bytes, {
-      baseDir: BASE,
-    });
-    return name;
-  } catch {
-    return null;
-  }
+  return writeThumbInDir(bookDir(bookId), bytes);
 }
 
 /** Derive `cover-thumb.<ext>` for a book from its stored cover file. For
@@ -138,12 +145,10 @@ export async function writeCoverThumb(
   coverFile: string,
 ): Promise<string | null> {
   try {
-    const src = `${bookDir(bookId)}/${coverFile}`;
+    const dir = bookDir(bookId);
+    const src = `${dir}/${coverFile}`;
     if (!(await exists(src, { baseDir: BASE }))) return null;
-    return await writeCoverThumbFromBytes(
-      bookId,
-      await readFile(src, { baseDir: BASE }),
-    );
+    return await writeThumbInDir(dir, await readFile(src, { baseDir: BASE }));
   } catch {
     return null;
   }
