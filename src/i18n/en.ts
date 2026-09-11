@@ -275,6 +275,9 @@ export const en = {
   "reader.needsConnection": "Needs a connection",
   "reader.chapterProgress": "Chapter progress",
   "reader.toc": "Table of contents",
+  // The end-of-chapter block's second marginal link. Names the chapter, not
+  // the page: it returns to the opening of the chapter just read.
+  "reader.topOfChapter": "Top of chapter",
   "reader.highlights": "Highlights",
   "reader.progress": "Progress",
   "reader.settings": "Settings",

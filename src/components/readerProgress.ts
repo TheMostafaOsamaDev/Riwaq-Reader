@@ -59,21 +59,21 @@ export function fractionToWidth(fraction: number): string {
 }
 
 /**
- * Whether the reader should land at the BOTTOM of the chapter it just entered.
+ * Whether a pending landing request belongs to the chapter now on screen.
  *
- * Scrolling up past a chapter's top steps back a chapter and should land at
- * that chapter's end, so reading continues upward mid-flow. The intent has to
- * survive a wait: a streamed chapter arrives empty and its content lands over
- * the network, and the mount effect cannot position anything until the
- * paragraphs exist — so the request outlives the render that made it.
+ * Stepping back a chapter is a jump to a specific place in it (its start —
+ * see ChapterStartLink), not just a chapter change, so the destination has to
+ * outlive the render that asked for it: a streamed chapter arrives empty and
+ * its content lands over the network, and the mount effect cannot position
+ * anything until the paragraphs exist.
  *
  * It must NOT survive a change of destination. Naming the chapter it was made
  * for is the whole point: a bare boolean, left set while an empty chapter was
  * still fetching, would silently be spent on whatever chapter the reader moved
- * to next — dropping them at the bottom of a chapter they had just turned
+ * to next — overriding the saved position of a chapter they had just turned
  * FORWARD into, which is the bug this replaced.
  */
-export function landAtEndFor(
+export function landingAppliesTo(
   pending: number | null,
   currentChapter: number,
 ): boolean {

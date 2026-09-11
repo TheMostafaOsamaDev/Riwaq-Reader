@@ -17,12 +17,18 @@
 // symmetric and the text centres itself.
 
 import type { CSSProperties, ReactNode } from "react";
+import type { MetricScript } from "../styles/fontMetrics";
 import {
   FONT_CHAPTER_DISPLAY,
   FONT_READING_SANS,
   inkAlpha,
   type Theme,
 } from "../styles/tokens";
+import {
+  chapterTitleApparent,
+  chapterTitleSize,
+  DESIGN_TITLE_APPARENT,
+} from "./chapterTitleSize";
 import { formatNum, type Locale } from "../i18n";
 import type { Tr } from "../i18n";
 
@@ -31,10 +37,20 @@ interface Props {
   /** 0-based position in the spine. */
   order: number;
   title: string;
-  /** The body's size AFTER the per-face correction — every dimension here is
-   *  derived from it, so the block keeps its proportions across the reader's
-   *  13–24px range. */
+  /** The body's size AFTER the per-face correction. The title is derived from
+   *  it — see chapterTitleSize — and every other dimension here is derived
+   *  from the TITLE, so the whole block keeps its proportions across the
+   *  reader's 14–42px range and plateaus where the title does. */
   bodySize: number;
+  /** Phone: a gentler growth rate and a lower plateau. Threaded from the
+   *  reader that mounted BookBody, the same way ChapterEnd's is. */
+  compact?: boolean;
+  /** Script the BOOK is set in — the title is book content, so this follows
+   *  the book's direction and not the UI language. The title face needs a
+   *  different correction per script; without one the title is sized in the
+   *  BODY face's terms while rendering in Markazi, which is ~24% smaller at
+   *  the same px, so "a little bigger than the body" came out smaller. */
+  script: MetricScript;
   tr: Tr;
   locale: Locale;
 }
@@ -46,11 +62,17 @@ interface Props {
  * pixel-identical to the one at 17px — the size control did nothing to them at
  * all. That is wrong in both directions: a 26px arm is mean under 24px type
  * and heavy under 13px. In metal the compositor picked a rule to suit the size
- * and the measure; this is the same decision, made once. 17 is the default
- * body size, so the values below read as their design values.
+ * and the measure; this is the same decision, made once.
+ *
+ * Scaled to the TITLE rather than to the body. The body version grew without
+ * limit, so once the title started plateauing the rules kept going and the
+ * block closed on 64px arms around a 40px title. Tying both to one number
+ * means the whole opening stops growing together. DESIGN_TITLE_APPARENT is
+ * the desktop default's title, so the values below still read as their
+ * design values.
  */
-const u = (bodySize: number, px: number) =>
-  Math.round(((px * bodySize) / 17) * 10) / 10;
+const u = (apparentTitle: number, px: number) =>
+  Math.round(((px * apparentTitle) / DESIGN_TITLE_APPARENT) * 10) / 10;
 
 /** One arm of a mark. `w` may be a length or a percentage; it never centres
  *  itself, because every use here is a flex child and an auto inline margin on
@@ -126,10 +148,16 @@ export function ChapterOpener({
   order,
   title,
   bodySize,
+  compact = false,
+  script,
   tr,
   locale,
 }: Props) {
-  const px = (n: number) => u(bodySize, n);
+  const titleSize = chapterTitleSize(bodySize, compact, script);
+  // The rules and gaps key off the APPARENT title, not the px one, so a block
+  // set in Arabic and one set in Latin close on the same rules.
+  const apparentTitle = chapterTitleApparent(bodySize, compact);
+  const px = (n: number) => u(apparentTitle, n);
   // Tracking and casing are Latin-only: Arabic is cursive, so letter-spacing
   // prises the joins apart, and there is no case to upper. The size bump
   // compensates for the presence it loses without the tracking. Same split the
@@ -179,7 +207,11 @@ export function ChapterOpener({
           // the body face — that is what makes an opening read as an opening
           // rather than as a large paragraph.
           fontFamily: FONT_CHAPTER_DISPLAY,
-          fontSize: bodySize * 1.8,
+          // Answers the reader's size choice, but plateaus — an unbounded
+          // 1.8× put a 75px title on a phone at the top of the slider. See
+          // chapterTitleSize for the three regimes, and for why the number is
+          // computed in apparent size and converted back here.
+          fontSize: titleSize,
           fontWeight: 400,
           color: theme.ink,
           lineHeight: 1.2,
