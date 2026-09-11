@@ -235,6 +235,7 @@ export const ar: Messages = {
   "reader.needsConnection": "يتطلب اتصالاً",
   "reader.chapterProgress": "تقدّم الفصل",
   "reader.toc": "قائمة المحتويات",
+  "reader.topOfChapter": "أعلى الفصل",
   "reader.highlights": "التظليلات",
   "reader.progress": "التقدّم",
   "reader.settings": "الإعدادات",
