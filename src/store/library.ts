@@ -768,6 +768,19 @@ function newBookId(): string {
     : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** The identity of a source-backed entry: which source, and which novel on
+ *  it. Shared so the in-lock lookup in addNovelToLibrary and findSourceEntry
+ *  can't drift apart on what "already in the library" means. */
+function matchesSource(
+  b: BookIndexEntry,
+  sourceId: string,
+  novelUrl: string,
+): boolean {
+  return (
+    b.kind === "source" && b.sourceId === sourceId && b.novelUrl === novelUrl
+  );
+}
+
 /**
  * Put a source-backed novel in the library.
  *
@@ -795,12 +808,7 @@ export async function addNovelToLibrary(
   const entry = await withIndexLock(async () => {
     const idx = await readIndex();
     const existing =
-      idx.books.find(
-        (b) =>
-          b.kind === "source" &&
-          b.sourceId === sourceId &&
-          b.novelUrl === novelUrl,
-      ) ?? null;
+      idx.books.find((b) => matchesSource(b, sourceId, novelUrl)) ?? null;
     const id = existing?.id ?? newBookId();
     // Spreading `existing` first carries forward everything the entry has
     // accumulated that this call knows nothing about — shelfIds, progress,
@@ -893,14 +901,7 @@ export async function findSourceEntry(
   novelUrl: string,
 ): Promise<BookIndexEntry | null> {
   const idx = await readIndex();
-  return (
-    idx.books.find(
-      (b) =>
-        b.kind === "source" &&
-        b.sourceId === sourceId &&
-        b.novelUrl === novelUrl,
-    ) ?? null
-  );
+  return idx.books.find((b) => matchesSource(b, sourceId, novelUrl)) ?? null;
 }
 
 /** Pluck a sane file extension from a cover URL (`/foo/bar/cover.jpg?x=1`
