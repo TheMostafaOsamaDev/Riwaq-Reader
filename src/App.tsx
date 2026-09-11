@@ -22,6 +22,7 @@ import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { LazyViewFallback } from "./components/LazyViewFallback";
 import { ReaderErrorBoundary } from "./components/ReaderErrorBoundary";
+import { ReaderFallback } from "./components/ReaderFallback";
 import { SettingsPage } from "./components/SettingsPage";
 import { createPdfPageSource } from "./reader/fixed/PdfPageSource";
 import { createDocxPageSource } from "./reader/fixed/DocxPageSource";
@@ -962,10 +963,22 @@ function App() {
                 />
               )}
             </ReaderErrorBoundary>
-          ) : // base is reader but its data isn't loaded yet (browser-forward
-          // into a book / dev reload) — the reader-location effect is
-          // loading it; the full-page spinner covers this blank frame.
-          null}
+          ) : (
+            // base is reader but there is no book to show. Two ways to get
+            // here: the reader-location effect is still loading it (a
+            // browser-forward into a book, or a dev reload), or the load
+            // failed outright. ReaderFallback draws nothing in the first case
+            // — App's full-page spinner is already covering the screen — and
+            // a way back in the second, so a failed open is never a dead end
+            // on a chrome-less page.
+            <ReaderFallback
+              theme={theme}
+              tr={tr}
+              loading={loading}
+              error={error}
+              onBack={closeBook}
+            />
+          )}
         </AnimatedSwap>
         {/* Mounted at the app root so a docx import keeps showing across the
             Library → Reader transition (e.g. user clicks "Continue in
