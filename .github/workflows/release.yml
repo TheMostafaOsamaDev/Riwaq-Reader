@@ -635,35 +635,6 @@ jobs:
         run: bash scripts/verify-update-manifest.sh latest.json "${{ github.ref_name }}"
 
   # ──────────────────────────────────────────────────────────────────
-  # Stable download links — a second copy of each installer under a
-  # version-less name.
-  #
-  # GitHub's permanent asset URL is /releases/latest/download/<EXACT FILENAME>,
-  # and every filename Tauri emits carries the version. So a README button
-  # linking at Riwaq_0.2.1_x64-setup.exe works right up until the next release
-  # and then 404s — the worst kind of broken, because it passes when you test
-  # it and fails only for users. A duplicate under a fixed name cannot rot.
-  #
-  # Runs BEFORE checksums so SHA256SUMS covers the aliases too; the job is
-  # idempotent, so a re-run adds nothing.
-  # ──────────────────────────────────────────────────────────────────
-  aliases:
-    needs: [preflight, linux, linux-arm64, windows, windows-arm64, macos, android]
-    runs-on: ubuntu-22.04
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check the mapping itself
-        run: bash scripts/release-aliases.sh --self-test
-      - name: Publish stable download links
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: bash scripts/release-aliases.sh "${{ github.ref_name }}"
-
-  # ──────────────────────────────────────────────────────────────────
   # Checksums — runs LAST. Downloads every asset attached to the draft
   # release for this tag, writes a single SHA256SUMS manifest, and
   # uploads it back to the same draft. Tag pushes only (workflow_dispatch
@@ -674,7 +645,7 @@ jobs:
   # half-built release. (Don't add `if: always()`.)
   # ──────────────────────────────────────────────────────────────────
   checksums:
-    needs: [linux, linux-arm64, windows, windows-arm64, macos, android, manifest, aliases]
+    needs: [linux, linux-arm64, windows, windows-arm64, macos, android, manifest]
     runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
