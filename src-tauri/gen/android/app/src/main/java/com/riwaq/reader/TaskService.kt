@@ -1,4 +1,4 @@
-package com.leaflet.reader
+package com.riwaq.reader
 
 import android.app.Notification
 import android.app.Service

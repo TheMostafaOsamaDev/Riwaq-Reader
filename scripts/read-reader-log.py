@@ -2,7 +2,7 @@
 """Decode the reader's debug log into something a person can follow.
 
 The reader writes JSON-per-line to
-  ~/Library/Application Support/com.leaflet.reader/debug/reader-debug.log
+  ~/Library/Application Support/com.riwaq.reader/debug/reader-debug.log
 (see src/lib/devLog.ts). Each geometry event carries the full ancestor chain,
 which is the point of the log but far too much to read raw.
 
@@ -16,7 +16,7 @@ import os
 import sys
 
 DEFAULT = os.path.expanduser(
-    "~/Library/Application Support/com.leaflet.reader/debug/reader-debug.log"
+    "~/Library/Application Support/com.riwaq.reader/debug/reader-debug.log"
 )
 
 # Anything here can make an element fail to appear. A blank page is normally
