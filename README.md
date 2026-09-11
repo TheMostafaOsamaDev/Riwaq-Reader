@@ -235,7 +235,7 @@ download every time. [Obtainium](https://github.com/ImranR98/Obtainium) removes
 that: it watches this repository and installs each release for you, the way an
 app store would, with no account and nothing else in the middle.
 
-<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.leaflet.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img alt="Add Riwaq to Obtainium" src="https://img.shields.io/badge/Add_to-Obtainium-C96442?style=for-the-badge&logo=android&logoColor=white"></a>
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.leaflet.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img height="54" alt="Get Riwaq on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"></a>
 
 Open that on the phone itself. It hands Obtainium the whole app definition —
 id, repository, name — so there is nothing to type. Without Obtainium
