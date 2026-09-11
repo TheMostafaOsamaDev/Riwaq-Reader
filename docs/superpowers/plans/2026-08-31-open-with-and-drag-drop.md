@@ -52,7 +52,7 @@
 | `src-tauri/src/notify.rs` | `consume_open_uri` JNI reader |
 | `src-tauri/tauri.conf.json` | `bundle.fileAssociations` |
 | `src-tauri/gen/android/app/src/main/AndroidManifest.xml` | VIEW + SEND intent filters |
-| `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt` | `pendingOpenUri` + intent parsing |
+| `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt` | `pendingOpenUri` + intent parsing |
 | `src-tauri/gen/android/app/proguard-rules.pro` | Keep rule for the new field |
 | `src/store/nativeStaging.ts` | `StagedFile.hash` on the TS side |
 | `src/store/library.ts` | Split out `importPaths`; `sourceHash` on the index entry; dedupe lookup |
@@ -1130,7 +1130,7 @@ pnpm mac:install; a dev build never appears in Open With."
 
 **Files:**
 - Modify: `src-tauri/gen/android/app/src/main/AndroidManifest.xml`
-- Modify: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt`
+- Modify: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt`
 - Modify: `src-tauri/gen/android/app/proguard-rules.pro`
 - Modify: `src-tauri/src/notify.rs`
 - Modify: `src-tauri/src/lib.rs` (`invoke_handler`)
@@ -1234,7 +1234,7 @@ In the `companion object`, beside `pendingLaunchIntent`:
 In `proguard-rules.pro`, extend the existing `MainActivity` block:
 
 ```proguard
--keepclassmembers class com.leaflet.reader.MainActivity {
+-keepclassmembers class com.riwaq.reader.MainActivity {
     public static void setBarAppearance(android.app.Activity, boolean, int);
     static java.lang.String pendingLaunchIntent;
     static java.lang.String pendingOpenUri;
@@ -1295,7 +1295,7 @@ fn read_pending_open_uri<'local>(
     env: &mut jni::JNIEnv<'local>,
     activity: &JObject<'local>,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let class = find_app_class(env, activity, "com.leaflet.reader.MainActivity")?;
+    let class = find_app_class(env, activity, "com.riwaq.reader.MainActivity")?;
     let value = env.get_static_field(&class, "pendingOpenUri", "Ljava/lang/String;")?;
     let obj: JObject = value.l()?;
 
@@ -1346,7 +1346,7 @@ With the app installed and **not** running:
 ```bash
 adb shell am start -a android.intent.action.VIEW \
   -d "file:///sdcard/Download/test.epub" -t application/epub+zip \
-  -n com.leaflet.reader/.MainActivity
+  -n com.riwaq.reader/.MainActivity
 ```
 Expected: Riwaq launches. (It won't import yet — that lands in Task 8.) Confirm the field was set by checking logcat for no `ClassNotFoundException` or `NoSuchFieldError`.
 
@@ -1356,7 +1356,7 @@ Then repeat with the app already foregrounded to exercise `onNewIntent`.
 
 ```bash
 git add src-tauri/gen/android/app/src/main/AndroidManifest.xml \
-        src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt \
+        src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt \
         src-tauri/gen/android/app/proguard-rules.pro \
         src-tauri/src/notify.rs src-tauri/src/lib.rs
 git commit -m "feat(open): accept books from Android Open with and the share sheet
@@ -2089,7 +2089,7 @@ reading position intact, and no second library entry should appear.
 ```bash
 adb shell am start -a android.intent.action.VIEW \
   -d "file:///sdcard/Download/test.epub" -t application/epub+zip \
-  -n com.leaflet.reader/.MainActivity
+  -n com.riwaq.reader/.MainActivity
 ```
 
 Run it once with the app closed (cold, `onCreate`) and once with it
