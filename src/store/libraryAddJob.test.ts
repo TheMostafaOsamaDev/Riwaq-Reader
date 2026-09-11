@@ -50,6 +50,7 @@ import {
   getResolvedCounters,
   getState,
   retry,
+  setDownloadConcurrency,
   type EnqueueLibraryAddDescriptor,
 } from "./downloadQueue";
 
@@ -104,13 +105,27 @@ describe("library-add jobs", () => {
   });
 
   it("queues separately for a different entry", async () => {
-    enqueueLibraryAdd(descriptor());
-    enqueueLibraryAdd(descriptor({ libraryEntryId: "entry-2" }));
-    await settle();
-    expect(coverCalls.map((c) => c.entryId).sort()).toEqual([
-      "entry-1",
-      "entry-2",
-    ]);
+    // Force the two jobs to run one after another rather than both
+    // starting in the same pump tick. Two library-add jobs racing to the
+    // same still-unresolved "./library" specifier trip a real Vitest
+    // limitation (vitest-dev/vitest#7040): the second concurrent dynamic
+    // import of a module mocked with vi.mock can silently resolve to the
+    // real, unmocked module instead of the mock. Concurrency 1 sidesteps
+    // that without touching production code, and still proves both
+    // entries queue and both covers get fetched.
+    setDownloadConcurrency(1);
+    try {
+      enqueueLibraryAdd(descriptor());
+      enqueueLibraryAdd(descriptor({ libraryEntryId: "entry-2" }));
+      await settle();
+      expect(coverCalls.map((c) => c.entryId).sort()).toEqual([
+        "entry-1",
+        "entry-2",
+      ]);
+    } finally {
+      setDownloadConcurrency(2); // restore the default so sibling tests
+      // in this file aren't left serialized behind this one.
+    }
   });
 
   it("records a failure under its own counter, not the conversion one", async () => {

@@ -211,6 +211,19 @@ function bumpResolved(
       if (status === "done") resolvedCounters.addDone += delta;
       else resolvedCounters.addFailed += delta; // error or cancelled
       return;
+    default: {
+      // A void-returning switch does NOT get exhaustiveness checking from
+      // a missing case alone — TypeScript only flags it here, at this
+      // assignment, because `job` is narrowed to `never` once every real
+      // kind above has its own case. Add a case above for any new kind
+      // instead of touching this branch. Bookkeeping-only: a missed bump
+      // just under-counts a stat, so this stays a no-op rather than
+      // throwing out of what's often a synchronous, uncaught call site
+      // (cancel/retry call setStatus directly, with no try/catch).
+      const exhaustiveCheck: never = job;
+      void exhaustiveCheck;
+      return;
+    }
   }
 }
 
@@ -702,6 +715,21 @@ async function runJob(job: DownloadJob): Promise<void> {
       case "library-add":
         await runLibraryAddJob(job);
         break;
+      default: {
+        // Unlike bumpResolved, an unhandled kind here must not fall
+        // through to the "done" path below — that would report a job
+        // that never ran as finished, which is trusted output. Throwing
+        // is caught by this function's own try/catch and lands the job
+        // as "error" instead. The `never` assignment is what makes a
+        // future kind missing a case a compile error rather than a
+        // silent fall-through: TypeScript only checks exhaustiveness at
+        // an assignment target, not merely from an absent case in a
+        // void-returning switch.
+        const exhaustiveCheck: never = job;
+        throw new Error(
+          `runJob: unhandled job kind "${(exhaustiveCheck as DownloadJob).kind}"`,
+        );
+      }
     }
     if (cancelled.has(job.id)) {
       cancelled.delete(job.id);
@@ -772,22 +800,10 @@ async function runConversionJob(job: ConversionJob): Promise<void> {
   );
 }
 
-/** Memoized so two library-add jobs started in the same tick (the default
- *  concurrency is 2) share one in-flight `import()` instead of each
- *  issuing their own — worth doing because a second concurrent dynamic
- *  import of the same not-yet-resolved specifier is unreliable under
- *  Vitest's module mocking (vitest-dev/vitest#7040): the first caller
- *  gets the mock, a second one racing it can get the real module. */
-let libraryModulePromise: Promise<typeof import("./library")> | undefined;
-function importLibraryModule(): Promise<typeof import("./library")> {
-  if (!libraryModulePromise) libraryModulePromise = import("./library");
-  return libraryModulePromise;
-}
-
 async function runLibraryAddJob(job: LibraryAddJob): Promise<void> {
   // Dynamic import for the same reason runConversionJob uses one: library.ts
   // pulls in the EPUB pipeline, and the queue module is loaded at boot.
-  const { saveNovelCover } = await importLibraryModule();
+  const { saveNovelCover } = await import("./library");
   if (cancelled.has(job.id)) throw new CancelledError();
   // One network fetch with no sub-steps to report, so the bar just shows
   // motion rather than a fake breakdown.
