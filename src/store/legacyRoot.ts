@@ -6,8 +6,12 @@
 // staging/. The Leaflet → Riwaq rename renamed that directory, so an install
 // from <= v0.1.0 has all of its data under the old name.
 //
-// The Tauri identifier did NOT change in the rename, so old and new names sit
-// in the same app-data dir and one directory rename carries everything across.
+// The Tauri identifier did not change in THAT rename, so old and new names sat
+// in the same app-data dir and one directory rename carried everything across.
+// The identifier has changed since (com.leaflet.reader -> com.riwaq.reader),
+// which moves the app-data dir itself — so there is now a second, outer move
+// to do first, and it has to be Rust because the old directory is outside the
+// fs plugin's scope. See src-tauri/src/legacy_identity.rs.
 //
 // IMPORTANT: several modules create the root (or a subdirectory of it) on their
 // own — downloadQueue.ts persists on every queue transition, sourceLibrary.ts
@@ -17,6 +21,7 @@
 // destination already present, declines to move, and the user's books are left
 // stranded under `leaflet/`.
 
+import { invoke } from "@tauri-apps/api/core";
 import { BaseDirectory, exists, rename } from "@tauri-apps/plugin-fs";
 import { LEGACY_ROOT, ROOT } from "./paths";
 
@@ -33,6 +38,15 @@ let migration: Promise<void> | null = null;
  *  the library permanently stranded. */
 export function migrateLegacyRoot(): Promise<void> {
   migration ??= (async () => {
+    // First, the outer move — the one that decides which app-data directory
+    // the paths below even resolve against. Its own try/catch because a
+    // browser preview has no command to invoke, and because a failure here
+    // leaves the old directory intact: the inner move is still worth trying.
+    try {
+      await invoke("migrate_legacy_identity");
+    } catch {
+      // Best-effort, same as below.
+    }
     try {
       if (await exists(ROOT, { baseDir: BASE })) return;
       if (!(await exists(LEGACY_ROOT, { baseDir: BASE }))) return;

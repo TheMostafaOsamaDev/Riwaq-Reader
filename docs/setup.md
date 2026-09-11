@@ -119,9 +119,9 @@ A `.dmg` sent to another Mac *does* get quarantined on download, and an ad-hoc
 signature will not satisfy Gatekeeper there. Distributing to other people needs
 a Developer ID certificate and notarisation.
 
-**Shared data.** Dev and release builds both key off the `com.leaflet.reader`
+**Shared data.** Dev and release builds both key off the `com.riwaq.reader`
 identifier, so they read and write the same library at
-`~/Library/Application Support/com.leaflet.reader/riwaq/`. Handy — the
+`~/Library/Application Support/com.riwaq.reader/riwaq/`. Handy — the
 installed app sees your existing books — but it also means anything destructive
 you try in `tauri dev` hits the real library.
 
@@ -224,7 +224,7 @@ reading position intact, and no second library entry should appear.
 ```bash
 adb shell am start -a android.intent.action.VIEW \
   -d "file:///sdcard/Download/test.epub" -t application/epub+zip \
-  -n com.leaflet.reader/.MainActivity
+  -n com.riwaq.reader/.MainActivity
 ```
 
 Run it once with the app closed (cold, `onCreate`) and once with it

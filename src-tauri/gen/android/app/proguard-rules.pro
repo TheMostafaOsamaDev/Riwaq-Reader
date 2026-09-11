@@ -29,7 +29,7 @@
 # ---------------------------------------------------------------------------
 
 # Rust -> Kotlin: DownloadNotifier.update(...) / cancel(...) called via JNI.
--keep class com.leaflet.reader.DownloadNotifier { *; }
+-keep class com.riwaq.reader.DownloadNotifier { *; }
 
 # Rust -> Kotlin: MainActivity.setBarAppearance(...) (static) and the static
 # pendingLaunchIntent field, both accessed via JNI. (The class itself is kept
@@ -40,7 +40,7 @@
 # exact signature, so widening the method without editing here compiles and
 # runs fine in debug, then dies only in release: R8 strips the now-unmatched
 # method, the JNI lookup throws, and the process aborts on the next JNI call.
--keepclassmembers class com.leaflet.reader.MainActivity {
+-keepclassmembers class com.riwaq.reader.MainActivity {
     public static void setBarAppearance(android.app.Activity, boolean, int);
     public static void setImmersiveMode(android.app.Activity, boolean);
     static java.lang.String pendingLaunchIntent;
@@ -49,7 +49,7 @@
 
 # Kotlin -> Rust: native method invoked from MainActivity.onCreate to bootstrap
 # ndk_context (also covered by the default native-methods rule; explicit here).
--keepclasseswithmembernames class com.leaflet.reader.MainActivity {
+-keepclasseswithmembernames class com.riwaq.reader.MainActivity {
     native <methods>;
 }
 
@@ -63,7 +63,7 @@
 #
 # Signatures MUST mirror the JNI descriptor in notify.rs
 # (`(Landroid/content/Context;)V`); see the MainActivity note above.
--keepclassmembers class com.leaflet.reader.TaskService {
+-keepclassmembers class com.riwaq.reader.TaskService {
     public static void start(android.content.Context);
     public static void stop(android.content.Context);
 }
