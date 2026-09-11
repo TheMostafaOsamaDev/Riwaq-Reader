@@ -46,10 +46,11 @@ import {
 } from "./nativeStaging";
 import type { EpubBook } from "../epub/types";
 import { withIndexLock } from "./indexLock";
-import { writeCoverThumb } from "./coverThumb";
+import { writeCoverThumb, writeCoverThumbFromBytes } from "./coverThumb";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
 import { findByHash, requiredFilesFor } from "./dedupe";
+import type { SourceNovel } from "../sources/types";
 
 /** Best-effort current UI locale. This module runs outside the component
  *  tree (plain store functions, no React context available), so it reads
@@ -758,80 +759,62 @@ export async function importEpubBytes(
   }
 }
 
+/** Mint a fresh book id. `crypto.randomUUID` is present in both webviews we
+ *  ship; the fallback is for the test environment and any host that hides it
+ *  outside a secure context. */
+function newBookId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** The identity of a source-backed entry: which source, and which novel on
+ *  it. Shared so the in-lock lookup in addNovelToLibrary and findSourceEntry
+ *  can't drift apart on what "already in the library" means. */
+function matchesSource(
+  b: BookIndexEntry,
+  sourceId: string,
+  novelUrl: string,
+): boolean {
+  return (
+    b.kind === "source" && b.sourceId === sourceId && b.novelUrl === novelUrl
+  );
+}
+
 /**
- * Lightweight "Add to library" for a source-backed novel. Persists the
- * novel snapshot (metadata + volumes + chapter index — see
- * `store/sourceLibrary.ts`) and downloads the cover. Does NOT download
- * chapter content; that happens per-chapter via the download queue.
+ * Put a source-backed novel in the library.
  *
- * If the same (sourceId, novelUrl) is already in the library, this
- * returns the existing entry but refreshes its snapshot from the source
- * so reopening picks up any newly published chapters. The refresh is
- * best-effort — when the network is unavailable the existing snapshot
- * stays put.
+ * `novel` is passed in rather than fetched: the caller is the novel detail
+ * view, which cannot render the Add button at all until `source.getNovel`
+ * has resolved. Refetching it here meant paying for a full page fetch and a
+ * DOM parse of every chapter anchor twice — on a 2372-chapter novel that was
+ * the whole of the wait.
+ *
+ * Nothing here touches the network, so the index lock covers only the
+ * read-modify-write it exists for. The cover is a separate, queued job
+ * (`saveNovelCover`) — see store/downloadQueue.ts.
  */
 export async function addNovelToLibrary(
   sourceId: string,
   novelUrl: string,
+  novel: SourceNovel,
 ): Promise<BookIndexEntry> {
-  return withIndexLock(async () => {
-    const { getSource } = await import("../sources/registry");
-    const { createHost } = await import("../sources/host");
-    const { writeSnapshotFromSourceNovel } = await import("./sourceLibrary");
-    const source = getSource(sourceId);
-    if (!source) throw new Error(`Unknown source: ${sourceId}`);
+  const { writeSnapshotFromSourceNovel } = await import("./sourceLibrary");
 
-    const existing = await findSourceEntry(sourceId, novelUrl);
+  const chapterCount = novel.volumes.reduce((a, v) => a + v.chapters.length, 0);
 
-    const novel = await source.getNovel(novelUrl);
-    const id =
-      existing?.id ??
-      (typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-
-    await ensureRoot();
-    const dir = bookDir(id);
-    if (!(await exists(dir, { baseDir: BASE }))) {
-      await mkdir(dir, { baseDir: BASE, recursive: true });
-    }
-
-    // Download the cover up front so the library card has something to
-    // render without going back over the network on every list refresh.
-    // Cover failure isn't fatal — the entry still works, just without a
-    // thumbnail.
-    let coverFile: string | undefined = existing?.coverFile;
-    if (novel.coverUrl && !existing?.coverFile) {
-      try {
-        const host = createHost(sourceId);
-        const bytes = await host.fetchBytes(novel.coverUrl);
-        const ext = extensionFromCoverUrl(novel.coverUrl);
-        coverFile = `cover.${ext}`;
-        await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("[library] couldn't download cover:", e);
-      }
-    }
-    // Reuse the existing thumbnail when the cover didn't change; derive one
-    // when it did (or when an older entry never had one).
-    const thumbFile =
-      coverFile && coverFile === existing?.coverFile && existing?.thumbFile
-        ? existing.thumbFile
-        : coverFile
-          ? await writeCoverThumb(id, coverFile)
-          : null;
-
-    // Persist the snapshot (volumes + chapters with downloadedAt/readAt
-    // carried over from any prior snapshot).
-    await writeSnapshotFromSourceNovel(id, sourceId, novelUrl, novel);
-
-    const chapterCount = novel.volumes.reduce(
-      (a, v) => a + v.chapters.length,
-      0,
-    );
-
-    const entry: BookIndexEntry = {
+  // The existing-entry lookup lives INSIDE the lock. Outside it, two taps
+  // landing together both read "not in library" and both insert.
+  const entry = await withIndexLock(async () => {
+    const idx = await readIndex();
+    const existing =
+      idx.books.find((b) => matchesSource(b, sourceId, novelUrl)) ?? null;
+    const id = existing?.id ?? newBookId();
+    // Spreading `existing` first carries forward everything the entry has
+    // accumulated that this call knows nothing about — shelfIds, progress,
+    // coverFile, coverBust — and then the fresh listing overrides what the
+    // source is authoritative for.
+    const next: BookIndexEntry = {
       ...(existing ?? {}),
       id,
       title: novel.title,
@@ -843,20 +826,71 @@ export async function addNovelToLibrary(
       kind: "source",
       sourceId,
       novelUrl,
-      ...(coverFile ? { coverFile } : {}),
-      ...(thumbFile ? { thumbFile } : {}),
       ...(novel.description ? { description: novel.description } : {}),
     };
-
-    const idx = await readIndex();
     const at = idx.books.findIndex((b) => b.id === id);
-    if (at === -1) {
-      idx.books.push(entry);
-    } else {
-      idx.books[at] = entry;
-    }
+    if (at === -1) idx.books.push(next);
+    else idx.books[at] = next;
     await writeIndex(idx);
-    return entry;
+    return next;
+  });
+
+  // Outside the lock: doesn't read or write library.json, and
+  // writeSnapshotFromSourceNovel takes its own per-entry lock. It also
+  // does its own exists/mkdir on this same dir, so doing it here too
+  // would just be two extra IPC round-trips on the tap path this branch
+  // exists to shorten.
+  await writeSnapshotFromSourceNovel(entry.id, sourceId, novelUrl, novel);
+
+  return entry;
+}
+
+/**
+ * Fetch a novel's cover, store it, derive its thumbnail, and point the index
+ * entry at both. Run from the download queue's `library-add` job, not from
+ * the tap — it is the only part of adding a novel that needs the network.
+ *
+ * Throws on a failed fetch so the queue can mark the job errored and offer
+ * Retry. The library entry is already usable without it.
+ */
+export async function saveNovelCover(
+  entryId: string,
+  sourceId: string,
+  coverUrl: string,
+): Promise<void> {
+  // Cheap common-case bail: skip the fetch entirely when the book was
+  // already removed before this job got to run. This is NOT a guarantee —
+  // the entry can still be deleted between this check and the write below
+  // — so the post-fetch guard further down stays in place too. A full
+  // transactional fix (e.g. locking across the whole fetch) isn't worth it
+  // for a job whose worst case is one orphaned cover file.
+  const preflightIdx = await readIndex();
+  if (!preflightIdx.books.some((b) => b.id === entryId)) return;
+
+  const { createHost } = await import("../sources/host");
+  const bytes = await createHost(sourceId).fetchBytes(coverUrl);
+
+  const dir = bookDir(entryId);
+  if (!(await exists(dir, { baseDir: BASE }))) {
+    await mkdir(dir, { baseDir: BASE, recursive: true });
+  }
+  const coverFile = `cover.${extensionFromCoverUrl(coverUrl)}`;
+  await writeFile(`${dir}/${coverFile}`, bytes, { baseDir: BASE });
+  // Same bytes, no read-back.
+  const thumbFile = await writeCoverThumbFromBytes(entryId, bytes);
+
+  await withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === entryId);
+    // The user may have removed the book while the cover was in flight.
+    if (!entry) return;
+    entry.coverFile = coverFile;
+    if (thumbFile) entry.thumbFile = thumbFile;
+    // Bumps the cache-buster so a cover re-fetched to the same filename
+    // (e.g. Retry after a failed attempt) isn't served stale from the
+    // webview's asset cache — coverSrcFor keys the URL off this.
+    entry.coverBust = Date.now();
+    await writeIndex(idx);
   });
 }
 
@@ -867,14 +901,7 @@ export async function findSourceEntry(
   novelUrl: string,
 ): Promise<BookIndexEntry | null> {
   const idx = await readIndex();
-  return (
-    idx.books.find(
-      (b) =>
-        b.kind === "source" &&
-        b.sourceId === sourceId &&
-        b.novelUrl === novelUrl,
-    ) ?? null
-  );
+  return idx.books.find((b) => matchesSource(b, sourceId, novelUrl)) ?? null;
 }
 
 /** Pluck a sane file extension from a cover URL (`/foo/bar/cover.jpg?x=1`

@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  activeLibraryAddJobs,
   cancel as cancelJob,
   clearTerminals,
   getState as getQueueState,
@@ -63,10 +64,17 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
     (j) =>
       j.kind === "chapter" && (j.status === "queued" || j.status === "running"),
   );
+  // A queued-or-running add used to render nowhere on this page — it's
+  // neither a conversion nor a chapter download, and `recent` only holds
+  // terminal jobs — so the page claimed "All caught up" while a cover
+  // fetch was in flight and Cancel was unreachable. Own section, own
+  // filter, shared with the FAB ring via the same exported predicate.
+  const activeAdds = activeLibraryAddJobs(jobs);
   const interrupted = jobs
     .filter((j) => j.status === "interrupted")
     .sort((a, b) => b.updatedAt - a.updatedAt);
-  const activeCount = activeConversions.length + activeDownloads.length;
+  const activeCount =
+    activeConversions.length + activeDownloads.length + activeAdds.length;
   const recent = jobs
     .filter(
       (j) =>
@@ -171,6 +179,13 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
             theme={theme}
           >
             {activeConversions.map((j) => (
+              <JobRow key={j.id} theme={theme} job={j} tr={tr} />
+            ))}
+          </Section>
+        )}
+        {activeAdds.length > 0 && (
+          <Section title={tr("downloads.sectionAddingToLibrary")} theme={theme}>
+            {activeAdds.map((j) => (
               <JobRow key={j.id} theme={theme} job={j} tr={tr} />
             ))}
           </Section>
@@ -537,34 +552,61 @@ function ProgressBar({ theme, job }: { theme: Theme; job: DownloadJob }) {
   );
 }
 
-function describe(job: DownloadJob, tr: Tr): string {
-  switch (job.status) {
-    case "queued":
-      return tr("downloads.statusWaiting");
-    case "running":
+/** Label for a job mid-flight, by kind. A standalone function (rather than
+ *  a switch nested inside describe()'s) because a linter's fallthrough
+ *  check can't see into a nested switch and prove it always returns — it
+ *  can see that a whole function does. Exhaustive over job.kind: adding a
+ *  fourth kind without a case here is a compile error (this returns
+ *  string, so a missing branch is a "not all code paths return a value"
+ *  failure), not a silent fall-through to the wrong copy. */
+function runningLabel(job: DownloadJob, tr: Tr): string {
+  switch (job.kind) {
+    case "conversion":
       // Conversion jobs carry a free-form `phase` label that's more
       // useful than a bare percentage ("Building EPUB" / "Saving to
       // library" / "Fetching chapter 47 / 213"). That label is produced
       // deep in the conversion pipeline (store/storeConversion.ts) as a
       // stable English string with no `tr` access there — `phaseLabel`
       // maps it to a localized string here, at the point it's rendered.
+      return tr("status.phaseWithPercent", {
+        phase: phaseLabel(job.phase, tr),
+        pct: Math.round(job.progress * 100),
+      });
+    case "library-add":
+      // One cover fetch has no sub-steps worth a percentage.
+      return tr("downloads.statusFetchingCover");
+    case "chapter":
       // For chapter jobs we just show the percent.
-      if (job.kind === "conversion") {
-        return tr("status.phaseWithPercent", {
-          phase: phaseLabel(job.phase, tr),
-          pct: Math.round(job.progress * 100),
-        });
-      }
       return tr("status.percentOnly", { pct: Math.round(job.progress * 100) });
-    case "done":
-      if (job.kind === "conversion") {
-        const n = job.producedEntryIds.length;
-        return tr(
-          n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
-          { n },
-        );
-      }
+  }
+}
+
+/** Label for a finished job, by kind. Same exhaustiveness rationale as
+ *  runningLabel above. */
+function doneLabel(job: DownloadJob, tr: Tr): string {
+  switch (job.kind) {
+    case "conversion": {
+      const n = job.producedEntryIds.length;
+      return tr(
+        n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
+        { n },
+      );
+    }
+    case "library-add":
+      return tr("downloads.statusCoverSaved");
+    case "chapter":
       return tr("downloads.statusDownloaded");
+  }
+}
+
+function describe(job: DownloadJob, tr: Tr): string {
+  switch (job.status) {
+    case "queued":
+      return tr("downloads.statusWaiting");
+    case "running":
+      return runningLabel(job, tr);
+    case "done":
+      return doneLabel(job, tr);
     case "error":
       return tr("downloads.statusFailed", {
         error: job.error
@@ -590,12 +632,19 @@ function describe(job: DownloadJob, tr: Tr): string {
 }
 
 /** Second line of each row: chapter title for chapter jobs, mode
- *  description for conversion jobs. */
+ *  description for conversion jobs, and a plain label for the cover fetch
+ *  that follows adding a novel — its novel title is already the row title. */
 function subtitleFor(job: DownloadJob, tr: Tr): string {
-  if (job.kind === "chapter") return job.chapterTitle;
-  return tr(
-    job.mode === "single"
-      ? "downloads.saveOffline.singleTitle"
-      : "downloads.saveOffline.perVolumeTitle",
-  );
+  switch (job.kind) {
+    case "chapter":
+      return job.chapterTitle;
+    case "library-add":
+      return tr("downloads.subtitleLibraryAdd");
+    case "conversion":
+      return tr(
+        job.mode === "single"
+          ? "downloads.saveOffline.singleTitle"
+          : "downloads.saveOffline.perVolumeTitle",
+      );
+  }
 }

@@ -255,18 +255,37 @@ export function NovelDetailView({
 
   const onAddToLibrary = useCallback(async () => {
     if (working) return;
+    const novel = state.novel;
+    // The button is only rendered once the novel has loaded, so this is a
+    // guard for the type, not a case that happens.
+    if (!novel) return;
     setWorking(true);
     try {
-      const entry = await addNovelToLibrary(sourceId, novelUrl);
+      // Local only — index entry + chapter listing from what's already on
+      // screen. This is the whole of what the user waits for.
+      const entry = await addNovelToLibrary(sourceId, novelUrl, novel);
       setLibraryEntryId(entry.id);
       onImportComplete();
+      // The cover is the only part that needs the network, so it goes to
+      // the queue: system notification, foreground service, cancel and
+      // retry, all already built. Nothing here awaits it.
+      if (novel.coverUrl) {
+        const { enqueueLibraryAdd } = await import("../../store/downloadQueue");
+        enqueueLibraryAdd({
+          libraryEntryId: entry.id,
+          novelTitle: novel.title,
+          sourceId,
+          novelUrl,
+          coverUrl: novel.coverUrl,
+        });
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("addNovelToLibrary failed:", e);
     } finally {
       setWorking(false);
     }
-  }, [working, sourceId, novelUrl, onImportComplete]);
+  }, [working, sourceId, novelUrl, state.novel, onImportComplete]);
 
   const onRemoveFromLibrary = useCallback(async () => {
     if (working || !libraryEntryId) return;

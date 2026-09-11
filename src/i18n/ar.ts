@@ -428,6 +428,7 @@ export const ar: Messages = {
   "downloads.sectionInterrupted": "متوقفة",
   "downloads.retryAll": "إعادة محاولة الكل",
   "downloads.sectionSavingOffline": "جارٍ الحفظ ككتاب غير متصل",
+  "downloads.sectionAddingToLibrary": "جارٍ الإضافة إلى المكتبة",
   "downloads.sectionDownloading": "جارٍ تنزيل الفصول",
   "downloads.sectionRecent": "الأخيرة",
   "downloads.cancelDownload": "إلغاء التنزيل",
@@ -448,6 +449,9 @@ export const ar: Messages = {
   "downloads.statusInterruptedPartialOther": "توقف — تم حفظ {n} كتب بالفعل",
   "downloads.statusInterruptedResume":
     "توقف — اضغط على إعادة المحاولة للمتابعة",
+  "downloads.statusFetchingCover": "جارٍ جلب الغلاف…",
+  "downloads.statusCoverSaved": "تم حفظ الغلاف",
+  "downloads.subtitleLibraryAdd": "صورة الغلاف",
 
   "store.title": "المصادر",
   "store.subtitle":
@@ -593,6 +597,11 @@ export const ar: Messages = {
   "status.notif.mixedBody": "{parts}",
   "status.notif.partDownloads": "تنزيل {n}",
   "status.notif.partConverting": "تحويل",
+  "status.notif.partAdding": "إضافة",
+  "status.notif.addingTitle": "إضافة {novel}",
+  "status.notif.addingBody": "جارٍ جلب الغلاف",
+  "status.notif.novelAdded": "أُضيف إلى المكتبة",
+  "status.notif.addFailed": "تعذّر جلب الغلاف",
   "status.notif.partImporting": "استيراد",
   "status.notif.chaptersDownloaded": "تم تنزيل {n} فصل",
   "status.notif.downloadComplete": "اكتمل التنزيل",

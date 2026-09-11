@@ -190,7 +190,11 @@ export function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
   const label = details
     ? tr("import.progress.openDetails")
     : ind.busy
-      ? tr("sidebar.importing")
+      ? // An add's busy state is a background cover fetch, not an import —
+        // reuse the Downloads copy for that instead of claiming otherwise.
+        ind.reason === "add"
+        ? tr("downloads.statusFetchingCover")
+        : tr("sidebar.importing")
       : tr("library.importEpub");
   return (
     <button

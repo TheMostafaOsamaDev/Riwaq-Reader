@@ -33,6 +33,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[cfg(desktop)]
 use std::time::Duration;
+// Not cfg(desktop)-gated like the tauri:: import below: source_fetch_bytes
+// (which needs Response) compiles on mobile too, unlike the WebviewWindow
+// machinery that import serves.
+use tauri::ipc::Response;
 #[cfg(desktop)]
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -110,11 +114,16 @@ pub async fn source_fetch(
     })
 }
 
+/// Fetch a URL as raw bytes. Returned through `tauri::ipc::Response` so it
+/// travels as an octet-stream rather than a JSON number array — the same
+/// reason `zip_read_bytes` in archive.rs does. Covers and inline chapter
+/// images are the callers, and a 300 KB cover as JSON is 300,000 elements
+/// for the webview to parse.
 #[tauri::command]
 pub async fn source_fetch_bytes(
     url: String,
     options: Option<FetchOptions>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Response, String> {
     let opts = options.unwrap_or(FetchOptions {
         method: None,
         headers: None,
@@ -136,7 +145,7 @@ pub async fn source_fetch_bytes(
         return Err(format!("HTTP {status} for {url}"));
     }
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    Ok(bytes.to_vec())
+    Ok(Response::new(bytes.to_vec()))
 }
 
 // Fields here are all used by serde's deserializer + by the desktop
