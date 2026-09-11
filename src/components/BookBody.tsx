@@ -75,6 +75,10 @@ interface Props {
       MobileReader, which drives its own selection via custom pointer
       handlers. Defaults to true so the desktop reader is unaffected. */
   selectable?: boolean;
+  /** Phone. The only thing it currently reaches is the chapter opener's
+   *  title scale — a phone column has roughly half the measure to wrap a
+   *  display-face title into. See chapterTitleSize. */
+  compact?: boolean;
 }
 
 /** Resolve every image item's storage-relative src to a webview-loadable
@@ -137,6 +141,7 @@ export function BookBody({
   widthPercent = 100,
   highlights = [],
   selectable = true,
+  compact = false,
 }: Props) {
   // Threaded into ChapterOpener, whose meta line is the one thing in the
   // reading surface that is ABOUT the book rather than of it — so it follows
@@ -158,7 +163,8 @@ export function BookBody({
   // smaller in Lateef than in Readex Pro, and the size control stops meaning
   // one thing. Measured against the script the book is actually set in — a
   // face's Latin and Arabic need different corrections.
-  const fontScale = useFontScale(bodyFont, rtl ? "arabic" : "latin");
+  const script = rtl ? "arabic" : "latin";
+  const fontScale = useFontScale(bodyFont, script);
   const scaledFontSize = Math.round(fontSize * fontScale * 100) / 100;
 
   // BookBody renders a flat linear flow. Multi-column layout (paginated or
@@ -245,6 +251,8 @@ export function BookBody({
         order={chapter.order}
         title={chapter.title}
         bodySize={scaledFontSize}
+        compact={compact}
+        script={script}
         tr={tr}
         locale={locale}
       />
