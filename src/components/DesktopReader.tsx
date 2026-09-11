@@ -37,7 +37,7 @@ import {
   paragraphScrollOffset,
   restoreScrollTop,
   fractionToWidth,
-  landAtEndFor,
+  landingAppliesTo,
 } from "./readerProgress";
 import { ReaderDiagnostics } from "./ReaderDiagnostics";
 import { jumpScrollTop } from "./scrollJump";
@@ -292,17 +292,16 @@ export function DesktopReader({
     liveOffset.current = resumeOffset;
   }
 
-  // The chapter we stepped BACKWARD into via scroll-up overscroll, or null.
-  // The chapter-mount effect picks it up and lands the viewport at that
-  // chapter's end — natural for an upward scroll, since the reader was just
-  // continuing through the chapter edge.
+  // The chapter we stepped BACKWARD into, or null. The chapter-mount effect
+  // picks it up and opens that chapter at its start, overriding the saved
+  // position it would otherwise resume to.
   //
   // It holds the chapter INDEX rather than a bare boolean because the request
   // has to outlive the render that made it (a streamed chapter mounts empty
   // and the effect cannot position anything until its paragraphs arrive) while
   // still being void if the reader goes somewhere else in the meantime. See
-  // landAtEndFor.
-  const landAtEndRef = useRef<number | null>(null);
+  // landingAppliesTo.
+  const landAtStartRef = useRef<number | null>(null);
 
   const handleParagraphChange = useCallback(
     (idx: number, offset?: number) => {
@@ -328,18 +327,32 @@ export function DesktopReader({
   const toggle = (panel: ActivePanel) =>
     setActivePanel(activePanel === panel ? null : panel);
 
+  /** Back to this chapter's own opening. Only reachable from the end card,
+   *  which renders in scroll mode only — paginated mode has no scroll position
+   *  to return to. */
+  const toTopOfChapter = () => {
+    scrollRef.current?.scrollTo({
+      top: 0,
+      behavior: reduced ? "auto" : "smooth",
+    });
+  };
   const prevChapter = () => {
     if (currentChapter > 0) onChapterChange(currentChapter - 1);
   };
   /**
-   * Back a chapter, landing at its END — what scrolling up past the top
-   * already does. Landing at the previous chapter's start would mean
-   * scrolling its whole length (fourteen screens, in the book this was built
-   * for) to reach the part that adjoins where the reader just was.
+   * Back a chapter, landing at its START.
+   *
+   * The link that calls this NAMES the chapter it leads to, so clicking it
+   * reads as "take me to that chapter" — and a chapter begins at its opening
+   * block, not fourteen screens past its own title.
+   *
+   * It has to be an explicit request rather than a plain chapter change: the
+   * resume effect below would otherwise restore the saved position, which for
+   * an already-read chapter is its end.
    */
-  const prevChapterAtEnd = () => {
+  const prevChapterAtStart = () => {
     if (currentChapter <= 0) return;
-    landAtEndRef.current = currentChapter - 1;
+    landAtStartRef.current = currentChapter - 1;
     prevChapter();
   };
   const nextChapter = () => {
@@ -368,7 +381,7 @@ export function DesktopReader({
     // Streamed (source) chapters load their body async; the paragraphs aren't
     // in the DOM on this effect's first run. Bail until they exist — the
     // chapter content-id dep re-runs this once they mount. Returning here also
-    // preserves landAtEndRef (we don't consume it on an empty pass).
+    // preserves landAtStartRef (we don't consume it on an empty pass).
     if (el.querySelectorAll("[data-p-index]").length === 0) return;
     logEvent("position:run", {
       chapter: currentChapter,
@@ -380,30 +393,21 @@ export function DesktopReader({
       clientHeight: el.clientHeight,
       livePara: livePara.current,
       liveOffset: liveOffset.current,
-      landAtEndPending: landAtEndRef.current,
+      landAtStartPending: landAtStartRef.current,
     });
-    if (landAtEndFor(landAtEndRef.current, currentChapter)) {
-      // Came in via scroll-up overscroll — drop the reader at the bottom
-      // of the new (previous) chapter so reading continues naturally
-      // upward instead of jumping to the chapter's top.
-      landAtEndRef.current = null;
-      // The big one: a jump to the end of a long chapter is exactly the case
-      // WKWebView leaves unpainted. See jumpScrollTop.
-      jumpScrollTop(el, el.scrollHeight);
-      logEvent("position:landAtEnd", {
+    if (landingAppliesTo(landAtStartRef.current, currentChapter)) {
+      // Stepped back a chapter: open it at its beginning, heading and all —
+      // NOT at the saved position, which on a chapter already read is
+      // wherever the reader left off. Going back is a request to re-read it,
+      // so it has to override resume rather than fall through to it.
+      landAtStartRef.current = null;
+      jumpScrollTop(el, 0);
+      logEvent("position:landAtStart", {
         scrollTopAfter: Math.round(el.scrollTop),
       });
-      const ps = el.querySelectorAll<HTMLElement>("[data-p-index]");
-      if (ps.length > 0) {
-        let lastIdx = 0;
-        for (const p of ps) {
-          const idx = Number(p.dataset.pIndex);
-          if (idx > lastIdx) lastIdx = idx;
-        }
-        livePara.current = lastIdx;
-        // Persist so resume after a restart matches what the user sees.
-        onParagraphChangeRef.current(lastIdx);
-      }
+      livePara.current = 0;
+      // Persist so resume after a restart matches what the user sees.
+      onParagraphChangeRef.current(0, 0);
       return;
     }
     // When resuming at the very first paragraph, snap to scrollTop=0 so
@@ -676,9 +680,9 @@ export function DesktopReader({
   useEffect(() => {
     logEvent("chapter:external", { chapter: currentChapter });
     // A TOC jump or scrub is an explicit destination, so any outstanding
-    // land-at-end request is void — otherwise it would still be waiting if the
+    // landing request is void — otherwise it would still be waiting if the
     // reader ever came back to that chapter by another route.
-    landAtEndRef.current = null;
+    landAtStartRef.current = null;
   }, [currentChapter, book.id]);
 
   useEffect(() => {
@@ -1197,7 +1201,7 @@ export function DesktopReader({
                       tr={tr}
                       prevNumber={currentChapter}
                       prevTitle={book.chapters[currentChapter - 1]?.title ?? ""}
-                      onPrev={prevChapterAtEnd}
+                      onPrev={prevChapterAtStart}
                     />
                   </div>
                 ) : null}
@@ -1220,12 +1224,13 @@ export function DesktopReader({
                 <ChapterEndCard
                   theme={theme}
                   tr={tr}
-                  titleFont={FONT_STACKS[t.fontFamily]}
                   nextTitle={book.chapters[currentChapter + 1]?.title ?? null}
                   nextNumber={currentChapter + 2}
                   total={chapterCount}
                   availability={nextChapterAvailability}
                   onNext={nextChapter}
+                  onOpenToc={() => setActivePanel("toc")}
+                  onTopOfChapter={toTopOfChapter}
                 />
               </div>
             </div>

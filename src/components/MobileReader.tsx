@@ -8,7 +8,7 @@ import { jumpScrollTop } from "./scrollJump";
 import { ChapterProgressBar } from "./ChapterProgressBar";
 import {
   chapterScrollFraction,
-  landAtEndFor,
+  landingAppliesTo,
   paragraphScrollOffset,
   restoreScrollTop,
   fractionToWidth,
@@ -344,8 +344,8 @@ export function MobileReader({
   // The chapter we stepped BACK into, or null. Holds the chapter INDEX rather
   // than a boolean so a request left pending while a streamed chapter is
   // still fetching cannot be spent on whatever chapter the reader moves to
-  // next — see landAtEndFor.
-  const landAtEndRef = useRef<number | null>(null);
+  // next — see landingAppliesTo.
+  const landAtStartRef = useRef<number | null>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
   // Content direction — derived from the BOOK's own language, independent of
   // the UI locale above. BookBody sets its own `dir` from this on its own
@@ -380,12 +380,14 @@ export function MobileReader({
     // resume lands on the saved paragraph instead of falling through to
     // scrollTop = 0 (which dropped the reader at the chapter start).
     if (el.querySelectorAll("[data-p-index]").length === 0) return;
-    if (landAtEndFor(landAtEndRef.current, currentChapter)) {
-      // Came back a chapter: land at its end, which is the content adjoining
-      // where the reader was standing. The saved paragraph catches up from
-      // the scroll listener this move fires.
-      landAtEndRef.current = null;
-      jumpScrollTop(el, el.scrollHeight);
+    if (landingAppliesTo(landAtStartRef.current, currentChapter)) {
+      // Stepped back a chapter: open it at its beginning, heading and all —
+      // NOT at the saved position, which on a chapter already read is
+      // wherever the reader left off. Going back is a request to re-read it,
+      // so it has to override resume rather than fall through to it.
+      // The saved paragraph catches up from the scroll listener this fires.
+      landAtStartRef.current = null;
+      jumpScrollTop(el, 0);
       return;
     }
     // Resuming at paragraph 0 means "start of chapter" — snap to the very
@@ -514,20 +516,33 @@ export function MobileReader({
         )
       : [];
 
+  /** Back to this chapter's own opening — the block with its number and
+   *  title, not merely scrollTop 0 of whatever is on screen. Smooth, because
+   *  the reader asked to travel a known distance within a page they are
+   *  already on; a jump here reads as a chapter change. */
+  const toTopOfChapter = () => {
+    scrollRef.current?.scrollTo({
+      top: 0,
+      behavior: reduced ? "auto" : "smooth",
+    });
+  };
   const prevChapter = () => {
     if (currentChapter > 0) onChapterChange(currentChapter - 1);
   };
   /**
-   * Back a chapter, landing at its END.
+   * Back a chapter, landing at its START.
    *
-   * Used by the link above the chapter heading. Landing at the previous
-   * chapter's start would mean scrolling its whole length to reach the part
-   * that adjoins where the reader just was — and it would disagree with what
-   * scrolling up past the top already does.
+   * Used by the link above the chapter heading. That link NAMES the chapter it
+   * leads to, so tapping it reads as "take me to that chapter" — and a chapter
+   * begins at its opening block, not three screens past its own title.
+   *
+   * It has to be an explicit request rather than a plain chapter change: the
+   * resume effect would otherwise restore the saved position, which for an
+   * already-read chapter is its end.
    */
-  const prevChapterAtEnd = () => {
+  const prevChapterAtStart = () => {
     if (currentChapter <= 0) return;
-    landAtEndRef.current = currentChapter - 1;
+    landAtStartRef.current = currentChapter - 1;
     prevChapter();
   };
   const nextChapter = () => {
@@ -1069,7 +1084,7 @@ export function MobileReader({
             compact
             prevNumber={currentChapter}
             prevTitle={book.chapters[currentChapter - 1]?.title ?? ""}
-            onPrev={prevChapterAtEnd}
+            onPrev={prevChapterAtStart}
           />
         ) : null}
         <BookBody
@@ -1092,6 +1107,7 @@ export function MobileReader({
           language={book.language}
           widthPercent={t.contentWidth}
           selectable={false}
+          compact
         />
         {/* Tap only, by design. The phone reader has no edge-scroll turn and
             must not get one: touch momentum keeps delivering scroll events
@@ -1100,13 +1116,14 @@ export function MobileReader({
         <ChapterEndCard
           theme={theme}
           tr={tr}
-          titleFont={FONT_STACKS[t.fontFamily]}
           compact
           nextTitle={book.chapters[currentChapter + 1]?.title ?? null}
           nextNumber={currentChapter + 2}
           total={chapterCount}
           availability={nextChapterAvailability}
           onNext={nextChapter}
+          onOpenToc={() => setSheet("toc")}
+          onTopOfChapter={toTopOfChapter}
         />
       </div>
 
