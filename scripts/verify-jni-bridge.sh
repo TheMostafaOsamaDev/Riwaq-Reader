@@ -56,14 +56,14 @@ fi
 # Each entry mirrors a JNI lookup in src-tauri/src/notify.rs. Keep the two in
 # sync: adding a Rust->Kotlin call means adding a line here AND a -keep rule.
 EXPECTED=(
-  "com.leaflet.reader.TaskService void start(android.content.Context)"
-  "com.leaflet.reader.TaskService void stop(android.content.Context)"
-  "com.leaflet.reader.MainActivity void setBarAppearance(android.app.Activity,boolean,int)"
-  "com.leaflet.reader.MainActivity void setImmersiveMode(android.app.Activity,boolean)"
-  "com.leaflet.reader.MainActivity java.lang.String pendingLaunchIntent"
-  "com.leaflet.reader.MainActivity java.lang.String pendingOpenUri"
-  "com.leaflet.reader.DownloadNotifier void update(android.content.Context,int,java.lang.String,java.lang.String,int,int,boolean,boolean,boolean)"
-  "com.leaflet.reader.DownloadNotifier void cancel(android.content.Context,int)"
+  "com.riwaq.reader.TaskService void start(android.content.Context)"
+  "com.riwaq.reader.TaskService void stop(android.content.Context)"
+  "com.riwaq.reader.MainActivity void setBarAppearance(android.app.Activity,boolean,int)"
+  "com.riwaq.reader.MainActivity void setImmersiveMode(android.app.Activity,boolean)"
+  "com.riwaq.reader.MainActivity java.lang.String pendingLaunchIntent"
+  "com.riwaq.reader.MainActivity java.lang.String pendingOpenUri"
+  "com.riwaq.reader.DownloadNotifier void update(android.content.Context,int,java.lang.String,java.lang.String,int,int,boolean,boolean,boolean)"
+  "com.riwaq.reader.DownloadNotifier void cancel(android.content.Context,int)"
 )
 
 FAILED=0
