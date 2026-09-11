@@ -20,7 +20,7 @@ function state(patch: Partial<ProgressState> = {}): ProgressState {
 
 describe("importIndicator", () => {
   it("is idle and opens the picker when nothing is running", () => {
-    expect(importIndicator(state(), false)).toEqual({
+    expect(importIndicator(state(), false, 0)).toEqual({
       busy: false,
       ratio: null,
       action: "pick",
@@ -31,7 +31,7 @@ describe("importIndicator", () => {
     // The picker is up: the library knows it's importing, but no reporter
     // exists yet, so there is nothing to be determinate about and nothing
     // to open.
-    expect(importIndicator(state(), true)).toEqual({
+    expect(importIndicator(state(), true, 0)).toEqual({
       busy: true,
       ratio: null,
       action: "none",
@@ -43,6 +43,7 @@ describe("importIndicator", () => {
       importIndicator(
         state({ active: true, minimized: true, overall: 0.4 }),
         true,
+        0,
       ),
     ).toEqual({ busy: true, ratio: 0.4, action: "details" });
   });
@@ -51,7 +52,7 @@ describe("importIndicator", () => {
     // Store/Sources imports never touch Library's local state — this is the
     // case the deleted dock used to be the only indicator for.
     expect(
-      importIndicator(state({ active: true, overall: 0.7 }), false),
+      importIndicator(state({ active: true, overall: 0.7 }), false, 0),
     ).toEqual({
       busy: true,
       ratio: 0.7,
@@ -64,6 +65,7 @@ describe("importIndicator", () => {
       importIndicator(
         state({ active: true, overall: 1, finishedAt: 123 }),
         false,
+        0,
       ),
     ).toEqual({ busy: false, ratio: null, action: "pick" });
   });
@@ -73,6 +75,7 @@ describe("importIndicator", () => {
       importIndicator(
         state({ active: true, error: "boom", finishedAt: 123 }),
         false,
+        0,
       ),
     ).toEqual({ busy: false, ratio: null, action: "pick" });
   });

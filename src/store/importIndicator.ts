@@ -11,11 +11,17 @@
 // store emits ~50 times per import, and Library is a big tree with a cover
 // grid in it, so subscribing in the leaf component is much cheaper.
 
+import { useSyncExternalStore } from "react";
 import {
   isImportActive,
   useImportProgress,
   type ProgressState,
 } from "./importProgress";
+import {
+  activeLibraryAddCount,
+  subscribe as subscribeQueue,
+  getState as getQueueState,
+} from "./downloadQueue";
 
 export interface ImportIndicator {
   /** Render a spinner instead of the "+" glyph. */
@@ -32,17 +38,36 @@ const IDLE: ImportIndicator = { busy: false, ratio: null, action: "pick" };
 export function importIndicator(
   progress: ProgressState,
   localImporting: boolean,
+  addsActive: number,
 ): ImportIndicator {
+  // A real import knows its ratio, so it wins the ring even when an add is
+  // also in flight.
   if (isImportActive(progress)) {
     return { busy: true, ratio: progress.overall, action: "details" };
   }
+  // One cover fetch has no meaningful fraction, so the ring is
+  // indeterminate rather than pretending to a percentage.
+  if (addsActive > 0) return { busy: true, ratio: null, action: "details" };
   // Local-only: the picker is open, or a commit is still finishing after the
   // reporter already settled.
   if (localImporting) return { busy: true, ratio: null, action: "none" };
   return IDLE;
 }
 
-/** Hook form. Subscribes to the store via useSyncExternalStore. */
+/** Hook form. Subscribes to both the import store and the download queue via
+ *  useSyncExternalStore. Chapter downloads are deliberately excluded — the
+ *  Downloads page is their indicator; the ring would otherwise flicker
+ *  through every chapter of a long burst. */
 export function useImportIndicator(localImporting: boolean): ImportIndicator {
-  return importIndicator(useImportProgress(), localImporting);
+  const progress = useImportProgress();
+  const queue = useSyncExternalStore(
+    subscribeQueue,
+    getQueueState,
+    getQueueState,
+  );
+  return importIndicator(
+    progress,
+    localImporting,
+    activeLibraryAddCount(queue.jobs),
+  );
 }
