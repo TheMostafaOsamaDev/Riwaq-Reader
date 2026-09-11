@@ -6,7 +6,6 @@
       "scripts/**",
       "*.json",
       "*.ts",
-      "!src/sources/extensions/__fixtures__/**",
       "!src-tauri/**",
       "!dist/**"
     ]
