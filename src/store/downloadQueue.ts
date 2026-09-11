@@ -118,7 +118,21 @@ export interface ConversionJob extends JobBase {
   producedEntryIds: string[];
 }
 
-export type DownloadJob = ChapterDownloadJob | ConversionJob;
+/** Fetching and storing a novel's cover after `addNovelToLibrary` has
+ *  already written the entry and its chapter listing. The entry is usable
+ *  the moment the tap returns; this is the part that needs the network.
+ *
+ *  The payload is deliberately three strings and an id — no parsed novel,
+ *  no in-memory handle — so a job reloaded as "interrupted" after an app
+ *  kill can resume without refetching anything. */
+export interface LibraryAddJob extends JobBase {
+  kind: "library-add";
+  sourceId: string;
+  novelUrl: string;
+  coverUrl: string;
+}
+
+export type DownloadJob = ChapterDownloadJob | ConversionJob | LibraryAddJob;
 
 interface QueueState {
   jobs: DownloadJob[];
@@ -151,6 +165,8 @@ const resolvedCounters = {
   chCancelled: 0,
   cvDone: 0,
   cvFailed: 0,
+  addDone: 0,
+  addFailed: 0,
 };
 
 /** Snapshot of the lifetime resolved counters (see `resolvedCounters`).
@@ -162,6 +178,8 @@ export function getResolvedCounters(): {
   chCancelled: number;
   cvDone: number;
   cvFailed: number;
+  addDone: number;
+  addFailed: number;
 } {
   return { ...resolvedCounters };
 }
@@ -171,20 +189,41 @@ function isTerminalStatus(s: DownloadJobStatus): boolean {
 }
 
 /** Adjust the lifetime counters for one job's terminal outcome by `delta`
- *  (+1 on entering a terminal state, -1 on leaving it). Conversions lump
- *  error/cancelled into cvFailed. */
+ *  (+1 on entering a terminal state, -1 on leaving it). Conversions and
+ *  library-adds lump error/cancelled together; only chapters distinguish
+ *  them, because only chapters get bulk-cancelled. */
 function bumpResolved(
   job: DownloadJob,
   status: DownloadJobStatus,
   delta: number,
 ) {
-  if (job.kind === "chapter") {
-    if (status === "done") resolvedCounters.chDone += delta;
-    else if (status === "error") resolvedCounters.chFailed += delta;
-    else if (status === "cancelled") resolvedCounters.chCancelled += delta;
-  } else {
-    if (status === "done") resolvedCounters.cvDone += delta;
-    else resolvedCounters.cvFailed += delta; // error or cancelled
+  switch (job.kind) {
+    case "chapter":
+      if (status === "done") resolvedCounters.chDone += delta;
+      else if (status === "error") resolvedCounters.chFailed += delta;
+      else if (status === "cancelled") resolvedCounters.chCancelled += delta;
+      return;
+    case "conversion":
+      if (status === "done") resolvedCounters.cvDone += delta;
+      else resolvedCounters.cvFailed += delta; // error or cancelled
+      return;
+    case "library-add":
+      if (status === "done") resolvedCounters.addDone += delta;
+      else resolvedCounters.addFailed += delta; // error or cancelled
+      return;
+    default: {
+      // A void-returning switch does NOT get exhaustiveness checking from
+      // a missing case alone — TypeScript only flags it here, at this
+      // assignment, because `job` is narrowed to `never` once every real
+      // kind above has its own case. Add a case above for any new kind
+      // instead of touching this branch. Bookkeeping-only: a missed bump
+      // just under-counts a stat, so this stays a no-op rather than
+      // throwing out of what's often a synchronous, uncaught call site
+      // (cancel/retry call setStatus directly, with no try/catch).
+      const exhaustiveCheck: never = job;
+      void exhaustiveCheck;
+      return;
+    }
   }
 }
 
@@ -436,6 +475,63 @@ export function enqueueConversion(desc: EnqueueConversionDescriptor): string {
   return job.id;
 }
 
+export interface EnqueueLibraryAddDescriptor {
+  libraryEntryId: string;
+  novelTitle: string;
+  sourceId: string;
+  novelUrl: string;
+  coverUrl: string;
+}
+
+/** Queue the cover fetch for a novel that is already in the library.
+ *  Deduped per entry: re-tapping Add while one is in flight returns the
+ *  running job rather than fetching the same cover twice. */
+export function enqueueLibraryAdd(desc: EnqueueLibraryAddDescriptor): string {
+  const dup = state.jobs.find(
+    (j) =>
+      j.kind === "library-add" &&
+      j.libraryEntryId === desc.libraryEntryId &&
+      (j.status === "queued" || j.status === "running"),
+  );
+  if (dup) return dup.id;
+  const job: LibraryAddJob = {
+    id: genId(),
+    kind: "library-add",
+    libraryEntryId: desc.libraryEntryId,
+    novelTitle: desc.novelTitle,
+    sourceId: desc.sourceId,
+    novelUrl: desc.novelUrl,
+    coverUrl: desc.coverUrl,
+    status: "queued",
+    progress: 0,
+    enqueuedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  state.jobs.push(job);
+  emit();
+  pump();
+  return job.id;
+}
+
+/** Queued-or-running library-add jobs, in queue order. Shared by the FAB
+ *  ring (via `activeLibraryAddCount` below) and the Downloads page's own
+ *  "Adding to library" section, so the two can't drift apart on what "an
+ *  add is happening" means. */
+export function activeLibraryAddJobs(jobs: DownloadJob[]): LibraryAddJob[] {
+  return jobs.filter(
+    (j): j is LibraryAddJob =>
+      j.kind === "library-add" &&
+      (j.status === "queued" || j.status === "running"),
+  );
+}
+
+/** Queued-or-running library adds. Mirrors `activeQueueCount` in
+ *  backgroundTasks.ts: one rule, exported, so the FAB ring and any future
+ *  consumer can't drift apart on what "an add is happening" means. */
+export function activeLibraryAddCount(jobs: DownloadJob[]): number {
+  return activeLibraryAddJobs(jobs).length;
+}
+
 /** Cancel a job. If queued, removes it; if running, marks it
  *  cancelled and the worker drops the result once the in-flight
  *  fetch resolves. Idempotent. */
@@ -616,10 +712,31 @@ async function runJob(job: DownloadJob): Promise<void> {
       setStatus(job, "cancelled");
       return;
     }
-    if (job.kind === "chapter") {
-      await runChapterJob(job);
-    } else {
-      await runConversionJob(job);
+    switch (job.kind) {
+      case "chapter":
+        await runChapterJob(job);
+        break;
+      case "conversion":
+        await runConversionJob(job);
+        break;
+      case "library-add":
+        await runLibraryAddJob(job);
+        break;
+      default: {
+        // Unlike bumpResolved, an unhandled kind here must not fall
+        // through to the "done" path below — that would report a job
+        // that never ran as finished, which is trusted output. Throwing
+        // is caught by this function's own try/catch and lands the job
+        // as "error" instead. The `never` assignment is what makes a
+        // future kind missing a case a compile error rather than a
+        // silent fall-through: TypeScript only checks exhaustiveness at
+        // an assignment target, not merely from an absent case in a
+        // void-returning switch.
+        const exhaustiveCheck: never = job;
+        throw new Error(
+          `runJob: unhandled job kind "${(exhaustiveCheck as DownloadJob).kind}"`,
+        );
+      }
     }
     if (cancelled.has(job.id)) {
       cancelled.delete(job.id);
@@ -688,6 +805,19 @@ async function runConversionJob(job: ConversionJob): Promise<void> {
       emit();
     },
   );
+}
+
+async function runLibraryAddJob(job: LibraryAddJob): Promise<void> {
+  // Dynamic import for the same reason runConversionJob uses one: library.ts
+  // pulls in the EPUB pipeline, and the queue module is loaded at boot.
+  const { saveNovelCover } = await import("./library");
+  if (cancelled.has(job.id)) throw new CancelledError();
+  // One network fetch with no sub-steps to report, so the bar just shows
+  // motion rather than a fake breakdown.
+  job.progress = 0.15;
+  job.updatedAt = Date.now();
+  emit();
+  await saveNovelCover(job.libraryEntryId, job.sourceId, job.coverUrl);
 }
 
 class CancelledError extends Error {

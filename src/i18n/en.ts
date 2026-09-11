@@ -497,6 +497,7 @@ export const en = {
   "downloads.sectionInterrupted": "Interrupted",
   "downloads.retryAll": "Retry all",
   "downloads.sectionSavingOffline": "Saving as offline book",
+  "downloads.sectionAddingToLibrary": "Adding to library",
   "downloads.sectionDownloading": "Downloading chapters",
   "downloads.sectionRecent": "Recent",
   "downloads.cancelDownload": "Cancel download",
@@ -518,6 +519,9 @@ export const en = {
   "downloads.statusInterruptedPartialOther":
     "Interrupted — {n} books already saved",
   "downloads.statusInterruptedResume": "Interrupted — tap Retry to resume",
+  "downloads.statusFetchingCover": "Fetching cover…",
+  "downloads.statusCoverSaved": "Cover saved",
+  "downloads.subtitleLibraryAdd": "Cover art",
 
   // store — sources list + a source's home (browse/search its homepage)
   "store.title": "Sources",
@@ -728,6 +732,11 @@ export const en = {
   "status.notif.mixedBody": "{parts}",
   "status.notif.partDownloads": "Downloading {n}",
   "status.notif.partConverting": "Converting",
+  "status.notif.partAdding": "Adding",
+  "status.notif.addingTitle": "Adding {novel}",
+  "status.notif.addingBody": "Fetching cover",
+  "status.notif.novelAdded": "Added to library",
+  "status.notif.addFailed": "Cover couldn't be fetched",
   "status.notif.partImporting": "Importing",
   "status.notif.chaptersDownloaded": "{n} chapters downloaded",
   "status.notif.downloadComplete": "Download complete",

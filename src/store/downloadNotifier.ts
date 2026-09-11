@@ -120,6 +120,12 @@ interface Snapshot {
    *  chapter download (whole-novel scope, lands new library entries)
    *  so the user gets a clearer label when one is in flight. */
   activeConversions: number;
+  /** Queued or running `library-add` jobs. Counted separately so the
+   *  chapter-download count — which is derived by subtraction — doesn't
+   *  silently absorb them and announce "Downloading 1". */
+  activeAdds: number;
+  /** The running add's novel title, for the lone-add notification. */
+  runningAddTitle: string | null;
   /** True while a doc/Sources import is in flight (see
    *  `importProgress.ts`). Folded into `active`/`total` so a lone
    *  import keeps the notification (and foreground service) alive. */
@@ -154,14 +160,19 @@ let burstTotal = 0;
 /** Per-kind resolved-count tally captured at the start of a burst. Queue
  *  terminals from a previous burst linger until clearTerminals(), so we
  *  subtract this baseline to keep a new burst's counts/percent its own. */
-let burstBase = {
-  resolved: 0,
-  chDone: 0,
-  chFailed: 0,
-  chCancelled: 0,
-  cvDone: 0,
-  cvFailed: 0,
-};
+function emptyBurstBase() {
+  return {
+    resolved: 0,
+    chDone: 0,
+    chFailed: 0,
+    chCancelled: 0,
+    cvDone: 0,
+    cvFailed: 0,
+    addDone: 0,
+    addFailed: 0,
+  };
+}
+let burstBase = emptyBurstBase();
 /** `finishedAt` of the import whose completion we've already announced,
  *  so an undismissed finished import isn't re-announced in a later burst. */
 let announcedImportFinishedAt: number | null = null;
@@ -212,6 +223,8 @@ function summarize(jobs: DownloadJob[]): Snapshot {
   let error = 0;
   let cancelled = 0;
   let activeConversions = 0;
+  let activeAdds = 0;
+  let runningAddTitle: string | null = null;
   let lastTerminal: DownloadJob | null = null;
   let lastTerminalTs = 0;
   for (const j of jobs) {
@@ -219,6 +232,10 @@ function summarize(jobs: DownloadJob[]): Snapshot {
       active++;
       if (j.status === "running") activePartial += j.progress;
       if (j.kind === "conversion") activeConversions++;
+      if (j.kind === "library-add") {
+        activeAdds++;
+        if (j.status === "running") runningAddTitle = j.novelTitle;
+      }
     } else if (j.status === "done") done++;
     else if (j.status === "error") error++;
     else if (j.status === "cancelled") cancelled++;
@@ -239,6 +256,8 @@ function summarize(jobs: DownloadJob[]): Snapshot {
   return {
     active: active + (importActive ? 1 : 0),
     activeConversions,
+    activeAdds,
+    runningAddTitle,
     importActive,
     importPct,
     activePartial: activePartial + (importActive ? imp.overall : 0),
@@ -266,14 +285,7 @@ async function publish(snap: Snapshot) {
   if (snap.active === 0 && snap.total === 0 && !importTerminalPending) {
     burstTotal = 0;
     endBurst();
-    burstBase = {
-      resolved: 0,
-      chDone: 0,
-      chFailed: 0,
-      chCancelled: 0,
-      cvDone: 0,
-      cvFailed: 0,
-    };
+    burstBase = emptyBurstBase();
     summaryShown = false;
     lastBody = "";
     lastTitle = "";
@@ -392,10 +404,19 @@ function resolvedTally(): {
   chCancelled: number;
   cvDone: number;
   cvFailed: number;
+  addDone: number;
+  addFailed: number;
 } {
   const c = getResolvedCounters();
   return {
-    resolved: c.chDone + c.chFailed + c.chCancelled + c.cvDone + c.cvFailed,
+    resolved:
+      c.chDone +
+      c.chFailed +
+      c.chCancelled +
+      c.cvDone +
+      c.cvFailed +
+      c.addDone +
+      c.addFailed,
     ...c,
   };
 }
@@ -408,6 +429,28 @@ interface Composed {
   indeterminate: boolean;
   ongoing: boolean;
   tapsToQueue: boolean;
+}
+
+/** Chapter downloads in flight, derived by subtracting the kinds that are
+ *  counted separately from the active total.
+ *
+ *  Exported only so it can be tested. This is subtraction, so a new job
+ *  kind that isn't subtracted here does not fail to compile — it quietly
+ *  inflates the chapter count and announces a cover fetch as
+ *  "Downloading 1". That is exactly what happened when library-add was
+ *  added, and the reason this is not inline any more. */
+export function chapterDownloadCount(snap: {
+  active: number;
+  activeConversions: number;
+  activeAdds: number;
+  importActive: boolean;
+}): number {
+  return (
+    snap.active -
+    snap.activeConversions -
+    snap.activeAdds -
+    (snap.importActive ? 1 : 0)
+  );
 }
 
 function compose(
@@ -427,11 +470,11 @@ function compose(
     // download burst running alongside a conversion or an import).
     // Show one aggregate line instead of privileging a single kind.
     const kinds: string[] = [];
-    const dl =
-      snap.active - snap.activeConversions - (snap.importActive ? 1 : 0);
+    const dl = chapterDownloadCount(snap);
     if (dl > 0) kinds.push(tr("status.notif.partDownloads", { n: dl }));
     if (snap.activeConversions > 0)
       kinds.push(tr("status.notif.partConverting"));
+    if (snap.activeAdds > 0) kinds.push(tr("status.notif.partAdding"));
     if (snap.importActive) kinds.push(tr("status.notif.partImporting"));
     if (kinds.length > 1) {
       return {
@@ -455,6 +498,26 @@ function compose(
         indeterminate: false,
         ongoing: true,
         tapsToQueue: false,
+      };
+    }
+
+    // Lone add: a cover fetch with nothing else overlapping.
+    if (
+      snap.activeAdds > 0 &&
+      dl === 0 &&
+      snap.activeConversions === 0 &&
+      !snap.importActive
+    ) {
+      return {
+        title: snap.runningAddTitle
+          ? tr("status.notif.addingTitle", { novel: snap.runningAddTitle })
+          : tr("status.notif.partAdding"),
+        body: tr("status.notif.addingBody"),
+        progress: Math.round(snap.activePartial * 100),
+        max: 100,
+        indeterminate: false,
+        ongoing: true,
+        tapsToQueue: true,
       };
     }
 
@@ -534,6 +597,8 @@ function compose(
   const chCancelled = Math.max(0, t.chCancelled - burstBase.chCancelled);
   const cvDone = Math.max(0, t.cvDone - burstBase.cvDone);
   const cvFailed = Math.max(0, t.cvFailed - burstBase.cvFailed);
+  const addDone = Math.max(0, t.addDone - burstBase.addDone);
+  const addFailed = Math.max(0, t.addFailed - burstBase.addFailed);
   const imp = getImportState();
   const impFresh =
     imp.finishedAt !== null && imp.finishedAt !== announcedImportFinishedAt;
@@ -548,6 +613,8 @@ function compose(
     chCancelled === 0 &&
     cvDone === 0 &&
     cvFailed === 0 &&
+    addDone === 0 &&
+    addFailed === 0 &&
     !impDone &&
     !impFail
   ) {
@@ -561,20 +628,26 @@ function compose(
   if (chDone > 0)
     bodyParts.push(tr("status.notif.chaptersDownloaded", { n: chDone }));
   if (cvDone > 0) bodyParts.push(tr("status.notif.offlineBookReady"));
+  if (addDone > 0) bodyParts.push(tr("status.notif.novelAdded"));
   if (impDone) bodyParts.push(tr("status.notif.bookImported"));
   if (chFailed > 0)
     bodyParts.push(tr("status.notif.failedCount", { n: chFailed }));
   if (chCancelled > 0)
     bodyParts.push(tr("status.notif.cancelledCount", { n: chCancelled }));
   if (cvFailed > 0) bodyParts.push(tr("status.notif.conversionFailed"));
+  if (addFailed > 0) bodyParts.push(tr("status.notif.addFailed"));
   if (impFail) bodyParts.push(tr("status.notif.importFailed"));
 
   const successKinds =
-    (chDone > 0 ? 1 : 0) + (cvDone > 0 ? 1 : 0) + (impDone ? 1 : 0);
+    (chDone > 0 ? 1 : 0) +
+    (cvDone > 0 ? 1 : 0) +
+    (addDone > 0 ? 1 : 0) +
+    (impDone ? 1 : 0);
   let title: string;
   if (successKinds > 1) title = tr("status.notif.allTasksDone");
   else if (chDone > 0) title = tr("status.notif.downloadComplete");
   else if (cvDone > 0) title = tr("status.notif.offlineBookReady");
+  else if (addDone > 0) title = tr("status.notif.novelAdded");
   else if (impDone) title = tr("status.notif.importComplete");
   else title = tr("status.notif.backgroundWorkFinished"); // failures only
 

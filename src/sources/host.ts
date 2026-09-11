@@ -45,11 +45,17 @@ export function createHost(sourceId: string): SourceHost {
     },
 
     async fetchBytes(url, options) {
-      const bytes = await invoke<number[]>("source_fetch_bytes", {
+      // The command returns `tauri::ipc::Response`, so the bytes normally
+      // arrive as an ArrayBuffer. The `number[]` arm in the type is a hedge
+      // for a stale command binding during development, where the old
+      // Vec<u8>-as-JSON-array reply could still show up. `new Uint8Array`
+      // already handles both shapes correctly (view over an ArrayBuffer,
+      // element copy over an array-like) — no branch needed.
+      const buf = await invoke<ArrayBuffer | number[]>("source_fetch_bytes", {
         url,
         options: normalizeFetchOptions(options),
       });
-      return new Uint8Array(bytes);
+      return new Uint8Array(buf);
     },
 
     async renderAndExtract(url, options) {
