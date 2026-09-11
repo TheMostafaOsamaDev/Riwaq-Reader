@@ -26,9 +26,3 @@ indent_size = 4
 
 [Makefile]
 indent_style = tab
-
-# Scraper fixtures are captured verbatim from the site. Reformatting one would
-# invalidate the thing it exists to reproduce.
-[src/sources/extensions/__fixtures__/**]
-insert_final_newline = false
-trim_trailing_whitespace = false
