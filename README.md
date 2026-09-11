@@ -210,51 +210,39 @@ converted on import, with a step to pick the cover and review images first.
 
 ## Download
 
-**One click, always the current release.** These links point at the latest
-version — they don't go stale between releases.
+Builds are attached to each [GitHub Release](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases).
+Pick the file for your platform:
 
-<p align="center">
-  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-x64-setup.exe"><img alt="Download Riwaq for Windows" src="https://img.shields.io/badge/Download-Windows-C96442?style=for-the-badge&logo=windows&logoColor=white"></a>
-  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-macos-universal.dmg"><img alt="Download Riwaq for macOS" src="https://img.shields.io/badge/Download-macOS-C96442?style=for-the-badge&logo=apple&logoColor=white"></a>
-  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.AppImage"><img alt="Download Riwaq for Linux" src="https://img.shields.io/badge/Download-Linux-C96442?style=for-the-badge&logo=linux&logoColor=white"></a>
-  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-android.apk"><img alt="Download Riwaq for Android" src="https://img.shields.io/badge/Download-Android-C96442?style=for-the-badge&logo=android&logoColor=white"></a>
-</p>
+| Platform | File |
+|---|---|
+| **Windows** (most PCs) | `Riwaq_<ver>_x64-setup.exe` |
+| **Windows on ARM** | `Riwaq_<ver>_arm64-setup.exe` |
+| **macOS** (Intel **and** Apple Silicon) | `Riwaq_<ver>_universal.dmg` |
+| **Linux** — Debian / Ubuntu | `Riwaq_<ver>_amd64.deb` · `_arm64.deb` |
+| **Linux** — Fedora / RHEL | `Riwaq-<ver>-1.x86_64.rpm` · `.aarch64.rpm` |
+| **Linux** — portable | `Riwaq_<ver>_amd64.AppImage` · `_aarch64.AppImage` |
+| **Android** | `app-universal-release.apk` |
 
-<p align="center">
-<sub>
-Windows on ARM: <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-arm64-setup.exe">arm64 installer</a> ·
-macOS is universal (Intel + Apple&nbsp;Silicon) ·
-Linux also as <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-amd64.deb">.deb</a>,
-<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.rpm">.rpm</a>,
-<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-aarch64.AppImage">ARM</a> ·
-Android APK carries arm64 + armv7
-</sub>
-</p>
+Windows ships the NSIS installer only. The `.msi` was dropped in v0.2.0 so there
+is one install path and one upgrade path — if you installed v0.1.0 from the
+`.msi`, uninstall it before installing a newer version.
 
-<details>
-<summary>All files, and how to verify them</summary>
+### Android: get updates automatically
 
-Every build is attached to the [latest release](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest), under two names: one carrying the version (`Riwaq_0.2.1_x64-setup.exe`) and one fixed (`Riwaq-windows-x64-setup.exe`) that the buttons above use. They are byte-identical — the fixed name exists so a link can outlive a release.
+Riwaq can tell you when a new version exists, but on Android it cannot install
+one — that is how sideloaded APKs work, so you would be tapping through a
+download every time. [Obtainium](https://github.com/ImranR98/Obtainium) removes
+that: it watches this repository and installs each release for you, the way an
+app store would, with no account and nothing else in the middle.
 
-| Platform | Versioned file | Stable link |
-|---|---|---|
-| Windows | `Riwaq_<ver>_x64-setup.exe` | `Riwaq-windows-x64-setup.exe` |
-| Windows on ARM | `Riwaq_<ver>_arm64-setup.exe` | `Riwaq-windows-arm64-setup.exe` |
-| macOS (universal) | `Riwaq_<ver>_universal.dmg` | `Riwaq-macos-universal.dmg` |
-| Linux — portable | `Riwaq_<ver>_amd64.AppImage` | `Riwaq-linux-x86_64.AppImage` |
-| Linux — Debian/Ubuntu | `Riwaq_<ver>_amd64.deb` | `Riwaq-linux-amd64.deb` |
-| Linux — Fedora/RHEL | `Riwaq-<ver>-1.x86_64.rpm` | `Riwaq-linux-x86_64.rpm` |
-| Android | `app-universal-release.apk` | `Riwaq-android.apk` |
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.leaflet.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img alt="Add Riwaq to Obtainium" src="https://img.shields.io/badge/Add_to-Obtainium-C96442?style=for-the-badge&logo=android&logoColor=white"></a>
 
-`aarch64` / `arm64` variants exist for every Linux format. `SHA256SUMS` lists
-every asset; `latest.json` and the `.sig` files are for the in-app updater and
-are not meant to be downloaded by hand.
+Open that on the phone itself. It hands Obtainium the whole app definition —
+id, repository, name — so there is nothing to type. Without Obtainium
+installed, the link explains where to get it rather than failing silently.
 
-**Windows:** only the NSIS installer (`-setup.exe`) ships. The `.msi` was
-dropped in v0.2.0 so there is one install path and one upgrade path — if you
-installed v0.1.0 from the `.msi`, uninstall it before installing this.
-
-</details>
+Prefer to do it by hand? Add `https://github.com/TheMostafaOsamaDev/Riwaq-Reader`
+as a **GitHub** source in Obtainium, or just grab the `.apk` above.
 
 ### First launch
 
