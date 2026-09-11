@@ -1,6 +1,6 @@
 [package]
 name = "riwaq"
-version = "0.2.0"
+version = "0.2.1"
 description = "Riwaq — a calm, offline-first e-book reader"
 authors = ["Mostafa Osama"]
 edition = "2021"
