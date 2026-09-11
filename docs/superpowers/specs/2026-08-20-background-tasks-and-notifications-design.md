@@ -52,7 +52,7 @@ Goals:
   calls Kotlin `DownloadNotifier.update(...)` over JNI; also
   `consume_launch_intent`, `set_status_bar_style`. Registered in
   `src-tauri/src/lib.rs` `invoke_handler`.
-- **Kotlin renderer:** `.../com/leaflet/reader/DownloadNotifier.kt` — builds a
+- **Kotlin renderer:** `.../com/riwaq/reader/DownloadNotifier.kt` — builds a
   `NotificationCompat` progress notification (`setProgress`, `setOngoing`,
   `setOnlyAlertOnce`), tap opens `MainActivity` with `leaflet.open=queue`.
 - **Manifest:** `.../AndroidManifest.xml` declares only `MainActivity` +
@@ -88,7 +88,7 @@ building the rest.
 ### Part A — Android foreground service
 
 - **New Kotlin service** `TaskService` (foreground service type `dataSync`) in
-  `.../com/leaflet/reader/`. On start it acquires a **partial `WAKE_LOCK`** and
+  `.../com/riwaq/reader/`. On start it acquires a **partial `WAKE_LOCK`** and
   calls `startForeground(1001, notification)` using the *same* notification id
   and channel the `DownloadNotifier` already uses — so the service and the
   progress notification are one object (no duplicate notifications). On stop it
@@ -212,7 +212,7 @@ JS queue + import store  ──(active count, aggregate progress)──▶  noti
   `src/store/downloadQueue.ts`
 - `src/App.tsx` (boot wiring for service lifecycle)
 - `src-tauri/src/notify.rs`, `src-tauri/src/lib.rs`
-- `.../com/leaflet/reader/TaskService.kt` (new),
+- `.../com/riwaq/reader/TaskService.kt` (new),
   `DownloadNotifier.kt`, `MainActivity.kt`
 - `.../AndroidManifest.xml`
 - Possibly `DownloadQueueView.tsx` (show imports), and a desktop
