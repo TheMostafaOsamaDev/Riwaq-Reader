@@ -44,6 +44,7 @@ vi.mock("./library", () => ({
 
 import {
   activeLibraryAddCount,
+  activeLibraryAddJobs,
   clearTerminals,
   enqueue,
   enqueueLibraryAdd,
@@ -196,5 +197,21 @@ describe("library-add jobs", () => {
       chapterTitle: "Ch 7",
     });
     expect(activeLibraryAddCount(getState().jobs)).toBe(0);
+  });
+
+  it("surfaces the queued-or-running add job itself, not just its count", async () => {
+    // The Downloads page's "Adding to library" section renders these rows
+    // directly — before this, a library-add job appeared in no active
+    // list on that page at all, so this filter existing and returning the
+    // job (not just a number) is exactly what closes that gap.
+    expect(activeLibraryAddJobs(getState().jobs)).toEqual([]);
+    const id = enqueueLibraryAdd(descriptor());
+    const active = activeLibraryAddJobs(getState().jobs);
+    expect(active).toHaveLength(1);
+    expect(active[0].id).toBe(id);
+    expect(active[0].kind).toBe("library-add");
+    await settle();
+    // Done falls out of the active list — it belongs in Recent instead.
+    expect(activeLibraryAddJobs(getState().jobs)).toEqual([]);
   });
 });

@@ -513,16 +513,23 @@ export function enqueueLibraryAdd(desc: EnqueueLibraryAddDescriptor): string {
   return job.id;
 }
 
+/** Queued-or-running library-add jobs, in queue order. Shared by the FAB
+ *  ring (via `activeLibraryAddCount` below) and the Downloads page's own
+ *  "Adding to library" section, so the two can't drift apart on what "an
+ *  add is happening" means. */
+export function activeLibraryAddJobs(jobs: DownloadJob[]): LibraryAddJob[] {
+  return jobs.filter(
+    (j): j is LibraryAddJob =>
+      j.kind === "library-add" &&
+      (j.status === "queued" || j.status === "running"),
+  );
+}
+
 /** Queued-or-running library adds. Mirrors `activeQueueCount` in
  *  backgroundTasks.ts: one rule, exported, so the FAB ring and any future
  *  consumer can't drift apart on what "an add is happening" means. */
 export function activeLibraryAddCount(jobs: DownloadJob[]): number {
-  let n = 0;
-  for (const j of jobs) {
-    if (j.kind !== "library-add") continue;
-    if (j.status === "queued" || j.status === "running") n++;
-  }
-  return n;
+  return activeLibraryAddJobs(jobs).length;
 }
 
 /** Cancel a job. If queued, removes it; if running, marks it

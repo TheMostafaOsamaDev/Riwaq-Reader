@@ -54,7 +54,15 @@ export function importIndicator(
   }
   // One cover fetch has no meaningful fraction, so the ring is
   // indeterminate rather than pretending to a percentage.
-  if (addsActive > 0) return { busy: true, ratio: null, action: "details" };
+  //
+  // `action` is "pick", not "details": an add has no stepper to open —
+  // ImportProgress renders null while the *import* store is idle, which it
+  // is here — so "details" left the FAB/Import button advertising "Open
+  // details" and doing nothing when pressed. The ring is ambient status
+  // only; picking another file to import is still perfectly legitimate
+  // while a cover fetches in the background. Do not change this back to
+  // "details" without first giving the add its own detail view to open.
+  if (addsActive > 0) return { busy: true, ratio: null, action: "pick" };
   // Local-only: the picker is open, or a commit is still finishing after the
   // reporter already settled.
   if (localImporting) return { busy: true, ratio: null, action: "none" };

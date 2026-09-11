@@ -428,6 +428,7 @@ export const ar: Messages = {
   "downloads.sectionInterrupted": "متوقفة",
   "downloads.retryAll": "إعادة محاولة الكل",
   "downloads.sectionSavingOffline": "جارٍ الحفظ ككتاب غير متصل",
+  "downloads.sectionAddingToLibrary": "جارٍ الإضافة إلى المكتبة",
   "downloads.sectionDownloading": "جارٍ تنزيل الفصول",
   "downloads.sectionRecent": "الأخيرة",
   "downloads.cancelDownload": "إلغاء التنزيل",

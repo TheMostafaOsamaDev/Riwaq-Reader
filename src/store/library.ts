@@ -827,12 +827,11 @@ export async function addNovelToLibrary(
     return next;
   });
 
-  // Outside the lock: neither of these reads or writes library.json, and
-  // writeSnapshotFromSourceNovel takes its own per-entry lock.
-  const dir = bookDir(entry.id);
-  if (!(await exists(dir, { baseDir: BASE }))) {
-    await mkdir(dir, { baseDir: BASE, recursive: true });
-  }
+  // Outside the lock: doesn't read or write library.json, and
+  // writeSnapshotFromSourceNovel takes its own per-entry lock. It also
+  // does its own exists/mkdir on this same dir, so doing it here too
+  // would just be two extra IPC round-trips on the tap path this branch
+  // exists to shorten.
   await writeSnapshotFromSourceNovel(entry.id, sourceId, novelUrl, novel);
 
   return entry;
@@ -851,6 +850,15 @@ export async function saveNovelCover(
   sourceId: string,
   coverUrl: string,
 ): Promise<void> {
+  // Cheap common-case bail: skip the fetch entirely when the book was
+  // already removed before this job got to run. This is NOT a guarantee —
+  // the entry can still be deleted between this check and the write below
+  // — so the post-fetch guard further down stays in place too. A full
+  // transactional fix (e.g. locking across the whole fetch) isn't worth it
+  // for a job whose worst case is one orphaned cover file.
+  const preflightIdx = await readIndex();
+  if (!preflightIdx.books.some((b) => b.id === entryId)) return;
+
   const { createHost } = await import("../sources/host");
   const bytes = await createHost(sourceId).fetchBytes(coverUrl);
 
@@ -870,6 +878,10 @@ export async function saveNovelCover(
     if (!entry) return;
     entry.coverFile = coverFile;
     if (thumbFile) entry.thumbFile = thumbFile;
+    // Bumps the cache-buster so a cover re-fetched to the same filename
+    // (e.g. Retry after a failed attempt) isn't served stale from the
+    // webview's asset cache — coverSrcFor keys the URL off this.
+    entry.coverBust = Date.now();
     await writeIndex(idx);
   });
 }
