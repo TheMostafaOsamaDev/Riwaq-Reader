@@ -266,6 +266,7 @@ export const en = {
   "shelves.shelfOptions": "{shelf} options",
 
   // reader chrome (desktop + mobile toolbars, chapter progress, mobile sheet)
+  "reader.couldNotOpen": "This book could not be opened.",
   "reader.backToLibrary": "Back to library",
   "reader.prevChapter": "Previous chapter",
   "reader.nextChapter": "Next chapter",
