@@ -39,6 +39,8 @@ let counters = {
   chCancelled: 0,
   cvDone: 0,
   cvFailed: 0,
+  addDone: 0,
+  addFailed: 0,
 };
 let listener: ((s: { jobs: FakeJob[] }) => void) | null = null;
 
@@ -101,7 +103,15 @@ beforeEach(() => {
   // The notifier holds burst state for the process, so hand it a fully
   // idle queue to close out whatever the previous test left open.
   jobs = [];
-  counters = { chDone: 0, chFailed: 0, chCancelled: 0, cvDone: 0, cvFailed: 0 };
+  counters = {
+    chDone: 0,
+    chFailed: 0,
+    chCancelled: 0,
+    cvDone: 0,
+    cvFailed: 0,
+    addDone: 0,
+    addFailed: 0,
+  };
   listener?.({ jobs });
 });
 
@@ -156,6 +166,8 @@ describe("downloads burst progress", () => {
       chCancelled: 0,
       cvDone: 0,
       cvFailed: 0,
+      addDone: 0,
+      addFailed: 0,
     };
     listener?.({ jobs });
     expect(getDownloadProgress()).toEqual({
