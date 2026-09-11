@@ -557,32 +557,45 @@ function describe(job: DownloadJob, tr: Tr): string {
     case "queued":
       return tr("downloads.statusWaiting");
     case "running":
-      // Conversion jobs carry a free-form `phase` label that's more
-      // useful than a bare percentage ("Building EPUB" / "Saving to
-      // library" / "Fetching chapter 47 / 213"). That label is produced
-      // deep in the conversion pipeline (store/storeConversion.ts) as a
-      // stable English string with no `tr` access there — `phaseLabel`
-      // maps it to a localized string here, at the point it's rendered.
-      if (job.kind === "conversion") {
-        return tr("status.phaseWithPercent", {
-          phase: phaseLabel(job.phase, tr),
-          pct: Math.round(job.progress * 100),
-        });
+      // Exhaustive over job.kind: adding a fourth kind without a case here
+      // is a compile error (describe returns string, so a missing branch
+      // is a "not all code paths return a value" failure), not a silent
+      // fall-through to the wrong copy.
+      switch (job.kind) {
+        case "conversion":
+          // Conversion jobs carry a free-form `phase` label that's more
+          // useful than a bare percentage ("Building EPUB" / "Saving to
+          // library" / "Fetching chapter 47 / 213"). That label is produced
+          // deep in the conversion pipeline (store/storeConversion.ts) as a
+          // stable English string with no `tr` access there — `phaseLabel`
+          // maps it to a localized string here, at the point it's rendered.
+          return tr("status.phaseWithPercent", {
+            phase: phaseLabel(job.phase, tr),
+            pct: Math.round(job.progress * 100),
+          });
+        case "library-add":
+          // One cover fetch has no sub-steps worth a percentage.
+          return tr("downloads.statusFetchingCover");
+        case "chapter":
+          // For chapter jobs we just show the percent.
+          return tr("status.percentOnly", {
+            pct: Math.round(job.progress * 100),
+          });
       }
-      // One cover fetch has no sub-steps worth a percentage.
-      if (job.kind === "library-add")
-        return tr("downloads.statusFetchingCover");
-      return tr("status.percentOnly", { pct: Math.round(job.progress * 100) });
     case "done":
-      if (job.kind === "conversion") {
-        const n = job.producedEntryIds.length;
-        return tr(
-          n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
-          { n },
-        );
+      switch (job.kind) {
+        case "conversion": {
+          const n = job.producedEntryIds.length;
+          return tr(
+            n === 1 ? "downloads.statusSavedOne" : "downloads.statusSavedOther",
+            { n },
+          );
+        }
+        case "library-add":
+          return tr("downloads.statusCoverSaved");
+        case "chapter":
+          return tr("downloads.statusDownloaded");
       }
-      if (job.kind === "library-add") return tr("downloads.statusCoverSaved");
-      return tr("downloads.statusDownloaded");
     case "error":
       return tr("downloads.statusFailed", {
         error: job.error
