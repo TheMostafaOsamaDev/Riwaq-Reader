@@ -1,4 +1,5 @@
 mod archive;
+mod legacy_identity;
 mod notify;
 mod opened;
 mod sources;
@@ -79,6 +80,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .invoke_handler(tauri::generate_handler![
             is_appimage,
+            legacy_identity::migrate_legacy_identity,
             sources::source_fetch,
             sources::source_fetch_bytes,
             sources::source_render_and_extract,

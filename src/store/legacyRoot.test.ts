@@ -28,6 +28,15 @@ function renameTree(from: string, to: string) {
   }
 }
 
+// Records the order of everything that touches persistence, so a test can
+// assert the identifier-level move lands BEFORE the root move rather than
+// merely that both happened.
+let calls: string[] = [];
+const invoke = vi.fn(async (cmd: string) => {
+  calls.push(`invoke:${cmd}`);
+});
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (c: string) => invoke(c) }));
+
 vi.mock("@tauri-apps/plugin-fs", () => ({
   BaseDirectory: { AppData: 1 },
   exists: async (p: string) => p in files || dirs.has(p),
@@ -43,6 +52,7 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
     files[p] = data;
   },
   rename: async (from: string, to: string) => {
+    calls.push(`rename:${from}`);
     if (!(from in files) && !dirs.has(from)) throw new Error(`ENOENT ${from}`);
     renameTree(from, to);
   },
@@ -64,6 +74,11 @@ import { LEGACY_ROOT, ROOT } from "./paths";
 beforeEach(() => {
   files = {};
   dirs = new Set();
+  calls = [];
+  invoke.mockClear();
+  invoke.mockImplementation(async (cmd: string) => {
+    calls.push(`invoke:${cmd}`);
+  });
   vi.resetModules();
 });
 
@@ -112,6 +127,47 @@ describe("migrateLegacyRoot", () => {
     const { migrateLegacyRoot } = await import("./legacyRoot");
     await expect(migrateLegacyRoot()).resolves.toBeUndefined();
     expect(files).toEqual({});
+  });
+
+  it("moves the old identifier's app data across before touching the root", async () => {
+    seedLegacyInstall("Older identifier");
+    const { migrateLegacyRoot } = await import("./legacyRoot");
+
+    await migrateLegacyRoot();
+
+    // Order matters: the identifier move is what PUTS the roots in the
+    // directory this build reads. Running it second would find nothing and
+    // the root move would have already decided the library was empty.
+    expect(calls).toEqual([
+      "invoke:migrate_legacy_identity",
+      `rename:${LEGACY_ROOT}`,
+    ]);
+  });
+
+  it("still moves the legacy root when the identifier move fails", async () => {
+    seedLegacyInstall("Survives");
+    invoke.mockRejectedValueOnce(new Error("no such command"));
+    const { migrateLegacyRoot } = await import("./legacyRoot");
+
+    await migrateLegacyRoot();
+
+    // A browser preview has no Tauri command to call at all, and a genuine
+    // failure leaves the old directory intact rather than half-moved. Either
+    // way the in-app-data migration is still worth attempting.
+    expect(files[`${ROOT}/shelves.json`]).toContain("Survives");
+  });
+
+  it("runs the identifier move once across concurrent callers", async () => {
+    seedLegacyInstall("Once");
+    const { migrateLegacyRoot } = await import("./legacyRoot");
+
+    await Promise.all([
+      migrateLegacyRoot(),
+      migrateLegacyRoot(),
+      migrateLegacyRoot(),
+    ]);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it("runs the move once across concurrent callers", async () => {
