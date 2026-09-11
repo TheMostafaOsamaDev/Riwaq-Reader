@@ -24,6 +24,7 @@ describe("importIndicator", () => {
       busy: false,
       ratio: null,
       action: "pick",
+      reason: "import",
     });
   });
 
@@ -35,6 +36,7 @@ describe("importIndicator", () => {
       busy: true,
       ratio: null,
       action: "none",
+      reason: "local",
     });
   });
 
@@ -45,7 +47,7 @@ describe("importIndicator", () => {
         true,
         0,
       ),
-    ).toEqual({ busy: true, ratio: 0.4, action: "details" });
+    ).toEqual({ busy: true, ratio: 0.4, action: "details", reason: "import" });
   });
 
   it("lights up for a source import the library knows nothing about", () => {
@@ -57,6 +59,7 @@ describe("importIndicator", () => {
       busy: true,
       ratio: 0.7,
       action: "details",
+      reason: "import",
     });
   });
 
@@ -67,7 +70,7 @@ describe("importIndicator", () => {
         false,
         0,
       ),
-    ).toEqual({ busy: false, ratio: null, action: "pick" });
+    ).toEqual({ busy: false, ratio: null, action: "pick", reason: "import" });
   });
 
   it("goes quiet on failure — the modal owns the error", () => {
@@ -77,6 +80,6 @@ describe("importIndicator", () => {
         false,
         0,
       ),
-    ).toEqual({ busy: false, ratio: null, action: "pick" });
+    ).toEqual({ busy: false, ratio: null, action: "pick", reason: "import" });
   });
 });
