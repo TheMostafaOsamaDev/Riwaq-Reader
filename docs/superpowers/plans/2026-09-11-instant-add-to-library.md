@@ -14,8 +14,9 @@
 
 - Branch is `perf/instant-add-to-library`, already created off `main`. Do not work on `main`.
 - **Never `git add -A` in this repo.** Untracked `CLAUDE.md`, `docs/design/`, `scripts/mac-install.sh` and `pnpm-workspace.yaml` must stay untracked. Stage explicit paths only.
-- Every commit message ends with the line:
-  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
+- **Commit style:** the repo writes multi-line commit bodies explaining *why*.
+  Match it. Commit messages are the user's own voice: no AI attribution, no
+  `Co-Authored-By` trailers.
 - Every user-visible string gets a key in **both** `src/i18n/en.ts` and `src/i18n/ar.ts`. A key present in one and missing from the other is a build failure — `ar.ts` is typed against `en.ts`.
 - `pnpm check` = `format:check && lint && build && test`. It must pass before the final commit of each task.
 - Test runner is Vitest with `happy-dom`. `createImageBitmap` and `OffscreenCanvas` do **not** exist there, so `encodeThumb` returns `null` in tests. Never write a test that depends on a real thumbnail encode.
@@ -158,8 +159,6 @@ exactly this; this command was the one byte-returning holdout.
 
 Every cover and every inline chapter image the download queue fetches
 goes through here.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -299,8 +298,6 @@ took bytes; only the wrapper insisted on the round trip.
 
 writeCoverThumb keeps its signature for callers that genuinely only have a
 filename, and now delegates.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -663,8 +660,6 @@ read-modify-write, and the existing-entry lookup moves inside it, which
 also closes a double-insert on a fast double-tap.
 
 The cover splits out into saveNovelCover for the queue to run.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1065,8 +1060,6 @@ interrupted after an app kill resumes without refetching anything.
 
 bumpResolved and runJob become exhaustive switches on job.kind; both used
 to treat "not chapter" as "conversion".
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1463,8 +1456,6 @@ The FAB ring reads the queue as well as the import store, so a queued
 cover fetch lights it. Chapter downloads stay excluded — the Downloads
 page is their indicator, and the ring would flicker through every chapter
 of a long burst.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1584,8 +1575,6 @@ feat(downloads): render library-add rows in the queue page
 describe() and subtitleFor() branched on one kind and treated the other as
 the fallback, so a cover fetch showed as "Downloaded" and read a mode
 field it does not have. subtitleFor is now an exhaustive switch.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1667,8 +1656,6 @@ The tap now does local work only — index entry and chapter listing from
 the novel already on screen — and hands the cover fetch to the download
 queue. The button flips, the shelf refreshes, and the user can leave the
 page while the cover lands.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -1772,8 +1759,6 @@ pnpm check
 git add docs/superpowers/specs/2026-09-11-fast-background-add-to-library-design.md
 git commit -m "$(cat <<'EOF'
 docs(spec): record the measured add-to-library timings
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
