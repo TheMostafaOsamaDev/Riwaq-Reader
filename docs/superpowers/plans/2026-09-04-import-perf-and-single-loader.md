@@ -1744,7 +1744,7 @@ the main thread, and any worker failure falls back to it."
 The desktop app writes to the user's actual library. Copy it first and point the run at the copy — or accept that clicking through the app mutates real data. **Do not skip this.**
 
 ```bash
-APPDATA="$HOME/Library/Application Support/com.leaflet.reader"
+APPDATA="$HOME/Library/Application Support/com.riwaq.reader"
 cp -R "$APPDATA" "/tmp/leaflet-appdata-backup-$(date +%s)"
 du -sh "$APPDATA/leaflet/books" | cat
 ```

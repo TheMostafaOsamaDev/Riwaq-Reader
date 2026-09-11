@@ -142,7 +142,7 @@ already have `pnpm tauri build` and `pnpm tauri android build`).
   ($99/yr), Android release keystore. The README already documents the
   unsigned-binary workarounds for v1. Revisit when there are users
   complaining about SmartScreen.
-- **F-Droid publishing.** Requires an `metadata/com.leaflet.reader.yml`
+- **F-Droid publishing.** Requires an `metadata/com.riwaq.reader.yml`
   manifest in the upstream f-droid/fdroiddata repo plus a build recipe.
   Whole separate process; defer.
 - **Auto version-bump from tag.** Currently you edit `package.json`,
