@@ -108,22 +108,40 @@ export async function encodeThumb(
   }
 }
 
-/** Derive `cover-thumb.webp` for a book from its stored cover. Returns the
- *  thumbnail's filename on success, or null if the book has no cover or the
- *  encode failed — in which case the UI falls back to the original. */
+/** Write `cover-thumb.<ext>` for a book from cover bytes the caller already
+ *  holds. Returns the thumbnail's filename, or null if the environment can't
+ *  encode or the image won't decode — in which case the UI falls back to the
+ *  original. Never throws: a missing thumbnail is a slow cover, not a failed
+ *  import. */
+export async function writeCoverThumbFromBytes(
+  bookId: string,
+  bytes: Uint8Array,
+): Promise<string | null> {
+  try {
+    const thumb = await encodeThumb(bytes);
+    if (!thumb) return null;
+    const name = `${THUMB_STEM}.${thumb.ext}`;
+    await writeFile(`${bookDir(bookId)}/${name}`, thumb.bytes, { baseDir: BASE });
+    return name;
+  } catch {
+    return null;
+  }
+}
+
+/** Derive `cover-thumb.<ext>` for a book from its stored cover file. For
+ *  callers that still hold the bytes, `writeCoverThumbFromBytes` skips the
+ *  read. */
 export async function writeCoverThumb(
   bookId: string,
   coverFile: string,
 ): Promise<string | null> {
   try {
-    const dir = bookDir(bookId);
-    const src = `${dir}/${coverFile}`;
+    const src = `${bookDir(bookId)}/${coverFile}`;
     if (!(await exists(src, { baseDir: BASE }))) return null;
-    const thumb = await encodeThumb(await readFile(src, { baseDir: BASE }));
-    if (!thumb) return null;
-    const name = `${THUMB_STEM}.${thumb.ext}`;
-    await writeFile(`${dir}/${name}`, thumb.bytes, { baseDir: BASE });
-    return name;
+    return await writeCoverThumbFromBytes(
+      bookId,
+      await readFile(src, { baseDir: BASE }),
+    );
   } catch {
     return null;
   }
