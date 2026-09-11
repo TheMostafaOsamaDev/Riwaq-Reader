@@ -45,18 +45,17 @@ export function createHost(sourceId: string): SourceHost {
     },
 
     async fetchBytes(url, options) {
-      // The command returns `tauri::ipc::Response`, so the bytes arrive as
-      // an ArrayBuffer over the raw channel. The `number[]` branch is the
-      // same hedge @tauri-apps/plugin-fs keeps in readFile — it costs one
-      // instanceof and means a stale command binding degrades to slow
-      // rather than to a silently empty buffer.
+      // The command returns `tauri::ipc::Response`, so the bytes normally
+      // arrive as an ArrayBuffer. The `number[]` arm in the type is a hedge
+      // for a stale command binding during development, where the old
+      // Vec<u8>-as-JSON-array reply could still show up. `new Uint8Array`
+      // already handles both shapes correctly (view over an ArrayBuffer,
+      // element copy over an array-like) — no branch needed.
       const buf = await invoke<ArrayBuffer | number[]>("source_fetch_bytes", {
         url,
         options: normalizeFetchOptions(options),
       });
-      return buf instanceof ArrayBuffer
-        ? new Uint8Array(buf)
-        : Uint8Array.from(buf);
+      return new Uint8Array(buf);
     },
 
     async renderAndExtract(url, options) {

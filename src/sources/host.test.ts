@@ -1,9 +1,11 @@
-// source_fetch_bytes used to return Vec<u8>, which Tauri serializes as a
-// JSON array — one element per byte, so a 300 KB cover arrived as a
-// 300,000-element array to parse. It now returns tauri::ipc::Response and
-// the bytes come back as an ArrayBuffer. fetchBytes accepts both, matching
-// how @tauri-apps/plugin-fs's own readFile hedges, so a stale command
-// binding during development doesn't hand callers a broken Uint8Array.
+// source_fetch_bytes now returns tauri::ipc::Response, so the bytes arrive
+// as an ArrayBuffer rather than the old Vec<u8>-as-JSON-array (number[]).
+// `new Uint8Array(buf)` already produces the right bytes for either shape,
+// so these assertions passed even before that Rust change — they exist to
+// pin that behaviour, not to prove a fix. What they guard against is a
+// future "simplification" to `Uint8Array.from(buf)`: that silently returns
+// an empty array for the ArrayBuffer case, since `from` treats an
+// ArrayBuffer as neither iterable nor array-like.
 import { describe, expect, it, vi } from "vitest";
 
 let reply: unknown = null;
