@@ -213,42 +213,23 @@ converted on import, with a step to pick the cover and review images first.
 **One click, always the current release.** These links point at the latest
 version — they don't go stale between releases.
 
-<table>
-<tr>
-<td align="center" width="25%">
+<p align="center">
+  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-x64-setup.exe"><img alt="Download Riwaq for Windows" src="https://img.shields.io/badge/Download-Windows-C96442?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-macos-universal.dmg"><img alt="Download Riwaq for macOS" src="https://img.shields.io/badge/Download-macOS-C96442?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.AppImage"><img alt="Download Riwaq for Linux" src="https://img.shields.io/badge/Download-Linux-C96442?style=for-the-badge&logo=linux&logoColor=white"></a>
+  <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-android.apk"><img alt="Download Riwaq for Android" src="https://img.shields.io/badge/Download-Android-C96442?style=for-the-badge&logo=android&logoColor=white"></a>
+</p>
 
-### Windows
-[**Download for Windows**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-x64-setup.exe)
-
-<sub>[on ARM](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-arm64-setup.exe)</sub>
-
-</td>
-<td align="center" width="25%">
-
-### macOS
-[**Download for macOS**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-macos-universal.dmg)
-
-<sub>Intel **and** Apple&nbsp;Silicon</sub>
-
-</td>
-<td align="center" width="25%">
-
-### Linux
-[**Download AppImage**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.AppImage)
-
-<sub>[.deb](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-amd64.deb) · [.rpm](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.rpm) · [ARM](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-aarch64.AppImage)</sub>
-
-</td>
-<td align="center" width="25%">
-
-### Android
-[**Download APK**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-android.apk)
-
-<sub>arm64 + armv7 in one file</sub>
-
-</td>
-</tr>
-</table>
+<p align="center">
+<sub>
+Windows on ARM: <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-arm64-setup.exe">arm64 installer</a> ·
+macOS is universal (Intel + Apple&nbsp;Silicon) ·
+Linux also as <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-amd64.deb">.deb</a>,
+<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.rpm">.rpm</a>,
+<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-aarch64.AppImage">ARM</a> ·
+Android APK carries arm64 + armv7
+</sub>
+</p>
 
 <details>
 <summary>All files, and how to verify them</summary>
