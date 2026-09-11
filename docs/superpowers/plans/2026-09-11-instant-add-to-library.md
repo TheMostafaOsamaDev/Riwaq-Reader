@@ -1183,9 +1183,19 @@ import { importIndicator } from "./importIndicator";
 import { chapterDownloadCount } from "./downloadNotifier";
 ```
 
-`downloadNotifier.ts` pulls in `@tauri-apps/plugin-notification` at module scope, so add this mock beside the others at the top of the file — before the imports:
+**Mocks this file needs, and why exactly these three.** Both imports reach
+`./downloadQueue`, which statically imports `../sources/registry` — three
+extension modules and two PNG assets. Cut the graph at that one edge rather
+than mocking six things behind it. The real `activeLibraryAddCount` is
+covered against the real queue in Task 4's test, so mocking it here loses no
+coverage. Put these above the imports:
 
 ```ts
+vi.mock("./downloadQueue", () => ({
+  subscribe: () => () => {},
+  getState: () => ({ jobs: [] }),
+  activeLibraryAddCount: () => 0,
+}));
 vi.mock("@tauri-apps/plugin-notification", () => ({
   createChannel: async () => {},
   Importance: { Low: 2 },
@@ -1200,7 +1210,8 @@ vi.mock("./downloadNotifier/transport", () => ({
 }));
 ```
 
-and add `vi` to the vitest import.
+Both functions under test are pure, so the mocked queue is never consulted by
+either assertion.
 
 - [ ] **Step 2: Run the test and confirm it fails**
 
