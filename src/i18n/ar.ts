@@ -448,6 +448,9 @@ export const ar: Messages = {
   "downloads.statusInterruptedPartialOther": "توقف — تم حفظ {n} كتب بالفعل",
   "downloads.statusInterruptedResume":
     "توقف — اضغط على إعادة المحاولة للمتابعة",
+  "downloads.statusFetchingCover": "جارٍ جلب الغلاف…",
+  "downloads.statusCoverSaved": "تم حفظ الغلاف",
+  "downloads.subtitleLibraryAdd": "صورة الغلاف",
 
   "store.title": "المصادر",
   "store.subtitle":
