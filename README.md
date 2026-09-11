@@ -210,18 +210,70 @@ converted on import, with a step to pick the cover and review images first.
 
 ## Download
 
-Builds are attached to each [GitHub Release](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases).
-Pick the file for your platform:
+**One click, always the current release.** These links point at the latest
+version — they don't go stale between releases.
 
-| Platform | File |
-|---|---|
-| **Windows** (most PCs) | `Riwaq_<ver>_x64-setup.exe` — or `Riwaq_<ver>_x64_en-US.msi` |
-| **Windows on ARM** | `Riwaq_<ver>_arm64-setup.exe` |
-| **macOS** (Intel **and** Apple Silicon) | `Riwaq_<ver>_universal.dmg` |
-| **Linux** — Debian / Ubuntu | `Riwaq_<ver>_amd64.deb` · `_arm64.deb` |
-| **Linux** — Fedora / RHEL | `Riwaq-<ver>-1.x86_64.rpm` · `.aarch64.rpm` |
-| **Linux** — portable | `Riwaq_<ver>_amd64.AppImage` · `_aarch64.AppImage` |
-| **Android** | `app-universal-release.apk` |
+<table>
+<tr>
+<td align="center" width="25%">
+
+### Windows
+[**Download for Windows**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-x64-setup.exe)
+
+<sub>[on ARM](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-windows-arm64-setup.exe)</sub>
+
+</td>
+<td align="center" width="25%">
+
+### macOS
+[**Download for macOS**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-macos-universal.dmg)
+
+<sub>Intel **and** Apple&nbsp;Silicon</sub>
+
+</td>
+<td align="center" width="25%">
+
+### Linux
+[**Download AppImage**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.AppImage)
+
+<sub>[.deb](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-amd64.deb) · [.rpm](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-x86_64.rpm) · [ARM](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-linux-aarch64.AppImage)</sub>
+
+</td>
+<td align="center" width="25%">
+
+### Android
+[**Download APK**](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest/download/Riwaq-android.apk)
+
+<sub>arm64 + armv7 in one file</sub>
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary>All files, and how to verify them</summary>
+
+Every build is attached to the [latest release](https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest), under two names: one carrying the version (`Riwaq_0.2.1_x64-setup.exe`) and one fixed (`Riwaq-windows-x64-setup.exe`) that the buttons above use. They are byte-identical — the fixed name exists so a link can outlive a release.
+
+| Platform | Versioned file | Stable link |
+|---|---|---|
+| Windows | `Riwaq_<ver>_x64-setup.exe` | `Riwaq-windows-x64-setup.exe` |
+| Windows on ARM | `Riwaq_<ver>_arm64-setup.exe` | `Riwaq-windows-arm64-setup.exe` |
+| macOS (universal) | `Riwaq_<ver>_universal.dmg` | `Riwaq-macos-universal.dmg` |
+| Linux — portable | `Riwaq_<ver>_amd64.AppImage` | `Riwaq-linux-x86_64.AppImage` |
+| Linux — Debian/Ubuntu | `Riwaq_<ver>_amd64.deb` | `Riwaq-linux-amd64.deb` |
+| Linux — Fedora/RHEL | `Riwaq-<ver>-1.x86_64.rpm` | `Riwaq-linux-x86_64.rpm` |
+| Android | `app-universal-release.apk` | `Riwaq-android.apk` |
+
+`aarch64` / `arm64` variants exist for every Linux format. `SHA256SUMS` lists
+every asset; `latest.json` and the `.sig` files are for the in-app updater and
+are not meant to be downloaded by hand.
+
+**Windows:** only the NSIS installer (`-setup.exe`) ships. The `.msi` was
+dropped in v0.2.0 so there is one install path and one upgrade path — if you
+installed v0.1.0 from the `.msi`, uninstall it before installing this.
+
+</details>
 
 ### First launch
 
