@@ -518,6 +518,9 @@ export const en = {
   "downloads.statusInterruptedPartialOther":
     "Interrupted — {n} books already saved",
   "downloads.statusInterruptedResume": "Interrupted — tap Retry to resume",
+  "downloads.statusFetchingCover": "Fetching cover…",
+  "downloads.statusCoverSaved": "Cover saved",
+  "downloads.subtitleLibraryAdd": "Cover art",
 
   // store — sources list + a source's home (browse/search its homepage)
   "store.title": "Sources",

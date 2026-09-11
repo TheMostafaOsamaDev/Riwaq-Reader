@@ -548,13 +548,15 @@ function describe(job: DownloadJob, tr: Tr): string {
       // deep in the conversion pipeline (store/storeConversion.ts) as a
       // stable English string with no `tr` access there — `phaseLabel`
       // maps it to a localized string here, at the point it's rendered.
-      // For chapter jobs we just show the percent.
       if (job.kind === "conversion") {
         return tr("status.phaseWithPercent", {
           phase: phaseLabel(job.phase, tr),
           pct: Math.round(job.progress * 100),
         });
       }
+      // One cover fetch has no sub-steps worth a percentage.
+      if (job.kind === "library-add")
+        return tr("downloads.statusFetchingCover");
       return tr("status.percentOnly", { pct: Math.round(job.progress * 100) });
     case "done":
       if (job.kind === "conversion") {
@@ -564,6 +566,7 @@ function describe(job: DownloadJob, tr: Tr): string {
           { n },
         );
       }
+      if (job.kind === "library-add") return tr("downloads.statusCoverSaved");
       return tr("downloads.statusDownloaded");
     case "error":
       return tr("downloads.statusFailed", {
@@ -590,12 +593,19 @@ function describe(job: DownloadJob, tr: Tr): string {
 }
 
 /** Second line of each row: chapter title for chapter jobs, mode
- *  description for conversion jobs. */
+ *  description for conversion jobs, and a plain label for the cover fetch
+ *  that follows adding a novel — its novel title is already the row title. */
 function subtitleFor(job: DownloadJob, tr: Tr): string {
-  if (job.kind === "chapter") return job.chapterTitle;
-  return tr(
-    job.mode === "single"
-      ? "downloads.saveOffline.singleTitle"
-      : "downloads.saveOffline.perVolumeTitle",
-  );
+  switch (job.kind) {
+    case "chapter":
+      return job.chapterTitle;
+    case "library-add":
+      return tr("downloads.subtitleLibraryAdd");
+    case "conversion":
+      return tr(
+        job.mode === "single"
+          ? "downloads.saveOffline.singleTitle"
+          : "downloads.saveOffline.perVolumeTitle",
+      );
+  }
 }
