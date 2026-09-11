@@ -35,6 +35,13 @@ export interface ImportIndicator {
 
 const IDLE: ImportIndicator = { busy: false, ratio: null, action: "pick" };
 
+/** useSyncExternalStore compares snapshots with Object.is, and the queue's
+ *  state object is a module-scope const that is mutated in place — its
+ *  identity never changes, so an object snapshot would never re-render.
+ *  A count is a primitive: it compares by value, so the ring updates
+ *  exactly when the number of in-flight adds changes. */
+const getActiveAddCount = () => activeLibraryAddCount(getQueueState().jobs);
+
 export function importIndicator(
   progress: ProgressState,
   localImporting: boolean,
@@ -60,14 +67,10 @@ export function importIndicator(
  *  through every chapter of a long burst. */
 export function useImportIndicator(localImporting: boolean): ImportIndicator {
   const progress = useImportProgress();
-  const queue = useSyncExternalStore(
+  const adds = useSyncExternalStore(
     subscribeQueue,
-    getQueueState,
-    getQueueState,
+    getActiveAddCount,
+    getActiveAddCount,
   );
-  return importIndicator(
-    progress,
-    localImporting,
-    activeLibraryAddCount(queue.jobs),
-  );
+  return importIndicator(progress, localImporting, adds);
 }
