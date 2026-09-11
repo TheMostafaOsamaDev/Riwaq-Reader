@@ -59,7 +59,14 @@ export function EmptyState({
         {...(ind.ratio === null ? {} : { loadingProgress: ind.ratio })}
         leadingIcon={<Icon name="plus" size={14} />}
       >
-        {ind.busy ? tr("sidebar.importing") : tr("library.emptyCta")}
+        {ind.busy
+          ? // An add's busy state is a background cover fetch, not an
+            // import — reuse the Downloads copy instead of claiming
+            // otherwise.
+            ind.reason === "add"
+            ? tr("downloads.statusFetchingCover")
+            : tr("sidebar.importing")
+          : tr("library.emptyCta")}
       </Button>
     </div>
   );
