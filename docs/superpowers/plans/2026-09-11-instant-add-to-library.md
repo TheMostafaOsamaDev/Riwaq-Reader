@@ -1718,6 +1718,49 @@ Confirm each of these, and write down any that fail:
 - Force-killing the app mid-fetch: the job reloads as `interrupted` and Retry completes it.
 - Switching the UI language to Arabic shows the new strings translated and correctly laid out RTL.
 
+- [ ] **Step 3b: Additional checks, added by the final whole-branch review**
+
+These come from reading the finished diff and are the places it predicts an
+on-device surprise. Each names why it is worth a look.
+
+- **Cross-compile for Android explicitly.** `source_fetch_bytes` is the one
+  command whose target was never built. Its `use tauri::ipc::Response;` is
+  deliberately ungated while the `use tauri::{…}` line below it is
+  `#[cfg(desktop)]`-gated; the reasoning was verified by inspection against
+  `archive.rs`, but not by a compiler. Run
+  `cargo check --target aarch64-linux-android`, or a full
+  `pnpm android:build`, before merge.
+- **Confirm the raw reply shape actually arrives on Android.** `fetchBytes`
+  accepts both an `ArrayBuffer` and a `number[]`, so a regression to the slow
+  JSON arm would be silent — and the whole point of that change would be lost.
+  One `console.log(buf.constructor.name)` over CDP settles it.
+- **Foreground-service flap.** `activeQueueCount` is kind-agnostic and
+  `syncService` has no debounce, so every add now starts and stops the Android
+  foreground service inside about a second. Check whether Android's
+  minimum-visibility rule pins that notification for ~5s, and whether a
+  heads-up plus vibration fires for what the user experiences as an instant
+  tap.
+- **Two notifications per tap.** The lone-add "Adding {novel}" (throttled at
+  600ms) is followed by the completion "Added to library" (which bypasses the
+  throttle). Confirm a sub-second cover fetch does not read as a blink.
+- **Wifi-only + cellular.** `meteredHold()` is kind-agnostic, so with
+  wifi-only on and a metered link the cover job sits queued indefinitely — the
+  ring spins and the notification stays up. Confirm the Downloads page now
+  explains why (it should, since adds render there as of the final fix wave).
+- **Tap Add on wifi and confirm the in-flight job appears on the Downloads
+  page.** The airplane-mode check alone does NOT cover this: an errored job
+  lands in `recent` and renders either way, so it would have passed even while
+  in-flight adds were invisible.
+- **Add, then immediately Remove.** Confirm `books/<id>/` does not reappear on
+  disk holding an orphan cover.
+- **Force-kill between the index write and the snapshot write** (not only
+  mid-cover). The entry self-heals when opened because `NovelDetailView` falls
+  through to a live fetch on a missing snapshot — but that needs a network.
+  Check the offline case shows a sane error rather than a broken card.
+- **RTL:** the Arabic notification title interpolates a possibly-Latin novel
+  title into an RTL string. Same shape as the existing `convertingTitle`, but
+  worth one screenshot with a Latin-titled novel.
+
 - [ ] **Step 4: Record the result**
 
 Append a short "Measured" section to the spec with the before/after numbers, the device, and the novel used. State what was measured (tap to entry-in-`library.json`), not a vaguer claim.
