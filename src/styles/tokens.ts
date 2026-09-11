@@ -717,6 +717,11 @@ export const Z = {
   /** The overlay-scrollbar host, and only it. It sits above every layer above
    *  deliberately, so a scroll area inside a modal still gets its bar.
    *  Mirrored in `global.css` on `#riwaq-scrollbars` — change both or neither. */
+  /** The app-wide error boundary's crash screen. Above every layer the app
+   *  draws — once the tree has thrown, whatever is still painted underneath
+   *  must not obscure the message saying what broke — but still under
+   *  `scrollbars`, which stays on top by design. */
+  appError: 1000,
   scrollbars: 2147483000,
 } as const;
 

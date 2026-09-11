@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./styles/global.css";
 import { migrateLegacyRoot } from "./store/legacyRoot";
 
@@ -36,8 +37,16 @@ import { migrateLegacyRoot } from "./store/legacyRoot";
 // the thing that actually enforces correctness, and cost first paint.
 void migrateLegacyRoot();
 
+// The boundary wraps App because a throw anywhere outside the two reader views
+// used to unmount the whole tree, leaving the boot background and nothing else
+// — no chrome, and not even the app-level spinner or error toast, since those
+// are App's children too. That is pixel-identical to a book that rendered
+// blank, so a screenshot of it says nothing about the cause. See
+// components/AppErrorBoundary.tsx.
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
   </React.StrictMode>,
 );
