@@ -24,10 +24,10 @@
 
 ## File Structure
 
-- **Create** `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/TaskService.kt` — foreground service + wake lock + start/stop helpers.
+- **Create** `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/TaskService.kt` — foreground service + wake lock + start/stop helpers.
 - **Create** `src/store/backgroundTasks.ts` — coordinator: aggregates active-task count across the download queue and the import store, and drives the Android service start/stop. Single source of truth for "is background work happening".
 - **Modify** `src-tauri/gen/android/app/src/main/AndroidManifest.xml` — permissions + `<service>` declaration.
-- **Modify** `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt` — expose channel-ensure for the service.
+- **Modify** `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt` — expose channel-ensure for the service.
 - **Modify** `src-tauri/src/notify.rs` — `start_task_service` / `stop_task_service` commands + JNI helpers.
 - **Modify** `src-tauri/src/lib.rs` — register the two new commands.
 - **Modify** `src/store/downloadNotifier.ts` — fold imports into the summary; smooth aggregate; route terminal summary to id `1002`.
@@ -44,9 +44,9 @@
 This is the **de-risking task**. Everything downstream assumes the WebView keeps executing JS while the Activity is stopped, provided the process stays alive under a foreground service + wake lock. Prove it here.
 
 **Files:**
-- Create: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/TaskService.kt`
+- Create: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/TaskService.kt`
 - Modify: `src-tauri/gen/android/app/src/main/AndroidManifest.xml`
-- Modify: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt`
+- Modify: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt`
 
 **Interfaces:**
 - Produces: `TaskService.start(ctx: Context)`, `TaskService.stop(ctx: Context)` (JvmStatic), constants `TaskService.NOTIF_ID = 1001`, `TaskService.CHANNEL_ID = "leaflet-downloads"`, `TaskService.ACTION_STOP`. `DownloadNotifier.ensureChannelPublic(ctx: Context)`.
@@ -85,7 +85,7 @@ In `DownloadNotifier.kt`, add a public wrapper (the service needs the channel to
 - [ ] **Step 3: Create `TaskService.kt`**
 
 ```kotlin
-package com.leaflet.reader
+package com.riwaq.reader
 
 import android.app.Notification
 import android.app.Service
@@ -167,7 +167,7 @@ class TaskService : Service() {
     companion object {
         const val CHANNEL_ID = "leaflet-downloads"
         const val NOTIF_ID = 1001
-        const val ACTION_STOP = "com.leaflet.reader.action.STOP_TASKS"
+        const val ACTION_STOP = "com.riwaq.reader.action.STOP_TASKS"
 
         @JvmStatic
         fun start(ctx: Context) {
@@ -203,12 +203,12 @@ This step needs the service running *while a download is in flight*, decoupled f
 
 1. In the running app, start a **multi-chapter download** (e.g. `Download range` of ~15 chapters) so the queue has sustained work.
 2. Immediately start the service from a shell:
-   `adb shell am start-foreground-service -n com.leaflet.reader/.TaskService`
+   `adb shell am start-foreground-service -n com.riwaq.reader/.TaskService`
    Expected: a low-priority "…" notification appears.
 3. Press Home, then turn the screen off. Wait ~60s.
 4. Turn the screen on, reopen the app, open the Download Queue view.
    **Exit criterion (GO):** downloads made progress / completed while backgrounded (more chapters show `done` than when you left). Also confirm via `adb logcat | grep -i leaflet` that fetches happened during the dark window.
-5. Stop the service: `adb shell am stopservice -n com.leaflet.reader/.TaskService` (or it stays until Task 2 wires stop).
+5. Stop the service: `adb shell am stopservice -n com.riwaq.reader/.TaskService` (or it stays until Task 2 wires stop).
 
 - [ ] **Step 6: If JS PAUSED in the background (NO-GO), add the resumeTimers fix**
 
@@ -232,8 +232,8 @@ Re-run step 5 until the GO criterion holds. Document in the commit body which pa
 
 ```bash
 git add src-tauri/gen/android/app/src/main/AndroidManifest.xml \
-        src-tauri/gen/android/app/src/main/java/com/leaflet/reader/TaskService.kt \
-        src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt
+        src-tauri/gen/android/app/src/main/java/com/riwaq/reader/TaskService.kt \
+        src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt
 # include MainActivity.kt too if Step 6 was needed
 git commit -m "feat(android): foreground service + wake lock for background tasks"
 ```
@@ -297,7 +297,7 @@ fn android_task_service(op: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut env = vm.attach_current_thread()?;
     let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
-    let class = find_app_class(&mut env, &activity, "com.leaflet.reader.TaskService")?;
+    let class = find_app_class(&mut env, &activity, "com.riwaq.reader.TaskService")?;
     let method = if op == "stop" { "stop" } else { "start" };
     env.call_static_method(
         &class,

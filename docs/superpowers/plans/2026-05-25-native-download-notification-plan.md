@@ -19,8 +19,8 @@
 
 | File | Purpose | New? |
 |---|---|---|
-| `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt` | Encapsulates `NotificationCompat.Builder` work for progress notifications. Static `update(...)` and `cancel(...)` entry points called by Rust via JNI. | New |
-| `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt` | Read `leaflet.open` intent extra in `onCreate` / `onNewIntent`, store in a companion-object volatile field, emit Tauri event. | Modify |
+| `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt` | Encapsulates `NotificationCompat.Builder` work for progress notifications. Static `update(...)` and `cancel(...)` entry points called by Rust via JNI. | New |
+| `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt` | Read `leaflet.open` intent extra in `onCreate` / `onNewIntent`, store in a companion-object volatile field, emit Tauri event. | Modify |
 | `src-tauri/src/lib.rs` | Register `update_download_notification` and `consume_launch_intent` commands. | Modify |
 | `src-tauri/src/notify.rs` | New module hosting the two commands + the Android-only JNI helper. | New |
 | `src-tauri/Cargo.toml` | Add `jni` (Android only). | Modify |
@@ -76,14 +76,14 @@ git commit -m "build(tauri): add android-only jni dependency"
 ## Task 2: Create the Kotlin `DownloadNotifier`
 
 **Files:**
-- Create: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt`
+- Create: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt`
 
 - [ ] **Step 2.1: Write the Kotlin file**
 
-Use the Write tool. Path: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt`
+Use the Write tool. Path: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt`
 
 ```kotlin
-package com.leaflet.reader
+package com.riwaq.reader
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -200,7 +200,7 @@ If you don't have the Android SDK locally, **proceed**. The full `pnpm tauri and
 - [ ] **Step 2.3: Commit**
 
 ```bash
-git add src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt
+git add src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt
 git commit -m "feat(android): add DownloadNotifier Kotlin class with NotificationCompat progress"
 ```
 
@@ -209,14 +209,14 @@ git commit -m "feat(android): add DownloadNotifier Kotlin class with Notificatio
 ## Task 3: Wire up `MainActivity` for launch-intent extras
 
 **Files:**
-- Modify: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt`
+- Modify: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt`
 
 - [ ] **Step 3.1: Replace the file**
 
-Use the Write tool. Path: `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt`
+Use the Write tool. Path: `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt`
 
 ```kotlin
-package com.leaflet.reader
+package com.riwaq.reader
 
 import android.content.Intent
 import android.os.Bundle
@@ -259,7 +259,7 @@ class MainActivity : TauriActivity() {
 - [ ] **Step 3.2: Commit**
 
 ```bash
-git add src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt
+git add src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt
 git commit -m "feat(android): MainActivity stashes leaflet.open launch-intent extras"
 ```
 
@@ -387,7 +387,7 @@ fn android_call_update(
             let body_j = env.new_string(body).expect("body jstring");
 
             let class = env
-                .find_class("com/leaflet/reader/DownloadNotifier")
+                .find_class("com/riwaq/reader/DownloadNotifier")
                 .expect("find DownloadNotifier");
 
             env.call_static_method(
@@ -422,7 +422,7 @@ fn android_consume_intent(_app: &AppHandle) -> Result<String, Box<dyn std::error
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
     let mut env = vm.attach_current_thread()?;
 
-    let class = env.find_class("com/leaflet/reader/MainActivity")?;
+    let class = env.find_class("com/riwaq/reader/MainActivity")?;
     let value = env.get_static_field(
         &class,
         "pendingLaunchIntent",

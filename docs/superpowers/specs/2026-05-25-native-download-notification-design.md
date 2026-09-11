@@ -114,8 +114,8 @@ async fn update_download_notification(
   back to `sendNotification` before reaching the command, so the no-op only
   triggers if something misroutes.
 
-**New Kotlin file** `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt`
-(exact package matches the existing app identifier `com.leaflet.reader`).
+**New Kotlin file** `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt`
+(exact package matches the existing app identifier `com.riwaq.reader`).
 Encapsulates the `NotificationCompat` builder + channel-ensure call mirroring
 the existing JS-side `ensureChannel()`. Single entry-point `update(...)`
 matching the Rust command signature.
@@ -139,8 +139,8 @@ matching the Rust command signature.
 | File | Change |
 |---|---|
 | `src-tauri/src/lib.rs` | Register new `update_download_notification` + `consume_launch_intent` commands |
-| `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/DownloadNotifier.kt` | **New file.** NotificationCompat work, intent extras |
-| `src-tauri/gen/android/app/src/main/java/com/leaflet/reader/MainActivity.kt` | Read `leaflet.open` extra in `onCreate` / `onNewIntent`; store for `consume_launch_intent` |
+| `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/DownloadNotifier.kt` | **New file.** NotificationCompat work, intent extras |
+| `src-tauri/gen/android/app/src/main/java/com/riwaq/reader/MainActivity.kt` | Read `leaflet.open` extra in `onCreate` / `onNewIntent`; store for `consume_launch_intent` |
 | `src-tauri/Cargo.toml` | Confirm `jni` or whatever JNI bridge already used; add deps if needed |
 | `src/store/downloadNotifier.ts` | `compose()` returns richer payload; `publish()` calls transport; drop `renderBar` |
 | `src/store/downloadNotifier/transport.ts` | **New file.** Platform switch |
