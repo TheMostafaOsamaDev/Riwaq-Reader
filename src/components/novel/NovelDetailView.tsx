@@ -255,9 +255,13 @@ export function NovelDetailView({
 
   const onAddToLibrary = useCallback(async () => {
     if (working) return;
+    const novel = state.novel;
+    // The button is only rendered once the novel has loaded, so this is a
+    // guard for the type, not a case that happens.
+    if (!novel) return;
     setWorking(true);
     try {
-      const entry = await addNovelToLibrary(sourceId, novelUrl);
+      const entry = await addNovelToLibrary(sourceId, novelUrl, novel);
       setLibraryEntryId(entry.id);
       onImportComplete();
     } catch (e) {
@@ -266,7 +270,7 @@ export function NovelDetailView({
     } finally {
       setWorking(false);
     }
-  }, [working, sourceId, novelUrl, onImportComplete]);
+  }, [working, sourceId, novelUrl, state.novel, onImportComplete]);
 
   const onRemoveFromLibrary = useCallback(async () => {
     if (working || !libraryEntryId) return;
