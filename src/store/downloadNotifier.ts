@@ -641,7 +641,7 @@ function compose(
   const successKinds =
     (chDone > 0 ? 1 : 0) +
     (cvDone > 0 ? 1 : 0) +
-    (addDone ? 1 : 0) +
+    (addDone > 0 ? 1 : 0) +
     (impDone ? 1 : 0);
   let title: string;
   if (successKinds > 1) title = tr("status.notif.allTasksDone");
