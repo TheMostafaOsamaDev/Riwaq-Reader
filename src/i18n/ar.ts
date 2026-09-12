@@ -226,6 +226,7 @@ export const ar: Messages = {
   "shelves.bookCountOther": "{n} كتب",
   "shelves.shelfOptions": "خيارات {shelf}",
 
+  "reader.couldNotOpen": "تعذّر فتح هذا الكتاب.",
   "reader.backToLibrary": "العودة إلى المكتبة",
   "reader.prevChapter": "الفصل السابق",
   "reader.nextChapter": "الفصل التالي",
