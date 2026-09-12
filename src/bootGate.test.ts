@@ -70,6 +70,32 @@ describe("app boot", () => {
     expect(migrateLegacyRoot).toHaveBeenCalledTimes(1);
   });
 
+  it("wraps the app in a boundary, so a render error is never a blank screen", async () => {
+    await import("./main");
+    await Promise.resolve();
+
+    // Without this, a throw anywhere outside the reader unmounts the whole
+    // tree and leaves the boot background and nothing else — no chrome, and
+    // not even the app-level spinner or error toast survive it.
+    const names: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        node.forEach(walk);
+        return;
+      }
+      if (!node || typeof node !== "object") return;
+      const el = node as { type?: unknown; props?: { children?: unknown } };
+      if (typeof el.type === "function") {
+        const fn = el.type as { name?: string; displayName?: string };
+        names.push(fn.displayName ?? fn.name ?? "");
+      }
+      walk(el.props?.children);
+    };
+    walk(render.mock.calls[0]?.[0]);
+
+    expect(names).toContain("AppErrorBoundary");
+  });
+
   it("does not render a second time when the migration later settles", async () => {
     await import("./main");
     await Promise.resolve();
