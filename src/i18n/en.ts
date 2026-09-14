@@ -131,6 +131,21 @@ export const en = {
   "settings.importDone": "Settings imported",
   "settings.importError": "Couldn't read that settings file",
 
+  // diagnostics (inside data)
+  "settings.diagnostics": "Diagnostics",
+  "settings.diagnostics.verbose": "Detailed diagnostics",
+  "settings.diagnostics.verbose.hint":
+    "Records reader layout details too. Turn this on only while reproducing a problem — it costs battery.",
+  "settings.diagnostics.export": "Export diagnostics",
+  "settings.diagnostics.copy": "Copy diagnostics",
+  "settings.diagnostics.copied": "Diagnostics copied",
+  "settings.diagnostics.exportDone": "Diagnostics saved",
+  "settings.diagnostics.exportError": "Couldn't save diagnostics",
+  "settings.diagnostics.copyError": "Couldn't copy diagnostics",
+  "settings.diagnostics.lastLaunchOk": "Last launch opened normally",
+  "settings.diagnostics.lastLaunchBlank":
+    "Last launch failed to open — stopped at {stage}",
+
   // about
   "settings.about.tagline": "A calm, offline-first reader.",
   "settings.about.version": "Version {n}",

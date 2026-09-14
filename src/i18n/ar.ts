@@ -105,6 +105,20 @@ export const ar: Messages = {
   "settings.importDone": "تم استيراد الإعدادات",
   "settings.importError": "تعذّر قراءة ملف الإعدادات",
 
+  "settings.diagnostics": "التشخيص",
+  "settings.diagnostics.verbose": "تشخيص مفصّل",
+  "settings.diagnostics.verbose.hint":
+    "يسجّل تفاصيل تخطيط القارئ أيضًا. فعّله فقط أثناء إعادة إنتاج مشكلة — فهو يستهلك البطارية.",
+  "settings.diagnostics.export": "تصدير التشخيص",
+  "settings.diagnostics.copy": "نسخ التشخيص",
+  "settings.diagnostics.copied": "تم نسخ التشخيص",
+  "settings.diagnostics.exportDone": "تم حفظ التشخيص",
+  "settings.diagnostics.exportError": "تعذّر حفظ التشخيص",
+  "settings.diagnostics.copyError": "تعذّر نسخ التشخيص",
+  "settings.diagnostics.lastLaunchOk": "آخر تشغيل فُتح بشكل طبيعي",
+  "settings.diagnostics.lastLaunchBlank":
+    "فشل آخر تشغيل في الفتح — توقّف عند {stage}",
+
   "settings.about.tagline": "قارئ هادئ يعمل دون اتصال.",
   "settings.about.version": "الإصدار {n}",
   "settings.about.sourceCode": "الشيفرة المصدرية",

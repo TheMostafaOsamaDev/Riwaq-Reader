@@ -77,6 +77,9 @@ export interface Tweaks {
   maxConcurrentDownloads: number;
   /** Only download over Wi-Fi / non-metered connections. */
   wifiOnlyDownloads: boolean;
+  /** Adds devLog's geometry capture to the diagnostics log. Off by default —
+   *  the snapshot costs a getComputedStyle per ancestor. */
+  verboseDiagnostics: boolean;
   /** Fixed-page (PDF/DOCX) default flow: continuous scroll or one page at a
       time. Reflowable books ignore it (they use `readingMode`). */
   fixedFlow: FixedFlow;
