@@ -79,13 +79,26 @@ describe("diagnostics store", () => {
     expect(numbers).toEqual([9, 10, 11, 12]);
   });
 
-  it("opens one file per launch however often it is called", async () => {
-    // StrictMode mounts App's effect twice in development.
+  it("opens one file per launch when both calls start in the same tick", async () => {
+    // StrictMode's double invoke is SYNCHRONOUS within one passive-effect
+    // flush: the second call starts before the first has awaited its mkdir.
+    // Awaiting between the two calls (as this test first did) cannot catch
+    // that, and a guard that is only set after the first await passes twice.
     const { startSession } = await import("./store");
-    await startSession();
-    await startSession();
+    await Promise.all([startSession(), startSession()]);
+    // The call counts are the assertions with teeth. Under these mocks both
+    // runs resolve readDir before either write, so they agree on session-1
+    // and only one file appears — but with real IPC the second run can
+    // compute session-2 (the extra file the latch exists to prevent) and its
+    // `append: false` write can truncate a file the first has flushed into.
+    expect(mkdir).toHaveBeenCalledTimes(1);
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
     expect([...files.keys()]).toEqual(["diagnostics/session-1.jsonl"]);
     expect(remove).not.toHaveBeenCalled();
+
+    // ...and a later awaited call is still a no-op.
+    await startSession();
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
   });
 
   it("lists retained sessions oldest first, one entry per line", async () => {
