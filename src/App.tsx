@@ -163,15 +163,29 @@ function App() {
 
   // The recorder's tier, restored from the persisted tweak.
   //
-  // Deliberately declared ABOVE the boot effect, because effects in one
-  // component run in declaration order and this has to land first:
-  // DesktopReader's session-start effect reads the tier synchronously on
-  // mount and is keyed to the book, so a tier applied late doesn't just
-  // arrive late — the first chapter of the launch records no geometry at
-  // all, with the switch showing On. Kept as its own effect rather than a
-  // line inside the toggle's handler so the paths that change the tweak
-  // WITHOUT touching the switch — Import settings, Reset to defaults —
-  // apply it too.
+  // Its one consumer is hostile to arriving late: DesktopReader's
+  // session-start effect (DesktopReader.tsx) reads the tier synchronously on
+  // mount and is keyed to [book.id], so a tier that lands after it doesn't
+  // just land late — that book records no geometry at all for the rest of the
+  // session, with the switch in Settings showing On. Nothing about that is
+  // visible from the UI.
+  //
+  // Declaration order is NOT what protects that. React flushes passive
+  // effects depth-first, child BEFORE parent: any reader mounted in App's
+  // first commit would run its session-start effect before this one, however
+  // high up the file this sits. What actually saves it is that `loaded`
+  // starts null (below) and is only ever filled from the async openBook path
+  // — including the startupView:"resume" route, which awaits listBooks() — so
+  // there is no reader in the first commit for the ordering to matter to.
+  //
+  // So: if anyone ever opens a book synchronously (a lazy useState
+  // initialiser, a book hydrated from cache during render), this effect is
+  // too late and the tier has to be applied before React renders at all.
+  // Being above the boot effect is only about the session log itself.
+  //
+  // Kept as its own effect rather than a line inside the toggle's handler so
+  // the paths that change the tweak WITHOUT touching the switch — Import
+  // settings, Reset to defaults — apply it too.
   useEffect(() => {
     setVerbose(t.verboseDiagnostics);
   }, [t.verboseDiagnostics]);

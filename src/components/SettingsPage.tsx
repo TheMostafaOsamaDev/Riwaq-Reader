@@ -37,7 +37,7 @@ import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
 import { copyText } from "../lib/clipboard";
 import { readPreviousLaunch } from "../lib/diagnostics/breadcrumbs";
 import { buildBundle, bundleFileName } from "../lib/diagnostics/bundle";
-import { listSessions } from "../lib/diagnostics/store";
+import { flushNow, listSessions } from "../lib/diagnostics/store";
 import { useReducedMotion } from "../styles/motion";
 import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
@@ -154,8 +154,15 @@ export function SettingsPage({
 
   // One document, two ways out of the device. Both actions build it the same
   // way so a copied report and a saved one are never subtly different.
-  const buildDiagnostics = async () =>
-    buildBundle({
+  const buildDiagnostics = async () => {
+    // The session buffer is otherwise only emptied by App's 2-second
+    // interval, and `listSessions` reads files — so without this the export
+    // ends just before whatever the user tapped Export to report. That tail
+    // is the part worth having. `flushNow` swallows its own write failures
+    // and no-ops when there is nothing buffered or no bridge, so this cannot
+    // turn a flush problem into a failed export.
+    await flushNow();
+    return buildBundle({
       app: {
         version: version || "dev",
         platform: navigator.platform || "unknown",
@@ -165,6 +172,7 @@ export function SettingsPage({
       launches: previousLaunch ? [previousLaunch] : [],
       sessions: await listSessions(),
     });
+  };
 
   const exportDiagnostics = async () => {
     if (diagBusy) return;

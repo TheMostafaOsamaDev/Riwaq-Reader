@@ -83,8 +83,17 @@ describe("diagnostics settings", () => {
 });
 
 // Source-shape assertions rather than a render: mounting App pulls the whole
-// reader, both page sources and the Tauri bridge in behind it, and the thing
-// at risk here is an ordering one line of that file expresses directly.
+// reader, both page sources and the Tauri bridge in behind it, and what is at
+// risk here is expressed directly by two lines of that file.
+//
+// Read the scope carefully. The first case guards DECLARATION ORDER inside
+// App and nothing else — `startSession()` never reads the tier, it is just
+// the landmark that the tier effect must stay above. It does NOT guard the
+// hazard that actually loses geometry, which is React flushing a child's
+// passive effects BEFORE its parent's: a reader present in App's first commit
+// would read the tier before this effect ever ran, wherever in the file it
+// sits. The second case is the one that guards that, by pinning the reason it
+// cannot happen today.
 describe("verbose tier at startup", () => {
   it("applies the persisted tier before the session starts", () => {
     const appliedAt = APP_TSX.indexOf("setVerbose(t.verboseDiagnostics)");
@@ -95,6 +104,17 @@ describe("verbose tier at startup", () => {
     ).toBeGreaterThan(-1);
     expect(sessionAt, "App.tsx never starts a session").toBeGreaterThan(-1);
     expect(appliedAt).toBeLessThan(sessionAt);
+  });
+
+  it("keeps every reader out of App's first commit", () => {
+    // The real invariant. `loaded` starting null is what guarantees no
+    // DesktopReader has mounted — and read the tier — by the time App's own
+    // effects run. Open a book synchronously (a lazy useState initialiser, a
+    // cached book hydrated during render) and the tier effect is too late:
+    // that book's session-start effect is keyed to [book.id], so it never
+    // re-runs, and the launch records no geometry with the switch showing On.
+    expect(APP_TSX).toContain("useState<Loaded | null>(null)");
+    expect(APP_TSX).toContain("useState<LoadedFixed | null>(null)");
   });
 
   it("reaches setVerbose through a static import", () => {
