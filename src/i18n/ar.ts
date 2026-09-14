@@ -106,7 +106,7 @@ export const ar: Messages = {
   "settings.importError": "تعذّر قراءة ملف الإعدادات",
 
   "settings.diagnostics": "التشخيص",
-  "settings.diagnostics.verbose": "تشخيص مفصّل",
+  "settings.diagnostics.verbose": "التشخيص المفصّل",
   "settings.diagnostics.verbose.hint":
     "يسجّل تفاصيل تخطيط القارئ أيضًا. فعّله فقط أثناء إعادة إنتاج مشكلة — فهو يستهلك البطارية.",
   "settings.diagnostics.export": "تصدير التشخيص",
@@ -115,7 +115,7 @@ export const ar: Messages = {
   "settings.diagnostics.exportDone": "تم حفظ التشخيص",
   "settings.diagnostics.exportError": "تعذّر حفظ التشخيص",
   "settings.diagnostics.copyError": "تعذّر نسخ التشخيص",
-  "settings.diagnostics.lastLaunchOk": "آخر تشغيل فُتح بشكل طبيعي",
+  "settings.diagnostics.lastLaunchOk": "فُتح التطبيق في آخر تشغيل بشكل طبيعي",
   "settings.diagnostics.lastLaunchBlank":
     "فشل آخر تشغيل في الفتح — توقّف عند {stage}",
 
