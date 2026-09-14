@@ -21,9 +21,10 @@ export function bundleFileName(date: Date): string {
 
 function renderLaunch(v: LaunchVerdict, i: number): string {
   const when = new Date(v.at).toISOString();
+  const reachedLabel = v.reached ?? "nothing";
   const head = v.ok
     ? `launch ${i + 1} — ${when} — reached mounted in ${v.durationMs}ms`
-    : `launch ${i + 1} — ${when} — BLANK LAUNCH: reached ${v.reached}, never reached ${v.stalledAt}`;
+    : `launch ${i + 1} — ${when} — BLANK LAUNCH: reached ${reachedLabel}, never reached ${v.stalledAt}`;
   const timeline = BOOT_MARKS.map((m) => {
     const at = v.marks[m];
     return at === undefined ? `  ${m} — MISSING` : `  ${m} +${at}ms`;
@@ -34,12 +35,19 @@ function renderLaunch(v: LaunchVerdict, i: number): string {
 export function buildBundle(input: BundleInput): string {
   const { app, launches, sessions, verbose } = input;
   const out: string[] = [];
+  const blankCount = launches.filter((v) => !v.ok).length;
 
   out.push("Riwaq diagnostics");
   out.push("=================");
   out.push(`version: ${app.version}`);
   out.push(`platform: ${app.platform}`);
   out.push(`detailed diagnostics: ${verbose ? "on" : "off"}`);
+  out.push(`launches: ${launches.length} recorded, ${blankCount} blank`);
+  if (blankCount > 0) {
+    out.push(
+      `*** ${blankCount} OF ${launches.length} LAUNCHES FAILED TO REACH THE SCREEN ***`,
+    );
+  }
   out.push(`user agent: ${app.ua}`);
   out.push("");
 
