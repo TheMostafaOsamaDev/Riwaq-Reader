@@ -12,9 +12,16 @@
 // previous record is rotated out and classified: the last mark present is
 // how far it got, and the first missing one is where it died.
 //
-// The key below is duplicated in index.html, which runs before any module
-// can load and therefore cannot import it. breadcrumbs.test.ts fails if the
-// two drift.
+// The rotation itself lives in index.html's inline script, not here. It has
+// to: a launch that stalls never reaches a module, so it can never move its
+// own record aside, and any rotation done from the bundle would run AFTER
+// index.html had already overwritten the record it was meant to save. The
+// first line of JS on the page moves the old record to BOOT_PREV_KEY and
+// only then writes the fresh one; everything here just reads the result.
+//
+// The keys below are duplicated in index.html, which runs before any module
+// can load and therefore cannot import them. breadcrumbs.test.ts fails if
+// they drift, and it executes that block rather than a copy of it.
 
 export const BOOT_KEY = "riwaq:boot:v1";
 export const BOOT_PREV_KEY = "riwaq:boot:prev:v1";
@@ -23,11 +30,12 @@ export const BOOT_PREV_KEY = "riwaq:boot:prev:v1";
 export const BOOT_MARKS = ["html", "module", "render", "mounted"] as const;
 export type BootMark = (typeof BOOT_MARKS)[number];
 
-/** Just enough of the Storage interface to be injectable in tests. */
+/** Just enough of the Storage interface to be injectable in tests. Nothing
+ *  here ever deletes a key — the rotation in index.html overwrites both, so
+ *  `removeItem` would be dead surface. */
 export interface MarkStore {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
-  removeItem?(key: string): void;
 }
 
 export interface BootRecord {
@@ -96,26 +104,6 @@ export function markBoot(
     store.setItem(BOOT_KEY, JSON.stringify(rec));
   } catch {
     // Storage full, disabled, or throwing — the launch continues regardless.
-  }
-}
-
-/**
- * Move the in-progress record aside so this launch starts clean, and hand
- * back what the previous launch managed to write.
- */
-export function rotateBootRecord(
-  store: MarkStore | null = defaultStore(),
-  _now: () => number = Date.now,
-): BootRecord | null {
-  if (!store) return null;
-  try {
-    const prev = read(store, BOOT_KEY);
-    if (prev) store.setItem(BOOT_PREV_KEY, JSON.stringify(prev));
-    if (store.removeItem) store.removeItem(BOOT_KEY);
-    else store.setItem(BOOT_KEY, "");
-    return prev;
-  } catch {
-    return null;
   }
 }
 

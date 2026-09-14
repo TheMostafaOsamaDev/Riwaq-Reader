@@ -22,6 +22,16 @@ const PATH_KEYS = /^(path|file|filePath|dest|src|dir)$/i;
 /** Keys whose values are URLs. */
 const URL_KEYS =
   /^(url|href|link|novelUrl|chapterUrl|source|coverUrl|viewMoreUrl|baseUrl|iconUrl)$/i;
+/**
+ * Keys whose values are diagnostic free text that can EMBED a path rather
+ * than being one. Error messages are the case that matters: the Rust layer
+ * builds them with `path.display()` — `format!("cannot open {}: {e}", ...)`
+ * appears four times in src-tauri/src/archive.rs — so an unhandled invoke()
+ * rejection carries the user's home directory and the book's real title in
+ * the middle of an otherwise ordinary sentence. Key-based redaction alone
+ * misses it, because the key is `message`, not `path`.
+ */
+const MESSAGE_KEYS = /^(message|stack|componentStack)$/i;
 
 /**
  * FNV-1a, 32-bit. Not a security hash and does not need to be — it needs to
@@ -53,6 +63,38 @@ export function redactUrl(u: string): string {
   }
 }
 
+/** Absolute POSIX paths, by the roots that only ever appear in one. The
+ *  segment class excludes `:` so the match stops at the `: {e}` that the
+ *  Rust error strings append, and allows spaces so "Application Support"
+ *  does not end the path halfway through. */
+const POSIX_ABS =
+  /\/(?:Users|home|var|private|data|storage|sdcard)(?:\/[^/\n:"'\\]*)+/g;
+/** The same for a Windows drive path. */
+const WINDOWS_ABS = /[A-Za-z]:\\(?:[^\\\n"']*\\)*[^\\\n"'\s:]*/g;
+
+/** Is this match part of a URL? Stack frames are `tauri://localhost/...` in
+ *  a packaged build and carry no user data, so cutting them to a basename
+ *  would destroy the line and column for nothing. */
+function insideUrl(src: string, index: number): boolean {
+  const before = src.slice(0, index);
+  return before.slice(before.search(/\S*$/)).includes("://");
+}
+
+/**
+ * Replace absolute filesystem paths embedded in free text with their
+ * basename, leaving URLs — and everything else in the sentence — alone.
+ */
+export function scrubPaths(s: string): string {
+  if (!s) return s;
+  const scrub = (match: string, offset: number, src: string) =>
+    insideUrl(src, offset)
+      ? match
+      : // A path that ends on a separator would otherwise have an empty
+        // basename, and redactPath falls back to the whole path for that.
+        redactPath(match.replace(/[/\\]+$/, ""));
+  return s.replace(POSIX_ABS, scrub).replace(WINDOWS_ABS, scrub);
+}
+
 /**
  * Walk a log payload and redact by key name.
  *
@@ -81,6 +123,7 @@ export function redactValue(v: unknown, seen = new WeakSet<object>()): unknown {
         if (TEXT_KEYS.test(k)) out[k] = hashTitle(val);
         else if (PATH_KEYS.test(k)) out[k] = redactPath(val);
         else if (URL_KEYS.test(k)) out[k] = redactUrl(val);
+        else if (MESSAGE_KEYS.test(k)) out[k] = scrubPaths(val);
         else out[k] = val;
       } else {
         out[k] = redactValue(val, seen);

@@ -65,18 +65,27 @@ describe("diagnostics store", () => {
   });
 
   it("retires the sessions past the retention cap", async () => {
-    for (const n of [1, 2, 3, 4]) {
+    // Numbered across the 9/10 boundary on purpose: a string sort puts
+    // session-10 below session-9, which would retire the NEWEST run.
+    for (const n of [8, 9, 10, 11]) {
       files.set(`diagnostics/session-${n}.jsonl`, "");
     }
     const { startSession } = await import("./store");
     await startSession();
+    const numbers = [...files.keys()]
+      .map((k) => Number(/session-(\d+)\.jsonl$/.exec(k)?.[1]))
+      .sort((a, b) => a - b);
     // Three past runs survive alongside the one just opened.
-    expect([...files.keys()].sort()).toEqual([
-      "diagnostics/session-2.jsonl",
-      "diagnostics/session-3.jsonl",
-      "diagnostics/session-4.jsonl",
-      "diagnostics/session-5.jsonl",
-    ]);
+    expect(numbers).toEqual([9, 10, 11, 12]);
+  });
+
+  it("opens one file per launch however often it is called", async () => {
+    // StrictMode mounts App's effect twice in development.
+    const { startSession } = await import("./store");
+    await startSession();
+    await startSession();
+    expect([...files.keys()]).toEqual(["diagnostics/session-1.jsonl"]);
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it("lists retained sessions oldest first, one entry per line", async () => {
