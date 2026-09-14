@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { record } from "../lib/diagnostics/recorder";
 import type { Theme } from "../styles/tokens";
 import { FONT_STACKS, Z } from "../styles/tokens";
 
@@ -37,8 +38,14 @@ export class ReaderErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     this.setState({ stack: info.componentStack ?? null });
-    // Still log it — the webview console is where a `tauri dev` session can
-    // read the full trace.
+    // Into the diagnostics log as well as the console: the console is only
+    // readable during a `tauri dev` session, and this boundary fires on the
+    // user's device where nobody is watching one.
+    record("renderError", {
+      message: error.message,
+      stack: error.stack?.slice(0, 2000) ?? null,
+      componentStack: info.componentStack?.slice(0, 2000) ?? null,
+    });
     console.error("[reader] render error", error, info.componentStack);
   }
 

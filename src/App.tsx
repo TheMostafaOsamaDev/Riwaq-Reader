@@ -10,7 +10,17 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
-import { markBoot, rotateBootRecord } from "./lib/diagnostics/breadcrumbs";
+import {
+  classifyLaunch,
+  markBoot,
+  rotateBootRecord,
+} from "./lib/diagnostics/breadcrumbs";
+import { record } from "./lib/diagnostics/recorder";
+import {
+  flushNow,
+  installErrorCapture,
+  startSession,
+} from "./lib/diagnostics/store";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
 import { useFileDrop } from "./hooks/useFileDrop";
@@ -155,14 +165,36 @@ function App() {
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
 
-  // Breadcrumb 4 of 4, and the rotation point.
+  // Breadcrumb 4 of 4, the rotation point, and the start of the session log.
   //
   // This runs after the first commit, so reaching it means a frame really
   // did reach the screen. Rotating here rather than at module scope means
   // the record moved aside is genuinely the previous launch's, complete.
+  //
+  // Everything except the mark is deliberately AFTER it: markBoot is
+  // synchronous and IPC-free, while startSession crosses the bridge. If the
+  // bridge is dead the mark is still on record, which is the whole design.
   useEffect(() => {
     markBoot("mounted");
-    rotateBootRecord();
+    const prev = rotateBootRecord();
+    const uninstall = installErrorCapture();
+    void startSession().then(() => {
+      const verdict = classifyLaunch(prev);
+      if (verdict && !verdict.ok) {
+        record("previousLaunchBlank", {
+          reached: verdict.reached,
+          stalledAt: verdict.stalledAt,
+          durationMs: verdict.durationMs,
+        });
+      }
+      return flushNow();
+    });
+    const timer = window.setInterval(() => void flushNow(), 2000);
+    return () => {
+      window.clearInterval(timer);
+      uninstall();
+      void flushNow();
+    };
   }, []);
 
   const update = useUpdateCheck(t, setTweak);
