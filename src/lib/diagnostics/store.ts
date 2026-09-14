@@ -44,6 +44,11 @@ async function listNames(): Promise<string[]> {
 /** Open this session's file and retire anything past the retention cap. */
 export async function startSession(): Promise<void> {
   if (!hasTauri()) return;
+  // One file per launch, however many times this is called. StrictMode
+  // mounts App's effect twice in development, and a second file per launch
+  // halves the window RETAIN exists to provide: three past launches becomes
+  // one, and the launch someone is trying to read about ages out early.
+  if (current) return;
   try {
     await mkdir(DIAG_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
     const names = await listNames();

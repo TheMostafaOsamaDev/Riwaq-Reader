@@ -10,11 +10,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
-import {
-  classifyLaunch,
-  markBoot,
-  rotateBootRecord,
-} from "./lib/diagnostics/breadcrumbs";
+import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
 import { record } from "./lib/diagnostics/recorder";
 import {
   flushNow,
@@ -165,26 +161,29 @@ function App() {
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
 
-  // Breadcrumb 4 of 4, the rotation point, and the start of the session log.
+  // Breadcrumb 4 of 4, and the start of the session log.
   //
   // This runs after the first commit, so reaching it means a frame really
-  // did reach the screen. Rotating here rather than at module scope means
-  // the record moved aside is genuinely the previous launch's, complete.
+  // did reach the screen.
+  //
+  // The previous launch's record was rotated aside by index.html before this
+  // launch wrote its first mark — it cannot be rotated from here, because a
+  // launch that stalls never reaches this code to rotate anything. So this
+  // only reads the verdict; see index.html and breadcrumbs.ts.
   //
   // Everything except the mark is deliberately AFTER it: markBoot is
   // synchronous and IPC-free, while startSession crosses the bridge. If the
   // bridge is dead the mark is still on record, which is the whole design.
   useEffect(() => {
     markBoot("mounted");
-    const prev = rotateBootRecord();
+    const previous = readPreviousLaunch();
     const uninstall = installErrorCapture();
     void startSession().then(() => {
-      const verdict = classifyLaunch(prev);
-      if (verdict && !verdict.ok) {
+      if (previous && !previous.ok) {
         record("previousLaunchBlank", {
-          reached: verdict.reached,
-          stalledAt: verdict.stalledAt,
-          durationMs: verdict.durationMs,
+          reached: previous.reached,
+          stalledAt: previous.stalledAt,
+          durationMs: previous.durationMs,
         });
       }
       return flushNow();

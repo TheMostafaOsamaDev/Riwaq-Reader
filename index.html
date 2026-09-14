@@ -90,12 +90,22 @@
         root.lang = locale;
         root.dir = locale === "ar" ? "rtl" : "ltr";
 
-        // Boot breadcrumb 1 of 4 — see src/lib/diagnostics/breadcrumbs.ts.
-        // Written here because this is the earliest code that runs, and
-        // synchronously to localStorage because the bug being diagnosed is a
-        // stall on the Tauri IPC bridge. The key is duplicated from
-        // BOOT_KEY; breadcrumbs.test.ts fails if the two drift.
+        // Boot breadcrumb 1 of 4, and the rotation point — see
+        // src/lib/diagnostics/breadcrumbs.ts. Written here because this is
+        // the earliest code that runs, and synchronously to localStorage
+        // because the bug being diagnosed is a stall on the Tauri IPC bridge.
+        // The keys are duplicated from BOOT_KEY / BOOT_PREV_KEY;
+        // breadcrumbs.test.ts fails if they drift, and it runs THIS block to
+        // check the rotation rather than a copy of it.
+        //
+        // The rotation has to happen here and not in the bundle. A launch
+        // that stalls never reaches a module, so it can never move its own
+        // record aside; if this script simply overwrote the record, the one
+        // launch worth reading — the one that died — would be destroyed by
+        // the first line of the launch that came to report it.
         try {
+          var bootPrev = localStorage.getItem("riwaq:boot:v1");
+          if (bootPrev) localStorage.setItem("riwaq:boot:prev:v1", bootPrev);
           var bootNow = Date.now();
           localStorage.setItem(
             "riwaq:boot:v1",
