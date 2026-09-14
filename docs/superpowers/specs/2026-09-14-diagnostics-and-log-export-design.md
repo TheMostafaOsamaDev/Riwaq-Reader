@@ -167,6 +167,12 @@ New, under `src/lib/diagnostics/`:
 | `sessions.ts` | session file naming, rotation, retention |
 | `redact.ts` | title hashing, path and URL narrowing |
 | `bundle.ts` | assemble the export text from header + breadcrumbs + sessions |
+| `store.ts` | the disk side — session files over Tauri fs, plus the error hooks |
+
+`store.ts` is the only module here that touches IPC, and it is deliberately the
+only one: isolating it is what lets every other module be tested without a
+bridge, and what makes "the boot path must not await IPC" checkable by
+inspection rather than by discipline.
 
 Each is a pure module with one job and no React. `bundle.ts` takes data and
 returns a string; it does not know about dialogs. `breadcrumbs.ts` takes a
