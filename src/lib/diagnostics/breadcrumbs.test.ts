@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BOOT_KEY,
@@ -67,6 +68,23 @@ describe("classifyLaunch", () => {
   it("returns null for no previous launch", () => {
     expect(classifyLaunch(null)).toBe(null);
   });
+
+  it("reports a launch that recorded nothing at all", () => {
+    const v = classifyLaunch(rec({}))!;
+    expect(v.ok).toBe(false);
+    expect(v.reached).toBe(null);
+    expect(v.stalledAt).toBe("html");
+    expect(v.durationMs).toBe(null);
+  });
+
+  // A mark past a gap is meaningless — the stages are strictly ordered, so
+  // `render` without `module` means the record is damaged, not that the
+  // launch skipped a stage. The first gap is still the answer.
+  it("ignores marks recorded past a gap", () => {
+    const v = classifyLaunch(rec({ html: 0, render: 90 }))!;
+    expect(v.reached).toBe("html");
+    expect(v.stalledAt).toBe("module");
+  });
 });
 
 describe("markBoot", () => {
@@ -120,5 +138,23 @@ describe("readPreviousLaunch", () => {
     const v = readPreviousLaunch(s);
     expect(v?.ok).toBe(false);
     expect(v?.stalledAt).toBe("mounted");
+  });
+});
+
+describe("index.html mirror", () => {
+  // index.html runs before any module can load, so it writes the boot mark
+  // with a hardcoded key. If that key and BOOT_KEY drift, the first mark is
+  // silently orphaned and every launch looks like it died before `html`.
+  it("uses the same storage key as breadcrumbs.ts", () => {
+    const html = readFileSync("index.html", "utf8");
+    expect(html).toContain(BOOT_KEY);
+  });
+
+  it("writes the html mark before the bundle loads", () => {
+    const html = readFileSync("index.html", "utf8");
+    const markAt = html.indexOf(BOOT_KEY);
+    const bundleAt = html.indexOf("/src/main.tsx");
+    expect(markAt).toBeGreaterThan(-1);
+    expect(markAt).toBeLessThan(bundleAt);
   });
 });

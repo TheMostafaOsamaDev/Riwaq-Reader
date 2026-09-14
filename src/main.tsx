@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles/global.css";
+import { markBoot } from "./lib/diagnostics/breadcrumbs";
 import { migrateLegacyRoot } from "./store/legacyRoot";
 
 // The app-data root is migrated BEFORE the tree mounts, not lazily from inside
@@ -34,6 +35,10 @@ import { migrateLegacyRoot } from "./store/legacyRoot";
 // promise before its first read — library.ts (via ensureRoot, 9 call sites),
 // downloadQueue.ts, sourceLibrary.ts, shelves.ts. The gate was redundant with
 // the thing that actually enforces correctness, and cost first paint.
+// Breadcrumb 2 of 4: the bundle parsed and is executing. Synchronous and
+// localStorage-backed on purpose — see lib/diagnostics/breadcrumbs.ts.
+markBoot("module");
+
 void migrateLegacyRoot();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -41,3 +46,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <App />
   </React.StrictMode>,
 );
+
+// Breadcrumb 3 of 4: React has been handed the tree. If the next launch
+// finds this mark present and `mounted` absent, the tree was handed over
+// and no frame ever reached the screen — which is the blank launch.
+markBoot("render");
