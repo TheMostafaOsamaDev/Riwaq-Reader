@@ -11,7 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
-import { record } from "./lib/diagnostics/recorder";
+import { record, setVerbose } from "./lib/diagnostics/recorder";
 import {
   flushNow,
   installErrorCapture,
@@ -160,6 +160,21 @@ function App() {
   // mounted.
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
+
+  // The recorder's tier, restored from the persisted tweak.
+  //
+  // Deliberately declared ABOVE the boot effect, because effects in one
+  // component run in declaration order and this has to land first:
+  // DesktopReader's session-start effect reads the tier synchronously on
+  // mount and is keyed to the book, so a tier applied late doesn't just
+  // arrive late — the first chapter of the launch records no geometry at
+  // all, with the switch showing On. Kept as its own effect rather than a
+  // line inside the toggle's handler so the paths that change the tweak
+  // WITHOUT touching the switch — Import settings, Reset to defaults —
+  // apply it too.
+  useEffect(() => {
+    setVerbose(t.verboseDiagnostics);
+  }, [t.verboseDiagnostics]);
 
   // Breadcrumb 4 of 4, and the start of the session log.
   //
