@@ -1,4 +1,4 @@
-// Dev-only structured logging for the reader, written to a file on disk so a
+// Structured logging for the reader, written to a file on disk so a
 // reproduction can be handed over whole instead of described.
 //
 // Why this exists: the reader has a bug where a chapter turn lands on a page
@@ -21,8 +21,17 @@
 // The file is truncated when the session starts, so it always describes the
 // run in front of you. In a plain browser (no Tauri) the events stay in memory
 // and are readable via `window.__readerLog()`.
+//
+// Since the diagnostics feature landed, every call here ALSO goes to
+// lib/diagnostics/recorder.ts on the verbose tier, which is what carries it
+// into release builds and into the export bundle. The `import.meta.env.DEV`
+// gates that used to silence this module entirely are now tier checks; the
+// $APPDATA/debug file below stays dev-only, because the two things that read
+// it — ReaderLogMarker's ⌘⇧L banner and scripts/read-reader-log.py — only
+// ever run against a `tauri dev` build.
 
 import { BaseDirectory, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
+import { isVerbose, record } from "./diagnostics/recorder";
 
 const LOG_DIR = "debug";
 const LOG_PATH = "debug/reader-debug.log";
@@ -113,7 +122,13 @@ function scheduleFlush(): void {
 
 /** Record one event. Cheap enough to call from a scroll-adjacent path. */
 export function log(kind: string, data?: unknown): void {
-  if (!import.meta.env.DEV) return;
+  // The real destination: the recorder keeps this in release builds too,
+  // where the old DEV gate threw it away.
+  record(kind, data, "verbose");
+  // The dev file follows the same tier, so that logSessionStart's truncate
+  // always precedes the first event written to it — a file that opened with
+  // events from a previous mount is the bug this module's header warns about.
+  if (!import.meta.env.DEV || !isVerbose()) return;
   if (capped) return;
   if (started === 0) started = Date.now();
   const ev: Event = { t: Date.now() - started, kind, data: data ?? null };
@@ -224,7 +239,9 @@ export function snapshotReader(
   tag: string,
   extra?: Record<string, unknown>,
 ): void {
-  if (!import.meta.env.DEV) return;
+  // The ancestor walk is a getComputedStyle per level, which is why it sits
+  // on the verbose tier rather than running for every user forever.
+  if (!isVerbose()) return;
   if (!scroller) {
     log("geometry", { tag, error: "no scroller", ...extra });
     return;
@@ -297,7 +314,7 @@ export function snapshotReader(
 
 /** Session header, so the log is self-describing when read cold. */
 export function logSessionStart(extra?: Record<string, unknown>): void {
-  if (!import.meta.env.DEV) return;
+  if (!isVerbose()) return;
   // Drop anything buffered from a previous mount and empty the file BEFORE
   // this session's first event is queued, so the file holds exactly one run
   // and every `t` shares one origin.
