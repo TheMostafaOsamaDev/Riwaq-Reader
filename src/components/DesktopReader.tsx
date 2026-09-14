@@ -600,10 +600,18 @@ export function DesktopReader({
   // which layout, and how big the window is. Runs once per mount, and the log
   // file is truncated at that point, so the file always describes this run.
   useEffect(() => {
-    // The verbose tier, not `import.meta.env.DEV`: Vite replaces DEV with
-    // false in a release build, so a DEV guard here would silently produce
-    // nothing on the device the Settings toggle is meant to instrument.
-    if (!isVerbose()) return;
+    // Either gate opens this one, and that is not sloppiness — it is the
+    // write/truncate coupling.
+    //
+    // `isVerbose()` because Vite replaces DEV with false in a release build,
+    // so a DEV-only guard here would silently produce nothing on the device
+    // the Settings toggle is meant to instrument. And `import.meta.env.DEV`
+    // because logSessionStart is the ONLY caller of devLog's
+    // truncateForSession, while log() writes the $APPDATA/debug file on DEV
+    // alone — so gating this more narrowly than that write leaves the file
+    // appended to across runs and never emptied, with every `t` restarting
+    // at 0. See devLog.ts and lib/devLogGates.test.ts, which pins it.
+    if (!import.meta.env.DEV && !isVerbose()) return;
     logSessionStart({
       book: {
         id: book.id,

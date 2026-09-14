@@ -27,6 +27,18 @@ import {
 } from "./sessions";
 
 let current: string | null = null;
+/**
+ * Set synchronously by the first caller, before anything is awaited.
+ *
+ * `current` cannot do this job: it is assigned only after `mkdir` and the
+ * directory listing have both resolved, and StrictMode's double invoke is
+ * synchronous within one passive-effect flush — so both calls sail past a
+ * `current` check and run the whole body twice. With real IPC the second run
+ * can compute the NEXT session number (the extra file this exists to
+ * prevent), and its `append: false` write can truncate a file the first run
+ * has already flushed into.
+ */
+let starting: Promise<void> | null = null;
 
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -41,29 +53,40 @@ async function listNames(): Promise<string[]> {
   }
 }
 
-/** Open this session's file and retire anything past the retention cap. */
-export async function startSession(): Promise<void> {
-  if (!hasTauri()) return;
-  // One file per launch, however many times this is called. StrictMode
-  // mounts App's effect twice in development, and a second file per launch
-  // halves the window RETAIN exists to provide: three past launches becomes
-  // one, and the launch someone is trying to read about ages out early.
-  if (current) return;
-  try {
-    await mkdir(DIAG_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
-    const names = await listNames();
-    for (const old of sessionsToDelete(names)) {
-      try {
-        await remove(`${DIAG_DIR}/${old}`, { baseDir: BaseDirectory.AppData });
-      } catch {
-        // A file we cannot delete is not worth failing the session over.
+/**
+ * Open this session's file and retire anything past the retention cap.
+ *
+ * One file per launch, however many times this is called: a second file per
+ * launch halves the window RETAIN exists to provide, turning three past
+ * launches into one, so the launch someone is trying to read about ages out
+ * early.
+ */
+export function startSession(): Promise<void> {
+  if (!hasTauri()) return Promise.resolve();
+  if (starting) return starting;
+  starting = (async () => {
+    try {
+      await mkdir(DIAG_DIR, {
+        baseDir: BaseDirectory.AppData,
+        recursive: true,
+      });
+      const names = await listNames();
+      for (const old of sessionsToDelete(names)) {
+        try {
+          await remove(`${DIAG_DIR}/${old}`, {
+            baseDir: BaseDirectory.AppData,
+          });
+        } catch {
+          // A file we cannot delete is not worth failing the session over.
+        }
       }
+      current = `${DIAG_DIR}/${sessionFileName(nextSessionNumber(names))}`;
+      await writeTextFile(current, "", { baseDir: BaseDirectory.AppData });
+    } catch {
+      current = null;
     }
-    current = `${DIAG_DIR}/${sessionFileName(nextSessionNumber(names))}`;
-    await writeTextFile(current, "", { baseDir: BaseDirectory.AppData });
-  } catch {
-    current = null;
-  }
+  })();
+  return starting;
 }
 
 /** Drain the buffer to disk. Safe to call when there is nothing to write. */
