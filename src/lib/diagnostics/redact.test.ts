@@ -71,9 +71,24 @@ describe("redactValue", () => {
     expect(redactValue(null)).toBe(null);
   });
 
+  it("redacts an array of objects", () => {
+    const out = redactValue([{ title: "x" }]) as Array<Record<string, unknown>>;
+    expect(out[0].title).toMatch(/^t:/);
+  });
+
   it("does not recurse forever on a cycle", () => {
     const a: Record<string, unknown> = { name: "x" };
     a.self = a;
     expect(() => redactValue(a)).not.toThrow();
+  });
+
+  it("redacts a DAG (same object referenced by two siblings) fully both times, not as a cycle", () => {
+    const shared = { a: 1 };
+    const out = redactValue({ x: shared, y: shared }) as Record<
+      string,
+      unknown
+    >;
+    expect(out.x).toEqual({ a: 1 });
+    expect(out.y).toEqual({ a: 1 });
   });
 });

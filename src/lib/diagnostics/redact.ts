@@ -10,12 +10,18 @@
 // events is enough to follow one book through a session, which is all a
 // diagnosis needs.
 
-/** Keys whose values are free text naming something the user chose. */
-const TITLE_KEYS = /^(title|name|chapterTitle|bookTitle|author|novelTitle)$/i;
+/**
+ * Keys whose values are any user-authored or user-identifying free text:
+ * titles (including original-language/alternate titles), descriptions, and
+ * the user's own highlight notes and quoted passages.
+ */
+const TEXT_KEYS =
+  /^(title|name|chapterTitle|bookTitle|author|novelTitle|originalTitle|subtitle|description|note|text)$/i;
 /** Keys whose values are filesystem paths. */
 const PATH_KEYS = /^(path|file|filePath|dest|src|dir)$/i;
 /** Keys whose values are URLs. */
-const URL_KEYS = /^(url|href|link|novelUrl|chapterUrl|source)$/i;
+const URL_KEYS =
+  /^(url|href|link|novelUrl|chapterUrl|source|coverUrl|viewMoreUrl|baseUrl|iconUrl)$/i;
 
 /**
  * FNV-1a, 32-bit. Not a security hash and does not need to be — it needs to
@@ -52,24 +58,36 @@ export function redactUrl(u: string): string {
  *
  * By key rather than by value sniffing: a value-based guess would both miss
  * titles that look ordinary and mangle data that merely resembles a path.
+ *
+ * A bare top-level string has no key to consult, so it passes through
+ * unredacted — callers must always log `{ title: x }`, never `x` directly.
+ *
+ * `seen` tracks only the current ancestor chain (entries are removed once a
+ * subtree finishes), so a DAG — the same object reached twice via sibling
+ * branches — is redacted normally both times; only a genuine cycle back to
+ * an object still being processed yields `"<cycle>"`.
  */
 export function redactValue(v: unknown, seen = new WeakSet<object>()): unknown {
   if (v === null || typeof v !== "object") return v;
   if (seen.has(v as object)) return "<cycle>";
   seen.add(v as object);
 
-  if (Array.isArray(v)) return v.map((x) => redactValue(x, seen));
+  try {
+    if (Array.isArray(v)) return v.map((x) => redactValue(x, seen));
 
-  const out: Record<string, unknown> = {};
-  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (typeof val === "string") {
-      if (TITLE_KEYS.test(k)) out[k] = hashTitle(val);
-      else if (PATH_KEYS.test(k)) out[k] = redactPath(val);
-      else if (URL_KEYS.test(k)) out[k] = redactUrl(val);
-      else out[k] = val;
-    } else {
-      out[k] = redactValue(val, seen);
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof val === "string") {
+        if (TEXT_KEYS.test(k)) out[k] = hashTitle(val);
+        else if (PATH_KEYS.test(k)) out[k] = redactPath(val);
+        else if (URL_KEYS.test(k)) out[k] = redactUrl(val);
+        else out[k] = val;
+      } else {
+        out[k] = redactValue(val, seen);
+      }
     }
+    return out;
+  } finally {
+    seen.delete(v as object);
   }
-  return out;
 }
