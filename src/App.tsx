@@ -10,6 +10,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
+import { markBoot, rotateBootRecord } from "./lib/diagnostics/breadcrumbs";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
 import { useFileDrop } from "./hooks/useFileDrop";
@@ -153,6 +154,17 @@ function App() {
   // mounted.
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
+
+  // Breadcrumb 4 of 4, and the rotation point.
+  //
+  // This runs after the first commit, so reaching it means a frame really
+  // did reach the screen. Rotating here rather than at module scope means
+  // the record moved aside is genuinely the previous launch's, complete.
+  useEffect(() => {
+    markBoot("mounted");
+    rotateBootRecord();
+  }, []);
+
   const update = useUpdateCheck(t, setTweak);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
