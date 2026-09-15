@@ -1,0 +1,189 @@
+// @vitest-environment happy-dom
+//
+// The whole module is mocked at the fs boundary, because store.ts is the one
+// place in this feature allowed to cross the Tauri bridge — everything it
+// does has to be provable without one.
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const files = new Map<string, string>();
+const mkdir = vi.fn(async () => {});
+const writeTextFile = vi.fn(
+  async (p: string, c: string, o?: { append?: boolean }) => {
+    files.set(p, o?.append ? (files.get(p) ?? "") + c : c);
+  },
+);
+const readTextFile = vi.fn(async (p: string) => files.get(p) ?? "");
+const readDir = vi.fn(async () =>
+  [...files.keys()].map((n) => ({ name: n.split("/").pop() ?? "" })),
+);
+const remove = vi.fn(async (p: string) => {
+  files.delete(p);
+});
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  BaseDirectory: { AppData: 1 },
+  mkdir,
+  writeTextFile,
+  readTextFile,
+  readDir,
+  remove,
+}));
+
+describe("diagnostics store", () => {
+  beforeEach(() => {
+    files.clear();
+    vi.clearAllMocks();
+    vi.resetModules();
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+
+  it("writes recorded events to the session file on flush", async () => {
+    const { record } = await import("./recorder");
+    const { startSession, flushSession } = await import("./store");
+    await startSession();
+    record("nav", { to: "library" });
+    await flushSession();
+    const written = [...files.values()].join("");
+    expect(written).toContain('"kind":"nav"');
+  });
+
+  it("is a no-op outside Tauri rather than throwing", async () => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    const { startSession, flushSession } = await import("./store");
+    await expect(startSession()).resolves.toBeUndefined();
+    await expect(flushSession()).resolves.toBeUndefined();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it("survives an unwritable log rather than taking the app down", async () => {
+    mkdir.mockRejectedValueOnce(new Error("read-only volume"));
+    const { record } = await import("./recorder");
+    const { startSession, flushSession } = await import("./store");
+    await expect(startSession()).resolves.toBeUndefined();
+    record("nav", { to: "library" });
+    await expect(flushSession()).resolves.toBeUndefined();
+  });
+
+  it("retires the sessions past the retention cap", async () => {
+    // Numbered across the 9/10 boundary on purpose: a string sort puts
+    // session-10 below session-9, which would retire the NEWEST run.
+    for (const n of [8, 9, 10, 11]) {
+      files.set(`diagnostics/session-${n}.jsonl`, "");
+    }
+    const { startSession } = await import("./store");
+    await startSession();
+    const numbers = [...files.keys()]
+      .map((k) => Number(/session-(\d+)\.jsonl$/.exec(k)?.[1]))
+      .sort((a, b) => a - b);
+    // Three past runs survive alongside the one just opened.
+    expect(numbers).toEqual([9, 10, 11, 12]);
+  });
+
+  it("opens one file per launch when both calls start in the same tick", async () => {
+    // StrictMode's double invoke is SYNCHRONOUS within one passive-effect
+    // flush: the second call starts before the first has awaited its mkdir.
+    // Awaiting between the two calls (as this test first did) cannot catch
+    // that, and a guard that is only set after the first await passes twice.
+    const { startSession } = await import("./store");
+    await Promise.all([startSession(), startSession()]);
+    // The call counts are the assertions with teeth. Under these mocks both
+    // runs resolve readDir before either write, so they agree on session-1
+    // and only one file appears — but with real IPC the second run can
+    // compute session-2 (the extra file the latch exists to prevent) and its
+    // `append: false` write can truncate a file the first has flushed into.
+    expect(mkdir).toHaveBeenCalledTimes(1);
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
+    expect([...files.keys()]).toEqual(["diagnostics/session-1.jsonl"]);
+    expect(remove).not.toHaveBeenCalled();
+
+    // ...and a later awaited call is still a no-op.
+    await startSession();
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
+  });
+
+  // The ring in recorder.ts bounds memory, not the file — every flush
+  // appended, so nothing stopped one long session with detailed diagnostics
+  // on (a ~4-5 KB geometry snapshot several times per chapter turn) from
+  // growing without limit. 4 MB of fat events is the cheapest way to reach
+  // the ceiling without writing 4 MB of assertions.
+  it("stops appending past the byte ceiling and says so in the file", async () => {
+    const { record } = await import("./recorder");
+    const { startSession, flushSession } = await import("./store");
+    await startSession();
+    const fat = "x".repeat(64 * 1024);
+    for (let i = 0; i < 80; i++) record("geometry", { blob: fat });
+    await flushSession();
+
+    const text = files.get("diagnostics/session-1.jsonl") ?? "";
+    expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(
+      4 * 1024 * 1024,
+    );
+    expect(text).toContain('"kind":"log:capped"');
+    // The events that DID fit are still there — the cap truncates the tail,
+    // it does not discard the session.
+    expect(text).toContain('"kind":"geometry"');
+
+    // ...and a later flush adds nothing more, rather than resuming.
+    const before = text.length;
+    record("nav", { to: "library" });
+    await flushSession();
+    expect((files.get("diagnostics/session-1.jsonl") ?? "").length).toBe(
+      before,
+    );
+  });
+
+  it("writes the whole batch when it fits under the ceiling", async () => {
+    const { record } = await import("./recorder");
+    const { startSession, flushSession } = await import("./store");
+    await startSession();
+    for (let i = 0; i < 20; i++) record("nav", { to: `page-${i}` });
+    await flushSession();
+    const text = files.get("diagnostics/session-1.jsonl") ?? "";
+    expect(text.split("\n").filter(Boolean)).toHaveLength(20);
+    expect(text).not.toContain("log:capped");
+  });
+
+  it("lists retained sessions oldest first, one entry per line", async () => {
+    files.set("diagnostics/session-2.jsonl", '{"kind":"b"}\n');
+    files.set("diagnostics/session-10.jsonl", '{"kind":"c"}\n{"kind":"d"}\n');
+    const { listSessions } = await import("./store");
+    expect(await listSessions()).toEqual([
+      { name: "session-2.jsonl", lines: ['{"kind":"b"}'] },
+      { name: "session-10.jsonl", lines: ['{"kind":"c"}', '{"kind":"d"}'] },
+    ]);
+  });
+
+  it("captures an unhandled error into the buffer", async () => {
+    const { installErrorCapture } = await import("./store");
+    const { drain } = await import("./recorder");
+    const uninstall = installErrorCapture();
+    window.dispatchEvent(
+      new ErrorEvent("error", { message: "boom", filename: "a.js", lineno: 3 }),
+    );
+    const kinds = drain().map((e) => e.kind);
+    expect(kinds).toContain("error");
+    uninstall();
+  });
+
+  it("captures an unhandled rejection into the buffer", async () => {
+    const { installErrorCapture } = await import("./store");
+    const { drain } = await import("./recorder");
+    const uninstall = installErrorCapture();
+    // happy-dom has no PromiseRejectionEvent constructor, so the event is
+    // assembled by hand — the listener only ever reads `reason`.
+    const ev = new Event("unhandledrejection") as Event & { reason?: unknown };
+    ev.reason = new Error("nope");
+    window.dispatchEvent(ev);
+    const e = drain().find((x) => x.kind === "unhandledRejection");
+    expect((e?.data as Record<string, unknown>)?.message).toBe("nope");
+    uninstall();
+  });
+
+  it("stops capturing after uninstall", async () => {
+    const { installErrorCapture } = await import("./store");
+    const { drain } = await import("./recorder");
+    installErrorCapture()();
+    window.dispatchEvent(new ErrorEvent("error", { message: "boom" }));
+    expect(drain().length).toBe(0);
+  });
+});

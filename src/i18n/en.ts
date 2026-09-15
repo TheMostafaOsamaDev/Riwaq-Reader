@@ -131,6 +131,25 @@ export const en = {
   "settings.importDone": "Settings imported",
   "settings.importError": "Couldn't read that settings file",
 
+  // diagnostics (inside data)
+  "settings.diagnostics": "Diagnostics",
+  "settings.diagnostics.verbose": "Detailed diagnostics",
+  // Deliberately hedged. The extra tier is currently only wired into the
+  // wide-window reader, so on a phone this switch adds no events and costs
+  // no battery — an unconditional "records reader layout, it costs battery"
+  // is false on the one platform the whole feature exists to diagnose.
+  "settings.diagnostics.verbose.hint":
+    "Records extra detail where available, including reader layout, and can cost battery. Turn it on, reproduce the problem, then turn it off.",
+  "settings.diagnostics.export": "Export diagnostics",
+  "settings.diagnostics.copy": "Copy diagnostics",
+  "settings.diagnostics.copied": "Diagnostics copied",
+  "settings.diagnostics.exportDone": "Diagnostics saved",
+  "settings.diagnostics.exportError": "Couldn't save diagnostics",
+  "settings.diagnostics.copyError": "Couldn't copy diagnostics",
+  "settings.diagnostics.lastLaunchOk": "Last launch opened normally",
+  "settings.diagnostics.lastLaunchBlank":
+    "Last launch failed to open — stopped at {stage}",
+
   // about
   "settings.about.tagline": "A calm, offline-first reader.",
   "settings.about.version": "Version {n}",

@@ -47,6 +47,7 @@ import {
   logSessionStart,
   snapshotReader,
 } from "../lib/devLog";
+import { isVerbose } from "../lib/diagnostics/recorder";
 import { finishStuckAnimations } from "../lib/finishStuckAnimations";
 
 /** See the probe's render site below. Read once, so a reload is the switch. */
@@ -599,7 +600,18 @@ export function DesktopReader({
   // which layout, and how big the window is. Runs once per mount, and the log
   // file is truncated at that point, so the file always describes this run.
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    // Either gate opens this one, and that is not sloppiness — it is the
+    // write/truncate coupling.
+    //
+    // `isVerbose()` because Vite replaces DEV with false in a release build,
+    // so a DEV-only guard here would silently produce nothing on the device
+    // the Settings toggle is meant to instrument. And `import.meta.env.DEV`
+    // because logSessionStart is the ONLY caller of devLog's
+    // truncateForSession, while log() writes the $APPDATA/debug file on DEV
+    // alone — so gating this more narrowly than that write leaves the file
+    // appended to across runs and never emptied, with every `t` restarting
+    // at 0. See devLog.ts and lib/devLogGates.test.ts, which pins it.
+    if (!import.meta.env.DEV && !isVerbose()) return;
     logSessionStart({
       book: {
         id: book.id,
@@ -627,7 +639,7 @@ export function DesktopReader({
   // The docked Contents panel reflows the reading column, and both blank-page
   // reports so far had it open — so its state belongs in the log.
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!isVerbose()) return;
     logEvent("panel", { activePanel, tocDocked, focusMode: t.focusMode });
     if (mode === "scroll") {
       // Sample after the reflow has had a frame to happen.
@@ -664,7 +676,7 @@ export function DesktopReader({
   // these say whether what landed stayed correct once layout, streamed content
   // and animations had all settled.
   useEffect(() => {
-    if (!import.meta.env.DEV || mode !== "scroll") return;
+    if (!isVerbose() || mode !== "scroll") return;
     const el = () => scrollRef.current;
     snapshotReader(el(), "turn+0ms", { chapter: currentChapter });
     const timers = [120, 400, 1200, 2500].map((ms) =>

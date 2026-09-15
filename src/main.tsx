@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./styles/global.css";
+import { markBoot } from "./lib/diagnostics/breadcrumbs";
 import { migrateLegacyRoot } from "./store/legacyRoot";
 
 // The app-data root is migrated BEFORE the tree mounts, not lazily from inside
@@ -35,7 +36,48 @@ import { migrateLegacyRoot } from "./store/legacyRoot";
 // promise before its first read — library.ts (via ensureRoot, 9 call sites),
 // downloadQueue.ts, sourceLibrary.ts, shelves.ts. The gate was redundant with
 // the thing that actually enforces correctness, and cost first paint.
-void migrateLegacyRoot();
+
+// Breadcrumb 2 of 4: the bundle parsed and is executing. Synchronous and
+// localStorage-backed on purpose — see lib/diagnostics/breadcrumbs.ts.
+markBoot("module");
+
+// Started AFTER the page-load event, not during module evaluation, because
+// starting it here used to deadlock the app on Android — the blank launch.
+//
+// migrateLegacyRoot()'s first act is an fs-plugin call. The FIRST fs call in a
+// process makes Tauri resolve the plugin's scope ("$APPDATA/**"), and resolving
+// it needs app_data_dir(), which on Android is a JNI round trip serviced by the
+// Android main thread. Tauri takes the PluginStore lock for the whole of that.
+//
+// Meanwhile the main thread, on page load, runs wry's onPageLoaded ->
+// prepare_pending_webview, which wants that same PluginStore lock.
+//
+// So if an fs call is still resolving the scope when onPageFinished dispatches:
+//
+//   JavaBridge : holds PluginStore lock -> blocked in recv(), waiting on the
+//                main thread to answer its JNI call
+//   main thread: blocked on Mutex<PluginStore>::lock, so it never answers
+//
+// Neither side can move. The webview never finishes loading, React's scheduled
+// initial render never runs, and the launch stays on the boot background
+// forever. Confirmed from a native stack dump of a wedged process, and
+// measured: 6/20 clean installs blanked with this call at module scope, 0/20
+// with it deferred to `load`.
+//
+// Deferring costs nothing. Every store entry point already awaits this same
+// memoized promise before its first read, so ordering is unchanged — only the
+// start moves past the window where it can collide with page load.
+function startLegacyRootMigration(): void {
+  // A macrotask after `load` — `load` alone still overlaps the native
+  // onPageFinished dispatch on some launches.
+  setTimeout(() => void migrateLegacyRoot(), 0);
+}
+
+if (document.readyState === "complete") {
+  startLegacyRootMigration();
+} else {
+  window.addEventListener("load", startLegacyRootMigration, { once: true });
+}
 
 // The boundary wraps App because a throw anywhere outside the two reader views
 // used to unmount the whole tree, leaving the boot background and nothing else
@@ -50,3 +92,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </AppErrorBoundary>
   </React.StrictMode>,
 );
+
+// Breadcrumb 3 of 4: React has been handed the tree. If the next launch
+// finds this mark present and `mounted` absent, the tree was handed over
+// and no frame ever reached the screen — which is the blank launch.
+markBoot("render");

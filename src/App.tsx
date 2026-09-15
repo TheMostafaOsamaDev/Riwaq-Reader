@@ -10,6 +10,13 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
+import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
+import { record, setVerbose } from "./lib/diagnostics/recorder";
+import {
+  flushSession,
+  installErrorCapture,
+  startSession,
+} from "./lib/diagnostics/store";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
 import { useFileDrop } from "./hooks/useFileDrop";
@@ -154,6 +161,71 @@ function App() {
   // mounted.
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
+
+  // The recorder's tier, restored from the persisted tweak.
+  //
+  // Its one consumer is hostile to arriving late: DesktopReader's
+  // session-start effect (DesktopReader.tsx) reads the tier synchronously on
+  // mount and is keyed to [book.id], so a tier that lands after it doesn't
+  // just land late — that book records no geometry at all for the rest of the
+  // session, with the switch in Settings showing On. Nothing about that is
+  // visible from the UI.
+  //
+  // Declaration order is NOT what protects that. React flushes passive
+  // effects depth-first, child BEFORE parent: any reader mounted in App's
+  // first commit would run its session-start effect before this one, however
+  // high up the file this sits. What actually saves it is that `loaded`
+  // starts null (below) and is only ever filled from the async openBook path
+  // — including the startupView:"resume" route, which awaits listBooks() — so
+  // there is no reader in the first commit for the ordering to matter to.
+  //
+  // So: if anyone ever opens a book synchronously (a lazy useState
+  // initialiser, a book hydrated from cache during render), this effect is
+  // too late and the tier has to be applied before React renders at all.
+  // Being above the boot effect is only about the session log itself.
+  //
+  // Kept as its own effect rather than a line inside the toggle's handler so
+  // the paths that change the tweak WITHOUT touching the switch — Import
+  // settings, Reset to defaults — apply it too.
+  useEffect(() => {
+    setVerbose(t.verboseDiagnostics);
+  }, [t.verboseDiagnostics]);
+
+  // Breadcrumb 4 of 4, and the start of the session log.
+  //
+  // This runs after the first commit, so reaching it means a frame really
+  // did reach the screen.
+  //
+  // The previous launch's record was rotated aside by index.html before this
+  // launch wrote its first mark — it cannot be rotated from here, because a
+  // launch that stalls never reaches this code to rotate anything. So this
+  // only reads the verdict; see index.html and breadcrumbs.ts.
+  //
+  // Everything except the mark is deliberately AFTER it: markBoot is
+  // synchronous and IPC-free, while startSession crosses the bridge. If the
+  // bridge is dead the mark is still on record, which is the whole design.
+  useEffect(() => {
+    markBoot("mounted");
+    const previous = readPreviousLaunch();
+    const uninstall = installErrorCapture();
+    void startSession().then(() => {
+      if (previous && !previous.ok) {
+        record("previousLaunchBlank", {
+          reached: previous.reached,
+          stalledAt: previous.stalledAt,
+          durationMs: previous.durationMs,
+        });
+      }
+      return flushSession();
+    });
+    const timer = window.setInterval(() => void flushSession(), 2000);
+    return () => {
+      window.clearInterval(timer);
+      uninstall();
+      void flushSession();
+    };
+  }, []);
+
   const update = useUpdateCheck(t, setTweak);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
