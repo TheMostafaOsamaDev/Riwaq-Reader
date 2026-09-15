@@ -136,6 +136,102 @@ describe("buildBundle", () => {
   });
 });
 
+// Only one previous boot record is retained (index.html keeps depth 1), and
+// SettingsPage passes `readPreviousLaunch()` alone — so `launches` holds 0 or
+// 1 entry. Launch blank, relaunch, relaunch again, then export: the live
+// verdict is the healthy middle launch, while the blank one survives only as
+// the `previousLaunchBlank` event the middle launch wrote into its session
+// file. The evidence is already inside the bundle; before this the summary
+// could not see it and said "0 blank" directly above it.
+describe("buildBundle — blank launches recorded only in the session logs", () => {
+  const blankEvent = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      t: 12,
+      kind: "previousLaunchBlank",
+      tier: "cheap",
+      data: {
+        reached: "render",
+        stalledAt: "mounted",
+        durationMs: 90,
+        ...over,
+      },
+    });
+
+  it("surfaces the banner even when the live verdict is healthy", () => {
+    const out = buildBundle(
+      input({
+        launches: [healthy],
+        sessions: [{ name: "session-3.jsonl", lines: [blankEvent()] }],
+      }),
+    );
+    expect(out).toContain(
+      "launches: 1 recorded, 0 blank (+1 more blank in the retained session logs)",
+    );
+    expect(out).toContain(
+      "*** 1 BLANK LAUNCH — 0 OF THE 1 RECORDED BELOW, 1 MORE REPORTED IN THE RETAINED SESSION LOGS ***",
+    );
+  });
+
+  it("says where each blank launch came from when both sources have one", () => {
+    const out = buildBundle(
+      input({
+        launches: [stalledEarlier],
+        sessions: [{ name: "session-3.jsonl", lines: [blankEvent()] }],
+      }),
+    );
+    expect(out).toContain(
+      "*** 2 BLANK LAUNCHES — 1 OF THE 1 RECORDED BELOW, 1 MORE REPORTED IN THE RETAINED SESSION LOGS ***",
+    );
+  });
+
+  // The current session logs a `previousLaunchBlank` built from the SAME boot
+  // record `readPreviousLaunch()` returns, so in the ordinary case the two
+  // describe ONE launch. Counting both would replace an under-report with an
+  // over-report.
+  it("does not count the live verdict twice when the current session logged it", () => {
+    const out = buildBundle(
+      input({
+        launches: [blank],
+        sessions: [{ name: "session-4.jsonl", lines: [blankEvent()] }],
+      }),
+    );
+    expect(out).toContain("launches: 1 recorded, 1 blank");
+    expect(out).not.toContain("retained session logs");
+    expect(out).toContain("*** 1 OF 1 LAUNCHES FAILED TO REACH THE SCREEN ***");
+  });
+
+  it("still counts a logged blank that is not the live one", () => {
+    const out = buildBundle(
+      input({
+        launches: [blank],
+        sessions: [
+          {
+            name: "session-4.jsonl",
+            lines: [blankEvent(), blankEvent({ stalledAt: "render" })],
+          },
+        ],
+      }),
+    );
+    expect(out).toContain("*** 2 BLANK LAUNCHES —");
+  });
+
+  it("ignores a healthy session log and a half-written tail line", () => {
+    const out = buildBundle(
+      input({
+        launches: [healthy],
+        sessions: [
+          {
+            name: "session-3.jsonl",
+            lines: ['{"t":0,"kind":"nav","data":{}}', '{"kind":"previousLau'],
+          },
+        ],
+      }),
+    );
+    expect(out).toContain("launches: 1 recorded, 0 blank");
+    expect(out).not.toContain("***");
+  });
+});
+
 describe("bundleFileName", () => {
   it("dates the file so several exports can coexist", () => {
     expect(bundleFileName(new Date("2026-09-14T10:00:00Z"))).toBe(
