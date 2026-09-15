@@ -108,7 +108,7 @@ export const ar: Messages = {
   "settings.diagnostics": "التشخيص",
   "settings.diagnostics.verbose": "التشخيص المفصّل",
   "settings.diagnostics.verbose.hint":
-    "يسجّل تفاصيل تخطيط القارئ أيضًا. فعّله فقط أثناء إعادة إنتاج مشكلة — فهو يستهلك البطارية.",
+    "يسجّل تفاصيل إضافية حيثما توفّرت، منها تخطيط القارئ، وقد يستهلك بطارية أكثر. فعّله، وأعد إنتاج المشكلة، ثم أوقفه.",
   "settings.diagnostics.export": "تصدير التشخيص",
   "settings.diagnostics.copy": "نسخ التشخيص",
   "settings.diagnostics.copied": "تم نسخ التشخيص",
