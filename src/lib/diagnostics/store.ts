@@ -40,6 +40,27 @@ let current: string | null = null;
  */
 let starting: Promise<void> | null = null;
 
+/**
+ * The file's ceiling. The ring in recorder.ts bounds MEMORY (2000 events),
+ * not the disk: every flush appends, so nothing stopped one long session
+ * from growing without limit. That is academic on the cheap tier, which
+ * emits a handful of events per launch, and real with detailed diagnostics
+ * on — devLog's `snapshotReader` payload is ~4-5 KB and fires several times
+ * per chapter turn, so an afternoon's reading would append hundreds of MB.
+ */
+const MAX_SESSION_BYTES = 4 * 1024 * 1024;
+
+/** Bytes appended to `current` so far, and whether the ceiling was hit. */
+let written = 0;
+let capped = false;
+
+const encoder = new TextEncoder();
+/** Bytes, not UTF-16 code units — an unhashed error message can be Arabic,
+ *  where the two differ by 2x. */
+function byteLength(s: string): number {
+  return encoder.encode(s).length;
+}
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -81,6 +102,8 @@ export function startSession(): Promise<void> {
         }
       }
       current = `${DIAG_DIR}/${sessionFileName(nextSessionNumber(names))}`;
+      written = 0;
+      capped = false;
       await writeTextFile(current, "", { baseDir: BaseDirectory.AppData });
     } catch {
       current = null;
@@ -89,17 +112,57 @@ export function startSession(): Promise<void> {
   return starting;
 }
 
-/** Drain the buffer to disk. Safe to call when there is nothing to write. */
-export async function flushNow(): Promise<void> {
+/**
+ * Drain the buffer to disk. Safe to call when there is nothing to write.
+ *
+ * Named `flushSession`, not `flushNow`: lib/devLog.ts exports a live
+ * `flushNow` of its own with different semantics (it cancels a pending timer
+ * and writes the dev debug file), and with both in the project an editor's
+ * auto-import offered the wrong one at every call site.
+ */
+export async function flushSession(): Promise<void> {
   if (!hasTauri() || !current) return;
+  // Still drain past the ceiling, so the ring is not left holding payloads
+  // that will never be written.
   const events = drain();
-  if (events.length === 0) return;
-  try {
-    await writeTextFile(
-      current,
-      `${events.map((e) => JSON.stringify(e)).join("\n")}\n`,
-      { baseDir: BaseDirectory.AppData, append: true },
+  if (capped || events.length === 0) return;
+
+  // Measured and appended per line rather than per batch: rejecting a whole
+  // over-budget batch would throw away up to a flush interval of events, and
+  // accepting it would overshoot the ceiling by however large it happened
+  // to be.
+  const lines: string[] = [];
+  let hitCap = false;
+  for (const e of events) {
+    const line = `${JSON.stringify(e)}\n`;
+    const size = byteLength(line);
+    if (written + size > MAX_SESSION_BYTES) {
+      hitCap = true;
+      break;
+    }
+    lines.push(line);
+    written += size;
+  }
+  if (hitCap) {
+    capped = true;
+    // Same shape devLog.ts uses for its own event ceiling, so a reader who
+    // has seen one recognises the other. `tier` keeps the line uniform with
+    // every other line in this file.
+    lines.push(
+      `${JSON.stringify({
+        t: events[events.length - 1]?.t ?? 0,
+        kind: "log:capped",
+        tier: "cheap",
+        data: MAX_SESSION_BYTES,
+      })}\n`,
     );
+  }
+
+  try {
+    await writeTextFile(current, lines.join(""), {
+      baseDir: BaseDirectory.AppData,
+      append: true,
+    });
   } catch {
     // A failed write must never take the app down with it.
   }
