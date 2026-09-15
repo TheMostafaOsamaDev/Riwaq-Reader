@@ -57,17 +57,25 @@ describe("app boot", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(migrateLegacyRoot).toHaveBeenCalled();
+    // The migration no longer starts at module scope — it is deferred past
+    // `load` to stay out of the page-load deadlock window (see
+    // bootMigrationDeferral.test.ts). What this test still pins is the part
+    // that matters here: the mount does not wait for it either way.
     expect(render).toHaveBeenCalledTimes(1);
   });
 
   it("still starts the migration, so store reads stay ordered behind it", async () => {
+    vi.useFakeTimers();
     await import("./main");
     await Promise.resolve();
 
-    // The migration must be kicked off at boot, not skipped — the store
-    // modules await this same memoized promise before their first read.
+    // Deferred, not skipped. The store modules await this same memoized
+    // promise before their first read, so it must still be kicked off — just
+    // after the page-load window rather than during it.
+    window.dispatchEvent(new Event("load"));
+    vi.runAllTimers();
     expect(migrateLegacyRoot).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("does not render a second time when the migration later settles", async () => {
