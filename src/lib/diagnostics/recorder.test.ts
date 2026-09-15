@@ -5,21 +5,22 @@ describe("createRecorder", () => {
   it("records cheap-tier events by default", () => {
     const r = createRecorder({ now: () => 0 });
     r.record("nav", { to: "library" });
-    expect(r.size()).toBe(1);
-    expect(r.drain()[0].kind).toBe("nav");
+    const events = r.drain();
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("nav");
   });
 
   it("drops verbose events while the verbose tier is off", () => {
     const r = createRecorder({ now: () => 0 });
     r.record("geometry", { huge: true }, "verbose");
-    expect(r.size()).toBe(0);
+    expect(r.drain()).toHaveLength(0);
   });
 
   it("keeps verbose events once the tier is on", () => {
     const r = createRecorder({ now: () => 0 });
     r.setVerbose(true);
     r.record("geometry", { huge: true }, "verbose");
-    expect(r.size()).toBe(1);
+    expect(r.drain()).toHaveLength(1);
   });
 
   it("evicts the oldest event past the cap", () => {
@@ -50,8 +51,8 @@ describe("createRecorder", () => {
   it("empties the buffer on drain, so a flush cannot double-write", () => {
     const r = createRecorder({ now: () => 0 });
     r.record("a");
-    r.drain();
-    expect(r.size()).toBe(0);
+    expect(r.drain()).toHaveLength(1);
+    expect(r.drain()).toHaveLength(0);
   });
 
   it("never throws on an unserialisable payload", () => {

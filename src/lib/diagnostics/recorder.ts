@@ -22,7 +22,6 @@ export interface DiagEvent {
 export interface Recorder {
   record(kind: string, data?: unknown, tier?: Tier): void;
   drain(): DiagEvent[];
-  size(): number;
   setVerbose(on: boolean): void;
   isVerbose(): boolean;
 }
@@ -68,9 +67,6 @@ export function createRecorder(opts?: {
       const out = events;
       events = [];
       return out;
-    },
-    size() {
-      return events.length;
     },
     setVerbose(on) {
       verbose = on;

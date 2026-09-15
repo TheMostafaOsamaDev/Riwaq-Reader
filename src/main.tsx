@@ -35,6 +35,7 @@ import { migrateLegacyRoot } from "./store/legacyRoot";
 // promise before its first read — library.ts (via ensureRoot, 9 call sites),
 // downloadQueue.ts, sourceLibrary.ts, shelves.ts. The gate was redundant with
 // the thing that actually enforces correctness, and cost first paint.
+
 // Breadcrumb 2 of 4: the bundle parsed and is executing. Synchronous and
 // localStorage-backed on purpose — see lib/diagnostics/breadcrumbs.ts.
 markBoot("module");
