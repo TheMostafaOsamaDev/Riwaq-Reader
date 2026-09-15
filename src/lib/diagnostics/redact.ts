@@ -142,7 +142,7 @@ export function redactId(v: string): string {
   const at = v.indexOf("://");
   if (at === -1) return v;
   let start = at;
-  while (start > 0 && /[A-Za-z0-9+.\-]/.test(v[start - 1])) start--;
+  while (start > 0 && /[A-Za-z0-9+.-]/.test(v[start - 1])) start--;
   return v.slice(0, start) + redactUrl(v.slice(start));
 }
 
