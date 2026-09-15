@@ -32,7 +32,12 @@ import {
   type CategoryKey,
   type SettingEntry,
 } from "./SettingsSection";
+import { Spinner } from "./Spinner";
 import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
+import { copyText } from "../lib/clipboard";
+import { readPreviousLaunch } from "../lib/diagnostics/breadcrumbs";
+import { buildBundle, bundleFileName } from "../lib/diagnostics/bundle";
+import { flushSession, listSessions } from "../lib/diagnostics/store";
 import { useReducedMotion } from "../styles/motion";
 import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
 import type { Tweaks } from "../types/reader";
@@ -85,6 +90,14 @@ export function SettingsPage({
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [version, setVersion] = useState<string>("");
+  /** Which diagnostics action is in flight, or null. Assembling the bundle
+   *  reads every retained session file over the IPC bridge, so both actions
+   *  need a visible busy state and a guard against a second tap. */
+  const [diagBusy, setDiagBusy] = useState<null | "export" | "copy">(null);
+  // A snapshot of what the previous launch left behind, taken once when the
+  // page opens: index.html rotated that record aside before this launch wrote
+  // its first mark, so it cannot change while Settings is on screen.
+  const [previousLaunch] = useState(() => readPreviousLaunch());
 
   useEffect(() => {
     let alive = true;
@@ -136,6 +149,70 @@ export function SettingsPage({
     } catch (e) {
       console.error("settings import failed", e);
       notify("error", tr("settings.importError"));
+    }
+  };
+
+  // One document, two ways out of the device. Both actions build it the same
+  // way so a copied report and a saved one are never subtly different.
+  const buildDiagnostics = async () => {
+    // The session buffer is otherwise only emptied by App's 2-second
+    // interval, and `listSessions` reads files — so without this the export
+    // ends just before whatever the user tapped Export to report. That tail
+    // is the part worth having. `flushSession` swallows its own write failures
+    // and no-ops when there is nothing buffered or no bridge, so this cannot
+    // turn a flush problem into a failed export.
+    await flushSession();
+    return buildBundle({
+      app: {
+        version: version || "dev",
+        platform: navigator.platform || "unknown",
+        ua: navigator.userAgent,
+      },
+      verbose: t.verboseDiagnostics,
+      launches: previousLaunch ? [previousLaunch] : [],
+      sessions: await listSessions(),
+    });
+  };
+
+  const exportDiagnostics = async () => {
+    if (diagBusy) return;
+    setDiagBusy("export");
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        defaultPath: bundleFileName(new Date()),
+        filters: [{ name: "Text", extensions: ["txt"] }],
+      });
+      if (!path) return;
+      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+      await writeTextFile(path, await buildDiagnostics());
+      notify("info", tr("settings.diagnostics.exportDone"));
+    } catch (e) {
+      console.error("diagnostics export failed", e);
+      notify("error", tr("settings.diagnostics.exportError"));
+    } finally {
+      // In a finally so a throw — or the early return on a cancelled save
+      // dialog — can't leave the row spinning for the rest of the session.
+      setDiagBusy(null);
+    }
+  };
+
+  const copyDiagnostics = async () => {
+    if (diagBusy) return;
+    setDiagBusy("copy");
+    try {
+      const ok = await copyText(await buildDiagnostics());
+      notify(
+        ok ? "info" : "error",
+        ok
+          ? tr("settings.diagnostics.copied")
+          : tr("settings.diagnostics.copyError"),
+      );
+    } catch (e) {
+      console.error("diagnostics copy failed", e);
+      notify("error", tr("settings.diagnostics.copyError"));
+    } finally {
+      setDiagBusy(null);
     }
   };
 
@@ -317,6 +394,117 @@ export function SettingsPage({
           />
         ),
       },
+      // Nothing is rendered when there is no previous launch on record (first
+      // ever run, or storage unavailable). An absent row is honest; a row
+      // reading "unknown" is noise in the one place a reader is looking for a
+      // straight answer.
+      ...(previousLaunch
+        ? [
+            {
+              id: "diagnostics-last-launch",
+              label: tr("settings.diagnostics"),
+              node: (
+                <Field label={tr("settings.diagnostics")} theme={theme}>
+                  {/* Icon AND sentence, both independent of the tint: the
+                      colour is reinforcement, and the row has to still say
+                      which way it went with colour taken away. */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      color: theme.ink,
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "flex",
+                        flexShrink: 0,
+                        color: previousLaunch.ok ? theme.ink : "#c04a3a",
+                      }}
+                    >
+                      <Icon
+                        name={previousLaunch.ok ? "check" : "xCirc"}
+                        size={16}
+                      />
+                    </span>
+                    <span>
+                      {previousLaunch.ok
+                        ? tr("settings.diagnostics.lastLaunchOk")
+                        : tr("settings.diagnostics.lastLaunchBlank", {
+                            stage: previousLaunch.stalledAt ?? "—",
+                          })}
+                    </span>
+                  </div>
+                </Field>
+              ),
+            },
+          ]
+        : []),
+      {
+        id: "diagnostics-verbose",
+        label: tr("settings.diagnostics.verbose"),
+        node: (
+          <Field label={tr("settings.diagnostics.verbose")} theme={theme}>
+            <SegRow<"on" | "off">
+              theme={theme}
+              value={t.verboseDiagnostics ? "on" : "off"}
+              // The recorder's live tier is pushed from App, off this same
+              // tweak — so Import settings and Reset to defaults apply it too,
+              // and this stays the plain setter every other toggle here is.
+              onChange={(v) => setTweak("verboseDiagnostics", v === "on")}
+              options={[
+                { value: "on", label: tr("settings.on") },
+                { value: "off", label: tr("settings.off") },
+              ]}
+            />
+            <p
+              style={{
+                margin: "8px 2px 0",
+                fontSize: 10.5,
+                color: theme.muted,
+                lineHeight: 1.5,
+              }}
+            >
+              {tr("settings.diagnostics.verbose.hint")}
+            </p>
+          </Field>
+        ),
+      },
+      {
+        id: "diagnostics-export",
+        label: tr("settings.diagnostics.export"),
+        node: (
+          <ActionRow
+            theme={theme}
+            // Not the bare `download` this category already uses for Export
+            // settings — two rows one above the other with the same glyph
+            // read as the same action.
+            icon={<Icon name="downloadCirc" size={16} />}
+            label={tr("settings.diagnostics.export")}
+            onClick={exportDiagnostics}
+            trailing={diagBusy === "export" ? <Spinner size={16} /> : undefined}
+          />
+        ),
+      },
+      {
+        id: "diagnostics-copy",
+        label: tr("settings.diagnostics.copy"),
+        node: (
+          <ActionRow
+            theme={theme}
+            icon={<Icon name="doc" size={16} />}
+            label={tr("settings.diagnostics.copy")}
+            onClick={copyDiagnostics}
+            trailing={diagBusy === "copy" ? <Spinner size={16} /> : undefined}
+          />
+        ),
+      },
+      // Last in the category on purpose: it is the only destructive action
+      // here, and it stays separated from the ordinary ones rather than being
+      // buried mid-list by the rows above.
       {
         id: "reset",
         label: tr("settings.resetSettings"),

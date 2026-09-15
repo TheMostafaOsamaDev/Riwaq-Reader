@@ -1,4 +1,4 @@
-// Dev-only structured logging for the reader, written to a file on disk so a
+// Structured logging for the reader, written to a file on disk so a
 // reproduction can be handed over whole instead of described.
 //
 // Why this exists: the reader has a bug where a chapter turn lands on a page
@@ -21,8 +21,25 @@
 // The file is truncated when the session starts, so it always describes the
 // run in front of you. In a plain browser (no Tauri) the events stay in memory
 // and are readable via `window.__readerLog()`.
+//
+// Since the diagnostics feature landed there are two destinations, and they
+// are gated differently on purpose:
+//
+//   - lib/diagnostics/recorder.ts, on the verbose tier. This is what carries
+//     the events into RELEASE builds and into the export bundle, which the
+//     old `import.meta.env.DEV` gate made impossible.
+//   - the $APPDATA/debug file below, on `import.meta.env.DEV` alone — the
+//     same gate it always had. The two things that read it (ReaderLogMarker's
+//     ⌘⇧L banner and scripts/read-reader-log.py) only ever run against a
+//     `tauri dev` build, and tying the file to the verbose tier would have
+//     left that workflow writing nothing until a Settings switch was flipped.
+//
+// The file write and the truncate that opens it must stay on the SAME gate as
+// each other, whatever that gate is; see truncateForSession below for what
+// happens when a file is appended to without being emptied first.
 
 import { BaseDirectory, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
+import { isVerbose, record } from "./diagnostics/recorder";
 
 const LOG_DIR = "debug";
 const LOG_PATH = "debug/reader-debug.log";
@@ -113,6 +130,10 @@ function scheduleFlush(): void {
 
 /** Record one event. Cheap enough to call from a scroll-adjacent path. */
 export function log(kind: string, data?: unknown): void {
+  // The recorder keeps this in release builds too, where the old DEV gate
+  // threw it away.
+  record(kind, data, "verbose");
+  // Everything below is the dev-only file; see the header.
   if (!import.meta.env.DEV) return;
   if (capped) return;
   if (started === 0) started = Date.now();
@@ -224,7 +245,9 @@ export function snapshotReader(
   tag: string,
   extra?: Record<string, unknown>,
 ): void {
-  if (!import.meta.env.DEV) return;
+  // The ancestor walk is a getComputedStyle per level, which is why it sits
+  // on the verbose tier rather than running for every user forever.
+  if (!isVerbose()) return;
   if (!scroller) {
     log("geometry", { tag, error: "no scroller", ...extra });
     return;
@@ -297,11 +320,7 @@ export function snapshotReader(
 
 /** Session header, so the log is self-describing when read cold. */
 export function logSessionStart(extra?: Record<string, unknown>): void {
-  if (!import.meta.env.DEV) return;
-  // Drop anything buffered from a previous mount and empty the file BEFORE
-  // this session's first event is queued, so the file holds exactly one run
-  // and every `t` shares one origin.
-  void truncateForSession().then(() => {
+  const emit = () => {
     started = Date.now();
     log("session", {
       at: new Date().toISOString(),
@@ -314,7 +333,16 @@ export function logSessionStart(extra?: Record<string, unknown>): void {
       },
       ...extra,
     });
-  });
+  };
+  // A release build has no file to empty, so the header goes straight to the
+  // recorder. In a dev build the file is emptied BEFORE this session's first
+  // event is queued, so it holds exactly one run and every `t` shares one
+  // origin — the truncate is bound to the file, not to the tier.
+  if (!import.meta.env.DEV) {
+    emit();
+    return;
+  }
+  void truncateForSession().then(emit);
 }
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
