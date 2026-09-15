@@ -13,7 +13,7 @@ import { AnimatedSwap } from "./components/AnimatedSwap";
 import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
 import { record, setVerbose } from "./lib/diagnostics/recorder";
 import {
-  flushNow,
+  flushSession,
   installErrorCapture,
   startSession,
 } from "./lib/diagnostics/store";
@@ -215,13 +215,13 @@ function App() {
           durationMs: previous.durationMs,
         });
       }
-      return flushNow();
+      return flushSession();
     });
-    const timer = window.setInterval(() => void flushNow(), 2000);
+    const timer = window.setInterval(() => void flushSession(), 2000);
     return () => {
       window.clearInterval(timer);
       uninstall();
-      void flushNow();
+      void flushSession();
     };
   }, []);
 

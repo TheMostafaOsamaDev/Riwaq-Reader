@@ -39,29 +39,29 @@ describe("diagnostics store", () => {
 
   it("writes recorded events to the session file on flush", async () => {
     const { record } = await import("./recorder");
-    const { startSession, flushNow } = await import("./store");
+    const { startSession, flushSession } = await import("./store");
     await startSession();
     record("nav", { to: "library" });
-    await flushNow();
+    await flushSession();
     const written = [...files.values()].join("");
     expect(written).toContain('"kind":"nav"');
   });
 
   it("is a no-op outside Tauri rather than throwing", async () => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
-    const { startSession, flushNow } = await import("./store");
+    const { startSession, flushSession } = await import("./store");
     await expect(startSession()).resolves.toBeUndefined();
-    await expect(flushNow()).resolves.toBeUndefined();
+    await expect(flushSession()).resolves.toBeUndefined();
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
   it("survives an unwritable log rather than taking the app down", async () => {
     mkdir.mockRejectedValueOnce(new Error("read-only volume"));
     const { record } = await import("./recorder");
-    const { startSession, flushNow } = await import("./store");
+    const { startSession, flushSession } = await import("./store");
     await expect(startSession()).resolves.toBeUndefined();
     record("nav", { to: "library" });
-    await expect(flushNow()).resolves.toBeUndefined();
+    await expect(flushSession()).resolves.toBeUndefined();
   });
 
   it("retires the sessions past the retention cap", async () => {
@@ -99,6 +99,48 @@ describe("diagnostics store", () => {
     // ...and a later awaited call is still a no-op.
     await startSession();
     expect(writeTextFile).toHaveBeenCalledTimes(1);
+  });
+
+  // The ring in recorder.ts bounds memory, not the file — every flush
+  // appended, so nothing stopped one long session with detailed diagnostics
+  // on (a ~4-5 KB geometry snapshot several times per chapter turn) from
+  // growing without limit. 4 MB of fat events is the cheapest way to reach
+  // the ceiling without writing 4 MB of assertions.
+  it("stops appending past the byte ceiling and says so in the file", async () => {
+    const { record } = await import("./recorder");
+    const { startSession, flushSession } = await import("./store");
+    await startSession();
+    const fat = "x".repeat(64 * 1024);
+    for (let i = 0; i < 80; i++) record("geometry", { blob: fat });
+    await flushSession();
+
+    const text = files.get("diagnostics/session-1.jsonl") ?? "";
+    expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(
+      4 * 1024 * 1024,
+    );
+    expect(text).toContain('"kind":"log:capped"');
+    // The events that DID fit are still there — the cap truncates the tail,
+    // it does not discard the session.
+    expect(text).toContain('"kind":"geometry"');
+
+    // ...and a later flush adds nothing more, rather than resuming.
+    const before = text.length;
+    record("nav", { to: "library" });
+    await flushSession();
+    expect((files.get("diagnostics/session-1.jsonl") ?? "").length).toBe(
+      before,
+    );
+  });
+
+  it("writes the whole batch when it fits under the ceiling", async () => {
+    const { record } = await import("./recorder");
+    const { startSession, flushSession } = await import("./store");
+    await startSession();
+    for (let i = 0; i < 20; i++) record("nav", { to: `page-${i}` });
+    await flushSession();
+    const text = files.get("diagnostics/session-1.jsonl") ?? "";
+    expect(text.split("\n").filter(Boolean)).toHaveLength(20);
+    expect(text).not.toContain("log:capped");
   });
 
   it("lists retained sessions oldest first, one entry per line", async () => {
