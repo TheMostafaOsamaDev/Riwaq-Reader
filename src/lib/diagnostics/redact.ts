@@ -23,6 +23,19 @@ const PATH_KEYS = /^(path|file|filePath|dest|src|dir)$/i;
 const URL_KEYS =
   /^(url|href|link|novelUrl|chapterUrl|source|coverUrl|viewMoreUrl|baseUrl|iconUrl)$/i;
 /**
+ * Keys whose values are identifiers that MAY have a URL baked into them.
+ *
+ * These are value-sniffed, not blanket-hashed, because the two populations
+ * are genuinely different. A local book id is a `crypto.randomUUID()`
+ * (store/library.ts) and identifies nothing outside the device, while being
+ * exactly what lets a reader follow one book across a session — hashing it
+ * would cost that for no privacy gain. A streamed book's id is minted as
+ * `stream:${sourceId}:${novelUrl}` (components/SourceStreamReader.tsx) and a
+ * streamed chapter's is `${chapterUrl}#0`, so the SAME key carries the full
+ * source URL. The key name cannot tell the two apart; the value can.
+ */
+const ID_KEYS = /^(id|bookId|chapterId|novelId)$/i;
+/**
  * Keys whose values are diagnostic free text that can EMBED a path rather
  * than being one. Error messages are the case that matters: the Rust layer
  * builds them with `path.display()` — `format!("cannot open {}: {e}", ...)`
@@ -32,6 +45,24 @@ const URL_KEYS =
  * misses it, because the key is `message`, not `path`.
  */
 const MESSAGE_KEYS = /^(message|stack|componentStack)$/i;
+
+/**
+ * Origins that are the app shell or the dev server rather than something the
+ * user chose to read. Frames pointing at these are the most useful content
+ * the export has, and carry nothing about the library, so `scrubUrls` leaves
+ * them byte-identical: `https://tauri.localhost/...` is the packaged Android
+ * and Windows origin, `http://localhost:1420/src/...` is `vite dev`.
+ */
+function isAppOrigin(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  );
+}
 
 /**
  * FNV-1a, 32-bit. Not a security hash and does not need to be — it needs to
@@ -96,10 +127,69 @@ export function scrubPaths(s: string): string {
 }
 
 /**
+ * Reduce an identifier to something that still correlates events but names
+ * no novel or chapter.
+ *
+ * A value with no `://` in it is a local id — a UUID — and passes through
+ * untouched, because following one book across a session is most of what the
+ * export is read for. A value WITH a `://` has a source URL baked into it,
+ * and only the URL half is reduced: the scheme is walked backwards over so
+ * `stream:cenele:https://cenele.com/novel/x/` keeps its `stream:cenele:`
+ * prefix and becomes `stream:cenele:cenele.com`. Losing the prefix would
+ * make a streamed id indistinguishable from a bare host in the log.
+ */
+export function redactId(v: string): string {
+  const at = v.indexOf("://");
+  if (at === -1) return v;
+  let start = at;
+  while (start > 0 && /[A-Za-z0-9+.\-]/.test(v[start - 1])) start--;
+  return v.slice(0, start) + redactUrl(v.slice(start));
+}
+
+/**
+ * URLs as they appear inside free text. The class stops at whitespace,
+ * quotes and closing brackets so a frame wrapped in `(...)` does not swallow
+ * its own delimiter.
+ */
+const EMBEDDED_URL = /https?:\/\/[^\s"'`<>\\)\]}]+/g;
+
+/**
+ * Reduce `http(s)` URLs embedded in free text to their host, leaving app and
+ * dev-server origins alone.
+ *
+ * A fetch failure reads `failed to fetch https://cenele.com/novel/x/chap-3`,
+ * which names the book and the chapter in a field no key-based rule looks
+ * at. Stack frames are the opposite case — `https://tauri.localhost/assets/
+ * index-abc.js:1:234` is the single most useful line in the whole export and
+ * must survive byte-identical, along with its `tauri://` and `file://`
+ * cousins (neither of which this touches, since neither is http(s)).
+ */
+export function scrubUrls(s: string): string {
+  if (!s) return s;
+  return s.replace(EMBEDDED_URL, (match) => {
+    try {
+      const u = new URL(match);
+      return isAppOrigin(u.hostname) ? match : u.host;
+    } catch {
+      return match;
+    }
+  });
+}
+
+/** The full treatment for a free-text field: embedded paths AND embedded
+ *  source URLs, both reduced, with stack frames left readable. */
+export function scrubMessage(s: string): string {
+  return scrubUrls(scrubPaths(s));
+}
+
+/**
  * Walk a log payload and redact by key name.
  *
- * By key rather than by value sniffing: a value-based guess would both miss
- * titles that look ordinary and mangle data that merely resembles a path.
+ * Which treatment to apply is chosen by key, not by guessing from the value:
+ * a value-based guess would both miss titles that look ordinary and mangle
+ * data that merely resembles a path. ID_KEYS is the one place a value is
+ * consulted, and only to choose between two treatments the key has already
+ * narrowed to — see its comment for why the key alone cannot decide.
  *
  * A bare top-level string has no key to consult, so it passes through
  * unredacted — callers must always log `{ title: x }`, never `x` directly.
@@ -123,7 +213,8 @@ export function redactValue(v: unknown, seen = new WeakSet<object>()): unknown {
         if (TEXT_KEYS.test(k)) out[k] = hashTitle(val);
         else if (PATH_KEYS.test(k)) out[k] = redactPath(val);
         else if (URL_KEYS.test(k)) out[k] = redactUrl(val);
-        else if (MESSAGE_KEYS.test(k)) out[k] = scrubPaths(val);
+        else if (ID_KEYS.test(k)) out[k] = redactId(val);
+        else if (MESSAGE_KEYS.test(k)) out[k] = scrubMessage(val);
         else out[k] = val;
       } else {
         out[k] = redactValue(val, seen);

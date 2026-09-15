@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   hashTitle,
+  redactId,
   redactPath,
   redactUrl,
   redactValue,
+  scrubMessage,
   scrubPaths,
+  scrubUrls,
 } from "./redact";
 
 describe("hashTitle", () => {
@@ -52,6 +55,84 @@ describe("redactUrl", () => {
 
   it("leaves a non-URL alone rather than inventing a host", () => {
     expect(redactUrl("not a url")).toBe("<url>");
+  });
+});
+
+// A streamed book's id is minted as `stream:${sourceId}:${novelUrl}` and a
+// streamed chapter's as `${chapterUrl}#0`, so `id` and `chapterId` carried
+// the full source URL into a document Settings invites the user to paste
+// into a public issue — right beside the hashed title that was supposed to
+// keep the book private. Local ids are UUIDs and must NOT be touched: they
+// identify nothing off-device, and they are how one book is followed across
+// a session.
+describe("redactId", () => {
+  it("reduces a streamed book id to its host, keeping the source prefix", () => {
+    expect(
+      redactId("stream:cenele:https://cenele.com/novel/al-qass-al-majnun/"),
+    ).toBe("stream:cenele:cenele.com");
+  });
+
+  it("reduces a bare chapter URL id to its host", () => {
+    expect(redactId("https://kolnovel.com/series/x/chapter-12#0")).toBe(
+      "kolnovel.com",
+    );
+  });
+
+  it("passes a local UUID through untouched", () => {
+    const id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+    expect(redactId(id)).toBe(id);
+  });
+
+  it("passes a non-URL prefixed id through untouched", () => {
+    expect(redactId("epub:local:12")).toBe("epub:local:12");
+  });
+});
+
+describe("scrubUrls", () => {
+  it("reduces a source URL in free text to its host", () => {
+    expect(
+      scrubUrls("failed to fetch https://cenele.com/novel/al-qass/chapter-3"),
+    ).toBe("failed to fetch cenele.com");
+  });
+
+  // These four are the export's most useful debugging content. Reducing a
+  // frame to a host destroys the file, line and column for no privacy gain,
+  // so all four must come out byte-identical.
+  it.each([
+    [
+      "tauri:// (packaged macOS/Linux)",
+      "at load (tauri://localhost/assets/index-abc.js:1:234)",
+    ],
+    [
+      "https://tauri.localhost (packaged Android/Windows)",
+      "at load (https://tauri.localhost/assets/index-abc.js:1:234)",
+    ],
+    [
+      "http://localhost:1420 (vite dev)",
+      "at load (http://localhost:1420/src/main.tsx:40:3)",
+    ],
+    [
+      "file:// under dist",
+      "at load (file:///Users/someone/app/dist/assets/index-abc.js:1:234)",
+    ],
+  ])("leaves a %s frame byte-identical", (_label, frame) => {
+    expect(scrubUrls(frame)).toBe(frame);
+    // Via the combined treatment too — the file:// frame is the one that
+    // POSIX_ABS would otherwise cut down to a basename.
+    expect(scrubMessage(frame)).toBe(frame);
+  });
+
+  it("leaves a message with no URL alone", () => {
+    expect(scrubUrls("not a readable zip")).toBe("not a readable zip");
+    expect(scrubUrls("")).toBe("");
+  });
+
+  it("reduces a source URL without disturbing a frame in the same string", () => {
+    const s =
+      "fetch https://cenele.com/novel/x failed\n    at q (tauri://localhost/assets/i.js:1:2)";
+    expect(scrubMessage(s)).toBe(
+      "fetch cenele.com failed\n    at q (tauri://localhost/assets/i.js:1:2)",
+    );
   });
 });
 
@@ -185,5 +266,59 @@ describe("redactValue — diagnostic message fields", () => {
       componentStack: "    in Boom (/Users/someone/src/App.tsx:1)",
     }) as Record<string, string>;
     expect(out.componentStack).not.toContain("someone");
+  });
+});
+
+// The three payloads a whole-branch review pulled out of the shipped code.
+// Each was verbatim in an exported bundle; each is asserted here on the real
+// shape its call site emits, not on a simplified stand-in.
+describe("redactValue — the source-URL leak, end to end", () => {
+  it("does not leak the novel URL out of a streamed session header", () => {
+    // components/DesktopReader.tsx — logSessionStart({ book: {...} }).
+    expect(
+      redactValue({
+        book: {
+          id: "stream:cenele:https://cenele.com/novel/al-qass-al-majnun/",
+          title: "القس المجنون",
+          chapters: 120,
+          lang: "ar",
+        },
+      }),
+    ).toEqual({
+      book: {
+        id: "stream:cenele:cenele.com",
+        title: hashTitle("القس المجنون"),
+        chapters: 120,
+        lang: "ar",
+      },
+    });
+  });
+
+  it("does not leak the chapter URL out of position:run, which fires on every chapter open", () => {
+    // components/DesktopReader.tsx — logEvent("position:run", {...}).
+    const out = redactValue({
+      chapter: 11,
+      chapterId: "https://kolnovel.com/series/x/chapter-12#0",
+      reactItems: 48,
+    }) as Record<string, unknown>;
+    expect(out.chapterId).toBe("kolnovel.com");
+    expect(out.chapter).toBe(11);
+  });
+
+  it("does not leak the novel URL out of a fetch error message", () => {
+    // components/SourceStreamReader.tsx — devLog("fetch:error", {...}).
+    const out = redactValue({
+      idx: 3,
+      message: "failed to fetch https://cenele.com/novel/al-qass/chapter-3",
+    }) as Record<string, unknown>;
+    expect(out.message).toBe("failed to fetch cenele.com");
+  });
+
+  it("still passes a local book id through, so events stay correlatable", () => {
+    const id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+    const out = redactValue({ book: { id, title: "x" } }) as {
+      book: Record<string, unknown>;
+    };
+    expect(out.book.id).toBe(id);
   });
 });
