@@ -214,5 +214,66 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
             }
+
+            // The main window going away must end the app.
+            //
+            // Closing the last window does not quit a macOS app, and that is
+            // correct — but Riwaq also opens HIDDEN helper webviews (the
+            // Cenele session window that holds a Cloudflare clearance, and the
+            // render-and-extract scratch window). Those count as windows, so
+            // once one of them is alive, destroying the main window leaves the
+            // process running with nothing on screen and no way back: the Dock
+            // icon is lit, clicking it does nothing, and only Force Quit
+            // recovers. Seen in 0.2.1 with a "Verifying your browser…" session
+            // window still open — the process idle in -[NSApplication run],
+            // System Events reporting 0 windows.
+            //
+            // Helper webviews are implementation detail; the main window IS
+            // the app. When it is destroyed, take the helpers with it.
+            if let tauri::RunEvent::WindowEvent { label, event, .. } = &_event {
+                if label == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                    let others_visible = _app.webview_windows().iter().any(|(l, w)| {
+                        l != "main" && w.is_visible().unwrap_or(false)
+                    });
+                    if !others_visible {
+                        _app.exit(0);
+                    }
+                }
+            }
+
+            // Clicking the Dock icon with no window open.
+            //
+            // On macOS, closing the last window does NOT quit the app — that
+            // is the platform convention, and Tauri follows it. The only way
+            // back is this event, and without a handler for it the click goes
+            // nowhere: the process is alive and idle in its event loop, the
+            // Dock shows it running, and no window ever appears. Observed in
+            // 0.2.1 with the process healthy (`sample` parked in
+            // -[NSApplication run]) and System Events reporting 0 windows,
+            // while CGWindowList still listed the old ones as offscreen.
+            //
+            // Two cases, because closing a window in Tauri destroys it:
+            // a window that is merely hidden or minimised is shown again,
+            // and a destroyed one is rebuilt from the same config the
+            // first launch used.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } = &_event
+            {
+                if !has_visible_windows {
+                    if let Some(window) = _app.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else if let Some(config) =
+                        _app.config().app.windows.first().cloned()
+                    {
+                        let _ = tauri::WebviewWindowBuilder::from_config(_app, &config)
+                            .and_then(|builder| builder.build());
+                    }
+                }
+            }
         });
 }
