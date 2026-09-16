@@ -123,7 +123,14 @@ async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
     wrap.setAttribute("data-page-index", String(i));
     // line-height:0 so the wrap shrink-wraps the canvas exactly, with no
     // inline-descender strip under it throwing the normalized rects off.
-    wrap.style.cssText = "position:relative; line-height:0; direction:ltr;";
+    // `font-size-adjust:none` for the same reason the direction is pinned: it
+    // is inherited from `body` (global.css normalizes the UI font's apparent
+    // size with it), and under it the engine rescales glyph rendering while
+    // pdf.js positions from the font's real metrics. Set on the wrap so the
+    // text layer's spans are measured unscaled too — their boxes are what a
+    // selection's rects are built from.
+    wrap.style.cssText =
+      "position:relative; line-height:0; direction:ltr; font-size-adjust:none;";
     const canvas = document.createElement("canvas");
     canvas.style.display = "block";
     const marks = document.createElement("div");
