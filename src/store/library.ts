@@ -27,7 +27,7 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { FixedImportDraft } from "./fixedImportStage";
 import type { HighlightColor } from "../styles/tokens";
-import { isOpaqueUri, type BookFormat } from "./bookFormat";
+import type { BookFormat } from "./bookFormat";
 import { parseEpubFromSource } from "../epub/parser";
 import { openNativeZip } from "../epub/zipSource";
 import { writeImageManifest } from "./epubImages";
@@ -503,6 +503,7 @@ async function stagePaths(
           token,
           report,
           staged.hash,
+          filenameTitle(path),
         );
         autoImported.push(entry);
         // A batch containing the same book twice dedupes against itself.
@@ -566,14 +567,38 @@ export async function pickBooksForImport(
  *  English (or whatever-locale-was-active) literal into the book's own
  *  stored title. */
 export function filenameTitle(path: string): string {
-  // Android hands back content://…/document%3A19, whose last segment is an
-  // opaque provider id rather than a name. Empty (not the id) so the
-  // display-time `common.untitled` fallback localizes it.
-  if (isOpaqueUri(path)) return "";
-  const base = path.split(/[\\/]/).pop() ?? path;
-  const stem = base.replace(/\.(docx|pdf|epub)$/i, "");
-  const cleaned = stem.replace(/[_-]+/g, " ").trim();
-  return cleaned;
+  // Android's picker returns a Storage Access Framework URI, and the name we
+  // want is inside it, percent-encoded:
+  //
+  //   …/document/primary%3ADownload%2Fbook.pdf  ->  primary:Download/book.pdf
+  //
+  // so decoding first turns most of them back into something with a filename
+  // on the end. The ones that genuinely carry no name — `document%3A19`, a
+  // provider row id — fall out at the end as "not a name" rather than being
+  // rejected up front, which is what used to drop the readable ones too.
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // A lone `%` is not valid encoding. The raw string still has a usable
+    // name on the end, so carry on with it.
+  }
+
+  // `:` splits too, for the `primary:Download/book.pdf` shape a SAF path
+  // decodes to.
+  const base = decoded.split(/[\\/:]/).pop() ?? decoded;
+
+  // Any trailing extension, not just the three formats the app parses: the
+  // format is sniffed from the bytes (see bookFormat.ts), so the extension
+  // can be absent, wrong, or something like `.epub3`.
+  const stem = base.replace(/\.[a-z0-9]{1,5}$/i, "");
+
+  const cleaned = stem.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  // A name has to contain a letter somewhere. `19`, `12345` and `` are row
+  // ids or nothing at all; returning "" lets the display-time
+  // `common.untitled` fallback localize instead of showing a number.
+  return /\p{L}/u.test(cleaned) ? cleaned : "";
 }
 
 /** Write the default (empty) reading state for a freshly imported book. */
@@ -654,6 +679,11 @@ async function commitEpubAt(
   token: string,
   report?: ImportReporter,
   sourceHash?: string,
+  /** Used when the EPUB's own metadata carries no title. The PDF and DOCX
+   *  paths already fall back to the filename; this one did not, so a
+   *  title-less EPUB landed in the library as "untitled" even when the file
+   *  it came from was named perfectly well. */
+  fallbackTitle?: string,
 ): Promise<BookIndexEntry> {
   const dir = bookDir(id);
   report?.phase("parse");
@@ -693,7 +723,7 @@ async function commitEpubAt(
 
     return appendIndexEntry({
       id: book.id,
-      title: book.title,
+      title: book.title.trim() || (fallbackTitle ?? ""),
       author: book.author,
       language: book.language,
       chapterCount: book.chapters.length,
@@ -716,6 +746,7 @@ async function importStagedEpub(
   token: string,
   report?: ImportReporter,
   sourceHash?: string,
+  fallbackTitle?: string,
 ): Promise<BookIndexEntry> {
   const id = crypto.randomUUID();
   const dir = bookDir(id);
@@ -724,7 +755,7 @@ async function importStagedEpub(
     // Keeping the original zip lets us re-extract the cover later when the
     // parser improves, without re-asking the user for the file.
     await renameStaged(stagedPath, `${dir}/book.epub`);
-    return await commitEpubAt(id, token, report, sourceHash);
+    return await commitEpubAt(id, token, report, sourceHash, fallbackTitle);
   } catch (err) {
     // A failed parse shouldn't leave a partial book (or a 200 MB orphan)
     // behind.
