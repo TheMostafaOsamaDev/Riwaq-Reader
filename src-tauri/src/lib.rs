@@ -1,4 +1,5 @@
 mod archive;
+mod display_name;
 mod legacy_identity;
 mod notify;
 mod opened;
@@ -103,6 +104,7 @@ pub fn run() {
             archive::delete_staged,
             opened::take_pending_opens,
             opened::classify_drop,
+            display_name::display_name,
         ])
         .setup(|app| {
             // Cold start on Windows / Linux: the file double-clicked in the

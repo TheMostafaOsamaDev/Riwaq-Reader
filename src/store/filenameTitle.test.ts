@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filenameTitle } from "./library";
+import { filenameTitle } from "./importName";
 
 describe("filenameTitle", () => {
   it("drops the extension and reads underscores as spaces", () => {
