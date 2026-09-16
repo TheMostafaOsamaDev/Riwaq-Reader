@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   placePopover,
+  type AnchorBox,
   type Placement,
   type PlacementInput,
   type Side,
@@ -17,7 +18,7 @@ interface Options {
    *
    *  Called on every scroll frame, so keep it cheap: one
    *  `getBoundingClientRect()` is the intended cost. */
-  getAnchor: () => DOMRect | null;
+  getAnchor: () => AnchorBox | null;
   placement: PlacementInput["placement"];
   /** How much chrome each end of the reading region is under. Each
    *  reader has its own bars — the desktop's are 66/65 tall, the
@@ -100,6 +101,13 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
 
     const reposition = () => {
       frame = 0;
+      // Nothing is placeable until the toolbar knows its own width.
+      // Placing at width 0 puts an RTL toolbar's start edge where its
+      // END belongs — it paints against the selection's right edge and
+      // then jumps a full toolbar-width left the moment ResizeObserver
+      // reports. Staying unplaced for that one frame is invisible;
+      // moving afterwards is not.
+      if (sizeRef.current.width === 0 || sizeRef.current.height === 0) return;
       const anchor = getAnchorRef.current();
       if (!anchor) {
         setPlace((prev) =>
@@ -157,6 +165,7 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
 
   // Re-place when our own size changes, without re-subscribing above.
   useLayoutEffect(() => {
+    if (size.width === 0 || size.height === 0) return;
     const anchor = getAnchorRef.current();
     if (!anchor) return;
     const next = placePopover({
