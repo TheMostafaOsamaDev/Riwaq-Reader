@@ -26,6 +26,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { FixedImportDraft } from "./fixedImportStage";
+import { importName } from "./importName";
 import type { HighlightColor } from "../styles/tokens";
 import type { BookFormat } from "./bookFormat";
 import { parseEpubFromSource } from "../epub/parser";
@@ -436,7 +437,10 @@ async function stagePaths(
     const stagedPath = `${STAGING}/${token}`;
     let unlisten: (() => void) | undefined;
     try {
-      report?.file(i, paths.length, filenameTitle(path));
+      // Once per file: all three consumers below want the same answer, and
+      // on Android resolving it can cost an IPC round trip.
+      const name = await importName(path);
+      report?.file(i, paths.length, name);
       unlisten = await onStageProgress(token, (p) => report?.progress(p));
 
       // The dialog selection itself grants per-path read permission on Tauri
@@ -492,10 +496,13 @@ async function stagePaths(
             ? { path: stagedPath, length: staged.size }
             : { bytes: await readFile(stagedPath, { baseDir: BASE }) };
         drafts.push(
-          await stageFixedImport(source, path, fixed, {
-            stagedPath,
-            sourceHash: staged.hash,
-          }),
+          await stageFixedImport(
+            source,
+            path,
+            fixed,
+            { stagedPath, sourceHash: staged.hash },
+            name,
+          ),
         );
       } else if (staged.format === "epub") {
         const entry = await importStagedEpub(
@@ -503,7 +510,7 @@ async function stagePaths(
           token,
           report,
           staged.hash,
-          filenameTitle(path),
+          name,
         );
         autoImported.push(entry);
         // A batch containing the same book twice dedupes against itself.
@@ -556,49 +563,6 @@ export async function pickBooksForImport(
   if (!picked) return null;
   const paths = Array.isArray(picked) ? picked : [picked];
   return importPaths(paths, report);
-}
-
-/** Pull a reasonable display title out of a file path: drop the directory
- *  portion and the .docx extension, then collapse underscores/dashes to
- *  spaces. Used when the doc has no leading heading we can borrow. Empty
- *  (not "Untitled") when the stem strips to nothing — a blank title
- *  persists as "" so the display-time fallback (`common.untitled`)
- *  localizes it wherever the book is rendered, instead of freezing an
- *  English (or whatever-locale-was-active) literal into the book's own
- *  stored title. */
-export function filenameTitle(path: string): string {
-  // Android's picker returns a Storage Access Framework URI, and the name we
-  // want is inside it, percent-encoded:
-  //
-  //   …/document/primary%3ADownload%2Fbook.pdf  ->  primary:Download/book.pdf
-  //
-  // so decoding first turns most of them back into something with a filename
-  // on the end. The ones that genuinely carry no name — `document%3A19`, a
-  // provider row id — fall out at the end as "not a name" rather than being
-  // rejected up front, which is what used to drop the readable ones too.
-  let decoded = path;
-  try {
-    decoded = decodeURIComponent(path);
-  } catch {
-    // A lone `%` is not valid encoding. The raw string still has a usable
-    // name on the end, so carry on with it.
-  }
-
-  // `:` splits too, for the `primary:Download/book.pdf` shape a SAF path
-  // decodes to.
-  const base = decoded.split(/[\\/:]/).pop() ?? decoded;
-
-  // Any trailing extension, not just the three formats the app parses: the
-  // format is sniffed from the bytes (see bookFormat.ts), so the extension
-  // can be absent, wrong, or something like `.epub3`.
-  const stem = base.replace(/\.[a-z0-9]{1,5}$/i, "");
-
-  const cleaned = stem.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-
-  // A name has to contain a letter somewhere. `19`, `12345` and `` are row
-  // ids or nothing at all; returning "" lets the display-time
-  // `common.untitled` fallback localize instead of showing a number.
-  return /\p{L}/u.test(cleaned) ? cleaned : "";
 }
 
 /** Write the default (empty) reading state for a freshly imported book. */
