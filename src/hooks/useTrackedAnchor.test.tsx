@@ -35,9 +35,12 @@ const TOOLBAR = { width: 268, height: 96 };
  *  and the first ResizeObserver callback. */
 let measured = false;
 
+/** Swapped mid-test to mimic a drag growing the selection. */
+let currentAnchor: AnchorBox = RTL_PARAGRAPH;
+
 function Harness({ onPlace }: { onPlace: (s: React.CSSProperties) => void }) {
   const track = useTrackedAnchor({
-    getAnchor: () => RTL_PARAGRAPH,
+    getAnchor: () => currentAnchor,
     placement: "auto",
     insets: { top: 66, bottom: 60 },
   });
@@ -48,6 +51,7 @@ function Harness({ onPlace }: { onPlace: (s: React.CSSProperties) => void }) {
 describe("useTrackedAnchor: first paint", () => {
   beforeEach(() => {
     measured = false;
+    currentAnchor = RTL_PARAGRAPH;
     document.body.innerHTML = "";
     (
       globalThis as unknown as Record<string, unknown>
@@ -104,5 +108,63 @@ describe("useTrackedAnchor: first paint", () => {
     // lands. It must never have been committed as a visible position.
     const paintedWrong = seen.some((s) => s.left === 1688 && s.opacity === 1);
     expect(paintedWrong).toBe(false);
+  });
+});
+
+/**
+ * The reported bug, from a measured trace.
+ *
+ * The toolbar mounts while the drag is still running, when the selection
+ * is the one word the drag began on. On a real chapter that anchor was
+ * 61px wide at 954..1015 and the toolbar placed itself at 747. The drag
+ * then grew the selection to the full column, 44..1256, where the
+ * toolbar belongs at 988 — and nothing re-measured, because a selection
+ * growing is neither a scroll nor a resize. It stayed wrong until the
+ * reader scrolled 900ms later.
+ */
+describe("useTrackedAnchor: the selection growing under a drag", () => {
+  /** The word the drag started on. */
+  const ONE_WORD: AnchorBox = {
+    top: 300,
+    bottom: 336,
+    firstLine: { left: 954, right: 1015 },
+    lastLine: { left: 954, right: 1015 },
+    dir: "rtl",
+  };
+  /** What it became by the time the drag ended. */
+  const FULL_COLUMN: AnchorBox = {
+    top: 300,
+    bottom: 408,
+    firstLine: { left: 44, right: 1256 },
+    lastLine: { left: 487, right: 1256 },
+    dir: "rtl",
+  };
+
+  const flush = async () => {
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+  };
+
+  it("follows the selection as it grows, without waiting for a scroll", async () => {
+    measured = true;
+    currentAnchor = ONE_WORD;
+    const seen: React.CSSProperties[] = [];
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+
+    await act(async () => {
+      createRoot(host).render(<Harness onPlace={(s) => seen.push(s)} />);
+    });
+    // Placed against the single word: 1015 - 268.
+    expect(seen[seen.length - 1]?.left).toBe(747);
+
+    // The drag continues and the selection becomes the whole paragraph.
+    currentAnchor = FULL_COLUMN;
+    document.dispatchEvent(new Event("selectionchange"));
+    await flush();
+
+    // 1256 - 268. Previously this only happened on the next scroll.
+    expect(seen[seen.length - 1]?.left).toBe(988);
   });
 });
