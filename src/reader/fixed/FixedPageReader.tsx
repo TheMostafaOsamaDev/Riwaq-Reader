@@ -41,6 +41,7 @@ import { HighlightsPanel } from "../../panels/HighlightsPanel";
 import { SelectionPopover } from "../../components/SelectionPopover";
 import { HighlightActionPopover } from "../../components/HighlightActionPopover";
 import { copyText } from "../../lib/clipboard";
+import { boxFromRect } from "../../lib/selectionAnchor";
 import { SideSheet } from "../../components/SideSheet";
 import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
@@ -743,7 +744,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           // for the toolbar to follow — it keeps the rect it opened
           // with. (The reflowable readers pass a live re-measure.)
           anchor={{
-            getAnchor: () => sel.rect,
+            getAnchor: () => boxFromRect(sel.rect, contentDir),
             insets: { top: CHROME_INSET_TOP, bottom: CHROME_INSET_BOTTOM },
           }}
           onPick={(color) => createFromSelection(color)}
@@ -761,7 +762,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               themeKey={themeKey}
               highlight={hl}
               anchor={{
-                getAnchor: () => activeHl.rect,
+                getAnchor: () => boxFromRect(activeHl.rect, contentDir),
                 insets: { top: CHROME_INSET_TOP, bottom: CHROME_INSET_BOTTOM },
               }}
               onDelete={() => {

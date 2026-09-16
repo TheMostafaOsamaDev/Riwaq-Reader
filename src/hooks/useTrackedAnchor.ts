@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   placePopover,
+  type AnchorBox,
   type Placement,
   type PlacementInput,
   type Side,
@@ -17,7 +18,7 @@ interface Options {
    *
    *  Called on every scroll frame, so keep it cheap: one
    *  `getBoundingClientRect()` is the intended cost. */
-  getAnchor: () => DOMRect | null;
+  getAnchor: () => AnchorBox | null;
   placement: PlacementInput["placement"];
   /** How much chrome each end of the reading region is under. Each
    *  reader has its own bars — the desktop's are 66/65 tall, the
@@ -46,7 +47,18 @@ interface Options {
 export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [place, setPlace] = useState<Placement | null>(null);
+  /** A placement plus whether getting there should be eased.
+   *
+   *  Scroll tracking must never ease — the toolbar has to sit on the
+   *  text frame for frame, and a transition would leave it lagging
+   *  behind the words it belongs to. But a DISCRETE change of anchor is
+   *  the opposite case: double-click a word, double-click again for the
+   *  line, and the toolbar teleports. Same pixels, different meaning,
+   *  so the two are told apart by what triggered them rather than by
+   *  how far the toolbar moved. */
+  const [place, setPlace] = useState<(Placement & { ease: boolean }) | null>(
+    null,
+  );
   const reducedMotion = useReducedMotion();
 
   // The side is decided once, on the first placement, and then held.
@@ -63,6 +75,27 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   sizeRef.current = size;
   const insetsRef = useRef(insets);
   insetsRef.current = insets;
+
+  /** Commit a placement, skipping the re-render when nothing moved.
+   *
+   *  Both effects below end this way, and the equality check has to
+   *  stay identical between them: a scroll frame that re-places to the
+   *  same pixel must not re-render the toolbar.
+   *
+   *  Safe to rebuild each render — it closes over nothing but the
+   *  stable `setPlace` and `sideRef`, so it never reaches the listener
+   *  effect's dependency array and cannot cause a re-subscribe. */
+  const commit = (next: Placement, ease: boolean) => {
+    sideRef.current = next.side;
+    setPlace((prev) =>
+      prev &&
+      prev.top === next.top &&
+      prev.left === next.left &&
+      prev.visible === next.visible
+        ? prev
+        : { ...next, ease },
+    );
+  };
 
   const boundsNow = (): PlacementInput["bounds"] => ({
     top: insetsRef.current.top,
@@ -97,9 +130,20 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   // for one frame.
   useLayoutEffect(() => {
     let frame = 0;
+    // Set by whichever listener scheduled the pending frame. A plain
+    // local, like `frame`: it is read and written only inside this
+    // effect's lifetime.
+    let easeNext = false;
 
     const reposition = () => {
       frame = 0;
+      // Nothing is placeable until the toolbar knows its own width.
+      // Placing at width 0 puts an RTL toolbar's start edge where its
+      // END belongs — it paints against the selection's right edge and
+      // then jumps a full toolbar-width left the moment ResizeObserver
+      // reports. Staying unplaced for that one frame is invisible;
+      // moving afterwards is not.
+      if (sizeRef.current.width === 0 || sizeRef.current.height === 0) return;
       const anchor = getAnchorRef.current();
       if (!anchor) {
         setPlace((prev) =>
@@ -115,18 +159,19 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
         margin: MARGIN,
         lockedSide: sideRef.current,
       });
-      sideRef.current = next.side;
-      setPlace((prev) =>
-        prev &&
-        prev.top === next.top &&
-        prev.left === next.left &&
-        prev.visible === next.visible
-          ? prev
-          : next,
-      );
+      const ease = easeNext;
+      easeNext = false;
+      commit(next, ease);
     };
 
-    const schedule = () => {
+    const scheduleTracking = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(reposition);
+    };
+    const scheduleAnchorChange = () => {
+      // A frame already pending stays eased: a scroll landing in the
+      // same frame is part of the same move, not a separate one.
+      easeNext = true;
       if (frame) return;
       frame = requestAnimationFrame(reposition);
     };
@@ -143,20 +188,40 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
     // for wheel/keydown/transitionend to catch a turn that cannot
     // happen only bought false wakeups: one per keystroke typed into
     // the note editor, and one per swatch transition ending.
-    window.addEventListener("scroll", schedule, {
+    window.addEventListener("scroll", scheduleTracking, {
       capture: true,
       passive: true,
     });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", scheduleTracking);
+    // The selection growing under a drag moves the anchor without
+    // moving the page, so neither scroll nor resize fires for it.
+    //
+    // This is what made the toolbar open in the wrong place. It mounts
+    // while the drag is still running, when the selection is the single
+    // word the drag began on, and placed itself against that: measured
+    // on a real chapter, an anchor 61px wide at 954..1015, toolbar at
+    // 747. The drag then grew the selection to the full column,
+    // 44..1256 — where the toolbar belongs at 988 — and nothing
+    // re-measured. It sat wrong until the reader happened to scroll,
+    // 900ms later, which is exactly what the report described.
+    //
+    // `selectionchange` is document-level and fires per drag frame; the
+    // rAF gate below collapses those to one placement per frame, and an
+    // unchanged position short-circuits before any re-render.
+    document.addEventListener("selectionchange", scheduleAnchorChange);
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", schedule, { capture: true });
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", scheduleTracking, {
+        capture: true,
+      });
+      window.removeEventListener("resize", scheduleTracking);
+      document.removeEventListener("selectionchange", scheduleAnchorChange);
     };
   }, [placement]);
 
   // Re-place when our own size changes, without re-subscribing above.
   useLayoutEffect(() => {
+    if (size.width === 0 || size.height === 0) return;
     const anchor = getAnchorRef.current();
     if (!anchor) return;
     const next = placePopover({
@@ -167,15 +232,10 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
       margin: MARGIN,
       lockedSide: sideRef.current,
     });
-    sideRef.current = next.side;
-    setPlace((prev) =>
-      prev &&
-      prev.top === next.top &&
-      prev.left === next.left &&
-      prev.visible === next.visible
-        ? prev
-        : next,
-    );
+    // The toolbar growing (the note editor opening) re-places it, but
+    // that is the surface changing shape around a fixed anchor, not the
+    // anchor moving — easing it would make the panel appear to drift.
+    commit(next, false);
   }, [size, placement]);
 
   // Until the first placement lands, the toolbar has no honest position
@@ -198,8 +258,16 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
       pointerEvents: shown ? ("auto" as const) : ("none" as const),
       // No transition on the very first paint, or the toolbar fades in
       // from the top-left corner of the window.
+      // Position eases only on a discrete anchor change — see the
+      // `ease` note on the state above. 180ms sits inside the 150-300ms
+      // micro-interaction band, and ease-out lets it arrive rather than
+      // coast. Reduced motion drops it to the instant move.
       transition:
-        place === null || reducedMotion ? undefined : "opacity 140ms ease-out",
+        place === null || reducedMotion
+          ? undefined
+          : place.ease
+            ? "top 180ms ease-out, left 180ms ease-out, opacity 140ms ease-out"
+            : "opacity 140ms ease-out",
       // Never let a mid-scroll re-place animate: the position must track
       // the text exactly, frame for frame.
       willChange: "top, left, opacity",
