@@ -31,6 +31,13 @@ const RTL_PARAGRAPH: AnchorBox = {
 
 const TOOLBAR = { width: 268, height: 96 };
 
+/** Let the hook's rAF-gated reposition run. */
+const flush = async () => {
+  await act(async () => {
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+  });
+};
+
 /** Reports 0x0 until `measured` flips, mimicking the gap between mount
  *  and the first ResizeObserver callback. */
 let measured = false;
@@ -140,12 +147,6 @@ describe("useTrackedAnchor: the selection growing under a drag", () => {
     dir: "rtl",
   };
 
-  const flush = async () => {
-    await act(async () => {
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-    });
-  };
-
   it("follows the selection as it grows, without waiting for a scroll", async () => {
     measured = true;
     currentAnchor = ONE_WORD;
@@ -193,12 +194,6 @@ describe("useTrackedAnchor: easing only real anchor changes", () => {
     firstLine: { left: 44, right: 1256 },
     lastLine: { left: 44, right: 1256 },
     dir: "rtl",
-  };
-
-  const flush = async () => {
-    await act(async () => {
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-    });
   };
 
   const mount = async (seen: React.CSSProperties[]) => {
