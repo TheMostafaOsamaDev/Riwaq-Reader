@@ -47,7 +47,20 @@ interface Options {
 export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [place, setPlace] = useState<Placement | null>(null);
+  /** A placement plus whether getting there should be eased.
+   *
+   *  Scroll tracking must never ease — the toolbar has to sit on the
+   *  text frame for frame, and a transition would leave it lagging
+   *  behind the words it belongs to. But a DISCRETE change of anchor is
+   *  the opposite case: double-click a word, double-click again for the
+   *  line, and the toolbar teleports. Same pixels, different meaning,
+   *  so the two are told apart by what triggered them rather than by
+   *  how far the toolbar moved. */
+  const [place, setPlace] = useState<(Placement & { ease: boolean }) | null>(
+    null,
+  );
+  /** Set by whichever listener scheduled the pending frame. */
+  const easeNext = useRef(false);
   const reducedMotion = useReducedMotion();
 
   // The side is decided once, on the first placement, and then held.
@@ -124,20 +137,27 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
         lockedSide: sideRef.current,
       });
       sideRef.current = next.side;
+      const ease = easeNext.current;
+      easeNext.current = false;
       setPlace((prev) =>
         prev &&
         prev.top === next.top &&
         prev.left === next.left &&
         prev.visible === next.visible
           ? prev
-          : next,
+          : { ...next, ease },
       );
     };
 
-    const schedule = () => {
+    const schedule = (ease: boolean) => () => {
+      // A frame already pending for an eased change stays eased: the
+      // scroll that lands in the same frame is part of the same move.
+      if (ease) easeNext.current = true;
       if (frame) return;
       frame = requestAnimationFrame(reposition);
     };
+    const scheduleTracking = schedule(false);
+    const scheduleAnchorChange = schedule(true);
 
     reposition();
     // Capture phase: the scroll that matters happens on the reading
@@ -151,11 +171,11 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
     // for wheel/keydown/transitionend to catch a turn that cannot
     // happen only bought false wakeups: one per keystroke typed into
     // the note editor, and one per swatch transition ending.
-    window.addEventListener("scroll", schedule, {
+    window.addEventListener("scroll", scheduleTracking, {
       capture: true,
       passive: true,
     });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", scheduleTracking);
     // The selection growing under a drag moves the anchor without
     // moving the page, so neither scroll nor resize fires for it.
     //
@@ -171,12 +191,14 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
     // `selectionchange` is document-level and fires per drag frame; the
     // rAF gate below collapses those to one placement per frame, and an
     // unchanged position short-circuits before any re-render.
-    document.addEventListener("selectionchange", schedule);
+    document.addEventListener("selectionchange", scheduleAnchorChange);
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", schedule, { capture: true });
-      window.removeEventListener("resize", schedule);
-      document.removeEventListener("selectionchange", schedule);
+      window.removeEventListener("scroll", scheduleTracking, {
+        capture: true,
+      });
+      window.removeEventListener("resize", scheduleTracking);
+      document.removeEventListener("selectionchange", scheduleAnchorChange);
     };
   }, [placement]);
 
@@ -194,13 +216,16 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
       lockedSide: sideRef.current,
     });
     sideRef.current = next.side;
+    // The toolbar growing (the note editor opening) re-places it, but
+    // that is the surface changing shape around a fixed anchor, not the
+    // anchor moving — easing it would make the panel appear to drift.
     setPlace((prev) =>
       prev &&
       prev.top === next.top &&
       prev.left === next.left &&
       prev.visible === next.visible
         ? prev
-        : next,
+        : { ...next, ease: false },
     );
   }, [size, placement]);
 
@@ -224,8 +249,16 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
       pointerEvents: shown ? ("auto" as const) : ("none" as const),
       // No transition on the very first paint, or the toolbar fades in
       // from the top-left corner of the window.
+      // Position eases only on a discrete anchor change — see the
+      // `ease` note on the state above. 180ms sits inside the 150-300ms
+      // micro-interaction band, and ease-out lets it arrive rather than
+      // coast. Reduced motion drops it to the instant move.
       transition:
-        place === null || reducedMotion ? undefined : "opacity 140ms ease-out",
+        place === null || reducedMotion
+          ? undefined
+          : place.ease
+            ? "top 180ms ease-out, left 180ms ease-out, opacity 140ms ease-out"
+            : "opacity 140ms ease-out",
       // Never let a mid-scroll re-place animate: the position must track
       // the text exactly, frame for frame.
       willChange: "top, left, opacity",

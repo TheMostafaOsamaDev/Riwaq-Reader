@@ -168,3 +168,81 @@ describe("useTrackedAnchor: the selection growing under a drag", () => {
     expect(seen[seen.length - 1]?.left).toBe(988);
   });
 });
+
+/**
+ * Double-click a word, double-click again for the line: the anchor
+ * changes for real, and the toolbar used to teleport. Same pixels as a
+ * scroll re-place, different meaning — so the two are told apart by
+ * what triggered them.
+ *
+ * Scroll must stay instant. A transition there would leave the toolbar
+ * lagging behind the words it is attached to, which is worse than the
+ * jump it would be smoothing.
+ */
+describe("useTrackedAnchor: easing only real anchor changes", () => {
+  const WORD: AnchorBox = {
+    top: 300,
+    bottom: 336,
+    firstLine: { left: 1099, right: 1155 },
+    lastLine: { left: 1099, right: 1155 },
+    dir: "rtl",
+  };
+  const LINE: AnchorBox = {
+    top: 300,
+    bottom: 336,
+    firstLine: { left: 44, right: 1256 },
+    lastLine: { left: 44, right: 1256 },
+    dir: "rtl",
+  };
+
+  const flush = async () => {
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+  };
+
+  const mount = async (seen: React.CSSProperties[]) => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    await act(async () => {
+      createRoot(host).render(<Harness onPlace={(s) => seen.push(s)} />);
+    });
+  };
+
+  it("eases when the selection itself changes", async () => {
+    measured = true;
+    currentAnchor = WORD;
+    const seen: React.CSSProperties[] = [];
+    await mount(seen);
+
+    currentAnchor = LINE;
+    document.dispatchEvent(new Event("selectionchange"));
+    await flush();
+
+    expect(String(seen[seen.length - 1]?.transition)).toContain("left 180ms");
+  });
+
+  it("does not ease while tracking a scroll", async () => {
+    measured = true;
+    currentAnchor = WORD;
+    const seen: React.CSSProperties[] = [];
+    await mount(seen);
+
+    // The text moves under the toolbar: it must follow exactly, with no
+    // transition to lag behind.
+    currentAnchor = LINE;
+    window.dispatchEvent(new Event("scroll"));
+    await flush();
+
+    expect(String(seen[seen.length - 1]?.transition)).not.toContain("left");
+  });
+
+  it("never eases the first placement", async () => {
+    // Otherwise the toolbar slides in from the corner of the window.
+    measured = true;
+    currentAnchor = LINE;
+    const seen: React.CSSProperties[] = [];
+    await mount(seen);
+    expect(String(seen[seen.length - 1]?.transition)).not.toContain("left");
+  });
+});
