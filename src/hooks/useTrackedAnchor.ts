@@ -156,10 +156,27 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
       passive: true,
     });
     window.addEventListener("resize", schedule);
+    // The selection growing under a drag moves the anchor without
+    // moving the page, so neither scroll nor resize fires for it.
+    //
+    // This is what made the toolbar open in the wrong place. It mounts
+    // while the drag is still running, when the selection is the single
+    // word the drag began on, and placed itself against that: measured
+    // on a real chapter, an anchor 61px wide at 954..1015, toolbar at
+    // 747. The drag then grew the selection to the full column,
+    // 44..1256 — where the toolbar belongs at 988 — and nothing
+    // re-measured. It sat wrong until the reader happened to scroll,
+    // 900ms later, which is exactly what the report described.
+    //
+    // `selectionchange` is document-level and fires per drag frame; the
+    // rAF gate below collapses those to one placement per frame, and an
+    // unchanged position short-circuits before any re-render.
+    document.addEventListener("selectionchange", schedule);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("scroll", schedule, { capture: true });
       window.removeEventListener("resize", schedule);
+      document.removeEventListener("selectionchange", schedule);
     };
   }, [placement]);
 
