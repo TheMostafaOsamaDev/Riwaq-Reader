@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import { useTrackedAnchor } from "../hooks/useTrackedAnchor";
+import type { AnchorBox } from "../lib/popoverPlacement";
 import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 
 /** Toolbar width. Narrow enough for a phone, wide enough that the note
@@ -12,7 +13,7 @@ export const TOOLBAR_ROW_H = 44;
 
 export interface ToolbarAnchor {
   /** Re-measures what the toolbar is attached to, every scroll frame. */
-  getAnchor: () => DOMRect | null;
+  getAnchor: () => AnchorBox | null;
   /** "auto": above the anchor if it fits, else below.
    *  "below": always below — the phone reader forces this so the
    *  toolbar never overlaps Android's native floating toolbar, which

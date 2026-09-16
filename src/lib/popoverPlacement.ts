@@ -16,10 +16,34 @@
  * as a bug (and was one).
  */
 
+/** The line boxes placement actually needs, in viewport coordinates.
+ *
+ *  Not a single bounding rect. A selection spanning three lines of a
+ *  justified column has a bounding rect as wide as the column, and
+ *  centring a toolbar on that puts it in the dead middle of the block,
+ *  touching neither end of the thing it belongs to. Measured on a real
+ *  920px RTL column: union 768→1688, so "centred" lands at 1094 — the
+ *  middle of the paragraph — while the selection starts at 1688.
+ *
+ *  So placement is told the first and last LINE instead, and which end
+ *  of a line the reader's eye starts from. */
+export interface AnchorBox {
+  /** Top of the first line and bottom of the last: the vertical extent. */
+  top: number;
+  bottom: number;
+  /** Topmost line box of the selection. */
+  firstLine: { left: number; right: number };
+  /** Bottommost line box. */
+  lastLine: { left: number; right: number };
+  /** Reading direction of the text being anchored to, resolved from the
+   *  element itself rather than the document: a reader can hold an
+   *  English quote inside an Arabic chapter. */
+  dir: "rtl" | "ltr";
+}
+
 export interface PlacementInput {
-  /** Viewport rect of the selection (or of an existing highlight's
-   *  `<mark>`). Only the fields placement actually needs. */
-  anchor: { top: number; bottom: number; left: number; width: number };
+  /** The selection, or an existing highlight's `<mark>`. */
+  anchor: AnchorBox;
   /** Measured size of the toolbar. */
   size: { width: number; height: number };
   /** The region the toolbar must stay inside. */
@@ -85,12 +109,21 @@ export function placePopover({
 
   // Clamp, never flip. Everything the toolbar does after opening is a
   // slide within the reading region.
-  const wanted = side === "above" ? above : below;
-  const top = clamp(wanted, bounds.top, bounds.bottom - size.height);
+  const wantedTop = side === "above" ? above : below;
+  const top = clamp(wantedTop, bounds.top, bounds.bottom - size.height);
 
-  const centred = anchor.left + anchor.width / 2 - size.width / 2;
+  // Anchored to where the selection STARTS, on the line the toolbar is
+  // actually beside — the first line when it sits above, the last when
+  // below. In RTL that is the line's right edge and the toolbar hangs
+  // leftward from it; in LTR, mirrored.
+  //
+  // Start rather than centre because it is the one point that does not
+  // move as the selection grows: drag two more lines and a centred
+  // toolbar slides away under your hand, while this one stays put.
+  const line = side === "above" ? anchor.firstLine : anchor.lastLine;
+  const wanted = anchor.dir === "rtl" ? line.right - size.width : line.left;
   const left = clamp(
-    centred,
+    wanted,
     bounds.left + margin,
     bounds.right - size.width - margin,
   );
