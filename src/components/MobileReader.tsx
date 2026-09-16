@@ -41,6 +41,7 @@ import {
   anchorFromRange,
   rangeForSegments,
   rectForMark,
+  liveSelectionBox,
   rectForSegments,
   type SelectionAnchor,
 } from "../lib/selectionAnchor";
@@ -1346,7 +1347,8 @@ export function MobileReader({
           <SelectionPopover
             theme={theme}
             anchor={{
-              getAnchor: () => rectForSegments(selAnchor.segments),
+              getAnchor: () =>
+                liveSelectionBox() ?? rectForSegments(selAnchor.segments),
               placement: "below",
               insets: MOBILE_READING_INSETS,
             }}

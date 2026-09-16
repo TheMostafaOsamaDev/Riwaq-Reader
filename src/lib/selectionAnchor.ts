@@ -266,6 +266,44 @@ export function boxFromRect(
   };
 }
 
+/**
+ * The selection as it is RIGHT NOW, rather than as it was when the
+ * toolbar opened.
+ *
+ * The toolbar is created from a snapshot taken on `pointerup`, and that
+ * snapshot is what keeps it alive once the reader clicks a swatch and
+ * the browser throws the selection away. But a snapshot cannot see the
+ * selection still being dragged, and an early pointerup — the first of
+ * a double-click, or a click that precedes a drag — captures a single
+ * word. Measured on a real chapter: the toolbar opened against an
+ * anchor 56px wide and only reached the real paragraph, 1212px, a
+ * second later, which is the jump the reader saw.
+ *
+ * So the live selection wins while there is one, and the snapshot is
+ * the fallback. Anchored to the selection's START, which is where the
+ * drag began, the toolbar then holds still for the whole drag instead
+ * of chasing the end of it.
+ *
+ * Null when there is no usable selection, or when it is outside the
+ * reading column — a selection in the sidebar or a dialog must not drag
+ * the reader's toolbar across the screen.
+ */
+export function liveSelectionBox(): AnchorBox | null {
+  if (typeof window === "undefined") return null;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const host =
+    range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? (range.commonAncestorContainer as Element)
+      : range.commonAncestorContainer.parentElement;
+  if (!host?.closest("[data-book-body]")) return null;
+  return boxFromRects(
+    Array.from(range.getClientRects()),
+    dirOf(range.commonAncestorContainer),
+  );
+}
+
 /** Reading direction of the app itself, for anchors that carry no
  *  element of their own — a fixed page's selection rect comes from the
  *  viewer as plain geometry. */
