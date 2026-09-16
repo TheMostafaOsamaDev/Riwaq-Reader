@@ -121,9 +121,9 @@ export function placePopover({
   // move as the selection grows: drag two more lines and a centred
   // toolbar slides away under your hand, while this one stays put.
   const line = side === "above" ? anchor.firstLine : anchor.lastLine;
-  const wanted = anchor.dir === "rtl" ? line.right - size.width : line.left;
+  const wantedLeft = anchor.dir === "rtl" ? line.right - size.width : line.left;
   const left = clamp(
-    wanted,
+    wantedLeft,
     bounds.left + margin,
     bounds.right - size.width - margin,
   );

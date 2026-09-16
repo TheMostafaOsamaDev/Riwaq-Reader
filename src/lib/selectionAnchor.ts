@@ -247,10 +247,14 @@ export function rectForSegments(
 /**
  * One already-measured rect as an anchor.
  *
- * For the fixed-layout readers, where a page is a bitmap or a laid-out
- * DOCX page and the viewer hands back a single rect for the whole
- * selection. Treated as one line box, so the toolbar still attaches to
- * the selection's start edge rather than the middle of the block.
+ * For the fixed-layout readers, whose resolvers currently narrow a
+ * selection to one rect before it reaches here. That is a property of
+ * those call sites, not of fixed layout: `pdfHighlight` already merges
+ * the range's client rects into one band per line and then returns only
+ * the bounding rect, and the DOCX resolver has the Range in hand. Until
+ * they carry line boxes through, this treats the one rect as a single
+ * line, so the toolbar still attaches to the selection's start edge
+ * rather than the middle of the block.
  */
 export function boxFromRect(
   rect: { top: number; bottom: number; left: number; right: number },
@@ -302,14 +306,6 @@ export function liveSelectionBox(): AnchorBox | null {
     Array.from(range.getClientRects()),
     dirOf(range.commonAncestorContainer),
   );
-}
-
-/** Reading direction of the app itself, for anchors that carry no
- *  element of their own — a fixed page's selection rect comes from the
- *  viewer as plain geometry. */
-export function docDir(): "rtl" | "ltr" {
-  if (typeof document === "undefined") return "ltr";
-  return document.documentElement.dir === "rtl" ? "rtl" : "ltr";
 }
 
 /** Reading direction of the text itself.

@@ -268,13 +268,13 @@ describe("placePopover: multi-line selections", () => {
     // is the one point that does not move.
     const one = placePopover(
       base({
-        anchor: {
+        anchor: line({
           top: 300,
           bottom: 336,
-          firstLine: { left: 768, right: 1688 },
-          lastLine: { left: 768, right: 1688 },
+          left: 768,
+          right: 1688,
           dir: "rtl",
-        },
+        }),
       }),
     );
     const three = placePopover(base());

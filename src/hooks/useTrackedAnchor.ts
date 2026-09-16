@@ -59,8 +59,6 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   const [place, setPlace] = useState<(Placement & { ease: boolean }) | null>(
     null,
   );
-  /** Set by whichever listener scheduled the pending frame. */
-  const easeNext = useRef(false);
   const reducedMotion = useReducedMotion();
 
   // The side is decided once, on the first placement, and then held.
@@ -77,6 +75,27 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   sizeRef.current = size;
   const insetsRef = useRef(insets);
   insetsRef.current = insets;
+
+  /** Commit a placement, skipping the re-render when nothing moved.
+   *
+   *  Both effects below end this way, and the equality check has to
+   *  stay identical between them: a scroll frame that re-places to the
+   *  same pixel must not re-render the toolbar.
+   *
+   *  Safe to rebuild each render — it closes over nothing but the
+   *  stable `setPlace` and `sideRef`, so it never reaches the listener
+   *  effect's dependency array and cannot cause a re-subscribe. */
+  const commit = (next: Placement, ease: boolean) => {
+    sideRef.current = next.side;
+    setPlace((prev) =>
+      prev &&
+      prev.top === next.top &&
+      prev.left === next.left &&
+      prev.visible === next.visible
+        ? prev
+        : { ...next, ease },
+    );
+  };
 
   const boundsNow = (): PlacementInput["bounds"] => ({
     top: insetsRef.current.top,
@@ -111,6 +130,10 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   // for one frame.
   useLayoutEffect(() => {
     let frame = 0;
+    // Set by whichever listener scheduled the pending frame. A plain
+    // local, like `frame`: it is read and written only inside this
+    // effect's lifetime.
+    let easeNext = false;
 
     const reposition = () => {
       frame = 0;
@@ -136,28 +159,22 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
         margin: MARGIN,
         lockedSide: sideRef.current,
       });
-      sideRef.current = next.side;
-      const ease = easeNext.current;
-      easeNext.current = false;
-      setPlace((prev) =>
-        prev &&
-        prev.top === next.top &&
-        prev.left === next.left &&
-        prev.visible === next.visible
-          ? prev
-          : { ...next, ease },
-      );
+      const ease = easeNext;
+      easeNext = false;
+      commit(next, ease);
     };
 
-    const schedule = (ease: boolean) => () => {
-      // A frame already pending for an eased change stays eased: the
-      // scroll that lands in the same frame is part of the same move.
-      if (ease) easeNext.current = true;
+    const scheduleTracking = () => {
       if (frame) return;
       frame = requestAnimationFrame(reposition);
     };
-    const scheduleTracking = schedule(false);
-    const scheduleAnchorChange = schedule(true);
+    const scheduleAnchorChange = () => {
+      // A frame already pending stays eased: a scroll landing in the
+      // same frame is part of the same move, not a separate one.
+      easeNext = true;
+      if (frame) return;
+      frame = requestAnimationFrame(reposition);
+    };
 
     reposition();
     // Capture phase: the scroll that matters happens on the reading
@@ -215,18 +232,10 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
       margin: MARGIN,
       lockedSide: sideRef.current,
     });
-    sideRef.current = next.side;
     // The toolbar growing (the note editor opening) re-places it, but
     // that is the surface changing shape around a fixed anchor, not the
     // anchor moving — easing it would make the panel appear to drift.
-    setPlace((prev) =>
-      prev &&
-      prev.top === next.top &&
-      prev.left === next.left &&
-      prev.visible === next.visible
-        ? prev
-        : { ...next, ease: false },
-    );
+    commit(next, false);
   }, [size, placement]);
 
   // Until the first placement lands, the toolbar has no honest position

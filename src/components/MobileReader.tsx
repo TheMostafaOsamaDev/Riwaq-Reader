@@ -41,7 +41,6 @@ import {
   anchorFromRange,
   rangeForSegments,
   rectForMark,
-  liveSelectionBox,
   rectForSegments,
   type SelectionAnchor,
 } from "../lib/selectionAnchor";
@@ -1347,8 +1346,13 @@ export function MobileReader({
           <SelectionPopover
             theme={theme}
             anchor={{
-              getAnchor: () =>
-                liveSelectionBox() ?? rectForSegments(selAnchor.segments),
+              // No live branch here, unlike the desktop reader: this one
+              // renders BookBody with `selectable={false}`, so its selection
+              // lives in React state and never on `window.getSelection()`.
+              // It also keeps this snapshot fresh itself, re-resolving the
+              // anchor on every pointermove of the drag, so there is nothing
+              // stale for a live read to correct.
+              getAnchor: () => rectForSegments(selAnchor.segments),
               placement: "below",
               insets: MOBILE_READING_INSETS,
             }}
