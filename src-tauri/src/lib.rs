@@ -230,6 +230,12 @@ pub fn run() {
             //
             // Helper webviews are implementation detail; the main window IS
             // the app. When it is destroyed, take the helpers with it.
+            //
+            // Desktop only, and not merely because the situation cannot arise
+            // on Android: `webview_windows` comes from `tauri::Manager`, whose
+            // import is itself `#[cfg(desktop)]`, so leaving this ungated
+            // fails the Android build outright.
+            #[cfg(desktop)]
             if let tauri::RunEvent::WindowEvent { label, event, .. } = &_event {
                 if label == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
                     let others_visible = _app.webview_windows().iter().any(|(l, w)| {
