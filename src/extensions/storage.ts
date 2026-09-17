@@ -59,20 +59,17 @@ async function ensureDir(path: string): Promise<void> {
 }
 
 export async function listInstalled(): Promise<InstalledRecord[]> {
-  // No up-front `exists` guard: on a fresh install INSTALLED_DIR's parents
-  // may exist without INSTALLED_DIR itself ever having been created as its
-  // own directory entry (mkdir(recursive) only guarantees the leaf path is
-  // reachable). Treating a failed readDir as "nothing installed yet" covers
-  // both a missing directory and an empty one with one code path.
-  let entries: Awaited<ReturnType<typeof readDir>>;
-  try {
-    entries = await readDir(INSTALLED_DIR, { baseDir: BASE });
-  } catch {
-    return [];
-  }
+  if (!(await exists(INSTALLED_DIR, { baseDir: BASE }))) return [];
+  const entries = await readDir(INSTALLED_DIR, { baseDir: BASE });
   const out: InstalledRecord[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory || entry.name.startsWith(".tmp-")) continue;
+    if (
+      !entry.isDirectory ||
+      entry.name.startsWith(".tmp-") ||
+      entry.name.startsWith(".old-")
+    ) {
+      continue;
+    }
     try {
       const manifest = JSON.parse(
         await readTextFile(`${dirOf(entry.name)}/manifest.json`, {
@@ -106,16 +103,48 @@ export async function writeInstalled(
     origin: OriginRecord;
   },
 ): Promise<void> {
-  const staging = `${INSTALLED_DIR}/.tmp-${id}`;
-  await ensureDir(staging);
-  await writeTextFile(`${staging}/index.js`, files.source, { baseDir: BASE });
   // The directory name (`id`) is the identity every other function in this
   // module keys on — readBundleSource, iconPath, removeInstalled all take
-  // it, not a value read back out of manifest.json. Force manifest.id to
-  // match it so the two can never drift apart on disk.
+  // it, not a value read out of manifest.json. A manifest that disagrees
+  // with the id it's being installed under is a real inconsistency that
+  // catalog.ts (a consumer of InstalledRecord) must never silently see —
+  // fail loudly rather than coerce or persist the mismatch.
+  if (files.manifest.id !== id) {
+    throw new Error(
+      `Extension id mismatch: manifest declares "${files.manifest.id}" but it is being installed as "${id}".`,
+    );
+  }
+
+  const target = dirOf(id);
+  const staging = `${INSTALLED_DIR}/.tmp-${id}`;
+  const aside = `${INSTALLED_DIR}/.old-${id}`;
+
+  // Recovery: if an earlier call died between "move the old bundle aside"
+  // and "delete the old bundle" below, `.old-<id>` is left holding the
+  // previous install with nothing at `target`. Put it back before doing
+  // anything else, so this call starts from a consistent state instead of
+  // compounding an already-interrupted swap.
+  if (
+    !(await exists(target, { baseDir: BASE })) &&
+    (await exists(aside, { baseDir: BASE }))
+  ) {
+    await rename(aside, target, {
+      oldPathBaseDir: BASE,
+      newPathBaseDir: BASE,
+    });
+  }
+
+  // Clear staging left behind by an earlier crashed attempt: icon.png is
+  // only written below when an icon is supplied, so a stale one from a
+  // previous attempt must not survive into an install that has none.
+  if (await exists(staging, { baseDir: BASE })) {
+    await remove(staging, { baseDir: BASE, recursive: true });
+  }
+  await ensureDir(staging);
+  await writeTextFile(`${staging}/index.js`, files.source, { baseDir: BASE });
   await writeTextFile(
     `${staging}/manifest.json`,
-    JSON.stringify({ ...files.manifest, id }, null, 2),
+    JSON.stringify(files.manifest, null, 2),
     { baseDir: BASE },
   );
   await writeTextFile(
@@ -127,13 +156,28 @@ export async function writeInstalled(
     await writeFile(`${staging}/icon.png`, files.icon, { baseDir: BASE });
   }
 
-  if (await exists(dirOf(id), { baseDir: BASE })) {
-    await remove(dirOf(id), { baseDir: BASE, recursive: true });
+  // Swap the new bundle in with no window where neither the old nor the new
+  // bundle occupies `target`: move the old one aside, bring the new one in,
+  // delete the old one last. Dying between the first two renames is exactly
+  // what the recovery block above undoes on the next call; dying after both
+  // renames just leaves a harmless `.old-<id>` for the next call to clean up
+  // (cleared here too, in case one is already sitting from that case).
+  if (await exists(aside, { baseDir: BASE })) {
+    await remove(aside, { baseDir: BASE, recursive: true });
   }
-  await rename(staging, dirOf(id), {
+  if (await exists(target, { baseDir: BASE })) {
+    await rename(target, aside, {
+      oldPathBaseDir: BASE,
+      newPathBaseDir: BASE,
+    });
+  }
+  await rename(staging, target, {
     oldPathBaseDir: BASE,
     newPathBaseDir: BASE,
   });
+  if (await exists(aside, { baseDir: BASE })) {
+    await remove(aside, { baseDir: BASE, recursive: true });
+  }
 }
 
 export async function removeInstalled(id: string): Promise<void> {
