@@ -71,10 +71,46 @@
         // before the stylesheet has been applied at all.
         root.style.setProperty("--boot-bg", theme.bg);
         root.style.setProperty("--boot-ink", theme.ink);
+        // The splash progress bar's unfilled track: this theme's own ink, at
+        // the alpha the app's `rule` token uses for hairlines. Derived rather
+        // than listed, because listing it meant four themes sharing two
+        // literals — `light` wore sepia's ink and `oled` wore dark's, on the
+        // one element whose whole job is to look like it belongs to the theme
+        // around it.
+        root.style.setProperty(
+          "--boot-track",
+          "rgba(" +
+            parseInt(theme.ink.slice(1, 3), 16) + "," +
+            parseInt(theme.ink.slice(3, 5), 16) + "," +
+            parseInt(theme.ink.slice(5, 7), 16) + ",0.15)",
+        );
         root.style.backgroundColor = theme.bg;
 
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.content = theme.bg;
+
+        // Which phoenix the splash shows, and whether it animates. Both are
+        // attributes rather than inline styles so the stylesheet below can
+        // express the whole splash declaratively — this script stays a
+        // resolver, and nothing about the splash's look lives in JS.
+        //
+        // `pref` is already resolved past "system" here, so the four concrete
+        // themes are all that reach this point.
+        if (pref === "dark" || pref === "oled") {
+          root.setAttribute("data-boot-dark", "1");
+        }
+        // Mirrors isReducedMotion() in styles/motion.ts: the in-app override
+        // wins, "auto" defers to the OS. Read here because the splash animates
+        // long before that module is parsed.
+        var rmPref = saved.reduceMotion || "auto";
+        if (
+          rmPref === "on" ||
+          (rmPref !== "off" &&
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+        ) {
+          root.setAttribute("data-boot-reduced", "1");
+        }
 
         // Mirrors detectLocale()/DIR_FOR in src/i18n/index.ts. Setting dir up
         // front means the first frame is already laid out RTL — otherwise the
@@ -120,9 +156,404 @@
         }
       })();
     </script>
+    <!--
+      The boot splash. Inline — markup, style and teardown — because the gap it
+      covers IS the gap before any module has run: the bundle parsing, and on
+      Android the Tauri bridge's first IPC. Anything imported arrives after the
+      blank frame it was meant to prevent.
+
+      Two rules govern everything below.
+
+      The phoenix is painted in the FIRST frame and never animated in. This
+      webview has twice either skipped a mount keyframe or held it forever
+      (see the reader's enter animations); a logo that fades in is a logo that
+      can stay invisible. So every animated layer here sits ON TOP of a
+      fully-painted mark and only ever adds light — strip the animations, or
+      have them stall, and the resting state is still the finished logo.
+
+      And nothing here reads a colour from a module. `--boot-bg` is set by the
+      bootstrap above; the four values this file adds are keyed off
+      `data-boot-dark` instead of being computed, so the splash cannot be the
+      reason a launch stalls.
+    -->
+    <!--
+      Start both marks fetching with the document rather than when the style
+      that needs one is first applied. The mark comes over wry's custom
+      protocol, so it is a real request — and the frame it is late for is the
+      handover from the native launch window, which is already drawing this
+      exact phoenix. Late here does not read as "the image loaded", it reads as
+      the mark blinking out and back, which is the one artefact this whole
+      feature exists to remove.
+
+      Both, because which one is needed is only known once the bootstrap above
+      has resolved the theme, and they are ~10 KB local reads. bootSplash.test.ts
+      asserts every `--boot-mark` url has a preload here, so the pair cannot
+      drift.
+    -->
+    <link rel="preload" as="image" href="/brand/mark-ink.webp" />
+    <link rel="preload" as="image" href="/brand/mark-cream.webp" />
+    <style>
+      /* The mark ships with an alpha channel (unlike the opaque icon-* tiles),
+         which is what lets the same file be both the picture and the mask. */
+      :root {
+        --boot-mark: url("/brand/mark-ink.webp");
+        --boot-sheen: rgba(224, 180, 85, 0.72);
+        --boot-fill: #8a6a2e;
+      }
+      :root[data-boot-dark="1"] {
+        --boot-mark: url("/brand/mark-cream.webp");
+        --boot-sheen: rgba(255, 243, 214, 0.7);
+        --boot-fill: #c9a05a;
+      }
+
+      /* No `will-change: opacity` here on purpose — dismiss() sets it, and
+         only on the paths that actually fade. Two of that function's exits
+         remove the element with no transition at all (the reduce-motion path,
+         and the !painted path the measurements say is the COMMON one), so a
+         standing declaration would promote a full-screen compositor layer for
+         the whole boot on launches that never use it. */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        /* Above every layer the app can draw during launch — including the
+           crash screen, since a splash under it would hide the message saying
+           what broke — and still under `scrollbars`, which is top by design.
+           bootSplash.test.ts asserts that RELATIONSHIP against Z in
+           styles/tokens.ts rather than matching a literal on both sides,
+           which would have gone green while the ordering silently inverted. */
+        z-index: 1001;
+        background: var(--boot-bg, #f4ecd8);
+        opacity: 1;
+      }
+      #boot-splash[data-leaving="1"] {
+        opacity: 0;
+        /* Hand input over the instant the app is behind this, rather than
+           swallowing taps for the length of the fade. */
+        pointer-events: none;
+        /* Not EASE.exit. That curve is ease-IN, tuned for small elements
+           darting away; on a full screen it holds near-opaque and then drops,
+           which is exactly the snap this is meant to avoid. This one leaves
+           promptly and lands soft. */
+        transition: opacity 320ms cubic-bezier(0.32, 0, 0.24, 1);
+      }
+
+      /* Dead-centred, on negative margins rather than a translate so the
+         leave animation has `transform` entirely to itself.
+
+         50% is load-bearing, not taste. The activity's windowBackground draws
+         the same phoenix underneath with Gravity.CENTER while the webview is
+         still blank, and the two have to land on the same pixels or the
+         handover shows as a jump. Centre is the one position both sides can
+         compute without agreeing on screen metrics or inset maths.
+         MainActivity.launchWindowDrawable() is the other half. */
+      #boot-mark {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 104px;
+        height: 112px;
+        background-image: var(--boot-mark);
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }
+      /* The phoenix rises out rather than simply vanishing. Deliberately
+         LONGER than the fade: a mark still travelling when it becomes
+         invisible reads as continuous, where one that halts at the same
+         instant the opacity lands reads as two things stopping at once. */
+      #boot-splash[data-leaving="1"] #boot-mark {
+        transform: scale(1.06) translateY(-5px);
+        transition: transform 440ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+
+      /* Ember updraft: three draughts rising through the silhouette at 1.9 /
+         2.7 / 3.4s. The periods are deliberately unrelated so they never
+         resync into a single sweep — one band reads as a shimmer, three out of
+         phase read as a fire, which is the point of a phoenix.
+      
+         ONE masked surface holding three children, not three masked wrappers.
+         The mask was identical on all three over an identical box, so the
+         extra two bought nothing and cost two more render surfaces
+         re-composited every frame for the whole boot. */
+      .boot-ember {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        -webkit-mask-image: var(--boot-mark);
+        mask-image: var(--boot-mark);
+        -webkit-mask-size: 100% 100%;
+        mask-size: 100% 100%;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+      }
+      .boot-ember > i {
+        position: absolute;
+        top: 0;
+        background-image: linear-gradient(
+          to top,
+          rgba(0, 0, 0, 0) 0%,
+          var(--boot-sheen) 50%,
+          rgba(0, 0, 0, 0) 100%
+        );
+      }
+      .boot-e1 {
+        left: 4%;
+        width: 44%;
+        height: 64%;
+        opacity: 0.92;
+        animation: boot-updraft-a 1900ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      .boot-e2 {
+        left: 46%;
+        width: 52%;
+        height: 76%;
+        opacity: 0.7;
+        animation: boot-updraft-b 2700ms cubic-bezier(0.35, 0, 0.65, 1) infinite;
+      }
+      .boot-e3 {
+        left: 31%;
+        width: 32%;
+        height: 52%;
+        opacity: 0.55;
+        animation: boot-updraft-c 3400ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+      /* The trailing stop is a HOLD, not a second position — one selector
+         list rather than the same translate written twice. */
+      @keyframes boot-updraft-a {
+        0% { transform: translateY(170%); }
+        62%, 100% { transform: translateY(-170%); }
+      }
+      @keyframes boot-updraft-b {
+        0% { transform: translateY(160%); }
+        70%, 100% { transform: translateY(-160%); }
+      }
+      @keyframes boot-updraft-c {
+        0% { transform: translateY(190%); }
+        55%, 100% { transform: translateY(-190%); }
+      }
+
+      /* The bar is the same width as the mark, so the two read as one object.
+         Hidden until 1.2s: a launch that beats that never shows a bar at all,
+         which is the difference between "instant" and "briefly flashed a
+         spinner at me". */
+      #boot-bar {
+        position: absolute;
+        top: 66%;
+        left: 0;
+        right: 0;
+        width: 104px;
+        margin-inline: auto;
+        height: 2px;
+        border-radius: 99px;
+        background: var(--boot-track);
+        overflow: hidden;
+        opacity: 0;
+        transition: opacity 340ms ease-out;
+      }
+      #boot-splash[data-slow="1"] #boot-bar {
+        opacity: 1;
+      }
+
+      /* scaleX, not width: a transform is composited, so the fill costs no
+         layout and no repaint on a phone already saturated booting.
+
+         It fills LEFT-TO-RIGHT in every locale, including Arabic. This is a
+         machine reporting progress, not text being read; mirroring it would
+         only make one launch look like two different ones.
+
+         One curve over twelve seconds, and it never parks — a bar that reaches
+         its resting width and stops is the thing that reads as stalled, so
+         this one is still visibly moving whenever the app finally arrives. A
+         single cubic-bezier has no interior stops, which is what keeps the
+         velocity continuous the whole way down.
+
+         The base transform is the animation's END state, so no fill-mode is
+         needed anywhere: a skipped animation shows a nearly-full bar, a held
+         first frame shows a sliver, and both are states a person can look at. */
+      #boot-bar > span {
+        position: absolute;
+        inset: 0;
+        border-radius: 99px;
+        background: var(--boot-fill);
+        transform-origin: 0 50%;
+        transform: scaleX(0.96);
+        animation: boot-fill 12000ms cubic-bezier(0.05, 0.7, 0.1, 1);
+      }
+      @keyframes boot-fill {
+        from { transform: scaleX(0.04); }
+        to { transform: scaleX(0.96); }
+      }
+
+      /* Reduce motion: the logo simply holds, the bar simply sits, and the
+         handover is a cut rather than a fade. */
+      :root[data-boot-reduced="1"] .boot-ember > i,
+      :root[data-boot-reduced="1"] #boot-bar > span {
+        animation: none;
+      }
+      :root[data-boot-reduced="1"] #boot-bar > span {
+        transform: scaleX(0.5);
+      }
+      :root[data-boot-reduced="1"] #boot-splash[data-leaving="1"],
+      :root[data-boot-reduced="1"] #boot-splash[data-leaving="1"] #boot-mark {
+        transition: none;
+        transform: none;
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-splash">
+      <div id="boot-mark">
+        <div class="boot-ember">
+          <i class="boot-e1"></i><i class="boot-e2"></i><i class="boot-e3"></i>
+        </div>
+      </div>
+      <div id="boot-bar"><span></span></div>
+    </div>
     <div id="root"></div>
+    <script>
+      /*
+       * Splash teardown. Lives here rather than in a component because the
+       * element does: React never owns this node, so nothing in the tree can
+       * be the reason it fails to leave.
+       *
+       * It dismisses on its OWN condition rather than being told to. React
+       * committing anything into #root is the event both former callers were
+       * really reporting — App's mounted effect and the error boundary's catch
+       * — and a MutationObserver sees it directly. That deleted a `window`
+       * global, a module, and both call sites, and it covers the crash path
+       * for free, because the boundary's fallback is a commit into #root too.
+       *
+       * It also keeps this boundary DATA-only. Everything else the pre-bundle
+       * world hands the app is a value it can read — the `--boot-*` custom
+       * properties, the `data-boot-*` attributes, the localStorage
+       * breadcrumbs — and a function on `window` was the one exception.
+       *
+       * The practical win: every future top-level render path is covered
+       * without remembering to add a call. A forgotten one was a 15-second
+       * phoenix sitting over a working screen.
+       */
+      (function () {
+        var el = document.getElementById("boot-splash");
+        if (!el) return;
+
+        var slow = setTimeout(function () {
+          el.setAttribute("data-slow", "1");
+        }, 1200);
+
+        /* The backstop, declared up here so `dismiss` does not reference a
+         * binding introduced sixty lines below it. Every other path to
+         * dismissal depends on the app getting somewhere, and the failure this
+         * splash exists to cover is precisely the one where it never does — a
+         * wedged IPC bridge must not leave a launch under a phoenix forever.
+         * Generous, because a slow cold start on a cheap phone is not a wedge.
+         *
+         * Note what it cannot save: if the renderer thread itself is blocked
+         * in native code, this timer never fires either, because it is in that
+         * renderer. Observed on the emulator. */
+        var bail = setTimeout(dismiss, 15000);
+
+        /* React's first commit into #root. `childList` alone — we only need
+         * to know that something arrived, not what. */
+        var root = document.getElementById("root");
+        var observer = null;
+        if (root && typeof MutationObserver === "function") {
+          observer = new MutationObserver(dismiss);
+          observer.observe(root, { childList: true });
+        }
+
+        var gone = false;
+
+        /* Has this splash ever actually reached the screen?
+         *
+         * It often has not. Measured on the emulator: the webview's FIRST
+         * PAINT can land after App has already mounted — nav start 0ms,
+         * this script 362, mounted 559, first paint 624. On those launches the
+         * splash is torn down before it was ever visible, and animating it out
+         * turns nothing at all into a phoenix that flashes up mid-fade, which
+         * is worse than the blank it was meant to replace.
+         *
+         * Two frames, because one rAF fires BEFORE the paint it precedes. */
+        var painted = false;
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            painted = true;
+          });
+        });
+
+        function leave() {
+          el.setAttribute("data-leaving", "1");
+          // Comfortably past the longest transition above (the mark's 440ms),
+          // because a node yanked mid-transition is the one stutter a
+          // compositor cannot smooth over.
+          setTimeout(function () {
+            el.remove();
+          }, 520);
+        }
+
+        function dismiss() {
+          if (gone) return;
+          gone = true;
+          clearTimeout(slow);
+          clearTimeout(bail);
+          if (observer) observer.disconnect();
+
+          /* Never shown, so there is nothing to animate away from — and a
+           * fade here would CREATE the flash rather than smooth one. */
+          if (!painted) {
+            el.remove();
+            return;
+          }
+
+          /* Reduce motion: no completion beat, no fade, no lift. Someone who
+           * asked for less movement is not asking to wait through a flourish
+           * first. */
+          if (
+            document.documentElement.getAttribute("data-boot-reduced") === "1"
+          ) {
+            el.remove();
+            return;
+          }
+
+          /* From here on the splash really does fade, so promoting it now is
+           * worth the layer — and the slow path below waits a 300ms beat
+           * before the transition starts, so it is built well ahead of time. */
+          el.style.willChange = "opacity";
+
+          /* A launch fast enough that the bar never appeared has nothing to
+           * resolve — going straight out is the smooth answer there, and
+           * holding the splash open to finish an invisible animation would be
+           * the opposite of one. `data-slow` is set by the same 1.2s timer
+           * that reveals the bar, so it is exactly the question "did the user
+           * ever see this?". */
+          var fill =
+            el.getAttribute("data-slow") === "1" &&
+            el.querySelector("#boot-bar > span");
+          if (!fill) {
+            leave();
+            return;
+          }
+
+          // Run the bar to full FROM WHERE IT REACHED. Removing the animation
+          // on its own would snap the element back to its base scale first, so
+          // the bar would visibly jump backwards before completing. Pin the
+          // computed value, then transition off it.
+          var at = getComputedStyle(fill).transform;
+          fill.style.animation = "none";
+          fill.style.transform = at;
+          void fill.offsetWidth;
+          fill.style.transition =
+            "transform 260ms cubic-bezier(0.32, 0.72, 0, 1)";
+          fill.style.transform = "scaleX(1)";
+
+          /* Let the bar be SEEN finishing before the splash starts to go.
+           * Firing both at once was the bug: the fill ran to 100% underneath a
+           * surface that was already halfway transparent, so the completion —
+           * the one frame that says "done" rather than "gone" — was never
+           * actually visible. The beat is the bar's own duration plus a
+           * breath. */
+          setTimeout(leave, 300);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
