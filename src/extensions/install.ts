@@ -21,7 +21,12 @@ async function defaultFetchBytes(url: string): Promise<Uint8Array> {
     url,
     options: null,
   });
-  return new Uint8Array(buf as ArrayBuffer);
+  // No cast: Uint8Array's constructor already handles both arms of
+  // ArrayBuffer | number[] correctly (buffer view vs. element copy from an
+  // array-like) — see the identical convention/comment in
+  // src/sources/host.ts's fetchBytes. Casting to ArrayBuffer here would
+  // assert something that's false for the number[] arm.
+  return new Uint8Array(buf);
 }
 
 export interface InstallDeps {
@@ -66,7 +71,11 @@ export async function installExtension(
       baseUrl: entry.baseUrl,
       description: entry.description,
       author: entry.author,
-      icon: entry.icon ? "icon.png" : undefined,
+      // Keyed on whether the icon bytes were actually fetched (`icon`),
+      // not on whether the index declared one (`entry.icon`) — a failed
+      // icon fetch is swallowed above as cosmetic, and the manifest must
+      // not then claim a file that was never written to disk.
+      icon: icon ? "icon.png" : undefined,
     },
     icon,
     origin: { repoUrl, sha256: actual, installedAt: new Date().toISOString() },
