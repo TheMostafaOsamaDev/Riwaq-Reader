@@ -3,13 +3,18 @@ package com.riwaq.reader
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.ActionMode
+import android.view.Gravity
 import android.view.Window
 import androidx.activity.enableEdgeToEdge
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
@@ -116,27 +121,102 @@ class MainActivity : TauriActivity() {
     /** The reading theme's background, as stashed by the last
      *  `setBarAppearance` call. Falls back to the themes.xml colour on a first
      *  ever launch, where no theme has been chosen yet. */
-    private fun launchBackgroundColor(): Int {
-        val prefs = getSharedPreferences(LAUNCH_PREFS, Context.MODE_PRIVATE)
-        return prefs.getInt(
+    private fun launchPrefs() =
+        getSharedPreferences(LAUNCH_PREFS, Context.MODE_PRIVATE)
+
+    private fun launchBackgroundColor(): Int =
+        launchPrefs().getInt(
             KEY_LAUNCH_BACKGROUND,
             resources.getColor(R.color.riwaq_launch_bg, theme),
         )
+
+    /** Whether the reading theme is one of the dark pair, and so which phoenix
+     *  the launch window draws.
+     *
+     *  Read, not derived. `setBarAppearance` is handed the frontend's own
+     *  `isDarkTheme()` answer on every theme change and stashes it here, so
+     *  this is the same value the web splash will use rather than a second
+     *  opinion about it — and a disagreement would show as the mark changing
+     *  colour at the native-to-webview handover, which is exactly the seam the
+     *  size and gravity contract exists to hide.
+     *
+     *  Luminance is the fallback for a first-ever launch only, where nothing
+     *  has been stashed yet. */
+    private fun launchIsDark(background: Int): Boolean =
+        launchPrefs().getBoolean(
+            KEY_LAUNCH_DARK,
+            ColorUtils.calculateLuminance(background) < 0.5,
+        )
+
+    /** The launch window: the reading theme's colour with the phoenix centred
+     *  on it, matching what index.html's boot splash paints once the webview
+     *  finally has a frame.
+     *
+     *  Colour alone was not enough. Measured on the emulator, a healthy cold
+     *  start dismisses the system splash at ~1.55s and the webview's FIRST
+     *  PAINT lands ~260ms after index.html's inline script runs — so between
+     *  the launcher icon vanishing and the phoenix appearing there was a
+     *  stretch of flat paper with nothing on it. Same colour throughout, which
+     *  is why it reads as "blank" rather than as a flash: what disappears is
+     *  the icon.
+     *
+     *  Drawing the mark here closes that, because this window is what fills
+     *  the screen for exactly that stretch.
+     *
+     *  Gravity.CENTER is the contract with the web side, which centres its own
+     *  mark at `top: 50%` for this reason — centre is the one position both
+     *  can compute without agreeing on screen metrics, insets or where the
+     *  status bar ended up. 104x112dp matches the CSS, and dp and CSS px are
+     *  the same unit here because the webview's devicePixelRatio is the
+     *  display density.
+     *
+     *  Falls back to the plain colour if the drawable cannot be loaded: a
+     *  launch window is not worth risking a crash over. */
+    private fun launchWindowDrawable(): Drawable {
+        val background = launchBackgroundColor()
+        return try {
+            val markRes =
+                if (launchIsDark(background)) {
+                    R.drawable.boot_mark_cream
+                } else {
+                    R.drawable.boot_mark_ink
+                }
+            val mark = resources.getDrawable(markRes, theme)
+            val density = resources.displayMetrics.density
+            LayerDrawable(arrayOf(ColorDrawable(background), mark)).apply {
+                setLayerSize(
+                    1,
+                    (MARK_WIDTH_DP * density).toInt(),
+                    (MARK_HEIGHT_DP * density).toInt(),
+                )
+                setLayerGravity(1, Gravity.CENTER)
+            }
+        } catch (t: Throwable) {
+            Log.w("RiwaqLaunch", "falling back to a plain launch window", t)
+            ColorDrawable(background)
+        }
     }
 
     /** Repaint the window in the reading theme, so the frames between the
-     *  splash screen and the webview's first paint are the app's own colour. */
+     *  splash screen and the webview's first paint are the app's own colour —
+     *  and now its own mark. */
     private fun applyRememberedLaunchBackground() {
-        window.setBackgroundDrawable(ColorDrawable(launchBackgroundColor()))
+        window.setBackgroundDrawable(launchWindowDrawable())
     }
 
     /** wry hands us the webview the moment it is constructed, well before it
      *  has a document to paint. Left alone it renders black until first paint —
-     *  which is the black screen at startup, and it sits *on top* of the window
-     *  background so colouring the window alone does not fix it. */
+     *  the black screen at startup — and it sits *on top* of the window, so
+     *  colouring the window alone does nothing.
+     *
+     *  TRANSPARENT rather than the theme colour, now that the window below
+     *  carries the phoenix: an opaque webview would hide it for precisely the
+     *  stretch it exists to cover. The page itself is opaque (html, body and
+     *  #root all paint --boot-bg in global.css), so this shows through only
+     *  while there is genuinely nothing to show. */
     override fun onWebViewCreate(webView: android.webkit.WebView) {
         super.onWebViewCreate(webView)
-        webView.setBackgroundColor(launchBackgroundColor())
+        webView.setBackgroundColor(Color.TRANSPARENT)
     }
 
     /** Implemented in Rust (`notify.rs`). Initializes `ndk_context`'s global
@@ -170,6 +250,14 @@ class MainActivity : TauriActivity() {
          *  about the in-app theme, before any JS has run. */
         private const val LAUNCH_PREFS = "riwaq.launch"
         private const val KEY_LAUNCH_BACKGROUND = "windowBackground"
+        private const val KEY_LAUNCH_DARK = "windowIsDark"
+
+        /** The boot mark's size on the launch window, in dp. Must equal the
+         *  `#boot-mark` width/height in index.html, which are CSS px — the
+         *  same unit, since the webview's devicePixelRatio is the display
+         *  density. bootSplash.test.ts pins the two together. */
+        private const val MARK_WIDTH_DP = 104f
+        private const val MARK_HEIGHT_DP = 112f
 
         /** Set the status- and navigation-bar icon appearance to match
          *  the in-app reading theme, which is independent of the OS
@@ -200,6 +288,10 @@ class MainActivity : TauriActivity() {
                 .getSharedPreferences(LAUNCH_PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putInt(KEY_LAUNCH_BACKGROUND, backgroundColor)
+                // `lightIcons` IS "this theme is dark" — light icons are what a
+                // dark background needs. Stashed so the next cold launch can
+                // pick the right phoenix without guessing from the colour.
+                .putBoolean(KEY_LAUNCH_DARK, lightIcons)
                 .apply()
 
             activity.runOnUiThread {

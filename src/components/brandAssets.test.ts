@@ -18,12 +18,34 @@ import { fileURLToPath } from "node:url";
 
 const BRAND_DIR = fileURLToPath(new URL("../../public/brand", import.meta.url));
 
-/** The only two components that name a brand file. */
-const SOURCES = ["./BrandMark.tsx", "./LibrarySidebar.tsx"].map((rel) =>
+/** Everything that names a brand file by path. index.html is in the list
+ *  because the boot splash uses the transparent marks as both its picture and
+ *  its CSS mask — and being inline HTML, a typo there is checked by nothing
+ *  else in the toolchain. */
+const SOURCES = [
+  "./BrandMark.tsx",
+  "./LibrarySidebar.tsx",
+  "../../index.html",
+].map((rel) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8"),
 );
 
 const IMAGE_EXT = /\.(webp|png|jpg|jpeg|avif|svg)$/i;
+
+/** Android resources cannot reference anything outside `res/`, so the boot
+ *  splash's launch-window mark is a byte copy of the web one. The copy is
+ *  unavoidable; the copy drifting is not. */
+const ANDROID_MARK_COPIES: [string, string][] = [
+  ["mark-ink.webp", "boot_mark_ink.webp"],
+  ["mark-cream.webp", "boot_mark_cream.webp"],
+];
+
+const ANDROID_DRAWABLE_DIR = fileURLToPath(
+  new URL(
+    "../../src-tauri/gen/android/app/src/main/res/drawable-nodpi",
+    import.meta.url,
+  ),
+);
 
 /** Paths as they appear in the components, e.g. "/brand/mark-ink.webp". */
 function referencedBrandUrls(): string[] {
@@ -56,5 +78,29 @@ describe("bundled brand assets", () => {
   it("references every brand file it bundles", () => {
     const orphans = bundled.filter((file) => !referenced.includes(file));
     expect(orphans).toEqual([]);
+  });
+});
+
+describe("the Android launch window's copy of the mark", () => {
+  it.each(ANDROID_MARK_COPIES)(
+    "%s is byte-identical to its drawable %s",
+    (web, android) => {
+      // MainActivity draws this on the activity window for the stretch between
+      // the system splash dismissing and the webview's first paint, and
+      // index.html draws the web one immediately after. If they differ, the
+      // phoenix visibly changes mid-launch — the exact seam the whole feature
+      // exists to close.
+      const fromWeb = readFileSync(`${BRAND_DIR}/${web}`);
+      const fromAndroid = readFileSync(`${ANDROID_DRAWABLE_DIR}/${android}`);
+      expect(fromAndroid.equals(fromWeb)).toBe(true);
+    },
+  );
+
+  it("keeps them in drawable-nodpi, so they are not decoded upscaled", () => {
+    // An unqualified `res/drawable/` is treated as mdpi, so a 3x device
+    // decodes the 136x147 mark to ~408x441 (~720KB) and setLayerSize then
+    // scales it back down — two resamples and a large allocation on the very
+    // first statement of the activity lifecycle.
+    expect(ANDROID_DRAWABLE_DIR.endsWith("drawable-nodpi")).toBe(true);
   });
 });
