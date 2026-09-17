@@ -22,6 +22,9 @@ export function compareVersions(a: string, b: string): -1 | 0 | 1 {
 export interface CatalogEntry {
   id: string;
   name: string;
+  /** The newest version known for this id: the repo entry's version when
+   *  one is listed and it's the newer of the two, otherwise the installed
+   *  version — so the Store can render `installedVersion → version`. */
   version: string;
   installed: boolean;
   installedVersion?: string;
@@ -70,13 +73,29 @@ export function buildCatalog(
         });
         continue;
       }
-      // Only the repo an extension was installed from may offer it an
-      // update. Otherwise any repo publishing the same id could hijack it.
-      if (existing.record && existing.record.origin.repoUrl !== repoUrl)
-        continue;
-      existing.entry = entry;
-      existing.updateAvailable =
-        compareVersions(entry.version, existing.installedVersion ?? "0") > 0;
+      if (existing.record) {
+        // Installed: only the repo it was installed from may offer an
+        // update. `entry`, `repoUrl`, `updateAvailable` and `version` move
+        // together as one unit — installExtension() resolves entry.code
+        // and entry.icon as relative to repoUrl, so a mismatched pair
+        // would resolve one repo's paths against another repo's baseUrl.
+        if (existing.record.origin.repoUrl !== repoUrl) continue;
+        const hasUpdate =
+          compareVersions(entry.version, existing.installedVersion ?? "0") > 0;
+        existing.entry = entry;
+        existing.repoUrl = repoUrl;
+        existing.updateAvailable = hasUpdate;
+        existing.version = hasUpdate
+          ? entry.version
+          : (existing.installedVersion ?? existing.version);
+      }
+
+      // Not installed: the first configured repo to list this id wins.
+      // Repos are in user-configured order (the official repo pre-added),
+      // so "first" is deterministic — a repo added later cannot capture an
+      // id already claimed by an earlier one just by publishing a bigger
+      // version number. A later repo's entry for the same id is ignored
+      // outright; entry/repoUrl/version/updateAvailable are untouched.
     }
   }
 

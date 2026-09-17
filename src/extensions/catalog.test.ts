@@ -59,6 +59,7 @@ describe("buildCatalog", () => {
       installed: true,
       installedVersion: "1.0.0",
       updateAvailable: true,
+      version: "1.1.0",
     });
   });
 
@@ -118,5 +119,35 @@ describe("buildCatalog", () => {
       updateAvailable: false,
     });
     expect(c[0].entry).toBeUndefined();
+  });
+
+  it("gives a not-installed id to the first configured repo that lists it", () => {
+    // Nothing installed. Repo A and repo B both list "kolnovel", B with a
+    // much higher version. Highest-version-wins would let B capture the
+    // id just by publishing a bigger number, so repo order decides
+    // instead: A was configured first, so A's entry, repoUrl and version
+    // must all win together — none of the three may come from B.
+    const c = buildCatalog(
+      [],
+      [
+        {
+          repoUrl: "https://repo-a.test/index.min.json",
+          entries: [idx("kolnovel", "1.0.0")],
+        },
+        {
+          repoUrl: "https://repo-b.test/index.min.json",
+          entries: [idx("kolnovel", "9.9.9")],
+        },
+      ],
+    );
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatchObject({
+      id: "kolnovel",
+      installed: false,
+      updateAvailable: false,
+      repoUrl: "https://repo-a.test/index.min.json",
+      version: "1.0.0",
+    });
+    expect(c[0].entry?.version).toBe("1.0.0");
   });
 });
