@@ -42,6 +42,7 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import type { FixedPageSource } from "./FixedPageSource";
+import { anchorAt, scrollTopForAnchor, type PageAnchor } from "./scrollAnchor";
 
 const PAD = 20;
 const GAP = 18;
@@ -336,6 +337,11 @@ export const FixedPageViewer = forwardRef<
   // measurement, and depending on them restarted the timer faster than it
   // could fire, so on quick page turns the neighbours were never warmed.
   const layoutRef = useRef<{ top: number[] }>({ top: [] });
+  // The reader's place in the scroll column, kept as a page plus a fraction
+  // into it rather than as a scrollTop — see scrollAnchor.ts. Refreshed on
+  // every scroll frame, and read back after a change of scale to put the
+  // same page under the viewport again.
+  const anchorRef = useRef<PageAnchor | null>(null);
   const prefetchInputs = useRef<{
     sizes: Array<{ w: number; h: number } | undefined>;
     layout: { displayW: number[] };
@@ -532,6 +538,7 @@ export const FixedPageViewer = forwardRef<
       start = 0;
       end = Math.min(pageCount - 1, 2);
     }
+    anchorRef.current = anchorAt(layout.top, layout.displayH, st);
     setWin((w) => (w.start === start && w.end === end ? w : { start, end }));
     setCurrent((c) => (c === cur ? c : cur));
     sweepBlankHosts();
@@ -574,9 +581,13 @@ export const FixedPageViewer = forwardRef<
     resumedRef.current = true;
     const el = scrollRef.current;
     if (el) {
-      el.scrollTop =
-        layout.top[resume.page] +
-        (resume.pageOffset ?? 0) * layout.displayH[resume.page];
+      // The saved location is a PageAnchor under other field names — a page
+      // plus a fraction into it, for exactly the reason the anchor exists: it
+      // has to survive being reopened at another zoom or window size.
+      el.scrollTop = scrollTopForAnchor(layout.top, layout.displayH, {
+        page: resume.page,
+        offset: resume.pageOffset ?? 0,
+      });
     }
     emit(resume.page);
   }, [resume, container.h, layout, flow, emit]);
@@ -619,6 +630,61 @@ export const FixedPageViewer = forwardRef<
     raf = window.requestAnimationFrame(place);
     return () => window.cancelAnimationFrame(raf);
   }, [flow]);
+
+  // Keep your place when the column is rescaled.
+  //
+  // Every page's height and offset is a multiple of the scale, so the column
+  // the reader is sitting in gets taller or shorter under them — but
+  // `scrollTop` is an absolute offset into it and nothing moves it. Deep in a
+  // book that is several pages: measured in a 60-page column, one zoom step
+  // from 1.0 to 1.25 slid the reader from page 18 back to page 14 (zooming out
+  // threw them forward), and switching fit from width to page moved them from
+  // 17 to 22. So the place is restored from the page it belongs to
+  // (`anchorRef`, recorded against the OLD column on the last scroll frame)
+  // against the new one.
+  //
+  // Three inputs rescale the column deliberately, and all three have to be
+  // covered — the reader does not care which control moved the pages:
+  //   - `zoom`, the settings stepper;
+  //   - `fit`, which scales a page to the viewport height rather than its
+  //     width, changing every height in the column;
+  //   - the container's own size, which reaches `usableW` / `container.h` —
+  //     a window resize, a panel docking beside the page, a phone rotating.
+  //
+  // The layout's other inputs — `sizes`, and `fallbackRatio` which is derived
+  // from it — are deliberately absent, because they are not rescales at all:
+  // they are an estimated page height being replaced by the measured one.
+  // Nothing about the content changed there, so the pixels under the reader
+  // must not move, and a fraction is the wrong tool for it (see the note in
+  // scrollAnchor.ts: re-deriving from a fraction of a height that is itself
+  // being corrected moves the reader BY that correction). Holding still
+  // across a measurement is a separate job needing a px delta, and this
+  // viewer does not do it yet.
+  //
+  // A layout effect, so the corrected offset is in place before the browser
+  // paints — a passive effect would show one frame at the wrong page. It is
+  // safe to read `anchorRef` here even though React has already committed the
+  // new geometry: the anchor is written from scroll frames, which are
+  // rAF-throttled and therefore cannot have run since.
+  //
+  // The `prevScale` seed is load-bearing, NOT ceremony — it is what stops this
+  // firing on its first run, and a plain dependency array would. That first
+  // run is the commit where the ResizeObserver first reports a real size, and
+  // by then `recompute` has already parked `anchorRef` at {page: 0, offset: 0}
+  // against the zero-height column. Restoring that writes `scrollTop =
+  // top[0]`, which is PAD — so every book that did not resume would open with
+  // its top gutter scrolled away. Same guard as `prevFlow` above.
+  const scaleKey = `${zoom}|${fit}|${usableW}|${container.h}`;
+  const prevScale = useRef(scaleKey);
+  useLayoutEffect(() => {
+    if (prevScale.current === scaleKey) return;
+    prevScale.current = scaleKey;
+    if (flow !== "scroll") return;
+    const el = scrollRef.current;
+    const anchor = anchorRef.current;
+    if (!el || !anchor) return;
+    el.scrollTop = scrollTopForAnchor(layout.top, layout.displayH, anchor);
+  }, [scaleKey]);
 
   // Tell the source which pages are mounted, so a source that caches page
   // bitmaps never evicts one out from under a live host. Without this, a PDF
