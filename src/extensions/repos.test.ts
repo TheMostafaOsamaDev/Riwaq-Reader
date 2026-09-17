@@ -36,6 +36,14 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
       files.set(p, c);
     },
   ),
+  remove: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    files.delete(p);
+    dirs.delete(p);
+    for (const k of [...files.keys()])
+      if (k.startsWith(`${p}/`)) files.delete(k);
+    for (const d of [...dirs]) if (d.startsWith(`${p}/`)) dirs.delete(d);
+  }),
 }));
 
 // ---- @tauri-apps/api/core mock: a single swappable `invoke`, same
@@ -165,11 +173,17 @@ describe("listRepos", () => {
   });
 });
 
+// Deliberately NOT named "Riwaq Official Extensions": that string is also
+// the hardcoded seed name in listRepos(). A test that fetches an index and
+// then asserts the entry's name equals that same literal would pass even
+// if addRepo hardcoded the seed name instead of reading index.name.
+const mirrorIndex = { ...valid, name: "Mirror Extensions" };
+
 describe("addRepo / removeRepo", () => {
   it("fetches the new repo's index, then appends it to the persisted list", async () => {
-    invokeImpl = async () => okResponse(valid);
+    invokeImpl = async () => okResponse(mirrorIndex);
     const entry = await addRepo("https://mirror.test/index.min.json");
-    expect(entry.name).toBe("Riwaq Official Extensions");
+    expect(entry.name).toBe("Mirror Extensions");
 
     const repos = await listRepos();
     expect(repos.map((r) => r.url)).toContain(
@@ -183,7 +197,7 @@ describe("addRepo / removeRepo", () => {
   });
 
   it("removes a repo from the persisted list without touching the others", async () => {
-    invokeImpl = async () => okResponse(valid);
+    invokeImpl = async () => okResponse(mirrorIndex);
     await addRepo("https://mirror.test/index.min.json");
     await removeRepo("https://mirror.test/index.min.json");
 
@@ -192,6 +206,22 @@ describe("addRepo / removeRepo", () => {
       "https://mirror.test/index.min.json",
     );
     expect(repos.map((r) => r.url)).toContain(OFFICIAL_REPO_URL);
+  });
+
+  it("deletes the removed repo's cached index too, so index-cache/ doesn't grow forever", async () => {
+    invokeImpl = async () => okResponse(mirrorIndex);
+    // addRepo fetches, which writes a cache file for this URL.
+    await addRepo("https://mirror.test/index.min.json");
+    const before = [...files.keys()].filter((k) =>
+      k.startsWith("riwaq/extensions/index-cache/"),
+    );
+    expect(before).toHaveLength(1);
+
+    await removeRepo("https://mirror.test/index.min.json");
+    const after = [...files.keys()].filter((k) =>
+      k.startsWith("riwaq/extensions/index-cache/"),
+    );
+    expect(after).toHaveLength(0);
   });
 });
 
@@ -263,5 +293,39 @@ describe("fetchRepoIndex", () => {
         k.startsWith("riwaq/extensions/index-cache/"),
       ),
     ).toBe(false);
+  });
+
+  it("gives two URLs that collided under the old 32-bit rolling hash distinct cache slots", async () => {
+    // These two URLs were found by brute force (~1.2e5 trials) to collide
+    // under the previous Math.imul/base36 cacheName: both hashed to
+    // "ny56e1c", so one repo's cache write would silently overwrite the
+    // other's last-good fallback. A real SHA-256 of the URL must not
+    // repeat that — this pins the fix against a future regression back
+    // to a truncated/weak hash, not just "any two URLs differ".
+    const urlA = "https://8lqtt7.example.com/index.min.json";
+    const urlB = "https://8lqtru.example.com/index.min.json";
+    const indexA = { ...valid, name: "Repo A" };
+    const indexB = { ...valid, name: "Repo B" };
+
+    invokeImpl = async (_cmd, args) => {
+      const { url } = args as { url: string };
+      return okResponse(url === urlA ? indexA : indexB);
+    };
+    await fetchRepoIndex(urlA);
+    await fetchRepoIndex(urlB);
+
+    const cacheFiles = [...files.keys()].filter((k) =>
+      k.startsWith("riwaq/extensions/index-cache/"),
+    );
+    expect(cacheFiles).toHaveLength(2);
+
+    // Each URL's own cache holds its own index, not the other's.
+    invokeImpl = async () => {
+      throw new Error("network down");
+    };
+    const fallbackA = await fetchRepoIndex(urlA);
+    const fallbackB = await fetchRepoIndex(urlB);
+    expect(fallbackA.index.name).toBe("Repo A");
+    expect(fallbackB.index.name).toBe("Repo B");
   });
 });
