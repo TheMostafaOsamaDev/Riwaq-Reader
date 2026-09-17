@@ -84,7 +84,7 @@ pub async fn source_fetch(
         headers: None,
         body: None,
     });
-    let client = build_client()?;
+    let client = http_client()?;
     let method = opts.method.as_deref().unwrap_or("GET").to_uppercase();
     let parsed_method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| format!("Invalid method '{method}': {e}"))?;
@@ -129,7 +129,7 @@ pub async fn source_fetch_bytes(
         headers: None,
         body: None,
     });
-    let client = build_client()?;
+    let client = http_client()?;
     let method = opts.method.as_deref().unwrap_or("GET").to_uppercase();
     let parsed_method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| format!("Invalid method '{method}': {e}"))?;
@@ -272,15 +272,32 @@ pub async fn source_render_and_extract(
     )
 }
 
-fn build_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/124.0 Safari/537.36 Leaflet/0.1",
-        )
-        .gzip(true)
-        .build()
-        .map_err(|e| e.to_string())
+static HTTP_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> =
+    std::sync::OnceLock::new();
+
+/// The one HTTP client every source request goes through.
+///
+/// Shared, not per-request, because `SourceHost` promises extensions that
+/// all their fetches share a cookie jar the way a browser tab's do — and a
+/// fresh `Client` per call means a fresh, empty jar per call. Cenele scrapes
+/// a WordPress nonce off one page and replays it against admin-ajax.php in a
+/// later call; WordPress nonces are session-scoped, so that only works if the
+/// session cookie set by the first request is still sent on the second.
+fn http_client() -> Result<reqwest::Client, String> {
+    HTTP_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .user_agent(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+                     AppleWebKit/537.36 (KHTML, like Gecko) \
+                     Chrome/131.0.0.0 Safari/537.36",
+                )
+                .cookie_store(true)
+                .gzip(true)
+                .build()
+                .map_err(|e| e.to_string())
+        })
+        .clone()
 }
 
 #[cfg(desktop)]
@@ -949,5 +966,15 @@ mod tests {
         let resp: FetchResponse = serde_json::from_str(json).expect("bridge response");
         assert_eq!(resp.status_for_test(), 200);
         assert_eq!(resp.text_for_test(), "<html/>");
+    }
+
+    /// `http_client()` must succeed on repeated calls. The shared-instance
+    /// property (one client, one cookie jar, for the process lifetime) is
+    /// guaranteed by `OnceLock` by construction, not by this test — the
+    /// cookie-jar behaviour itself is exercised end-to-end elsewhere.
+    #[test]
+    fn http_client_builds_on_repeated_calls() {
+        assert!(http_client().is_ok(), "first call must build a client");
+        assert!(http_client().is_ok(), "second call must reuse the client");
     }
 }
