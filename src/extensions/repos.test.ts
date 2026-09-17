@@ -1,0 +1,267 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// ---- @tauri-apps/plugin-fs mock: in-memory files + dirs, same pattern as
+// storage.test.ts. ----
+const files = new Map<string, string>();
+const dirs = new Set<string>();
+
+function requireBaseDir(opts?: { baseDir?: unknown }): void {
+  if (!opts || opts.baseDir === undefined) {
+    throw new Error("missing baseDir");
+  }
+}
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  BaseDirectory: { AppData: 1 },
+  exists: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    return files.has(p) || dirs.has(p);
+  }),
+  mkdir: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    // Mirrors real recursive mkdir: every ancestor becomes its own entry.
+    const parts = p.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      dirs.add(parts.slice(0, i).join("/"));
+    }
+  }),
+  readTextFile: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    if (!files.has(p)) throw new Error(`ENOENT ${p}`);
+    return files.get(p) as string;
+  }),
+  writeTextFile: vi.fn(
+    async (p: string, c: string, opts?: { baseDir?: unknown }) => {
+      requireBaseDir(opts);
+      files.set(p, c);
+    },
+  ),
+}));
+
+// ---- @tauri-apps/api/core mock: a single swappable `invoke`, same
+// convention as src/sources/host.test.ts. ----
+let invokeImpl: (cmd: string, args: unknown) => Promise<unknown> = async (
+  cmd,
+) => {
+  throw new Error(`invoke not stubbed for ${cmd}`);
+};
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (cmd: string, args: unknown) => invokeImpl(cmd, args),
+}));
+
+import {
+  OFFICIAL_REPO_URL,
+  addRepo,
+  fetchRepoIndex,
+  listRepos,
+  parseRepoIndex,
+  removeRepo,
+  resolveAssetUrl,
+} from "./repos";
+
+beforeEach(() => {
+  files.clear();
+  dirs.clear();
+  invokeImpl = async (cmd) => {
+    throw new Error(`invoke not stubbed for ${cmd}`);
+  };
+});
+
+const valid = {
+  name: "Riwaq Official Extensions",
+  apiVersion: 1,
+  extensions: [
+    {
+      id: "cenele",
+      name: "فضاء الروايات",
+      version: "1.0.0",
+      apiVersion: 1,
+      language: "ar",
+      baseUrl: "https://cenele.com",
+      code: "cenele/index.js",
+      icon: "cenele/icon.png",
+      sha256:
+        "e2810d52b592c3f9b4b1499dc1f14b4baf196db93a5f1830d38af009ebb0393a",
+      size: 12756,
+    },
+  ],
+};
+
+describe("parseRepoIndex", () => {
+  it("accepts the real published index shape", () => {
+    const index = parseRepoIndex(valid);
+    expect(index.extensions[0].id).toBe("cenele");
+  });
+
+  it("rejects an entry with no sha256 — an unverifiable bundle must never install", () => {
+    const bad = structuredClone(valid);
+    delete (bad.extensions[0] as Record<string, unknown>).sha256;
+    expect(() => parseRepoIndex(bad)).toThrow(/sha256/i);
+  });
+
+  it("rejects a non-object payload", () => {
+    expect(() => parseRepoIndex("nope")).toThrow();
+  });
+
+  it("drops entries missing required fields but keeps the rest", () => {
+    const mixed = structuredClone(valid);
+    mixed.extensions.push({ id: "broken" } as never);
+    expect(parseRepoIndex(mixed).extensions.map((e) => e.id)).toEqual([
+      "cenele",
+    ]);
+  });
+});
+
+describe("resolveAssetUrl", () => {
+  // code/icon are relative to the index URL so a fork or mirror works
+  // without editing any URL inside the index.
+  it("resolves relative to the index URL", () => {
+    expect(
+      resolveAssetUrl(
+        "https://host.test/repo/index.min.json",
+        "cenele/index.js",
+      ),
+    ).toBe("https://host.test/repo/cenele/index.js");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage beyond the brief's Step 1 test: parseRepoIndex/resolveAssetUrl
+// are pure and already covered above, but listRepos/addRepo/removeRepo and
+// the cache-fallback half of fetchRepoIndex are this task's other named
+// exports and the reason it exists ("...validate, cache"). They get the
+// same TDD treatment rather than shipping untested.
+// ---------------------------------------------------------------------------
+
+const okResponse = (body: unknown) => ({
+  status: 200,
+  text: JSON.stringify(body),
+  headers: {},
+});
+
+describe("listRepos", () => {
+  it("seeds and persists the official repo on first run", async () => {
+    const repos = await listRepos();
+    expect(repos).toHaveLength(1);
+    expect(repos[0].url).toBe(OFFICIAL_REPO_URL);
+    expect(files.has("riwaq/extensions/repos.json")).toBe(true);
+  });
+
+  it("reads back a persisted list rather than re-seeding it", async () => {
+    // Write a custom repos.json directly, bypassing listRepos/addRepo
+    // entirely, so this only passes if listRepos actually reads the file
+    // rather than regenerating the official-repo seed on every call.
+    const persisted = [
+      {
+        url: "https://custom.test/index.min.json",
+        name: "Custom",
+        addedAt: "2020-01-01T00:00:00.000Z",
+      },
+    ];
+    files.set("riwaq/extensions/repos.json", JSON.stringify(persisted));
+
+    const repos = await listRepos();
+    expect(repos).toEqual(persisted);
+  });
+});
+
+describe("addRepo / removeRepo", () => {
+  it("fetches the new repo's index, then appends it to the persisted list", async () => {
+    invokeImpl = async () => okResponse(valid);
+    const entry = await addRepo("https://mirror.test/index.min.json");
+    expect(entry.name).toBe("Riwaq Official Extensions");
+
+    const repos = await listRepos();
+    expect(repos.map((r) => r.url)).toContain(
+      "https://mirror.test/index.min.json",
+    );
+  });
+
+  it("refuses to add a repo url that's already present", async () => {
+    await listRepos(); // seeds OFFICIAL_REPO_URL
+    await expect(addRepo(OFFICIAL_REPO_URL)).rejects.toThrow(/already/i);
+  });
+
+  it("removes a repo from the persisted list without touching the others", async () => {
+    invokeImpl = async () => okResponse(valid);
+    await addRepo("https://mirror.test/index.min.json");
+    await removeRepo("https://mirror.test/index.min.json");
+
+    const repos = await listRepos();
+    expect(repos.map((r) => r.url)).not.toContain(
+      "https://mirror.test/index.min.json",
+    );
+    expect(repos.map((r) => r.url)).toContain(OFFICIAL_REPO_URL);
+  });
+});
+
+describe("fetchRepoIndex", () => {
+  it("fetches, validates and caches a good index", async () => {
+    invokeImpl = async (cmd, args) => {
+      expect(cmd).toBe("source_fetch");
+      expect(args).toEqual({
+        url: "https://mirror.test/index.min.json",
+        options: null,
+      });
+      return okResponse(valid);
+    };
+    const { index, cached } = await fetchRepoIndex(
+      "https://mirror.test/index.min.json",
+    );
+    expect(cached).toBe(false);
+    expect(index.extensions[0].id).toBe("cenele");
+
+    const cacheFiles = [...files.keys()].filter((k) =>
+      k.startsWith("riwaq/extensions/index-cache/"),
+    );
+    expect(cacheFiles).toHaveLength(1);
+  });
+
+  it("falls back to the last good cached index when the repo goes unreachable", async () => {
+    invokeImpl = async () => okResponse(valid);
+    const good = await fetchRepoIndex("https://mirror.test/index.min.json");
+    expect(good.cached).toBe(false);
+
+    invokeImpl = async () => {
+      throw new Error("network down");
+    };
+    const fallback = await fetchRepoIndex("https://mirror.test/index.min.json");
+    expect(fallback.cached).toBe(true);
+    expect(fallback.index).toEqual(good.index);
+    // The stale timestamp from the last GOOD fetch, not the failed attempt.
+    expect(fallback.fetchedAt).toBe(good.fetchedAt);
+  });
+
+  it("treats a non-2xx HTTP status as a failure and still falls back to cache", async () => {
+    invokeImpl = async () => okResponse(valid);
+    await fetchRepoIndex("https://mirror.test/index.min.json");
+
+    invokeImpl = async () => ({ status: 500, text: "oops", headers: {} });
+    const fallback = await fetchRepoIndex("https://mirror.test/index.min.json");
+    expect(fallback.cached).toBe(true);
+  });
+
+  it("throws when the repo is unreachable and there is no cache yet", async () => {
+    invokeImpl = async () => {
+      throw new Error("network down");
+    };
+    await expect(
+      fetchRepoIndex("https://mirror.test/index.min.json"),
+    ).rejects.toThrow(/network down/);
+  });
+
+  it("rejects an unverifiable fetched index rather than caching it", async () => {
+    const bad = structuredClone(valid);
+    delete (bad.extensions[0] as Record<string, unknown>).sha256;
+    invokeImpl = async () => okResponse(bad);
+
+    await expect(
+      fetchRepoIndex("https://mirror.test/index.min.json"),
+    ).rejects.toThrow(/sha256/i);
+    expect(
+      [...files.keys()].some((k) =>
+        k.startsWith("riwaq/extensions/index-cache/"),
+      ),
+    ).toBe(false);
+  });
+});
