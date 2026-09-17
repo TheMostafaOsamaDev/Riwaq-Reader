@@ -16,6 +16,7 @@ import {
   exists,
   mkdir,
   readTextFile,
+  remove,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { EXTENSIONS_DIR } from "./storage";
@@ -119,13 +120,22 @@ async function ensureExtDir(path: string): Promise<void> {
   }
 }
 
-// Cache file name for a given repo URL. Not cryptographic — just enough to
-// give each distinct repo URL its own stable slot under CACHE_DIR.
-const cacheName = (url: string) =>
-  `${CACHE_DIR}/${[...url]
-    .reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7)
-    .toString(36)
-    .replace("-", "n")}.json`;
+// Cache file name for a given repo URL, keyed by a real SHA-256 of the URL
+// (not a 32-bit rolling hash — that collided for two distinct URLs within
+// ~1.2e5 brute-force trials, which would let an attacker register a repo
+// whose URL collides with OFFICIAL_REPO_URL's cache slot and have their
+// index served as the official repo's "last good" fallback). Matches the
+// hex-encoding convention install.ts uses for bundle-hash verification.
+async function cacheName(url: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(url) as unknown as BufferSource,
+  );
+  const hex = [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${CACHE_DIR}/${hex}.json`;
+}
 
 export async function listRepos(): Promise<RepoEntry[]> {
   try {
@@ -173,6 +183,13 @@ export async function removeRepo(url: string): Promise<void> {
   // Deliberately does NOT uninstall that repo's extensions: they keep
   // working and keep reading, they just stop being offered updates.
   await saveRepos((await listRepos()).filter((r) => r.url !== url));
+
+  // Drop its cached index too, so index-cache/ doesn't grow unbounded
+  // across repeated add/remove cycles.
+  const cacheFile = await cacheName(url);
+  if (await exists(cacheFile, { baseDir: BASE })) {
+    await remove(cacheFile, { baseDir: BASE });
+  }
 }
 
 interface TauriFetchResponse {
@@ -184,6 +201,7 @@ interface TauriFetchResponse {
 export async function fetchRepoIndex(
   url: string,
 ): Promise<{ index: RepoIndex; cached: boolean; fetchedAt: string }> {
+  const cacheFile = await cacheName(url);
   try {
     const resp = await invoke<TauriFetchResponse>("source_fetch", {
       url,
@@ -195,14 +213,14 @@ export async function fetchRepoIndex(
     const index = parseRepoIndex(JSON.parse(resp.text));
     const fetchedAt = new Date().toISOString();
     await ensureExtDir(CACHE_DIR);
-    await writeTextFile(cacheName(url), JSON.stringify({ index, fetchedAt }), {
+    await writeTextFile(cacheFile, JSON.stringify({ index, fetchedAt }), {
       baseDir: BASE,
     });
     return { index, cached: false, fetchedAt };
   } catch (e) {
     try {
       const cached = JSON.parse(
-        await readTextFile(cacheName(url), { baseDir: BASE }),
+        await readTextFile(cacheFile, { baseDir: BASE }),
       ) as { index: RepoIndex; fetchedAt: string };
       return { index: cached.index, cached: true, fetchedAt: cached.fetchedAt };
     } catch {
