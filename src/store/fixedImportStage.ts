@@ -9,7 +9,8 @@ import { openPdfDocument } from "../pdf/pdfjs";
 import { deleteStaged } from "./nativeStaging";
 import { detectBookFormat } from "./bookFormat";
 import { commitDocxBook, commitPdfBook, type ChosenCover } from "./fixedImport";
-import { filenameTitle, type BookIndexEntry } from "./library";
+import type { BookIndexEntry } from "./library";
+import { filenameTitle } from "./importName";
 
 /** What the user chose in the dialog; resolved to bytes at commit time. */
 export type CoverChoice =
@@ -80,21 +81,32 @@ export async function stageFixedImport(
   /** Format the caller already sniffed. When omitted, the bytes decide. */
   kind?: "pdf" | "docx",
   staged?: StagedSource,
+  /** Name to fall back on when the document carries no title of its own.
+   *
+   *  The caller resolves this (see `importName`) because on Android it can
+   *  take a round trip to the content provider, and `filename` alone is not
+   *  always enough to recover a name from — the picker's Recent list hands
+   *  back a bare row id. Falls back to parsing `filename` when omitted, which
+   *  is what every desktop path needs anyway. */
+  fallbackTitle?: string,
 ): Promise<FixedImportDraft> {
   const format =
     kind ?? ("bytes" in source ? detectBookFormat(source.bytes) : "pdf");
-  if (format === "pdf") return stagePdf(source, filename, staged);
+  if (format === "pdf")
+    return stagePdf(source, filename, staged, fallbackTitle);
   if (!("bytes" in source)) {
     throw new Error("DOCX staging needs the file's bytes");
   }
-  return stageDocx(source.bytes, filename, staged);
+  return stageDocx(source.bytes, filename, staged, fallbackTitle);
 }
 
 async function stagePdf(
   source: FixedSource,
   filename: string,
   staged?: StagedSource,
+  fallbackTitle?: string,
 ): Promise<FixedImportDraft> {
+  const fallback = fallbackTitle || filenameTitle(filename);
   const doc = await openPdfDocument("bytes" in source ? source.bytes : source);
   const urls: string[] = [];
   let disposed = false;
@@ -135,7 +147,7 @@ async function stagePdf(
     id: newDraftId(),
     kind: "pdf",
     filename,
-    title: doc.meta.title || filenameTitle(filename),
+    title: doc.meta.title || fallback,
     author: doc.meta.author || "",
     pageCount: doc.pageCount,
     candidates,
@@ -153,7 +165,7 @@ async function stagePdf(
         ...(staged
           ? { stagedPath: staged.stagedPath }
           : { bytes: fallbackBytes as Uint8Array }),
-        title: title.trim() || doc.meta.title || filenameTitle(filename),
+        title: title.trim() || doc.meta.title || fallback,
         author: doc.meta.author || "",
         pageCount: doc.pageCount,
         outline: doc.outline,
@@ -178,10 +190,14 @@ async function stageDocx(
   bytes: Uint8Array,
   filename: string,
   staged?: StagedSource,
+  fallbackTitle?: string,
 ): Promise<FixedImportDraft> {
   // Lazy — pulls in mammoth/jszip only when a DOCX is actually staged.
   const { docxToFixedDoc } = await import("../docx/toFixedDoc");
-  const fixed = await docxToFixedDoc(bytes, filenameTitle(filename));
+  const fixed = await docxToFixedDoc(
+    bytes,
+    fallbackTitle || filenameTitle(filename),
+  );
   const urls: string[] = [];
   let disposed = false;
 

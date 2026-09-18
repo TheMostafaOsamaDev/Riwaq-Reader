@@ -26,8 +26,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { FixedImportDraft } from "./fixedImportStage";
+import { importName } from "./importName";
 import type { HighlightColor } from "../styles/tokens";
-import { isOpaqueUri, type BookFormat } from "./bookFormat";
+import type { BookFormat } from "./bookFormat";
 import { parseEpubFromSource } from "../epub/parser";
 import { openNativeZip } from "../epub/zipSource";
 import { writeImageManifest } from "./epubImages";
@@ -436,7 +437,10 @@ async function stagePaths(
     const stagedPath = `${STAGING}/${token}`;
     let unlisten: (() => void) | undefined;
     try {
-      report?.file(i, paths.length, filenameTitle(path));
+      // Once per file: all three consumers below want the same answer, and
+      // on Android resolving it can cost an IPC round trip.
+      const name = await importName(path);
+      report?.file(i, paths.length, name);
       unlisten = await onStageProgress(token, (p) => report?.progress(p));
 
       // The dialog selection itself grants per-path read permission on Tauri
@@ -492,10 +496,13 @@ async function stagePaths(
             ? { path: stagedPath, length: staged.size }
             : { bytes: await readFile(stagedPath, { baseDir: BASE }) };
         drafts.push(
-          await stageFixedImport(source, path, fixed, {
-            stagedPath,
-            sourceHash: staged.hash,
-          }),
+          await stageFixedImport(
+            source,
+            path,
+            fixed,
+            { stagedPath, sourceHash: staged.hash },
+            name,
+          ),
         );
       } else if (staged.format === "epub") {
         const entry = await importStagedEpub(
@@ -503,6 +510,7 @@ async function stagePaths(
           token,
           report,
           staged.hash,
+          name,
         );
         autoImported.push(entry);
         // A batch containing the same book twice dedupes against itself.
@@ -555,25 +563,6 @@ export async function pickBooksForImport(
   if (!picked) return null;
   const paths = Array.isArray(picked) ? picked : [picked];
   return importPaths(paths, report);
-}
-
-/** Pull a reasonable display title out of a file path: drop the directory
- *  portion and the .docx extension, then collapse underscores/dashes to
- *  spaces. Used when the doc has no leading heading we can borrow. Empty
- *  (not "Untitled") when the stem strips to nothing — a blank title
- *  persists as "" so the display-time fallback (`common.untitled`)
- *  localizes it wherever the book is rendered, instead of freezing an
- *  English (or whatever-locale-was-active) literal into the book's own
- *  stored title. */
-export function filenameTitle(path: string): string {
-  // Android hands back content://…/document%3A19, whose last segment is an
-  // opaque provider id rather than a name. Empty (not the id) so the
-  // display-time `common.untitled` fallback localizes it.
-  if (isOpaqueUri(path)) return "";
-  const base = path.split(/[\\/]/).pop() ?? path;
-  const stem = base.replace(/\.(docx|pdf|epub)$/i, "");
-  const cleaned = stem.replace(/[_-]+/g, " ").trim();
-  return cleaned;
 }
 
 /** Write the default (empty) reading state for a freshly imported book. */
@@ -654,6 +643,11 @@ async function commitEpubAt(
   token: string,
   report?: ImportReporter,
   sourceHash?: string,
+  /** Used when the EPUB's own metadata carries no title. The PDF and DOCX
+   *  paths already fall back to the filename; this one did not, so a
+   *  title-less EPUB landed in the library as "untitled" even when the file
+   *  it came from was named perfectly well. */
+  fallbackTitle?: string,
 ): Promise<BookIndexEntry> {
   const dir = bookDir(id);
   report?.phase("parse");
@@ -693,7 +687,7 @@ async function commitEpubAt(
 
     return appendIndexEntry({
       id: book.id,
-      title: book.title,
+      title: book.title.trim() || (fallbackTitle ?? ""),
       author: book.author,
       language: book.language,
       chapterCount: book.chapters.length,
@@ -716,6 +710,7 @@ async function importStagedEpub(
   token: string,
   report?: ImportReporter,
   sourceHash?: string,
+  fallbackTitle?: string,
 ): Promise<BookIndexEntry> {
   const id = crypto.randomUUID();
   const dir = bookDir(id);
@@ -724,7 +719,7 @@ async function importStagedEpub(
     // Keeping the original zip lets us re-extract the cover later when the
     // parser improves, without re-asking the user for the file.
     await renameStaged(stagedPath, `${dir}/book.epub`);
-    return await commitEpubAt(id, token, report, sourceHash);
+    return await commitEpubAt(id, token, report, sourceHash, fallbackTitle);
   } catch (err) {
     // A failed parse shouldn't leave a partial book (or a 200 MB orphan)
     // behind.
