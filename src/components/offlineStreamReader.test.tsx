@@ -49,7 +49,16 @@ const SNAPSHOT: SourceSnapshot = {
 };
 
 // The premise: the extension is gone.
-vi.mock("../sources/registry", () => ({ getSource: () => null }));
+vi.mock("../sources/registry", () => ({
+  getSource: () => null,
+  // The view loads the registry itself now (sources/useExtensions.ts), so
+  // the mock has to answer that path too. This fixture stands for a
+  // registry that has already settled: ensureExtensions is a no-op and the
+  // revision never moves, which is the state the assertions below describe.
+  ensureExtensions: async () => {},
+  subscribeExtensions: () => () => {},
+  extensionsRevision: () => 0,
+}));
 
 vi.mock("../store/library", () => ({
   findSourceEntry: async () => ({ id: "entry-1" }),

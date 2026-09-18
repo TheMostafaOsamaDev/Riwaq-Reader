@@ -42,7 +42,7 @@ let bundleGate: { blocked: Promise<void>; entered: () => void } | null = null;
  *  outside initExtensions()' per-extension try/catch. */
 let listInstalledThrows: Error | null = null;
 /** Every id whose bundle source was actually read, in order. The registry
- *  caches a bundle's evaluation by `id@version@sha256`, so this is how a
+ *  caches a bundle's evaluation by `id@sha256`, so this is how a
  *  test tells "loaded again" from "served from the cache". */
 let bundleReads: string[] = [];
 
@@ -112,7 +112,7 @@ import {
 } from "./registry";
 
 /** Bumped per test. The registry caches a bundle's evaluation by
- *  `id@version@sha256`, and these fixtures reuse ids across tests while
+ *  `id@sha256`, and these fixtures reuse ids across tests while
  *  varying the bundle text — which in production would mean a different
  *  hash. Without the salt, one test's `alpha` would be served from another
  *  test's evaluation and the suite would become order-dependent. Tests that
@@ -312,7 +312,13 @@ describe("initExtensions", () => {
 
     expect(listSources().map((m) => m.id)).toEqual(["alpha", "beta"]);
     expect(getSource("alpha")).not.toBeNull();
-    expect(isInitialized()).toBe(true);
+    // The incoming extension must not be visible YET. `listSources` alone
+    // would not catch a half-populated table — it filters to status "ok",
+    // so an entry inserted mid-build with any other status slips past it.
+    // `isInitialized()` used to stand here and discriminated nothing at
+    // all: it is already true from the load above, and stays true under a
+    // clear()-then-fill-in-place implementation too.
+    expect(getExtensionStatus("gamma")).toBe("missing");
 
     release();
     await inFlight;
@@ -563,6 +569,17 @@ describe("bundle evaluation cache", () => {
 
     expect(listSources().map((m) => m.id)).toEqual(["beta"]);
     expect(getSource("alpha")).toBeNull();
+
+    // And the stale load must not have emptied the bundle cache on its way
+    // out. Its `live` set is its own, older view of the disk — beta is not
+    // in it — so pruning by it before the generation guard deleted exactly
+    // the entry the winning load had just inserted, and then returned
+    // without committing anything in exchange. Re-listing the same disk is
+    // the observable: it has to be served from the cache, not re-imported.
+    bundleReads = [];
+    await initExtensions();
+    expect(bundleReads).toEqual([]);
+    expect(listSources().map((m) => m.id)).toEqual(["beta"]);
   });
 });
 describe("id aliases", () => {
