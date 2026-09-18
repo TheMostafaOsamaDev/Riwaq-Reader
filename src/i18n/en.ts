@@ -564,6 +564,81 @@ export const en = {
   "store.loadMore": "Load more",
   "store.loadingMore": "Loading more…",
   "store.notInstalled": "Source “{sourceId}” isn't installed.",
+
+  // extensions manager (ExtensionsView.tsx + components/extensions/*) —
+  // install / update / remove the source extensions behind the Store, and
+  // manage the repositories they are offered from. Version numbers are NOT
+  // here: they render raw and LTR, like the `v{version}` line on a source
+  // card, because a semver is the same string in every language.
+  "extensions.manage": "Extensions",
+  "extensions.title": "Extensions",
+  "extensions.subtitle":
+    "Every source is an extension. Install the ones you want, keep them current, and choose which repositories they are offered from.",
+  "extensions.loadError":
+    "Couldn't load the extensions catalogue — press Retry. ({error})",
+  "extensions.installedHeading": "Installed",
+  "extensions.availableHeading": "Available",
+  "extensions.reposHeading": "Repositories",
+  "extensions.noneInstalled":
+    "No extensions installed yet — install one from Available below.",
+  "extensions.noneAvailable":
+    "Everything your repositories offer is already installed.",
+  "extensions.install": "Install",
+  "extensions.update": "Update",
+  "extensions.remove": "Remove",
+  "extensions.retry": "Retry",
+  "extensions.unknownError": "no details were captured",
+  "extensions.apiVersionNotice":
+    "Requires a newer version of Riwaq. Update the app and it will load; until then it can't be used.",
+  "extensions.brokenNotice":
+    "This extension failed to load, so its website can't be browsed — Retry downloads it again from its repository, Remove deletes it. ({error})",
+  "extensions.installFailed":
+    "Install failed and nothing was written to this device — press Install to try again. ({error})",
+  "extensions.updateFailed":
+    "Update failed and the installed version is untouched — press Update to try again. ({error})",
+  "extensions.retryFailed":
+    "Couldn't fetch it again — press Retry to try once more. ({error})",
+  "extensions.removeFailed":
+    "Couldn't remove this extension — press Remove to try again. ({error})",
+  "extensions.removeTitle": "Remove “{name}”?",
+  "extensions.removeBody":
+    "Its bundle is deleted from this device and the website disappears from Sources. Books already in your library stay where they are, and you can install it again at any time.",
+  // repositories section
+  "extensions.repoAddLabel": "Repository URL",
+  "extensions.repoAddPlaceholder": "https://example.com/index.min.json",
+  "extensions.repoAdd": "Add",
+  "extensions.repoUrlInvalid":
+    "That isn't a web address. A repository URL starts with https:// and points at its index file.",
+  "extensions.repoAddFailed":
+    "Couldn't add this repository — check the address and try again. ({error})",
+  "extensions.repoOfficialBadge": "Bundled with Riwaq",
+  "extensions.repoCountOne": "{n} extension offered",
+  "extensions.repoCountOther": "{n} extensions offered",
+  "extensions.repoEmpty": "Offers no extensions.",
+  "extensions.repoUnreachable":
+    "Couldn't be reached, and nothing was saved from it earlier — its extensions aren't listed. ({error})",
+  "extensions.repoStale":
+    "Couldn't be reached — showing the copy saved on this device.",
+  "extensions.repoLastChecked": "Last checked {when}",
+  "extensions.repoNeverChecked": "Never checked",
+  "extensions.noRepos":
+    "No repositories configured — add one below to see extensions you can install.",
+  "extensions.repoRemoveTitle": "Remove “{name}”?",
+  "extensions.repoRemoveBodyOne":
+    "{names} stays installed and keeps working — it only stops being offered updates.",
+  "extensions.repoRemoveBodyOther":
+    "{names} stay installed and keep working — they only stop being offered updates.",
+  "extensions.repoRemoveBodyNone":
+    "Nothing installed came from this repository, so only its listings disappear.",
+  "extensions.repoRemoveFailed":
+    "Couldn't remove this repository — press Remove to try again. ({error})",
+  // Joins the affected-extension names in the remove-repository dialog.
+  "extensions.listSeparator": ", ",
+  "extensions.trustTitle": "Extensions run with Riwaq's access",
+  "extensions.trustBody":
+    "Anything you install from a repository runs inside Riwaq: it can reach the websites the app reaches and read what the app reads. Add a repository only if you trust whoever publishes it.",
+  "extensions.trustConfirm": "I understand — add it",
+
   // Section carousel (SectionCarousel.tsx) arrow buttons on a source's home
   // page. "left"/"right" name the button's fixed physical position on
   // screen, not a scroll direction — the carousel already reverses the

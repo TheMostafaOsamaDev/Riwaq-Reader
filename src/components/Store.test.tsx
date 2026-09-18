@@ -34,6 +34,10 @@ vi.mock("./SourcesListView", () => ({
   SourcesListView: () => <div data-testid="sources-list-view" />,
 }));
 vi.mock("./SourceHomeView", () => ({ SourceHomeView: () => null }));
+// Stubbed for the same reason as the other sub-views: it is a sibling of
+// the thing under test here, and its module graph reaches the registry
+// mock above, which deliberately exports only initExtensions.
+vi.mock("./ExtensionsView", () => ({ ExtensionsView: () => null }));
 vi.mock("./novel/NovelDetailView", () => ({ NovelDetailView: () => null }));
 vi.mock("./DownloadRangeDialog", () => ({ DownloadRangeDialog: () => null }));
 

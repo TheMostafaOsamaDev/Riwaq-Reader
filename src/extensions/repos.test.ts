@@ -59,8 +59,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import {
   OFFICIAL_REPO_URL,
+  acknowledgeTrustNotice,
   addRepo,
   fetchRepoIndex,
+  hasAcknowledgedTrustNotice,
   listRepos,
   parseRepoIndex,
   removeRepo,
@@ -327,5 +329,74 @@ describe("fetchRepoIndex", () => {
     const fallbackB = await fetchRepoIndex(urlB);
     expect(fallbackA.index.name).toBe("Repo A");
     expect(fallbackB.index.name).toBe("Repo B");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The one-time "extensions run with the app's access" notice. It is stored
+// as a field of repos.json rather than in a file of its own — one place
+// owns what the user has been told about repositories — so these also pin
+// that a list update never drops it and that the pre-existing bare-array
+// file still reads.
+// ---------------------------------------------------------------------------
+describe("trust notice acknowledgement", () => {
+  it("has not been acknowledged before anything is stored", async () => {
+    expect(await hasAcknowledgedTrustNotice()).toBe(false);
+  });
+
+  it("is false for a repos.json that predates the field", async () => {
+    files.set(
+      "riwaq/extensions/repos.json",
+      JSON.stringify([
+        { url: OFFICIAL_REPO_URL, name: "Official", addedAt: "2020-01-01" },
+      ]),
+    );
+    expect(await hasAcknowledgedTrustNotice()).toBe(false);
+  });
+
+  it("records the acknowledgement so it survives a reload", async () => {
+    await acknowledgeTrustNotice();
+    expect(await hasAcknowledgedTrustNotice()).toBe(true);
+  });
+
+  it("keeps the repo list intact when it records the acknowledgement", async () => {
+    invokeImpl = async () => okResponse(mirrorIndex);
+    await addRepo("https://mirror.test/index.min.json");
+    await acknowledgeTrustNotice();
+    expect((await listRepos()).map((r) => r.url)).toContain(
+      "https://mirror.test/index.min.json",
+    );
+  });
+
+  it("survives a later repo add, which rewrites the same file", async () => {
+    await acknowledgeTrustNotice();
+    invokeImpl = async () => okResponse(mirrorIndex);
+    await addRepo("https://mirror.test/index.min.json");
+    expect(await hasAcknowledgedTrustNotice()).toBe(true);
+  });
+
+  it("survives a repo removal", async () => {
+    invokeImpl = async () => okResponse(mirrorIndex);
+    await addRepo("https://mirror.test/index.min.json");
+    await acknowledgeTrustNotice();
+    await removeRepo("https://mirror.test/index.min.json");
+    expect(await hasAcknowledgedTrustNotice()).toBe(true);
+  });
+
+  it("keeps the first timestamp rather than rewriting it", async () => {
+    // Two calls inside the same millisecond would produce identical JSON
+    // whether or not the second one short-circuits, so move the clock.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      await acknowledgeTrustNotice();
+      vi.setSystemTime(new Date("2026-06-01T00:00:00.000Z"));
+      await acknowledgeTrustNotice();
+    } finally {
+      vi.useRealTimers();
+    }
+    const stored = files.get("riwaq/extensions/repos.json") as string;
+    expect(stored).toContain("2026-01-01T00:00:00.000Z");
+    expect(stored).not.toContain("2026-06-01");
   });
 });
