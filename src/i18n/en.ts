@@ -585,6 +585,7 @@ export const en = {
     "Everything your repositories offer is already installed.",
   "extensions.install": "Install",
   "extensions.update": "Update",
+  "extensions.updateAll": "Update all ({n})",
   "extensions.remove": "Remove",
   "extensions.retry": "Retry",
   "extensions.unknownError": "no details were captured",

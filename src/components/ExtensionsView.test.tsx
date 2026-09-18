@@ -349,6 +349,89 @@ describe("ExtensionsView — installing", () => {
   });
 });
 
+describe("ExtensionsView — Update all", () => {
+  it("is not offered when nothing is outdated", async () => {
+    await mount(
+      makeDeps({ catalog: [installed("steady"), available("fresh")] }),
+    );
+    expect(
+      [...host.querySelectorAll("button")].some((b) =>
+        b.textContent?.trim().startsWith("Update all"),
+      ),
+    ).toBe(false);
+  });
+
+  it("updates every outdated extension, and nothing else", async () => {
+    const deps = makeDeps({
+      catalog: [
+        installed("aged", "1.0.0", "1.1.0"),
+        installed("older", "2.0.0", "3.0.0"),
+        installed("steady"),
+        available("fresh"),
+      ],
+    });
+    await mount(deps);
+
+    click("Update all (2)");
+    await settle();
+
+    const ids = vi
+      .mocked(deps.installExtension)
+      .mock.calls.map(([, entry]) => (entry as { id: string }).id);
+    expect(ids.sort()).toEqual(["aged", "older"]);
+  });
+
+  it("leaves a broken extension to its own Retry", async () => {
+    // A broken card offers Retry, not Update — sweeping it into a bulk
+    // update would hide a failure the user is meant to answer per card.
+    const deps = makeDeps({
+      catalog: [
+        installed("aged", "1.0.0", "1.1.0"),
+        installed("snapped", "1.0.0", "1.1.0"),
+      ],
+      status: { snapped: "broken" },
+    });
+    await mount(deps);
+
+    click("Update all (1)");
+    await settle();
+
+    const ids = vi
+      .mocked(deps.installExtension)
+      .mock.calls.map(([, entry]) => (entry as { id: string }).id);
+    expect(ids).toEqual(["aged"]);
+  });
+
+  it("keeps going, and reports per card, when one update fails", async () => {
+    const deps = makeDeps({
+      catalog: [
+        installed("aged", "1.0.0", "1.1.0"),
+        installed("older", "2.0.0", "3.0.0"),
+      ],
+      over: {
+        installExtension: vi.fn(async (_repo, entry) => {
+          if ((entry as { id: string }).id === "aged") {
+            throw new Error("disk full");
+          }
+        }),
+      },
+    });
+    await mount(deps);
+
+    click("Update all (2)");
+    await settle();
+
+    const ids = vi
+      .mocked(deps.installExtension)
+      .mock.calls.map(([, entry]) => (entry as { id: string }).id);
+    expect(ids.sort()).toEqual(["aged", "older"]);
+    expect(card("aged").querySelector('[role="alert"]')?.textContent).toContain(
+      "disk full",
+    );
+    expect(card("older").querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
 describe("ExtensionsView — removing an extension", () => {
   it("asks before uninstalling anything", async () => {
     const deps = makeDeps({ catalog: [installed("steady")] });
