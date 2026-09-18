@@ -70,10 +70,9 @@ markBoot("module");
 // start moves past the window where it can collide with page load.
 //
 // The readyState-check + `load`-listener + macrotask mechanism itself lives
-// in deferPastPageLoad.ts (shared with App.tsx's initExtensions() — that
-// call's first act is the same kind of fs/scope-resolving Tauri call, and
-// hit the identical deadlock in task-10 testing) rather than being
-// hand-rolled here a second time.
+// in deferPastPageLoad.ts rather than being hand-rolled here, so that a
+// second call site whose first act is an fs/scope-resolving Tauri call gets
+// the identical timing instead of a near-copy of it.
 deferPastPageLoad(() => void migrateLegacyRoot());
 
 // The boundary wraps App because a throw anywhere outside the two reader views
