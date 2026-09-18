@@ -175,11 +175,26 @@ export function ExtensionsView({
         // nothing to re-download, so a Retry can only re-run the loader —
         // which is the fix when the bundle failed to READ rather than to
         // evaluate.
+        const canRedownload = Boolean(item.entry && item.repoUrl);
         if (item.entry && item.repoUrl) {
           await depsRef.current.installExtension(item.repoUrl, item.entry);
         }
         await depsRef.current.initExtensions();
         await reload();
+        // A reload-only retry that changed nothing looks like a dead
+        // button. Say why instead: the bundle's own evaluation failure is
+        // cached by content hash, so re-running the loader cannot clear it
+        // while the repo that could ship new bytes is gone.
+        if (
+          !canRedownload &&
+          alive.current &&
+          depsRef.current.getExtensionStatus(item.id) !== "ok"
+        ) {
+          setCardError((prev) => ({
+            ...prev,
+            [item.id]: tr("extensions.retryNoRepo"),
+          }));
+        }
       } catch (e) {
         if (!alive.current) return;
         setCardError((prev) => ({
@@ -392,6 +407,43 @@ export function ExtensionsView({
         )
       ) : (
         <>
+          {loadError !== null && (
+            // A refresh that failed AFTER a list was already on screen. The
+            // branch above only covers "nothing to show at all", so without
+            // this the user would be looking at a stale list — an installed
+            // extension still offering Install, a removed one still offering
+            // Remove — with no sign anything went wrong, because reload()
+            // swallows its own throw and the action that triggered it
+            // reports success.
+            <div
+              role="alert"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: theme.hover,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: theme.danger,
+              }}
+            >
+              <span>{tr("extensions.staleList", { error: loadError })}</span>
+              <Button
+                theme={theme}
+                variant="secondary"
+                size="sm"
+                style={{ minHeight: 44, paddingInline: 14 }}
+                onClick={() => void reload()}
+              >
+                {tr("extensions.retry")}
+              </Button>
+            </div>
+          )}
+
           <Section theme={theme} title={tr("extensions.installedHeading")}>
             {installed.length === 0 ? (
               <Empty theme={theme}>{tr("extensions.noneInstalled")}</Empty>

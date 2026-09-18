@@ -529,8 +529,11 @@ export const ar: Messages = {
   "extensions.repoAddFailed":
     "تعذّرت إضافة هذا المستودع — تحقّق من الرابط وحاول مجدّدًا. ({error})",
   "extensions.repoOfficialBadge": "مرفق مع رِواق",
+  "extensions.staleList": "قد تكون هذه القائمة قديمة — تعذّر تحديثها. {error}",
+  "extensions.retryNoRepo":
+    "تعذّر إعادة تحميل هذه الإضافة، والمستودع الذي جاءت منه لم يعد مضافًا — أضفه مرة أخرى لإعادة التثبيت.",
   "extensions.repoCountOne": "يعرض {n} إضافة",
-  "extensions.repoCountOther": "يعرض {n} إضافة",
+  "extensions.repoCountOther": "يعرض {n} إضافات",
   "extensions.repoEmpty": "لا يعرض أي إضافة.",
   "extensions.repoUnreachable":
     "تعذّر الوصول إليه، ولا توجد نسخة محفوظة منه — إضافاته غير مدرَجة. ({error})",

@@ -208,9 +208,17 @@ export function RepoList({
                         fontSize: 12,
                         color: theme.muted,
                         marginTop: 2,
-                        whiteSpace: "nowrap",
+                        // Wraps rather than truncating: `title` is a hover
+                        // tooltip and there is no hover on Android, so an
+                        // ellipsis would make the URL of a repo the user is
+                        // about to trust — or remove — unrecoverable on the
+                        // platform where it matters most. Two lines is the
+                        // ceiling; `anywhere` lets a long path break.
+                        overflowWrap: "anywhere",
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: 2,
                         overflow: "hidden",
-                        textOverflow: "ellipsis",
                       }}
                     >
                       {/* The URL is an LTR run inside a line that follows
@@ -282,16 +290,30 @@ export function RepoList({
                 {(content?.error ||
                   content?.cached ||
                   removeError[repo.url]) && (
+                  // A merely-cached repo is working, just offline — its last
+                  // good index is being served. That is a status, not an
+                  // alert: two cached repos would otherwise fire two
+                  // assertive announcements on every visit, and the danger
+                  // tint would claim something is wrong when nothing is.
+                  // `alert` and the danger colour stay for the arms that
+                  // really did fail.
                   <div
-                    role="alert"
+                    role={
+                      content?.error || removeError[repo.url]
+                        ? "alert"
+                        : "status"
+                    }
                     style={{
                       display: "flex",
                       alignItems: "flex-start",
                       gap: 8,
                       marginTop: 10,
-                      fontSize: 12.5,
+                      fontSize: 12,
                       lineHeight: 1.5,
-                      color: theme.danger,
+                      color:
+                        content?.error || removeError[repo.url]
+                          ? theme.danger
+                          : theme.muted,
                     }}
                   >
                     <Icon
@@ -381,7 +403,7 @@ export function RepoList({
               alignItems: "flex-start",
               gap: 8,
               marginTop: 8,
-              fontSize: 12.5,
+              fontSize: 12,
               lineHeight: 1.5,
               color: theme.danger,
             }}

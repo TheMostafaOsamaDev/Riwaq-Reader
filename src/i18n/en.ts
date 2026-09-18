@@ -612,6 +612,10 @@ export const en = {
   "extensions.repoAddFailed":
     "Couldn't add this repository — check the address and try again. ({error})",
   "extensions.repoOfficialBadge": "Bundled with Riwaq",
+  "extensions.staleList":
+    "This list may be out of date — couldn't refresh it. {error}",
+  "extensions.retryNoRepo":
+    "Couldn't reload this extension, and the repository it came from is no longer configured — add it back to reinstall.",
   "extensions.repoCountOne": "{n} extension offered",
   "extensions.repoCountOther": "{n} extensions offered",
   "extensions.repoEmpty": "Offers no extensions.",

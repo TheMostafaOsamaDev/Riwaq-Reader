@@ -24,7 +24,17 @@ const repo = (url: string, name: string): RepoEntry => ({
   lastFetchedAt: "2026-01-02T09:30:00.000Z",
 });
 
-function installedFrom(id: string, repoUrl: string): CatalogEntry {
+/** `origin` is the field the dialog must filter on — where the extension was
+ *  actually installed FROM. `listedBy` is the catalog's top-level `repoUrl`,
+ *  which tracks whichever repo currently offers the id. buildCatalog keeps
+ *  the two in sync today, so a fixture that sets them together cannot tell
+ *  an implementation filtering on the wrong one from a correct one. They are
+ *  separable here on purpose. */
+function installedFrom(
+  id: string,
+  repoUrl: string,
+  listedBy: string = repoUrl,
+): CatalogEntry {
   return {
     id,
     name: id,
@@ -32,7 +42,7 @@ function installedFrom(id: string, repoUrl: string): CatalogEntry {
     installed: true,
     installedVersion: "1.0.0",
     updateAvailable: false,
-    repoUrl,
+    repoUrl: listedBy,
     record: {
       manifest: {
         id,
@@ -265,6 +275,26 @@ describe("RepoList — removing a repository", () => {
     expect(dialog.textContent).toContain("stay installed and keep working");
   });
 
+  it("filters on where an extension was installed from, not who lists it", async () => {
+    // The one case that separates `record.origin.repoUrl` from the catalog's
+    // top-level `repoUrl`. Removing MIRROR must not claim an extension that
+    // was installed from OFFICIAL and merely happens to be listed by MIRROR
+    // — and must still claim one installed from MIRROR that OFFICIAL lists.
+    render({
+      repos: twoRepos,
+      contents: twoContents,
+      catalog: [
+        installedFrom("origin-official", OFFICIAL, MIRROR),
+        installedFrom("origin-mirror", MIRROR, OFFICIAL),
+      ],
+    });
+    click("Remove");
+    await settle();
+    const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.textContent).toContain("origin-mirror");
+    expect(dialog.textContent).not.toContain("origin-official");
+  });
+
   it("says so when nothing installed came from that repo", async () => {
     render({
       repos: twoRepos,
@@ -327,9 +357,17 @@ describe("RepoList — a repo that could not be reached", () => {
     const mirror = host.querySelector(
       `[data-testid="repo-row-${MIRROR}"]`,
     ) as HTMLElement;
-    expect(mirror.querySelector('[role="alert"]')?.textContent).toContain(
+    // A cached repo is working, just offline — its last good index is being
+    // served. So it announces as `status`, not `alert`: a viewer with two
+    // cached repos should not get two assertive interruptions for a state
+    // where nothing is actually wrong. `alert` is reserved for the arms
+    // that really failed, which the next test pins.
+    const stale = mirror.querySelector('[role="status"]');
+    expect(stale?.textContent).toContain(
       "showing the copy saved on this device",
     );
+    expect(mirror.querySelector('[role="alert"]')).toBeNull();
+    expect(official.querySelector('[role="status"]')).toBeNull();
     expect(official.querySelector('[role="alert"]')).toBeNull();
     expect(official.textContent).toContain("Last checked");
   });

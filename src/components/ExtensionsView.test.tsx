@@ -436,6 +436,61 @@ describe("ExtensionsView — the one-time trust notice", () => {
   });
 });
 
+describe("ExtensionsView — retrying a broken extension", () => {
+  it("explains a retry that cannot re-download, instead of doing nothing visible", async () => {
+    // A broken extension whose repo has since been removed has no entry to
+    // re-download from, so Retry can only re-run the loader — and the
+    // registry caches an evaluation failure by content hash, so that
+    // changes nothing. Silence here reads as a dead button.
+    const orphan = {
+      ...installed("orphan"),
+      entry: undefined,
+      repoUrl: undefined,
+    };
+    const deps = makeDeps({
+      catalog: [orphan],
+      status: { orphan: "broken" },
+      errors: { orphan: "bundle threw on evaluation" },
+    });
+    await mount(deps);
+
+    click("Retry", card("orphan"));
+    await settle();
+
+    expect(deps.installExtension).not.toHaveBeenCalled();
+    expect(deps.initExtensions).toHaveBeenCalled();
+    expect(card("orphan").textContent).toContain("no longer configured");
+  });
+
+  it("stays quiet when a reload-only retry actually fixed it", async () => {
+    // The read-failure case: the bundle was unreadable, the registry does
+    // NOT cache that, so re-running the loader really can recover. No
+    // message belongs here.
+    const orphan = {
+      ...installed("orphan"),
+      entry: undefined,
+      repoUrl: undefined,
+    };
+    const status: Record<string, "ok" | "broken"> = { orphan: "broken" };
+    const deps = makeDeps({
+      catalog: [orphan],
+      status,
+      errors: { orphan: "ENOENT" },
+      over: {
+        initExtensions: vi.fn(async () => {
+          status.orphan = "ok";
+        }),
+      },
+    });
+    await mount(deps);
+
+    click("Retry", card("orphan"));
+    await settle();
+
+    expect(card("orphan").textContent).not.toContain("no longer configured");
+  });
+});
+
 describe("ExtensionsView — catalogue load failure", () => {
   it("offers a retry rather than an empty page when the catalogue cannot be read", async () => {
     let fail = true;
@@ -457,5 +512,41 @@ describe("ExtensionsView — catalogue load failure", () => {
     click("Retry");
     await settle();
     expect(card("fresh")).not.toBeNull();
+  });
+
+  it("says the list is stale when a refresh fails AFTER one succeeded", async () => {
+    // The dangerous shape: the first load worked, so a list is on screen.
+    // A refresh that then fails used to leave that list in place with no
+    // sign at all — a removed extension still offering Remove — because
+    // reload() swallows its own throw and removeExtension() reports
+    // success. The rows must stay (they are the last known good state) and
+    // the staleness must be visible.
+    let calls = 0;
+    const deps = makeDeps({
+      catalog: [installed("steady")],
+      over: {
+        loadCatalog: vi.fn(async () => {
+          calls++;
+          if (calls > 1) throw new Error("disk went away");
+          return data([installed("steady")]);
+        }),
+      },
+    });
+    await mount(deps);
+    expect(card("steady")).not.toBeNull();
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+
+    click("Remove", card("steady"));
+    await settle();
+    const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+    click("Remove", dialog);
+    await settle();
+
+    expect(deps.uninstallExtension).toHaveBeenCalledWith("steady");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "disk went away",
+    );
+    // The rows survive: a failed refresh must not blank a working list.
+    expect(card("steady")).not.toBeNull();
   });
 });
