@@ -28,7 +28,10 @@ import { AddToShelfDialog } from "../AddToShelfDialog";
 import { AnimatedDialog } from "../AnimatedDialog";
 import { AnimatedFullScreen } from "../AnimatedFullScreen";
 import { openIntentFor } from "../importOpenTarget";
-import { onOpenDownloadQueue } from "../../store/uiIntents";
+import {
+  onOpenDownloadQueue,
+  onOpenExtensionsManager,
+} from "../../store/uiIntents";
 import {
   useNav,
   goLibrary,
@@ -967,6 +970,17 @@ export function Library({
   // nav history (so the hardware/desktop Back closes it).
   useEffect(
     () => onOpenDownloadQueue(() => openOverlay({ kind: "downloads" })),
+    [],
+  );
+
+  // "Open Extensions", asked for by the notice a saved novel shows when its
+  // source extension is gone. Our half is getting the user to the Store
+  // destination — which unmounts that novel page and mounts the Store, and
+  // the Store selects its extensions view from the same request. A no-op
+  // when the Store is already the destination (navigate() drops a move to
+  // the snapshot it is already on), which is exactly the Store-side case.
+  useEffect(
+    () => onOpenExtensionsManager(() => goLibrary({ kind: "store" })),
     [],
   );
 

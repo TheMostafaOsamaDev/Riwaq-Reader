@@ -595,12 +595,33 @@ export const ar: Messages = {
   "novel.volumeFallback": "المجلد {n}",
   "novel.chapterNoTitleFallback": "{n} - بلا عنوان",
 
+  "novel.offline.missingTitle": "إضافة “{source}” غير مثبَّتة",
+  "novel.offline.missingBody":
+    "كل ما هو محفوظ على هذا الجهاز معروض بالأسفل — التفاصيل وقائمة الفصول وكل فصل نزّلته. ثبّت الإضافة من جديد لتنزيل فصول جديدة أو لتحديث القائمة.",
+  "novel.offline.brokenTitle": "فشل تحميل إضافة “{source}”",
+  "novel.offline.brokenBody":
+    "ما هو محفوظ على هذا الجهاز ما زال يُفتح. أمّا التنزيلات الجديدة والتحديث فتحتاج إضافة تعمل — أعد المحاولة أو ثبّتها من جديد من صفحة الإضافات. ({error})",
+  "novel.offline.apiVersionTitle": "إضافة “{source}” تحتاج إصدارًا أحدث من رِواق",
+  "novel.offline.apiVersionBody":
+    "ما هو محفوظ على هذا الجهاز ما زال يُفتح. حدّث التطبيق لتتمكّن من تنزيل فصول جديدة.",
+  "novel.offline.openExtensions": "فتح الإضافات",
+  "novel.offline.needsExtension":
+    "يحتاج إضافة “{source}” — ثبّتها لتتمكّن من التنزيل مجدّدًا.",
+  "novel.offline.chapterNotDownloaded":
+    "غير منزَّل — قراءته تحتاج إضافة “{source}”.",
+  "novel.offline.volumeNotLoaded":
+    "فصول هذا المجلد لم تُحمَّل على هذا الجهاز — جلبها يحتاج إضافة “{source}”.",
+  "novel.offline.nothingDownloaded":
+    "لا فصل منزَّل — القراءة تحتاج إضافة “{source}”.",
+
   "stream.loadingNovel": "جارٍ تحميل الرواية…",
   "stream.noChapters": "هذه الرواية لا تحتوي على فصول.",
   "stream.loadErrorTitle": "تعذّر تحميل هذه الرواية",
   "stream.loadingChapter": "جارٍ تحميل الفصل…",
   "stream.chapterErrorTitle": "تعذّر تحميل هذا الفصل",
   "stream.backToNovel": "العودة إلى الرواية",
+  "stream.chapterNeedsExtension":
+    "هذا الفصل غير محفوظ على هذا الجهاز، وإضافة “{source}” غير مثبَّتة — ثبّتها لقراءته.",
 
   "picker.filterImage": "صورة",
 

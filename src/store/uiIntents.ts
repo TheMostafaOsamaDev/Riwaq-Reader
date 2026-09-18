@@ -74,3 +74,35 @@ export function takePendingStoreSource(): string | null {
   pendingStoreSource = null;
   return id;
 }
+
+// "Open the Extensions manager" — fired by the banner a saved novel shows
+// when its source extension is gone or broken. Two subscribers answer it:
+// the Library switches to the Store destination, and the Store selects its
+// extensions view. Neither alone is enough — from a library-backed novel
+// page the Store isn't even mounted yet, which is why the request is also
+// REMEMBERED (same one-shot pattern as pendingStoreSource above) so the
+// Store can consume it on its own mount.
+let pendingExtensionsManager = false;
+
+/** Request the Extensions manager. Safe from anywhere in the app. */
+export function openExtensionsManager(): void {
+  pendingExtensionsManager = true;
+  emit("open-extensions-manager");
+}
+
+/** Subscribe to "open the Extensions manager" requests fired while already
+ *  mounted. Returns an unsubscribe function. The pending flag is NOT
+ *  cleared here: the Library listens too, and it only switches tabs — the
+ *  Store is the one that consumes the request, on mount or below. */
+export function onOpenExtensionsManager(fn: Listener): () => void {
+  return on("open-extensions-manager", fn);
+}
+
+/** Consume a pending "open the Extensions manager" request — call from the
+ *  Store on mount and from its own subscription. Returns true once per
+ *  request. */
+export function takePendingExtensionsManager(): boolean {
+  const pending = pendingExtensionsManager;
+  pendingExtensionsManager = false;
+  return pending;
+}

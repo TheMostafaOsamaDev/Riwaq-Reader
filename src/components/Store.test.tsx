@@ -20,6 +20,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../i18n/I18nProvider";
 import { THEMES } from "../styles/tokens";
+import {
+  openExtensionsManager,
+  takePendingExtensionsManager,
+} from "../store/uiIntents";
 
 let resolveInit: (() => void) | null = null;
 const initExtensions = vi.fn(
@@ -37,7 +41,9 @@ vi.mock("./SourceHomeView", () => ({ SourceHomeView: () => null }));
 // Stubbed for the same reason as the other sub-views: it is a sibling of
 // the thing under test here, and its module graph reaches the registry
 // mock above, which deliberately exports only initExtensions.
-vi.mock("./ExtensionsView", () => ({ ExtensionsView: () => null }));
+vi.mock("./ExtensionsView", () => ({
+  ExtensionsView: () => <div data-testid="extensions-view" />,
+}));
 vi.mock("./novel/NovelDetailView", () => ({ NovelDetailView: () => null }));
 vi.mock("./DownloadRangeDialog", () => ({ DownloadRangeDialog: () => null }));
 
@@ -53,6 +59,7 @@ describe("Store — initialises its own extensions on mount", () => {
     document.body.appendChild(host);
     resolveInit = null;
     initExtensions.mockClear();
+    takePendingExtensionsManager();
   });
 
   afterEach(() => {
@@ -134,6 +141,37 @@ describe("Store — initialises its own extensions on mount", () => {
     });
     mount();
     expect(initExtensions).toHaveBeenCalledTimes(2);
+  });
+
+  // The "Open Extensions" action on a saved novel whose extension is gone.
+  // The request is usually made from a library-backed novel page, i.e.
+  // while this component does not exist — the Library answers by switching
+  // to the Store, and the request has to survive until this mount reads it.
+  it("opens the extensions manager for a request made before it mounted", async () => {
+    openExtensionsManager();
+    mount();
+    await act(async () => {
+      resolveInit?.();
+      await Promise.resolve();
+    });
+    expect(
+      host.querySelector('[data-testid="extensions-view"]'),
+    ).not.toBeNull();
+  });
+
+  it("opens the extensions manager for a request made while mounted", async () => {
+    mount();
+    await act(async () => {
+      resolveInit?.();
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-testid="extensions-view"]')).toBeNull();
+    await act(async () => {
+      openExtensionsManager();
+    });
+    expect(
+      host.querySelector('[data-testid="extensions-view"]'),
+    ).not.toBeNull();
   });
 
   it("gives the skeleton no opacity/animation transition on the swap", () => {
