@@ -19,11 +19,18 @@ import { onOpenStoreSource, takePendingStoreSource } from "../store/uiIntents";
 import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
+import { ThemedSkeleton } from "./Skeleton";
 import type { Theme } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
   layout: "desktop" | "mobile";
+  /** True once initExtensions() (kicked off from an effect in App.tsx,
+   *  never awaited before first paint) has settled. Registry accessors
+   *  answer empty/null until then, so the sources list has nothing real to
+   *  show yet — a Skeleton takes its place instead of a misleading "no
+   *  sources" empty state. */
+  extensionsReady: boolean;
   /** Open the source streaming reader for a novel at the given chapter
    *  (defaults to the first chapter when not specified). */
   onStreamRead: (
@@ -45,6 +52,7 @@ type StoreView =
 export function Store({
   theme,
   layout,
+  extensionsReady,
   onStreamRead,
   onImportComplete,
 }: Props) {
@@ -98,9 +106,12 @@ export function Store({
           flexDirection: "column",
         }}
       >
-        {view.kind === "sources" && (
-          <SourcesListView theme={theme} onOpenSource={openSource} />
-        )}
+        {view.kind === "sources" &&
+          (extensionsReady ? (
+            <SourcesListView theme={theme} onOpenSource={openSource} />
+          ) : (
+            <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
+          ))}
         {view.kind === "source" && (
           <SourceHomeView
             theme={theme}
