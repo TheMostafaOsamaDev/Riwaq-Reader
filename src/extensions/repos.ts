@@ -19,6 +19,7 @@ import {
   remove,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
+import type { TauriFetchResponse } from "../sources/tauriFetch";
 import { ensureMigrated, EXTENSIONS_DIR, isValidExtensionId } from "./storage";
 
 const BASE = BaseDirectory.AppData;
@@ -55,6 +56,19 @@ export interface RepoIndex {
   apiVersion: number;
   extensions: RepoIndexEntry[];
 }
+
+/** Hard ceiling on an extension bundle, enforced twice: here against the
+ *  size an index DECLARES, and again in install.ts against the number of
+ *  bytes actually downloaded — an index is a remote document and its `size`
+ *  is a claim, not a measurement.
+ *
+ *  Generous by two orders of magnitude on purpose: the largest bundle the
+ *  official repo has published is about 13 KB, and this is a ceiling on
+ *  hostile input rather than a budget for real extensions. Without one, a
+ *  repo serving a multi-gigabyte "bundle" is buffered whole before anything
+ *  looks at it — worst on Android, where the process budget is small and
+ *  the body then crosses the IPC bridge as JSON. */
+export const MAX_BUNDLE_BYTES = 4 * 1024 * 1024;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -95,6 +109,12 @@ export function parseRepoIndex(json: unknown): RepoIndex {
       throw new Error(
         `Repo index entry "${String(raw.id)}" has no valid sha256`,
       );
+    }
+    if (typeof raw.size === "number" && raw.size > MAX_BUNDLE_BYTES) {
+      console.warn(
+        `[extensions] dropped "${String(raw.id)}": the index declares ${raw.size} bytes, over the ${MAX_BUNDLE_BYTES}-byte limit`,
+      );
+      continue;
     }
     extensions.push({
       id: raw.id as string,
@@ -203,21 +223,27 @@ async function writeReposFile(file: ReposFile): Promise<void> {
 }
 
 export async function listRepos(): Promise<RepoEntry[]> {
-  try {
+  await ensureMigrated();
+  // Absent and unreadable are different things, and this used to treat them
+  // as one: any failure to read seeded the official repo and WROTE it over
+  // the file, so a transient read error or a half-written repos.json
+  // silently replaced every repository the user had added. Seeding is for a
+  // first run only — a file that is there but cannot be parsed is surfaced,
+  // not overwritten.
+  if (await exists(REPOS_FILE, { baseDir: BASE })) {
     return (await readReposFile()).repos;
-  } catch {
-    // First run: the official repo is pre-added but not privileged — it
-    // can be removed like any other.
-    const seed: RepoEntry[] = [
-      {
-        url: OFFICIAL_REPO_URL,
-        name: "Riwaq Official Extensions",
-        addedAt: new Date().toISOString(),
-      },
-    ];
-    await saveRepos(seed);
-    return seed;
   }
+  // First run: the official repo is pre-added but not privileged — it
+  // can be removed like any other.
+  const seed: RepoEntry[] = [
+    {
+      url: OFFICIAL_REPO_URL,
+      name: "Riwaq Official Extensions",
+      addedAt: new Date().toISOString(),
+    },
+  ];
+  await saveRepos(seed);
+  return seed;
 }
 
 /** Persist the repo list. Exported so `registry.loadCatalog` can stamp
@@ -225,15 +251,16 @@ export async function listRepos(): Promise<RepoEntry[]> {
  *  caller that knows a fetch just succeeded, not to `fetchRepoIndex`,
  *  which is also used on paths that must not touch repos.json. */
 export async function saveRepos(repos: RepoEntry[]): Promise<void> {
+  await ensureMigrated();
   // Read-then-write so a list update never drops the acknowledgement flag
-  // that shares the file. The read is one small JSON file, and on the first
-  // ever write there is nothing to read.
+  // that shares the file. On the first ever write there is nothing to read,
+  // which is the `exists` check; a file that IS there and will not parse is
+  // NOT swallowed — swallowing it dropped the acknowledgement silently and
+  // then wrote the loss back, re-showing a notice the user had accepted.
   let trustNoticeAcknowledgedAt: string | undefined;
-  try {
+  if (await exists(REPOS_FILE, { baseDir: BASE })) {
     trustNoticeAcknowledgedAt = (await readReposFile())
       .trustNoticeAcknowledgedAt;
-  } catch {
-    trustNoticeAcknowledgedAt = undefined;
   }
   await writeReposFile({ repos, trustNoticeAcknowledgedAt });
 }
@@ -332,12 +359,6 @@ export async function removeRepo(url: string): Promise<void> {
   }
 }
 
-interface TauriFetchResponse {
-  status: number;
-  text: string;
-  headers: Record<string, string>;
-}
-
 export async function fetchRepoIndex(
   url: string,
 ): Promise<{ index: RepoIndex; cached: boolean; fetchedAt: string }> {
@@ -347,6 +368,14 @@ export async function fetchRepoIndex(
   // there first. Same rule as writeReposFile above.
   await ensureMigrated();
   const cacheFile = await cacheName(url);
+
+  let index: RepoIndex;
+  let fetchedAt: string;
+  // Only the fetch and the parse are in here. The cache write used to be
+  // too, which meant a disk error AFTER a perfectly successful fetch fell
+  // into the fallback below and reported a healthy repo as stale — or, with
+  // no cache to fall back to, rethrew a filesystem error as "repo
+  // unreachable".
   try {
     const resp = await invoke<TauriFetchResponse>("source_fetch", {
       url,
@@ -355,13 +384,8 @@ export async function fetchRepoIndex(
     if (resp.status < 200 || resp.status >= 300) {
       throw new Error(`HTTP ${resp.status}`);
     }
-    const index = parseRepoIndex(JSON.parse(resp.text));
-    const fetchedAt = new Date().toISOString();
-    await ensureExtDir(CACHE_DIR);
-    await writeTextFile(cacheFile, JSON.stringify({ index, fetchedAt }), {
-      baseDir: BASE,
-    });
-    return { index, cached: false, fetchedAt };
+    index = parseRepoIndex(JSON.parse(resp.text));
+    fetchedAt = new Date().toISOString();
   } catch (e) {
     try {
       const cached = JSON.parse(
@@ -372,4 +396,16 @@ export async function fetchRepoIndex(
       throw e instanceof Error ? e : new Error(String(e));
     }
   }
+
+  // The repo WAS reached and its index parsed. Failing to cache that is a
+  // bookkeeping problem for the next offline launch, not a fetch failure.
+  try {
+    await ensureExtDir(CACHE_DIR);
+    await writeTextFile(cacheFile, JSON.stringify({ index, fetchedAt }), {
+      baseDir: BASE,
+    });
+  } catch (e) {
+    console.warn("[extensions] could not cache the repo index:", e);
+  }
+  return { index, cached: false, fetchedAt };
 }

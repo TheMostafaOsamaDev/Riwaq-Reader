@@ -32,6 +32,7 @@ vi.mock("./storage", () => ({
   removeInstalled: vi.fn(async () => {}),
 }));
 
+import { MAX_BUNDLE_BYTES } from "./repos";
 import { installExtension, sha256Hex } from "./install";
 
 const SOURCE = "export default () => ({});";
@@ -48,6 +49,34 @@ const entry = (sha: string, icon?: string) => ({
   icon,
   sha256: sha,
   size: SOURCE.length,
+});
+
+describe("sha256Hex", () => {
+  it("matches the published digest for a known input", async () => {
+    // A known answer, from FIPS 180-2 / RFC 6234's SHA-256("abc") vector.
+    //
+    // Every other test in this file compares sha256Hex against sha256Hex:
+    // the same function produces both the expected value and the actual
+    // one, so they agree with each other however wrong they both are.
+    // Dropping the .padStart(2, "0") in install.ts silently truncates every
+    // digest that contains a byte below 0x10 — and left four of the five
+    // cases below green. This is the security boundary the whole branch
+    // rests on; it needs one value it did not compute itself.
+    expect(await sha256Hex(enc.encode("abc"))).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
+
+  it("keeps the leading zero of a byte below 0x10", async () => {
+    // The specific failure the vector above catches, pinned on its own so
+    // a regression names itself. SHA-256("") starts with 0xe3 and contains
+    // 0x08 and 0x09 further in; the digest is always 64 hex characters.
+    const empty = await sha256Hex(new Uint8Array());
+    expect(empty).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+    expect(empty).toHaveLength(64);
+  });
 });
 
 describe("installExtension", () => {
@@ -114,6 +143,42 @@ describe("installExtension", () => {
       source: SOURCE,
       sha256: good,
     });
+  });
+
+  it("refuses a bundle larger than the cap, whatever the index declared", async () => {
+    // The index's `size` is a claim, not a measurement — a repo serving a
+    // multi-gigabyte body under a small declared size would otherwise be
+    // buffered whole and then digested before anything looked at it.
+    const before = written.length;
+    const huge = new Uint8Array(MAX_BUNDLE_BYTES + 1);
+    await expect(
+      installExtension(
+        "https://repo.test/index.min.json",
+        entry(await sha256Hex(huge)),
+        { fetchBytes: async () => huge },
+      ),
+    ).rejects.toThrow(/limit/i);
+    expect(written).toHaveLength(before);
+  });
+
+  it("drops an oversized icon without failing the install", async () => {
+    // Same ceiling, opposite consequence: the bundle is the thing that gets
+    // executed, the icon is a picture. Refusing the whole install over it
+    // would be worse than going without it.
+    const good = await sha256Hex(enc.encode(SOURCE));
+    await installExtension(
+      "https://repo.test/index.min.json",
+      entry(good, "demo/icon.png"),
+      {
+        fetchBytes: async (url: string) =>
+          url.endsWith("icon.png")
+            ? new Uint8Array(MAX_BUNDLE_BYTES)
+            : enc.encode(SOURCE),
+      },
+    );
+    const last = written[written.length - 1];
+    expect(last).toMatchObject({ id: "demo", source: SOURCE, sha256: good });
+    expect(last.manifestIcon).toBeUndefined();
   });
 
   it("propagates a network failure on the code fetch itself, before hashing anything", async () => {

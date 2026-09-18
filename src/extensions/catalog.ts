@@ -80,14 +80,18 @@ export function buildCatalog(
         // and entry.icon as relative to repoUrl, so a mismatched pair
         // would resolve one repo's paths against another repo's baseUrl.
         if (existing.record.origin.repoUrl !== repoUrl) continue;
-        const hasUpdate =
-          compareVersions(entry.version, existing.installedVersion ?? "0") > 0;
+        // Not a fallback: `installedVersion` is set on every entry the
+        // installed loop above created, and `record` is set by that same
+        // loop and nothing else — so inside this branch it is always
+        // there. The `?? "0"` and `?? existing.version` that used to guard
+        // the two uses below could not run, and read as if the installed
+        // version were sometimes unknown here.
+        const installedVersion = existing.installedVersion as string;
+        const hasUpdate = compareVersions(entry.version, installedVersion) > 0;
         existing.entry = entry;
         existing.repoUrl = repoUrl;
         existing.updateAvailable = hasUpdate;
-        existing.version = hasUpdate
-          ? entry.version
-          : (existing.installedVersion ?? existing.version);
+        existing.version = hasUpdate ? entry.version : installedVersion;
       }
 
       // Not installed: the first configured repo to list this id wins.

@@ -1,10 +1,24 @@
 // Download → verify → write. Verification happens before anything touches
 // the installed/ directory, so a tampered or truncated bundle never lands
 // on disk at all, let alone gets evaluated.
+//
+// That is about the BUNDLE. The icon is fetched and written unverified,
+// because the repo index format carries no hash for it — there is nothing
+// to check it against. It is treated as what it is: a cosmetic file that is
+// never executed, whose fetch failure is swallowed, and which is rendered
+// through `asset://` as an image. See the icon block below.
 
 import { invoke } from "@tauri-apps/api/core";
-import { resolveAssetUrl, type RepoIndexEntry } from "./repos";
+import {
+  MAX_BUNDLE_BYTES,
+  resolveAssetUrl,
+  type RepoIndexEntry,
+} from "./repos";
 import { removeInstalled, writeInstalled } from "./storage";
+
+/** An extension icon is a small square PNG. Same reasoning as
+ *  MAX_BUNDLE_BYTES, one order of magnitude down. */
+const MAX_ICON_BYTES = 512 * 1024;
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -41,6 +55,16 @@ export async function installExtension(
   const fetchBytes = deps.fetchBytes ?? defaultFetchBytes;
 
   const codeBytes = await fetchBytes(resolveAssetUrl(repoUrl, entry.code));
+  // Checked against what was actually downloaded, not only against the
+  // `size` the index declared: the index is a remote document, so its size
+  // is a claim. Checked BEFORE hashing, so a hostile body is dropped rather
+  // than digested.
+  if (codeBytes.byteLength > MAX_BUNDLE_BYTES) {
+    throw new Error(
+      `"${entry.name}" downloaded ${codeBytes.byteLength} bytes, over the ` +
+        `${MAX_BUNDLE_BYTES}-byte limit for an extension bundle. Nothing was installed.`,
+    );
+  }
   const actual = await sha256Hex(codeBytes);
   if (actual !== entry.sha256.toLowerCase()) {
     throw new Error(
@@ -52,9 +76,15 @@ export async function installExtension(
 
   let icon: Uint8Array | undefined;
   if (entry.icon) {
-    // A missing icon is cosmetic — never fail an otherwise-verified install.
+    // Unverified, and deliberately so: the index format carries no icon
+    // hash, so there is nothing to verify it against. It is never
+    // evaluated — it is written to icon.png and rendered as an <img> via
+    // `asset://` — and a missing or oversized one is cosmetic, so it is
+    // dropped rather than failing an otherwise-verified install. If the
+    // index ever grows an icon hash, check it here.
     try {
-      icon = await fetchBytes(resolveAssetUrl(repoUrl, entry.icon));
+      const bytes = await fetchBytes(resolveAssetUrl(repoUrl, entry.icon));
+      icon = bytes.byteLength <= MAX_ICON_BYTES ? bytes : undefined;
     } catch {
       icon = undefined;
     }
