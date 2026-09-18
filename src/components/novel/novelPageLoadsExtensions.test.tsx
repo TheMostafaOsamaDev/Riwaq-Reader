@@ -173,11 +173,8 @@ vi.mock("../../store/downloadQueue", () => ({
 // The i18n provider is re-imported alongside the view for the same reason:
 // after vi.resetModules() a statically-imported provider would be a
 // different module instance from the one the view reads its context from.
-// biome-ignore lint/suspicious/noExplicitAny: fresh per-test module graph
 let NovelDetailView: any;
-// biome-ignore lint/suspicious/noExplicitAny: fresh per-test module graph
 let I18nProvider: any;
-// biome-ignore lint/suspicious/noExplicitAny: fresh per-test module graph
 let THEMES: any;
 
 let host: HTMLDivElement;

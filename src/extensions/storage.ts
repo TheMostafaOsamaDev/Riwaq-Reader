@@ -71,6 +71,50 @@ export interface InstalledRecord {
 const dirOf = (id: string) => `${INSTALLED_DIR}/${id}`;
 export const iconPath = (id: string) => `${dirOf(id)}/icon.png`;
 
+/** The shape an extension id is allowed to take.
+ *
+ *  This is a security boundary, not tidiness. The id IS a path component
+ *  here — `installed/<id>`, `staging/<id>`, `trash/<id>` — and it arrives
+ *  from a repository index, which is to say from the network. A repo
+ *  publishing `"id": "../../../evil"` would otherwise have every write
+ *  below land wherever it liked, the moment the user pressed Install.
+ *
+ *  The fs scope does NOT reliably stop that, so this cannot be left to it:
+ *  tauri-plugin-fs resolves `require_literal_leading_dot` as
+ *  `.unwrap_or(cfg!(unix))`, and Tauri's scope canonicalises only a path
+ *  that ALREADY EXISTS. For a mkdir or a write to a path that does not
+ *  exist yet, the literal `..` components are glob-matched — which unix
+ *  rejects and Windows does not, so there `$APPDATA/**` matches
+ *  `…/installed/../../../evil/index.js` and the write goes through.
+ *
+ *  And even on unix a merely nested id like `a/b` installs into a directory
+ *  that listInstalled then skips: the install reports success and the
+ *  extension never appears.
+ *
+ *  Checked at two layers on purpose. repos.ts drops an index entry whose id
+ *  does not match this, so a bad id never reaches an install; these two
+ *  writers re-assert it so the guard still holds for any future caller that
+ *  does not come through a repo index. */
+const EXTENSION_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
+
+export function isValidExtensionId(id: unknown): id is string {
+  if (typeof id !== "string") return false;
+  // Redundant with the leading-character rule, and spelled out anyway
+  // because these two are the entire reason the rule exists.
+  if (id === "." || id === "..") return false;
+  return EXTENSION_ID_RE.test(id);
+}
+
+export function assertValidExtensionId(id: string): void {
+  if (!isValidExtensionId(id)) {
+    throw new Error(
+      `Unusable extension id ${JSON.stringify(id)}. An id is a directory ` +
+        `name on disk: it must start with a letter or digit and may then ` +
+        `contain letters, digits, ".", "_" and "-", up to 64 characters.`,
+    );
+  }
+}
+
 async function ensureDir(path: string): Promise<void> {
   if (!(await exists(path, { baseDir: BASE }))) {
     await mkdir(path, { baseDir: BASE, recursive: true });
@@ -91,8 +135,12 @@ async function ensureDir(path: string): Promise<void> {
 // position 0 rather than membership.
 //
 // Add this to any new fs-touching export in this file, or it silently
-// reopens that hazard for that one function.
-async function ensureMigrated(): Promise<void> {
+// reopens that hazard for that one function. Exported because repos.ts
+// writes under the same root (`riwaq/extensions/repos.json` and the index
+// cache) and needs the identical guarantee from its own entry points —
+// sharing this is what keeps the two files from drifting into two
+// different answers about when the migration has run.
+export async function ensureMigrated(): Promise<void> {
   await migrateLegacyRoot();
 }
 
@@ -140,6 +188,8 @@ export async function writeInstalled(
   },
 ): Promise<void> {
   await ensureMigrated();
+  // Before anything builds a path out of it. See EXTENSION_ID_RE.
+  assertValidExtensionId(id);
   // The directory name (`id`) is the identity every other function in this
   // module keys on — readBundleSource, iconPath, removeInstalled all take
   // it, not a value read out of manifest.json. A manifest that disagrees
@@ -225,6 +275,10 @@ export async function writeInstalled(
 
 export async function removeInstalled(id: string): Promise<void> {
   await ensureMigrated();
+  // A remove takes the same id from the same places a write does, and
+  // `remove(..., { recursive: true })` on a traversed path is the more
+  // destructive of the two. See EXTENSION_ID_RE.
+  assertValidExtensionId(id);
   if (await exists(dirOf(id), { baseDir: BASE })) {
     await remove(dirOf(id), { baseDir: BASE, recursive: true });
   }

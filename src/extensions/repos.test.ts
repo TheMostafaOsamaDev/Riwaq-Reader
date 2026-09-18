@@ -122,6 +122,74 @@ describe("parseRepoIndex", () => {
   });
 });
 
+describe("parseRepoIndex — the id is a path component", () => {
+  // A repo index is a remote document and its `id` becomes a directory
+  // name: `installed/<id>`, `staging/<id>`, `trash/<id>`. Until this
+  // validation existed, `"id": "../../../evil"` was an arbitrary file write
+  // outside app data on Windows the moment the user pressed Install —
+  // storage.ts's EXTENSION_ID_RE has the mechanism.
+  const withId = (id: unknown) => {
+    const doc = structuredClone(valid) as { extensions: unknown[] };
+    const entry = structuredClone(valid.extensions[0]) as Record<
+      string,
+      unknown
+    >;
+    entry.id = id;
+    doc.extensions = [entry];
+    return doc;
+  };
+  const ids = (doc: unknown) => parseRepoIndex(doc).extensions.map((e) => e.id);
+
+  it("drops a traversing id", () => {
+    // The Windows-shaped case: `$APPDATA/**` glob-matches this because
+    // require_literal_leading_dot is false there and the scope only
+    // canonicalises paths that already exist.
+    expect(ids(withId("../../../evil"))).toEqual([]);
+  });
+
+  it("drops a bare dot and a bare double dot", () => {
+    expect(ids(withId("."))).toEqual([]);
+    expect(ids(withId(".."))).toEqual([]);
+  });
+
+  it("drops an id with a path separator in it", () => {
+    // Not an attack, but it installs into a nested directory listInstalled
+    // then silently skips: the install "succeeds" and nothing appears.
+    expect(ids(withId("a/b"))).toEqual([]);
+    expect(ids(withId("a\\b"))).toEqual([]);
+  });
+
+  it("drops a dot-prefixed id", () => {
+    // Tauri's fs scope refuses dot-prefixed components on macOS, Linux and
+    // Android, so this would install and then be unreadable.
+    expect(ids(withId(".hidden"))).toEqual([]);
+  });
+
+  it("drops an absurdly long id", () => {
+    expect(ids(withId("a".repeat(65)))).toEqual([]);
+  });
+
+  it("keeps the ids real extensions actually use", () => {
+    // The counterweight: a rule that rejected everything would pass every
+    // case above and ship an app that can install nothing.
+    expect(ids(withId("cenele"))).toEqual(["cenele"]);
+    expect(ids(withId("kolnovel-pro"))).toEqual(["kolnovel-pro"]);
+    expect(ids(withId("sea_novel.v2"))).toEqual(["sea_novel.v2"]);
+    expect(ids(withId("a"))).toEqual(["a"]);
+  });
+
+  it("keeps the good entries when a bad id sits beside them", () => {
+    const doc = structuredClone(valid) as { extensions: unknown[] };
+    const evil = structuredClone(valid.extensions[0]) as Record<
+      string,
+      unknown
+    >;
+    evil.id = "../../../evil";
+    doc.extensions = [evil, ...doc.extensions];
+    expect(ids(doc)).toEqual(["cenele"]);
+  });
+});
+
 describe("resolveAssetUrl", () => {
   // code/icon are relative to the index URL so a fork or mirror works
   // without editing any URL inside the index.

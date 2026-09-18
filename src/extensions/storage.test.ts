@@ -260,3 +260,73 @@ describe("storage", () => {
     expect(files.has("riwaq/extensions/installed/demo/icon.png")).toBe(false);
   });
 });
+
+describe("the id is a path component — the writers re-assert it", () => {
+  // repos.ts drops a bad id out of a repo index, and this is the second
+  // layer: these two writers are what actually build `installed/<id>`,
+  // `staging/<id>` and `trash/<id>`, and they must refuse a traversing id
+  // whether or not it arrived through an index. See EXTENSION_ID_RE.
+  const traversal = "../../../evil";
+
+  it("refuses to install under a traversing id", async () => {
+    await expect(
+      writeInstalled(traversal, {
+        source: "pwned",
+        manifest: { ...manifest, id: traversal },
+        origin,
+      }),
+    ).rejects.toThrow(/unusable extension id/i);
+  });
+
+  it("writes nothing at all when it refuses", async () => {
+    // The Windows case is a file OUTSIDE app data, so "it threw" is not
+    // enough on its own: nothing may have been created on the way to the
+    // throw either.
+    await expect(
+      writeInstalled(traversal, {
+        source: "pwned",
+        manifest: { ...manifest, id: traversal },
+        origin,
+      }),
+    ).rejects.toThrow();
+    expect([...files.keys()]).toEqual([]);
+    expect([...dirs]).toEqual([]);
+  });
+
+  it("refuses to remove under a traversing id", async () => {
+    // remove(..., { recursive: true }) on a traversed path is the more
+    // destructive half of the pair.
+    // Cleared here rather than in beforeEach: one test above counts the
+    // paths every fs mock was called with across its own sequence.
+    vi.mocked(remove).mockClear();
+    await expect(removeInstalled(traversal)).rejects.toThrow(
+      /unusable extension id/i,
+    );
+    expect(vi.mocked(remove)).not.toHaveBeenCalled();
+  });
+
+  it("refuses a nested id, which would install somewhere unlistable", async () => {
+    await expect(
+      writeInstalled("a/b", {
+        source: "x",
+        manifest: { ...manifest, id: "a/b" },
+        origin,
+      }),
+    ).rejects.toThrow(/unusable extension id/i);
+  });
+
+  it("still installs an ordinary id", async () => {
+    // The counterweight: a guard that refused everything would satisfy
+    // every case above.
+    await writeInstalled("kolnovel-pro", {
+      source: "x",
+      manifest: { ...manifest, id: "kolnovel-pro" },
+      origin,
+    });
+    expect((await listInstalled()).map((r) => r.manifest.id)).toEqual([
+      "kolnovel-pro",
+    ]);
+    await removeInstalled("kolnovel-pro");
+    expect(await listInstalled()).toEqual([]);
+  });
+});

@@ -19,7 +19,7 @@ import {
   remove,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import { EXTENSIONS_DIR } from "./storage";
+import { ensureMigrated, EXTENSIONS_DIR, isValidExtensionId } from "./storage";
 
 const BASE = BaseDirectory.AppData;
 const REPOS_FILE = `${EXTENSIONS_DIR}/repos.json`;
@@ -76,6 +76,20 @@ export function parseRepoIndex(json: unknown): RepoIndex {
     if (!isRecord(raw)) continue;
     const required = ["id", "name", "version", "baseUrl", "code"] as const;
     if (required.some((k) => typeof raw[k] !== "string" || !raw[k])) continue;
+    if (!isValidExtensionId(raw.id)) {
+      // The id becomes a directory name downstream (`installed/<id>`), and
+      // a repo is a remote document, so `"id": "../../../evil"` is an
+      // arbitrary file write the moment the user presses Install —
+      // storage.ts's EXTENSION_ID_RE explains why the fs scope does not
+      // stop it on Windows. Dropped like any other unusable entry rather
+      // than rejecting the index, so one bad id cannot take a whole
+      // repository offline; storage.ts re-asserts the same rule at the
+      // write itself.
+      console.warn(
+        `[extensions] dropped a repo entry with an unusable id: ${JSON.stringify(raw.id)}`,
+      );
+      continue;
+    }
     if (typeof raw.sha256 !== "string" || raw.sha256.length !== 64) {
       // A bundle we cannot verify must never reach install.ts. Say which.
       throw new Error(
@@ -154,6 +168,12 @@ interface ReposFile {
 }
 
 async function readReposFile(): Promise<ReposFile> {
+  // Reading does not create anything, but reading TOO EARLY does: a read
+  // that resolves against the un-migrated root finds no repos.json, and
+  // listRepos below answers that by seeding and WRITING one — which creates
+  // `riwaq/` and makes the migration decline to move. See ensureMigrated's
+  // comment in storage.ts, and legacyRoot.ts's header for the consequence.
+  await ensureMigrated();
   const raw = JSON.parse(
     await readTextFile(REPOS_FILE, { baseDir: BASE }),
   ) as unknown;
@@ -171,6 +191,11 @@ async function readReposFile(): Promise<ReposFile> {
 }
 
 async function writeReposFile(file: ReposFile): Promise<void> {
+  // `mkdir("riwaq/extensions")` creates the `riwaq/` root. Every module
+  // that can do that must await the migration first or an upgrading user's
+  // library is stranded under `leaflet/` — storage.ts does it for the
+  // installed-extension tree, this does it for repos.json.
+  await ensureMigrated();
   await ensureExtDir(EXTENSIONS_DIR);
   await writeTextFile(REPOS_FILE, JSON.stringify(file, null, 2), {
     baseDir: BASE,
@@ -316,6 +341,11 @@ interface TauriFetchResponse {
 export async function fetchRepoIndex(
   url: string,
 ): Promise<{ index: RepoIndex; cached: boolean; fetchedAt: string }> {
+  // Writes the index cache under `riwaq/extensions/index-cache`, which
+  // creates the root the same way — and registry.loadCatalog() reaches this
+  // concurrently with the Store's initExtensions(), so it can genuinely get
+  // there first. Same rule as writeReposFile above.
+  await ensureMigrated();
   const cacheFile = await cacheName(url);
   try {
     const resp = await invoke<TauriFetchResponse>("source_fetch", {
