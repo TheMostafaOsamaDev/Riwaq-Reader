@@ -5,15 +5,32 @@
 // mount. So the flag has to OUTLIVE the emit, and it has to be taken
 // exactly once. Both are easy to break by "tidying" the pending value into
 // the subscription.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   onOpenExtensionsManager,
   openExtensionsManager,
   takePendingExtensionsManager,
 } from "./uiIntents";
 
+// `pendingExtensionsManager` is module state and nothing else here resets
+// it. Without this, the first case below passed only because it ran first:
+// inserting a case above it, or running with --shuffle, left it asserting
+// against whatever the previous test had left pending — which is the exact
+// property it is supposed to be measuring.
+beforeEach(() => {
+  takePendingExtensionsManager();
+});
+
 describe("openExtensionsManager", () => {
   it("has nothing pending before anyone asks", () => {
+    expect(takePendingExtensionsManager()).toBe(false);
+  });
+
+  it("has nothing pending after an earlier request was consumed", () => {
+    // Deliberately placed AFTER a case that leaves something pending, so
+    // the reset above is load-bearing rather than decorative.
+    openExtensionsManager();
+    expect(takePendingExtensionsManager()).toBe(true);
     expect(takePendingExtensionsManager()).toBe(false);
   });
 
