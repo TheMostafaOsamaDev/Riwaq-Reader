@@ -8,6 +8,8 @@
  * `SelectionSegment` per paragraph the range touches.
  */
 
+import type { AnchorBox } from "./popoverPlacement";
+
 export interface SelectionSegment {
   paragraphIndex: number;
   charStart: number;
@@ -225,22 +227,151 @@ export function rangeForSegments(segments: SelectionSegment[]): Range | null {
 /** Live viewport rect of a stored anchor, for popovers that follow
  *  their text as the reading column scrolls. Null when the text is no
  *  longer rendered. */
-export function rectForSegments(segments: SelectionSegment[]): DOMRect | null {
+export function rectForSegments(
+  segments: SelectionSegment[],
+): AnchorBox | null {
   const range = rangeForSegments(segments);
   if (!range) return null;
-  const rect = range.getBoundingClientRect();
-  // A zero rect means the range resolved but is not laid out (e.g. its
-  // page is display:none in the paginated view) — nothing to point at.
-  if (rect.width === 0 && rect.height === 0) return null;
-  return rect;
+  const dir = dirOf(range.commonAncestorContainer);
+  const lines = boxFromRects(Array.from(range.getClientRects()), dir);
+  if (lines) return lines;
+  // No line boxes: either the range is not laid out at all, or we are
+  // somewhere without layout. A zero rect means the former — its page is
+  // `display:none` in the paginated view — and there is nothing to point
+  // at. Anything else is still a usable anchor.
+  const whole = range.getBoundingClientRect();
+  if (whole.width === 0 && whole.height === 0) return null;
+  return boxFromRect(whole, dir);
+}
+
+/**
+ * One already-measured rect as an anchor.
+ *
+ * For the fixed-layout readers, whose resolvers currently narrow a
+ * selection to one rect before it reaches here. That is a property of
+ * those call sites, not of fixed layout: `pdfHighlight` already merges
+ * the range's client rects into one band per line and then returns only
+ * the bounding rect, and the DOCX resolver has the Range in hand. Until
+ * they carry line boxes through, this treats the one rect as a single
+ * line, so the toolbar still attaches to the selection's start edge
+ * rather than the middle of the block.
+ */
+export function boxFromRect(
+  rect: { top: number; bottom: number; left: number; right: number },
+  dir: "rtl" | "ltr",
+): AnchorBox {
+  const edges = { left: rect.left, right: rect.right };
+  return {
+    top: rect.top,
+    bottom: rect.bottom,
+    firstLine: edges,
+    lastLine: edges,
+    dir,
+  };
+}
+
+/**
+ * The selection as it is RIGHT NOW, rather than as it was when the
+ * toolbar opened.
+ *
+ * The toolbar is created from a snapshot taken on `pointerup`, and that
+ * snapshot is what keeps it alive once the reader clicks a swatch and
+ * the browser throws the selection away. But a snapshot cannot see the
+ * selection still being dragged, and an early pointerup — the first of
+ * a double-click, or a click that precedes a drag — captures a single
+ * word. Measured on a real chapter: the toolbar opened against an
+ * anchor 56px wide and only reached the real paragraph, 1212px, a
+ * second later, which is the jump the reader saw.
+ *
+ * So the live selection wins while there is one, and the snapshot is
+ * the fallback. Anchored to the selection's START, which is where the
+ * drag began, the toolbar then holds still for the whole drag instead
+ * of chasing the end of it.
+ *
+ * Null when there is no usable selection, or when it is outside the
+ * reading column — a selection in the sidebar or a dialog must not drag
+ * the reader's toolbar across the screen.
+ */
+export function liveSelectionBox(): AnchorBox | null {
+  if (typeof window === "undefined") return null;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const host =
+    range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? (range.commonAncestorContainer as Element)
+      : range.commonAncestorContainer.parentElement;
+  if (!host?.closest("[data-book-body]")) return null;
+  return boxFromRects(
+    Array.from(range.getClientRects()),
+    dirOf(range.commonAncestorContainer),
+  );
+}
+
+/** Reading direction of the text itself.
+ *
+ *  Read off the element rather than the document, because a chapter can
+ *  hold a quote in the other script and the toolbar should attach to the
+ *  end of the line the reader's eye actually starts from. */
+function dirOf(node: Node): "rtl" | "ltr" {
+  const el =
+    node.nodeType === Node.ELEMENT_NODE
+      ? (node as Element)
+      : node.parentElement;
+  if (!el) return "ltr";
+  return getComputedStyle(el).direction === "rtl" ? "rtl" : "ltr";
+}
+
+/**
+ * Collapse a run of line boxes into the shape placement needs.
+ *
+ * `getClientRects()` returns one rect per line, in document order, and
+ * a multi-paragraph selection contributes several runs — so first and
+ * last are taken by position, not by array index, which stays correct
+ * if a browser ever reorders them.
+ *
+ * Empty and zero-area rects are dropped first: a range that resolved
+ * but is not laid out (its page is `display:none` in the paginated
+ * view) reports one, and it would otherwise become a line box at the
+ * origin and drag the toolbar to the corner.
+ */
+function boxFromRects(rects: DOMRect[], dir: "rtl" | "ltr"): AnchorBox | null {
+  const lines = rects.filter((r) => r.width > 0 || r.height > 0);
+  if (lines.length === 0) return null;
+
+  let first = lines[0];
+  let last = lines[0];
+  for (const r of lines) {
+    if (r.top < first.top) first = r;
+    if (r.bottom > last.bottom) last = r;
+  }
+
+  return {
+    top: first.top,
+    bottom: last.bottom,
+    firstLine: { left: first.left, right: first.right },
+    lastLine: { left: last.left, right: last.right },
+    dir,
+  };
 }
 
 /** Live viewport rect of a persisted highlight's `<mark>`. Multi-segment
  *  highlights render one mark per paragraph; the first is what the
  *  action popover points at. */
-export function rectForMark(highlightId: string): DOMRect | null {
+export function rectForMark(highlightId: string): AnchorBox | null {
   const el = document.querySelector<HTMLElement>(
     `[data-h-id="${highlightId}"]`,
   );
-  return el ? el.getBoundingClientRect() : null;
+  if (!el) return null;
+  const dir = dirOf(el);
+  // The mark's own line boxes, not its bounding rect — a highlight that
+  // wraps has the same column-wide bounding rect a selection does. The
+  // bounding rect is a fallback rather than a null, because the mark IS
+  // rendered and the popover has something to attach to; a mark on a
+  // hidden page reports a zero box, which placement treats as
+  // off-region and fades.
+  return (
+    boxFromRects(Array.from(el.getClientRects()), dir) ??
+    boxFromRect(el.getBoundingClientRect(), dir)
+  );
 }

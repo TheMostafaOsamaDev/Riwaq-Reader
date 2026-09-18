@@ -25,6 +25,7 @@ import { NovelCard } from "./NovelCard";
 import { appendPage, searchView, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
+import { openExtensionsManager } from "../store/uiIntents";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
 
 interface Props {
@@ -184,6 +185,9 @@ export function SourceHomeView({
     void runSearch(searchInput);
   }, [runSearch, searchInput]);
 
+  // Browsing a source IS the network, so there is nothing to render offline
+  // here — unlike a saved novel, which keeps its whole page. The one thing
+  // worth adding is the way out: the manager that can install it back.
   if (!source) {
     return (
       <div
@@ -191,9 +195,22 @@ export function SourceHomeView({
           padding: 40,
           color: theme.muted,
           fontFamily: FONT_STACKS.sans,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 16,
         }}
       >
-        {tr("store.notInstalled", { sourceId })}
+        <span>{tr("store.notInstalled", { sourceId })}</span>
+        <Button
+          theme={theme}
+          variant="secondary"
+          onClick={openExtensionsManager}
+          leadingIcon={<Icon name="layers" size={14} />}
+          style={{ minHeight: 44 }}
+        >
+          {tr("novel.offline.openExtensions")}
+        </Button>
       </div>
     );
   }
@@ -212,7 +229,7 @@ export function SourceHomeView({
       <HomeHeader
         theme={theme}
         layout={layout}
-        source={source}
+        sourceId={sourceId}
         searchInput={searchInput}
         setSearchInput={setSearchInput}
         onBack={onBack}
@@ -265,7 +282,7 @@ export function SourceHomeView({
 interface HomeHeaderProps {
   theme: Theme;
   layout: "desktop" | "mobile";
-  source: Source;
+  sourceId: string;
   searchInput: string;
   setSearchInput: (v: string) => void;
   onBack: () => void;
@@ -275,7 +292,7 @@ interface HomeHeaderProps {
 function HomeHeader({
   theme,
   layout,
-  source,
+  sourceId,
   searchInput,
   setSearchInput,
   onBack,
@@ -284,9 +301,10 @@ function HomeHeader({
   const { tr } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const isMobile = layout === "mobile";
-  // Icons are catalog metadata, so resolve from the registry rather than the
-  // constructed instance's `meta` (which omits store-facing fields).
-  const iconUrl = getSourceMeta(source.meta.id)?.iconUrl;
+  // All display metadata comes from the registry: the contract's `Source`
+  // carries no `meta` at all — a runtime extension does not declare its own
+  // catalogue entry, the host builds one from its manifest.
+  const meta = getSourceMeta(sourceId);
 
   // Mobile lays out as two rows (title row + search row below) so the
   // source name has the full width it needs to display without
@@ -333,7 +351,7 @@ function HomeHeader({
         </button>
         <SourceIcon
           theme={theme}
-          iconUrl={iconUrl}
+          iconUrl={meta?.iconUrl}
           size={34}
           radius={9}
           glyphSize={18}
@@ -349,7 +367,7 @@ function HomeHeader({
               textOverflow: "ellipsis",
             }}
           >
-            {source.meta.name}
+            {meta?.name ?? sourceId}
           </div>
           <div
             style={{
@@ -363,7 +381,7 @@ function HomeHeader({
               textOverflow: "ellipsis",
             }}
           >
-            {source.meta.baseUrl.replace(/^https?:\/\//, "")}
+            {(meta?.baseUrl ?? "").replace(/^https?:\/\//, "")}
           </div>
         </div>
       </div>

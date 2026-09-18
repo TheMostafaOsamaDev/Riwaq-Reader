@@ -937,6 +937,7 @@ export async function importFromSourceUrl(
     throw new Error(`Unknown source: ${sourceId}`);
   }
   return runFullSourceImport(
+    sourceId,
     source,
     url,
     importEpubBytes,

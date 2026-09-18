@@ -8,6 +8,7 @@ import { useI18n } from "../../i18n/useI18n";
 import { Icon } from "../Icon";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useLongPress } from "../../hooks/useLongPress";
+import { DisabledHint } from "./DisabledHint";
 
 /** Resting height of a one-line chapter row. Only a seed for the windowed
  *  list's offset table — rows that wrap get measured and corrected.
@@ -27,6 +28,14 @@ export interface ChapterRowProps {
   libraryEntryId: string | null | undefined;
   novelTitle: string;
   queueJob: DownloadJob | undefined;
+  /** Why this row can't start a download, when it can't — the source
+   *  extension is uninstalled or broken. Deleting an existing download and
+   *  cancelling a queued job are local and stay live. */
+  downloadDisabledReason?: string | null;
+  /** Why this row can't be opened, when it can't: the chapter isn't on this
+   *  device and there is no extension left to stream it with. Only ever set
+   *  for undownloaded rows. */
+  openDisabledReason?: string;
   onOpenChapter: (chapterId: number) => void;
   /** Asks the accordion to delete this row's download. A request, not a
    *  notification: the accordion owns deleteChaptersWithQueue, the flag
@@ -64,6 +73,8 @@ export const ChapterRow = memo(function ChapterRow({
   libraryEntryId,
   novelTitle,
   queueJob,
+  downloadDisabledReason,
+  openDisabledReason,
   onOpenChapter,
   onRequestDelete,
   selecting,
@@ -101,13 +112,21 @@ export const ChapterRow = memo(function ChapterRow({
   const { bind, consumeLongPress } = useLongPress(activateForSelection, {
     ignoreMouse: true,
   });
+  // The row can't be opened, but it is still a row: it stays in the list,
+  // keeps its number and title, and carries the reason on hover. The
+  // `title` sits on the wrapper because a disabled button gets no pointer
+  // events — and selection mode is exempt, since selecting a downloaded row
+  // for deletion is purely local.
+  const openBlocked = !!openDisabledReason && !selecting;
   return (
     <div
       role={selecting ? undefined : "listitem"}
+      title={openBlocked ? openDisabledReason : undefined}
       style={{ display: "flex", alignItems: "stretch", direction }}
     >
       <button
         {...bind}
+        disabled={openBlocked}
         onContextMenu={(e) => {
           e.preventDefault();
           activateForSelection();
@@ -160,8 +179,8 @@ export const ChapterRow = memo(function ChapterRow({
           // Dim read chapters so the list reads "checked off" without hiding
           // anything.
           color: read ? theme.muted : theme.ink,
-          opacity: read ? 0.72 : 1,
-          cursor: "pointer",
+          opacity: openBlocked ? 0.5 : read ? 0.72 : 1,
+          cursor: openBlocked ? "not-allowed" : "pointer",
           fontFamily: "inherit",
           fontSize: 12.5,
           lineHeight: 1.4,
@@ -226,6 +245,7 @@ export const ChapterRow = memo(function ChapterRow({
           novelTitle={novelTitle}
           chapterTitle={chapter.title}
           queueJob={queueJob}
+          downloadDisabledReason={downloadDisabledReason}
           onRequestDelete={onRequestDelete}
         />
       )}
@@ -242,6 +262,10 @@ export interface ChapterDownloadButtonProps {
    *  ("downloaded" check icon, armed into a delete action) and as a
    *  guard against re-enqueuing. */
   downloaded: boolean;
+  /** Set when starting a NEW download is impossible — the source extension
+   *  is gone or broken. The button's other two jobs, deleting what is on
+   *  disk and cancelling a job already queued, are local and stay live. */
+  downloadDisabledReason?: string | null;
   /** Asks the accordion to delete this chapter's download. See
    *  ChapterRowProps.onRequestDelete for why the button doesn't run the
    *  delete itself. */
@@ -256,6 +280,7 @@ export function ChapterDownloadButton({
   novelTitle,
   chapterTitle,
   queueJob,
+  downloadDisabledReason,
   onRequestDelete,
 }: ChapterDownloadButtonProps & {
   novelTitle: string;
@@ -288,6 +313,11 @@ export function ChapterDownloadButton({
         cancel(queueJob.id);
         return;
       }
+      // Belt to the disabled attribute's braces: the queue refuses a
+      // missing source anyway (downloadQueue's downloadChapter), but an
+      // action this page has said is unavailable must not be started from
+      // here at all.
+      if (downloadDisabledReason) return;
       const { enqueue } = await import("../../store/downloadQueue");
       enqueue({ libraryEntryId, chapterId, novelTitle, chapterTitle });
     },
@@ -298,6 +328,7 @@ export function ChapterDownloadButton({
       queueJob,
       novelTitle,
       chapterTitle,
+      downloadDisabledReason,
       onRequestDelete,
     ],
   );
@@ -367,35 +398,42 @@ export function ChapterDownloadButton({
                 error: queueJob?.error ?? tr("downloads.unknownError"),
               })
             : tr("novel.downloadChapter");
+  // Only the "start a download" states are blocked. A downloaded chapter's
+  // delete and a queued job's cancel touch nothing but this device.
+  const blocked =
+    !!downloadDisabledReason && (status === "idle" || status === "error");
   return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      onMouseEnter={() => setArmed(true)}
-      onMouseLeave={() => setArmed(false)}
-      onFocus={() => setArmed(true)}
-      onBlur={() => setArmed(false)}
-      style={{
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        padding: "0 14px",
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        color: showTrash || status === "error" ? theme.danger : theme.muted,
-        opacity: downloaded && !showTrash ? 0.55 : 1,
-        flexShrink: 0,
-      }}
-    >
-      <Icon name={iconName} size={14} />
-      {status === "running" && (
-        <span style={{ fontSize: 10, color: theme.muted }}>
-          {Math.round((queueJob?.progress ?? 0) * 100)}%
-        </span>
-      )}
-    </button>
+    <DisabledHint reason={blocked ? downloadDisabledReason : undefined}>
+      <button
+        onClick={onClick}
+        disabled={blocked}
+        title={blocked ? downloadDisabledReason : label}
+        aria-label={label}
+        onMouseEnter={() => setArmed(true)}
+        onMouseLeave={() => setArmed(false)}
+        onFocus={() => setArmed(true)}
+        onBlur={() => setArmed(false)}
+        style={{
+          background: "transparent",
+          border: "none",
+          cursor: blocked ? "not-allowed" : "pointer",
+          padding: "0 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          color: showTrash || status === "error" ? theme.danger : theme.muted,
+          opacity: blocked ? 0.45 : downloaded && !showTrash ? 0.55 : 1,
+          flexShrink: 0,
+        }}
+      >
+        <Icon name={iconName} size={14} />
+        {status === "running" && (
+          <span style={{ fontSize: 10, color: theme.muted }}>
+            {Math.round((queueJob?.progress ?? 0) * 100)}%
+          </span>
+        )}
+      </button>
+    </DisabledHint>
   );
 }
 

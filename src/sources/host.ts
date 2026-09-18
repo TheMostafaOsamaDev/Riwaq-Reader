@@ -10,12 +10,83 @@
 //     place rather than re-implementing them in each extension.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { FetchOptions, FetchResponse, SourceHost } from "./types";
+import { isChallengeResponse } from "./challenge";
+import { extractPdfLines } from "./pdf/pdfChapter";
+import type { TauriFetchResponse } from "./tauriFetch";
+import type { FetchOptions, FetchResponse, Locale, SourceHost } from "./types";
 
-interface TauriFetchResponse {
-  status: number;
-  text: string;
-  headers: Record<string, string>;
+/** The UI language, read outside the React tree. App.tsx keeps <html lang>
+ *  in sync with the user's preference, and this module is plain DOM code
+ *  with no access to useI18n(). */
+function currentLocale(): Locale {
+  return typeof document !== "undefined" &&
+    document.documentElement.lang === "ar"
+    ? "ar"
+    : "en";
+}
+
+/** One plain request, retried through the session webview if — and only if
+ *  — Cloudflare challenged it. Extensions never see this happen: the
+ *  contract exposes no session-fetch escape hatch of its own, so this
+ *  retry protects every extension rather than only the one that knew to
+ *  ask for it.
+ *
+ *  Text only, deliberately. `fetchBytes` gets no equivalent because there
+ *  is nothing for it to retry WITH and nothing for it to retry ON:
+ *    - `source_fetch_bytes` (src-tauri/src/sources.rs) turns any non-2xx
+ *      into `Err("HTTP <status> for <url>")` and discards the body and
+ *      headers, so a challenged byte fetch never produces a response for
+ *      isChallengeResponse to inspect in the first place;
+ *    - `source_session_fetch` resolves to a FetchResponse whose body is
+ *      `text`, because the session webview runs a same-origin `fetch`
+ *      inside a real page. Re-encoding an image's decoded text back into
+ *      bytes does not round-trip, so there is no byte transport to fall
+ *      back to even once a challenge is known.
+ *  This matches what the retired cenele extension actually did: all six of
+ *  its session-fetched requests were text (pages and admin-ajax), never
+ *  images. */
+async function fetchWithChallengeRetry(
+  sourceId: string,
+  url: string,
+  options: FetchOptions | undefined,
+): Promise<FetchResponse> {
+  const normalized = normalizeFetchOptions(options);
+  const resp = await invoke<TauriFetchResponse>("source_fetch", {
+    url,
+    options: normalized,
+  });
+  if (!isChallengeResponse(resp)) return resp as FetchResponse;
+
+  console.info(
+    `[source:${sourceId}] challenged at ${url}; retrying in session`,
+  );
+  try {
+    return (await invoke<TauriFetchResponse>("source_session_fetch", {
+      input: { url, ...normalized },
+    })) as FetchResponse;
+  } catch (e) {
+    // Mobile has no session webview. Say so plainly rather than letting a
+    // parser report a selector regression that does not exist.
+    //
+    // `hostname` is resolved defensively: a source that passes a relative
+    // or malformed URL would otherwise make `new URL()` throw from inside
+    // this handler, replacing this deliberately plain message with an
+    // opaque one AND discarding the original failure — the exact outcome
+    // the paragraph above exists to prevent.
+    throw new Error(
+      `${hostnameOf(url)} is blocking automated access (Cloudflare ` +
+        `challenge) and the in-app browser check could not run: ` +
+        `${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -24,24 +95,8 @@ interface TauriFetchResponse {
  */
 export function createHost(sourceId: string): SourceHost {
   return {
-    async fetch(url, options) {
-      const resp = await invoke<TauriFetchResponse>("source_fetch", {
-        url,
-        options: normalizeFetchOptions(options),
-      });
-      return resp as FetchResponse;
-    },
-
-    async sessionFetch(url, options) {
-      const resp = await invoke<TauriFetchResponse>("source_session_fetch", {
-        input: {
-          url,
-          ...normalizeFetchOptions(options),
-          revealAfterMs: options?.revealAfterMs,
-          clearTimeoutMs: options?.clearTimeoutMs,
-        },
-      });
-      return resp as FetchResponse;
+    fetch(url, options) {
+      return fetchWithChallengeRetry(sourceId, url, options);
     },
 
     async fetchBytes(url, options) {
@@ -77,6 +132,21 @@ export function createHost(sourceId: string): SourceHost {
           }`,
         );
       }
+    },
+
+    get locale() {
+      return currentLocale();
+    },
+
+    pdf: {
+      extractChapter(bytes, options) {
+        return extractPdfLines(bytes, {
+          chapterUrl: options.chapterUrl,
+          novelTitle: options.novelTitle,
+          mintImageRef: options.mintImageRef,
+          log: (msg) => console.debug(`[source:${sourceId}] pdf: ${msg}`),
+        });
+      },
     },
 
     log(level, message) {

@@ -35,6 +35,7 @@ import {
   getState as getImportProgressState,
 } from "../store/importProgress";
 import { createHost } from "./host";
+import { getSourceMeta } from "./registry";
 import type {
   Source,
   SourceChapter,
@@ -77,10 +78,16 @@ export interface ImportFromSourceOptions {
  * exception.
  */
 export async function importFromSource(
+  sourceId: string,
   source: Source,
   url: string,
   options: ImportFromSourceOptions = {},
 ): Promise<ImportFromSourceResult> {
+  // The contract's `Source` carries no `meta` — an extension does not
+  // declare its own catalogue entry. The id the caller already resolved
+  // the instance with is what addresses both the host and the display
+  // name, so thread it rather than re-deriving it.
+  const sourceName = getSourceMeta(sourceId)?.name ?? sourceId;
   const concurrency = Math.max(
     1,
     options.chapterConcurrency ?? DEFAULT_CHAPTER_CONCURRENCY,
@@ -96,7 +103,7 @@ export async function importFromSource(
   }
 
   startImport([
-    { id: "fetch-index", label: `Loading ${source.meta.name} page` },
+    { id: "fetch-index", label: `Loading ${sourceName} page` },
     { id: "cover", label: "Fetching cover" },
     { id: "chapters", label: "Fetching chapters" },
     { id: "images", label: "Downloading inline images" },
@@ -123,7 +130,7 @@ export async function importFromSource(
     }
     if (chapters.length === 0) {
       throw new Error(
-        `${source.meta.name} returned no chapters for ${url}. The site layout may have changed.`,
+        `${sourceName} returned no chapters for ${url}. The site layout may have changed.`,
       );
     }
 
@@ -133,7 +140,7 @@ export async function importFromSource(
     let cover: EpubCoverInput | null = null;
     if (novel.coverUrl) {
       try {
-        cover = await downloadImage(novel.coverUrl, createHost(source.meta.id));
+        cover = await downloadImage(novel.coverUrl, createHost(sourceId));
       } catch (e) {
         // A missing cover shouldn't fail the whole import — most libraries
         // can re-derive one from inline content. Note in the log and move on.
@@ -152,7 +159,7 @@ export async function importFromSource(
     // ── 4. inline images ─────────────────────────────────────────────────
     currentStepId = "images";
     beginStep("images");
-    const host = createHost(source.meta.id);
+    const host = createHost(sourceId);
     const { imageMap, images: epubImages } = await downloadInlineImages(
       source,
       chapters,
@@ -206,12 +213,13 @@ export async function importFromSource(
  * calls this with its own importEpubBytes).
  */
 export async function runFullSourceImport(
+  sourceId: string,
   source: Source,
   url: string,
   importEpubBytes: (bytes: Uint8Array) => Promise<{ id: string }>,
   options?: ImportFromSourceOptions,
 ): Promise<{ id: string }> {
-  const result = await importFromSource(source, url, options);
+  const result = await importFromSource(sourceId, source, url, options);
   try {
     beginStep("save");
     const entry = await importEpubBytes(result.epubBytes);

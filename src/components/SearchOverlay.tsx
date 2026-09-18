@@ -10,6 +10,7 @@ import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
 import type { BookIndexEntry } from "../store/library";
 import type { LibraryTab } from "./library/tabs";
 import { listSources } from "../sources/registry";
+import { useLoadedExtensions } from "../sources/useExtensions";
 import { SourceIcon } from "./SourceIcon";
 import { useI18n } from "../i18n/useI18n";
 import type { MsgKey } from "../i18n";
@@ -112,7 +113,12 @@ export function SearchOverlay({
   );
 
   // Source websites matching the term — selecting one jumps into the Store
-  // at that site. Registry lookup is synchronous, so no loading state.
+  // at that site. Registry lookup is synchronous, so no loading state; the
+  // overlay loads the registry on open (it is opened by the user, which is
+  // the placement rule in sources/useExtensions.ts) and `revision` refills
+  // this list when that lands. Without it the "Websites" section was empty
+  // for the whole of any session in which the Store was never opened.
+  const revision = useLoadedExtensions();
   const sourceResults = useMemo(
     () =>
       q
@@ -124,7 +130,7 @@ export function SearchOverlay({
             )
             .slice(0, 5)
         : [],
-    [q],
+    [q, revision],
   );
 
   const remember = (t: string) => {

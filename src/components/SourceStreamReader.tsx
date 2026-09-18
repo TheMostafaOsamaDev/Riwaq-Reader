@@ -31,6 +31,7 @@ import { Icon } from "./Icon";
 import type { ChapterItem, EpubBook, EpubChapter } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
+import { useLoadedExtensions } from "../sources/useExtensions";
 import { findSourceEntry, updateSourceReadingPosition } from "../store/library";
 import {
   chapterImageSrc,
@@ -87,7 +88,18 @@ export function SourceStreamReader({
   startChapterId,
   onClose,
 }: Props) {
-  const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
+  // Loaded from here as well as from the Store's mount: this reader opens
+  // straight from a library card, so on a cold launch where the Store was
+  // never visited `getSource` answered null and every undownloaded chapter
+  // reported "this chapter needs its extension" even though the extension
+  // was installed and fine. `revision` re-reads it when the load commits.
+  // See sources/useExtensions.ts for why the load starts here and not at
+  // app startup.
+  const revision = useLoadedExtensions();
+  const source = useMemo<Source | null>(
+    () => getSource(sourceId),
+    [sourceId, revision],
+  );
   // UI locale/direction for this reader's OWN chrome (the fixed-pane
   // loading/error overlays below, and the wrapper around DesktopReader /
   // MobileReader). The scraped chapter content stays independent — its
@@ -172,12 +184,27 @@ export function SourceStreamReader({
   // and persists read flags into source.json. When null, the reader
   // behaves identically to the pre-library streaming mode (network
   // fetches, localStorage state).
-  const [libraryEntryId, setLibraryEntryId] = useState<string | null>(null);
+  //
+  // `undefined` means "not looked up yet", which only the no-source path
+  // below distinguishes from `null`: with no extension the snapshot is the
+  // ONLY way to build a book, so answering before the lookup lands would
+  // report "not installed" for a novel that is in fact fully downloaded.
+  const [libraryEntryId, setLibraryEntryId] = useState<
+    string | null | undefined
+  >(undefined);
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const entry = await findSourceEntry(sourceId, novelUrl);
-      if (!cancelled) setLibraryEntryId(entry?.id ?? null);
+      let id: string | null = null;
+      try {
+        id = (await findSourceEntry(sourceId, novelUrl))?.id ?? null;
+      } catch {
+        // A failed index read must not strand the reader at "not looked
+        // up yet" forever — treat it as "not in the library", which is
+        // the pre-existing behaviour for every other failure here.
+        id = null;
+      }
+      if (!cancelled) setLibraryEntryId(id);
     })();
     return () => {
       cancelled = true;
@@ -186,7 +213,9 @@ export function SourceStreamReader({
 
   // ── load novel + chapter stubs ──────────────────────────────────────────
   useEffect(() => {
-    if (!source) return;
+    // With no source there is nothing to fall back on, so wait for the
+    // library lookup rather than declaring failure early.
+    if (!source && libraryEntryId === undefined) return;
     let cancelled = false;
     (async () => {
       try {
@@ -199,10 +228,16 @@ export function SourceStreamReader({
           const snap = await readSnapshot(libraryEntryId);
           if (snap) fetchedNovel = snapshotToSourceNovel(snap);
         }
-        if (!fetchedNovel) {
+        if (!fetchedNovel && source) {
           fetchedNovel = await source.getNovel(novelUrl);
         }
         if (cancelled) return;
+        if (!fetchedNovel) {
+          // No snapshot and no extension: the novel page says the same
+          // thing, and there is nothing here to read.
+          setLoadError(tr("store.notInstalled", { sourceId }));
+          return;
+        }
         const flatList: ChapterStub[] = fetchedNovel.volumes.flatMap((v) =>
           v.chapters.map((c) => ({
             sourceId: c.id,
@@ -283,7 +318,6 @@ export function SourceStreamReader({
   // initial render gets replaced when content arrives.
   const fetchChapter = useCallback(
     async (idx: number) => {
-      if (!source) return;
       const cached = cacheRef.current.get(idx);
       if (cached) {
         devLog("fetch:cacheHit", { idx, items: cached.length });
@@ -325,6 +359,15 @@ export function SourceStreamReader({
           }
         }
         if (!items) {
+          if (!source) {
+            // Downloaded chapters got their content above and never reach
+            // here. This one is only on the site, and the extension that
+            // knew how to read that site is gone — say so on the page
+            // instead of leaving a chapter that never finishes loading.
+            throw new Error(
+              tr("stream.chapterNeedsExtension", { source: sourceId }),
+            );
+          }
           const lines = await source.getChapterContent({
             id: stub.sourceId,
             title: stub.title,
@@ -349,7 +392,7 @@ export function SourceStreamReader({
         });
       }
     },
-    [source, flat, libraryEntryId],
+    [source, sourceId, flat, libraryEntryId, tr],
   );
 
   // Resolve the next chapter's availability whenever the position moves. A
@@ -368,18 +411,23 @@ export function SourceStreamReader({
       return;
     }
     const stub = flat[next];
+    // "online" is a promise the card makes on this reader's behalf, so it
+    // is only honest while there is an extension to keep it. Undefined
+    // makes the card say nothing rather than offer a chapter that cannot
+    // be fetched.
+    const ifStreamable = source ? ("online" as const) : undefined;
     if (!libraryEntryId || !stub) {
-      setNextAvailability("online");
+      setNextAvailability(ifStreamable);
       return;
     }
     let cancelled = false;
     void chapterIsDownloaded(libraryEntryId, stub.sourceId).then((on) => {
-      if (!cancelled) setNextAvailability(on ? "device" : "online");
+      if (!cancelled) setNextAvailability(on ? "device" : ifStreamable);
     });
     return () => {
       cancelled = true;
     };
-  }, [book, currentChapter, flat, libraryEntryId]);
+  }, [book, currentChapter, flat, libraryEntryId, source]);
 
   // Fetch on chapter change + prefetch the next one in the background.
   useEffect(() => {

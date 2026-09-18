@@ -1,0 +1,332 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const files = new Map<string, string | Uint8Array>();
+const dirs = new Set<string>();
+
+function requireBaseDir(opts?: { baseDir?: unknown }): void {
+  if (!opts || opts.baseDir === undefined) {
+    throw new Error("missing baseDir");
+  }
+}
+
+function requireRenameBaseDirs(opts?: {
+  oldPathBaseDir?: unknown;
+  newPathBaseDir?: unknown;
+}): void {
+  if (
+    !opts ||
+    opts.oldPathBaseDir === undefined ||
+    opts.newPathBaseDir === undefined
+  ) {
+    throw new Error("missing baseDir");
+  }
+}
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  BaseDirectory: { AppData: 1 },
+  exists: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    return files.has(p) || dirs.has(p);
+  }),
+  mkdir: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    // Mirrors real recursive mkdir / create_dir_all: every ancestor becomes
+    // its own directory entry, not just the leaf path.
+    const parts = p.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      dirs.add(parts.slice(0, i).join("/"));
+    }
+  }),
+  readDir: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    return [...dirs]
+      .filter(
+        (d) => d.startsWith(`${p}/`) && !d.slice(p.length + 1).includes("/"),
+      )
+      .map((d) => ({ name: d.slice(p.length + 1), isDirectory: true }));
+  }),
+  readTextFile: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    if (!files.has(p)) throw new Error(`ENOENT ${p}`);
+    return files.get(p) as string;
+  }),
+  writeTextFile: vi.fn(
+    async (p: string, c: string, opts?: { baseDir?: unknown }) => {
+      requireBaseDir(opts);
+      files.set(p, c);
+    },
+  ),
+  writeFile: vi.fn(
+    async (p: string, c: Uint8Array, opts?: { baseDir?: unknown }) => {
+      requireBaseDir(opts);
+      files.set(p, c);
+    },
+  ),
+  remove: vi.fn(async (p: string, opts?: { baseDir?: unknown }) => {
+    requireBaseDir(opts);
+    files.delete(p);
+    dirs.delete(p);
+    for (const k of [...files.keys()])
+      if (k.startsWith(`${p}/`)) files.delete(k);
+    for (const d of [...dirs]) if (d.startsWith(`${p}/`)) dirs.delete(d);
+  }),
+  rename: vi.fn(
+    async (
+      a: string,
+      b: string,
+      opts?: { oldPathBaseDir?: unknown; newPathBaseDir?: unknown },
+    ) => {
+      requireRenameBaseDirs(opts);
+      for (const k of [...files.keys()]) {
+        if (k === a || k.startsWith(`${a}/`)) {
+          files.set(k.replace(a, b), files.get(k)!);
+          files.delete(k);
+        }
+      }
+      dirs.delete(a);
+      dirs.add(b);
+    },
+  ),
+}));
+
+import {
+  exists,
+  mkdir,
+  readDir,
+  readTextFile,
+  remove,
+  rename,
+  writeFile,
+  writeTextFile,
+} from "@tauri-apps/plugin-fs";
+import {
+  listInstalled,
+  readBundleSource,
+  removeInstalled,
+  writeInstalled,
+} from "./storage";
+
+const manifest = {
+  id: "demo",
+  name: "Demo",
+  version: "1.2.0",
+  apiVersion: 1,
+  language: "ar",
+  baseUrl: "https://demo.test",
+};
+const goodManifest = { ...manifest, id: "good", name: "Good" };
+const origin = {
+  repoUrl: "https://repo.test/index.min.json",
+  sha256: "abc",
+  installedAt: "2026-09-17T00:00:00Z",
+};
+
+beforeEach(() => {
+  files.clear();
+  dirs.clear();
+  vi.mocked(rename).mockClear();
+});
+
+describe("storage", () => {
+  it("round-trips an installed extension", async () => {
+    await writeInstalled("demo", {
+      source: "export default () => 1;",
+      manifest,
+      origin,
+    });
+
+    const installed = await listInstalled();
+    expect(installed).toHaveLength(1);
+    expect(installed[0].manifest.version).toBe("1.2.0");
+    expect(installed[0].origin.repoUrl).toBe(
+      "https://repo.test/index.min.json",
+    );
+    expect(await readBundleSource("demo")).toBe("export default () => 1;");
+  });
+
+  it("removes an extension completely", async () => {
+    await writeInstalled("demo", { source: "x", manifest, origin });
+    await removeInstalled("demo");
+    expect(await listInstalled()).toEqual([]);
+  });
+
+  it("skips a directory whose manifest is unreadable rather than failing the whole listing", async () => {
+    await writeInstalled("good", {
+      source: "x",
+      manifest: goodManifest,
+      origin,
+    });
+    dirs.add("riwaq/extensions/installed/broken");
+    const installed = await listInstalled();
+    expect(installed.map((r) => r.manifest.id)).toEqual(["good"]);
+  });
+
+  it("throws when the manifest id does not match the install id", async () => {
+    await expect(
+      writeInstalled("mismatch", { source: "x", manifest, origin }),
+    ).rejects.toThrow(/id mismatch/i);
+    // Nothing was written on the failed attempt.
+    expect(await listInstalled()).toEqual([]);
+  });
+
+  it("recovers a stale trash/<id> left by an interrupted upgrade", async () => {
+    await writeInstalled("demo", { source: "v1", manifest, origin });
+
+    // Simulate a crash between "move old aside" and "delete old": target is
+    // gone, `trash/<id>` holds the pre-upgrade bundle.
+    const target = "riwaq/extensions/installed/demo";
+    const aside = "riwaq/extensions/trash/demo";
+    for (const [k, v] of [...files.entries()]) {
+      if (k === target || k.startsWith(`${target}/`)) {
+        files.set(k.replace(target, aside), v);
+        files.delete(k);
+      }
+    }
+    dirs.delete(target);
+    dirs.add(aside);
+
+    // While in that state, the interrupted extension is invisible rather
+    // than reported broken — it is not inside `installed/` at all.
+    expect(await listInstalled()).toEqual([]);
+
+    vi.mocked(rename).mockClear();
+    await writeInstalled("demo", { source: "v2", manifest, origin });
+
+    // The recovery rename (old aside back to target) actually ran, before
+    // the new bundle's own swap — not just a fresh write landing there by
+    // coincidence.
+    expect(vi.mocked(rename).mock.calls[0]).toEqual([
+      aside,
+      target,
+      { oldPathBaseDir: 1, newPathBaseDir: 1 },
+    ]);
+    expect(await readBundleSource("demo")).toBe("v2");
+    expect(dirs.has(aside)).toBe(false);
+  });
+
+  it("never touches a dot-prefixed path, on any fs call", async () => {
+    // Tauri's fs scope refuses them on macOS, Linux and Android:
+    // tauri-plugin-fs resolves `require_literal_leading_dot` as
+    // `.unwrap_or(cfg!(unix))`, so a `$APPDATA/**` scope does not match a
+    // path component starting with a dot, and the call fails with
+    // "forbidden path". This module used `.tmp-<id>`, `.old-<id>` and
+    // `.origin.json` and every install died on the first of them.
+    //
+    // Windows defaults the other way, so a reader on that platform — or
+    // any test that only exercises the happy path — sees nothing wrong.
+    // This asserts over the paths ACTUALLY passed to the fs plugin during
+    // a full install → list → read → reinstall → remove cycle, rather
+    // than over the source text, so a new dot-prefixed name is caught
+    // however it is spelled or interpolated.
+    await writeInstalled("demo", { source: "v1", manifest, origin });
+    await listInstalled();
+    await readBundleSource("demo");
+    await writeInstalled("demo", { source: "v2", manifest, origin });
+    await removeInstalled("demo");
+
+    const paths: string[] = [];
+    for (const fn of [
+      exists,
+      mkdir,
+      readDir,
+      readTextFile,
+      remove,
+      writeFile,
+      writeTextFile,
+    ]) {
+      for (const call of vi.mocked(fn).mock.calls)
+        paths.push(call[0] as string);
+    }
+    // rename takes two paths, both of which are scope-checked.
+    for (const call of vi.mocked(rename).mock.calls) {
+      paths.push(call[0] as string, call[1] as string);
+    }
+
+    expect(paths.length).toBeGreaterThan(10);
+    const dotted = paths.filter((p) =>
+      p.split("/").some((seg) => seg.startsWith(".")),
+    );
+    expect(dotted).toEqual([]);
+  });
+
+  it("clears a stale staging/<id> directory before reuse", async () => {
+    // Simulate a crash mid-install that left an icon behind in staging.
+    const staging = "riwaq/extensions/staging/demo";
+    dirs.add(staging);
+    files.set(`${staging}/icon.png`, new Uint8Array([1, 2, 3]));
+
+    await writeInstalled("demo", { source: "v1", manifest, origin });
+
+    expect(files.has("riwaq/extensions/installed/demo/icon.png")).toBe(false);
+  });
+});
+
+describe("the id is a path component — the writers re-assert it", () => {
+  // repos.ts drops a bad id out of a repo index, and this is the second
+  // layer: these two writers are what actually build `installed/<id>`,
+  // `staging/<id>` and `trash/<id>`, and they must refuse a traversing id
+  // whether or not it arrived through an index. See EXTENSION_ID_RE.
+  const traversal = "../../../evil";
+
+  it("refuses to install under a traversing id", async () => {
+    await expect(
+      writeInstalled(traversal, {
+        source: "pwned",
+        manifest: { ...manifest, id: traversal },
+        origin,
+      }),
+    ).rejects.toThrow(/unusable extension id/i);
+  });
+
+  it("writes nothing at all when it refuses", async () => {
+    // The Windows case is a file OUTSIDE app data, so "it threw" is not
+    // enough on its own: nothing may have been created on the way to the
+    // throw either.
+    await expect(
+      writeInstalled(traversal, {
+        source: "pwned",
+        manifest: { ...manifest, id: traversal },
+        origin,
+      }),
+    ).rejects.toThrow();
+    expect([...files.keys()]).toEqual([]);
+    expect([...dirs]).toEqual([]);
+  });
+
+  it("refuses to remove under a traversing id", async () => {
+    // remove(..., { recursive: true }) on a traversed path is the more
+    // destructive half of the pair.
+    // Cleared here rather than in beforeEach: one test above counts the
+    // paths every fs mock was called with across its own sequence.
+    vi.mocked(remove).mockClear();
+    await expect(removeInstalled(traversal)).rejects.toThrow(
+      /unusable extension id/i,
+    );
+    expect(vi.mocked(remove)).not.toHaveBeenCalled();
+  });
+
+  it("refuses a nested id, which would install somewhere unlistable", async () => {
+    await expect(
+      writeInstalled("a/b", {
+        source: "x",
+        manifest: { ...manifest, id: "a/b" },
+        origin,
+      }),
+    ).rejects.toThrow(/unusable extension id/i);
+  });
+
+  it("still installs an ordinary id", async () => {
+    // The counterweight: a guard that refused everything would satisfy
+    // every case above.
+    await writeInstalled("kolnovel-pro", {
+      source: "x",
+      manifest: { ...manifest, id: "kolnovel-pro" },
+      origin,
+    });
+    expect((await listInstalled()).map((r) => r.manifest.id)).toEqual([
+      "kolnovel-pro",
+    ]);
+    await removeInstalled("kolnovel-pro");
+    expect(await listInstalled()).toEqual([]);
+  });
+});

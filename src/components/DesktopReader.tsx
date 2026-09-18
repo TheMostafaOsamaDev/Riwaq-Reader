@@ -65,6 +65,7 @@ import type { BookState, Highlight } from "../store/library";
 import type { HighlightColor } from "../styles/tokens";
 import {
   rectForMark,
+  liveSelectionBox,
   rectForSegments,
   resolveSelectionAnchor,
   type SelectionAnchor,
@@ -1356,7 +1357,8 @@ export function DesktopReader({
           // the text as the column scrolls — and keeps working while
           // the note editor holds focus.
           anchor={{
-            getAnchor: () => rectForSegments(selAnchor.segments),
+            getAnchor: () =>
+              liveSelectionBox() ?? rectForSegments(selAnchor.segments),
             insets: { top: CHROME_INSET_TOP, bottom: CHROME_INSET_BOTTOM },
           }}
           onPick={(color) => createFromSelection(color)}
