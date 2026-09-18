@@ -5,6 +5,9 @@
 // Five states, distinguished by which actions the card offers:
 //
 //   not installed        Install
+//   not installed, and
+//     built for another
+//     contract major     Install refused, "needs a newer Riwaq" inline
 //   ok, no update        Remove
 //   ok, update available Update + Remove
 //   broken               Retry + Remove, load error inline
@@ -20,6 +23,7 @@
 
 import type { CatalogEntry } from "../../extensions/catalog";
 import { useI18n } from "../../i18n/useI18n";
+import { API_VERSION } from "../../sources/types";
 import type { Theme } from "../../styles/tokens";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
@@ -75,16 +79,27 @@ export function ExtensionCard({
   // as broken would flash a red error on a card that is fine.
   const broken = installed && status === "broken";
   const apiMismatch = installed && status === "api-version";
+  // The same gate loader.ts applies, one step earlier. An Available card
+  // whose index entry declares another contract major will install
+  // perfectly and then refuse to load — so it offered a plain Install that
+  // could only end in a broken card. The index says so up front; say it up
+  // front.
+  const entryApiMismatch =
+    !installed &&
+    entry.entry !== undefined &&
+    entry.entry.apiVersion !== API_VERSION;
 
   const notice =
     actionError ??
     (apiMismatch
       ? tr("extensions.apiVersionNotice")
-      : broken
-        ? tr("extensions.brokenNotice", {
-            error: loadError ?? tr("extensions.unknownError"),
-          })
-        : undefined);
+      : entryApiMismatch
+        ? tr("extensions.apiVersionAvailableNotice")
+        : broken
+          ? tr("extensions.brokenNotice", {
+              error: loadError ?? tr("extensions.unknownError"),
+            })
+          : undefined);
 
   // Version numbers render raw and LTR — a semver is the same string in
   // every language, and pinning the direction stops bidi reordering from
@@ -162,7 +177,12 @@ export function ExtensionCard({
               size="sm"
               style={ACTION_STYLE}
               loading={busy === "install"}
-              disabled={busy !== null}
+              disabled={busy !== null || entryApiMismatch}
+              title={
+                entryApiMismatch
+                  ? tr("extensions.apiVersionAvailableNotice")
+                  : undefined
+              }
               onClick={onInstall}
             >
               {tr("extensions.install")}

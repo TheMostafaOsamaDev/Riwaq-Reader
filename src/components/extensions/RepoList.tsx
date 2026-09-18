@@ -43,8 +43,13 @@ interface Props {
   /** The whole catalogue, so a remove-confirm can name the extensions that
    *  came from the repo being removed. */
   catalog: CatalogEntry[];
-  /** Not offered for removal: the four bundled sources are served from it,
-   *  and losing their update channel by accident is not worth the row. */
+  /** Marked with a badge, and removable like any other — which is what the
+   *  spec says and what repos.ts's seed comment says. It used to be refused
+   *  removal on the grounds that the bundled sources came from it; nothing
+   *  is bundled any more, every source is installed from a repository, and
+   *  a repo the user cannot remove is the one row in this list that does
+   *  not do what the list says it does. Removing it does not uninstall
+   *  anything — the confirm dialog says so by name. */
   officialRepoUrl: string;
   onAdd: (url: string) => Promise<AddOutcome>;
   onRemove: (url: string) => Promise<void>;
@@ -260,7 +265,10 @@ export function RepoList({
                       flexShrink: 0,
                     }}
                   >
-                    {official ? (
+                    {official && (
+                      // Informational only. It says where this row came
+                      // from, not that it is privileged: Remove sits beside
+                      // it exactly as it does on every other row.
                       <span
                         style={{
                           fontSize: 12,
@@ -272,19 +280,18 @@ export function RepoList({
                       >
                         {tr("extensions.repoOfficialBadge")}
                       </span>
-                    ) : (
-                      <Button
-                        theme={theme}
-                        variant="destructiveGhost"
-                        size="sm"
-                        style={ACTION_STYLE}
-                        loading={removing === repo.url}
-                        disabled={removing !== null}
-                        onClick={() => setPendingRemove(repo)}
-                      >
-                        {tr("extensions.remove")}
-                      </Button>
                     )}
+                    <Button
+                      theme={theme}
+                      variant="destructiveGhost"
+                      size="sm"
+                      style={ACTION_STYLE}
+                      loading={removing === repo.url}
+                      disabled={removing !== null}
+                      onClick={() => setPendingRemove(repo)}
+                    >
+                      {tr("extensions.remove")}
+                    </Button>
                   </div>
                 </div>
                 {(content?.error ||

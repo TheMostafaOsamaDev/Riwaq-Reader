@@ -590,6 +590,8 @@ export const en = {
   "extensions.unknownError": "no details were captured",
   "extensions.apiVersionNotice":
     "Requires a newer version of Riwaq. Update the app and it will load; until then it can't be used.",
+  "extensions.apiVersionAvailableNotice":
+    "Built for a different version of Riwaq, so installing it now would only leave it unusable. Update the app and it will be offered here.",
   "extensions.brokenNotice":
     "This extension failed to load, so its website can't be browsed — Retry downloads it again from its repository, Remove deletes it. ({error})",
   "extensions.installFailed":
@@ -611,7 +613,7 @@ export const en = {
     "That isn't a web address. A repository URL starts with https:// and points at its index file.",
   "extensions.repoAddFailed":
     "Couldn't add this repository — check the address and try again. ({error})",
-  "extensions.repoOfficialBadge": "Bundled with Riwaq",
+  "extensions.repoOfficialBadge": "Riwaq's own repository",
   "extensions.staleList":
     "This list may be out of date — couldn't refresh it. {error}",
   "extensions.retryNoRepo":

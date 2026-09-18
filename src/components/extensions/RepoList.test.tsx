@@ -121,6 +121,15 @@ function submitForm() {
   });
 }
 
+/** The row for one repo. Every repo row now carries a Remove button — the
+ *  official one included — so a bare `click("Remove")` would hit whichever
+ *  row is first rather than the one a case is about. */
+function row(url: string): HTMLElement {
+  const el = host.querySelector(`[data-testid="repo-row-${url}"]`);
+  if (!el) throw new Error(`no row for ${url}`);
+  return el as HTMLElement;
+}
+
 function click(label: string, scope: ParentNode = host) {
   const button = [...scope.querySelectorAll("button")].find(
     (b) => b.textContent?.trim() === label,
@@ -266,7 +275,7 @@ describe("RepoList — removing a repository", () => {
         installedFrom("from-official", OFFICIAL),
       ],
     });
-    click("Remove");
+    click("Remove", row(MIRROR));
     await settle();
     const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog.textContent).toContain("from-mirror");
@@ -288,7 +297,7 @@ describe("RepoList — removing a repository", () => {
         installedFrom("origin-mirror", MIRROR, OFFICIAL),
       ],
     });
-    click("Remove");
+    click("Remove", row(MIRROR));
     await settle();
     const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog.textContent).toContain("origin-mirror");
@@ -301,7 +310,7 @@ describe("RepoList — removing a repository", () => {
       contents: twoContents,
       catalog: [installedFrom("from-official", OFFICIAL)],
     });
-    click("Remove");
+    click("Remove", row(MIRROR));
     await settle();
     const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog.textContent).toContain(
@@ -311,7 +320,7 @@ describe("RepoList — removing a repository", () => {
 
   it("removes nothing until the dialog is confirmed", async () => {
     const { onRemove } = render({ repos: twoRepos, contents: twoContents });
-    click("Remove");
+    click("Remove", row(MIRROR));
     await settle();
     expect(onRemove).not.toHaveBeenCalled();
     const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
@@ -320,18 +329,22 @@ describe("RepoList — removing a repository", () => {
     expect(onRemove).toHaveBeenCalledWith(MIRROR);
   });
 
-  it("does not offer to remove the official repository", () => {
-    render({ repos: twoRepos, contents: twoContents });
-    // Exactly one Remove button on the page: the mirror's.
-    const removes = [...host.querySelectorAll("button")].filter(
-      (b) => b.textContent?.trim() === "Remove",
-    );
-    expect(removes).toHaveLength(1);
-    const officialRow = host.querySelector(
-      `[data-testid="repo-row-${OFFICIAL}"]`,
-    ) as HTMLElement;
-    expect(officialRow.querySelector("button")).toBeNull();
-    expect(officialRow.textContent).toContain("Bundled with Riwaq");
+  it("offers to remove the official repository like any other", async () => {
+    // The spec says the official repo is "pre-added and removable like any
+    // other", and repos.ts's seed comment says the same. This row used to
+    // refuse removal on the grounds that the bundled sources came from it
+    // — nothing is bundled any more.
+    const { onRemove } = render({ repos: twoRepos, contents: twoContents });
+    const officialRow = row(OFFICIAL);
+    expect(officialRow.textContent).toContain("Riwaq's own repository");
+
+    click("Remove", officialRow);
+    await settle();
+    const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+    click("Remove", dialog);
+    await settle();
+
+    expect(onRemove).toHaveBeenCalledWith(OFFICIAL);
   });
 });
 
