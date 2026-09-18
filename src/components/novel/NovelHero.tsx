@@ -9,6 +9,7 @@ import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { Hero } from "../Hero";
 import { SourceBadge } from "../SourceBadge";
+import { DisabledHint } from "./DisabledHint";
 
 export interface NovelHeroProps {
   theme: Theme;
@@ -27,6 +28,14 @@ export interface NovelHeroProps {
   /** False while the library lookup is in flight — Add/Remove stays disabled
    *  so a fast click can't double-add before we know which to render. */
   libraryCheckDone: boolean;
+  /** Set when this novel's source extension is gone or broken: every action
+   *  that would have to reach the site is disabled and carries this as its
+   *  hover/focus explanation. The buttons stay in place — the page is meant
+   *  to look like itself, with the online half unavailable. */
+  downloadDisabledReason?: string;
+  /** Set when even Read has nothing to open (no source AND no downloaded
+   *  chapter). Same treatment, different sentence. */
+  readDisabledReason?: string;
   onRead: () => void;
   onAddToLibrary: () => void;
   onRemoveFromLibrary: () => void;
@@ -54,6 +63,8 @@ export function NovelHero({
   inLibrary,
   localCoverUrl,
   libraryCheckDone,
+  downloadDisabledReason,
+  readDisabledReason,
   onRead,
   onAddToLibrary,
   onRemoveFromLibrary,
@@ -262,19 +273,23 @@ export function NovelHero({
               alignItems: "center",
             }}
           >
-            <Button
-              theme={theme}
-              surface="onImage"
-              variant="primary"
-              shape="pill"
-              size="lg"
-              onClick={onRead}
-              leadingIcon={
-                <Icon name="play" size={13} fill="currentColor" stroke={0} />
-              }
-            >
-              {tr("novel.read")}
-            </Button>
+            <DisabledHint reason={readDisabledReason}>
+              <Button
+                theme={theme}
+                surface="onImage"
+                variant="primary"
+                shape="pill"
+                size="lg"
+                onClick={onRead}
+                disabled={!!readDisabledReason}
+                title={readDisabledReason}
+                leadingIcon={
+                  <Icon name="play" size={13} fill="currentColor" stroke={0} />
+                }
+              >
+                {tr("novel.read")}
+              </Button>
+            </DisabledHint>
             {inLibrary ? (
               <Button
                 theme={theme}
@@ -317,31 +332,44 @@ export function NovelHero({
                 {tr("novel.shelves")}
               </Button>
             )}
-            <Button
-              theme={theme}
-              surface="onImage"
-              variant="outline"
-              shape="pill"
-              size="lg"
-              onClick={onOpenRangeDialog}
-              disabled={working || chapterCount === 0}
-              leadingIcon={<Icon name="slider" size={14} />}
-            >
-              {tr("novel.downloadRange")}
-            </Button>
-            {onOpenSaveOffline && (
+            <DisabledHint reason={downloadDisabledReason}>
               <Button
                 theme={theme}
                 surface="onImage"
                 variant="outline"
                 shape="pill"
                 size="lg"
-                onClick={onOpenSaveOffline}
-                disabled={working || chapterCount === 0}
-                leadingIcon={<Icon name="download" size={14} />}
+                onClick={onOpenRangeDialog}
+                disabled={
+                  working || chapterCount === 0 || !!downloadDisabledReason
+                }
+                title={downloadDisabledReason}
+                leadingIcon={<Icon name="slider" size={14} />}
               >
-                {tr("downloads.saveOffline.title")}
+                {tr("novel.downloadRange")}
               </Button>
+            </DisabledHint>
+            {onOpenSaveOffline && (
+              // Conversion re-fetches anything that isn't on disk and
+              // resolves the source's images, so it needs the extension
+              // even when every chapter happens to be downloaded.
+              <DisabledHint reason={downloadDisabledReason}>
+                <Button
+                  theme={theme}
+                  surface="onImage"
+                  variant="outline"
+                  shape="pill"
+                  size="lg"
+                  onClick={onOpenSaveOffline}
+                  disabled={
+                    working || chapterCount === 0 || !!downloadDisabledReason
+                  }
+                  title={downloadDisabledReason}
+                  leadingIcon={<Icon name="download" size={14} />}
+                >
+                  {tr("downloads.saveOffline.title")}
+                </Button>
+              </DisabledHint>
             )}
           </div>
         </div>
