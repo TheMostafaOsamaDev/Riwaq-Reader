@@ -240,14 +240,53 @@ export async function acknowledgeTrustNotice(): Promise<void> {
   });
 }
 
+/** The file a repo's URL is expected to point at. A repo URL IS the index
+ *  file's URL — the official one ends in it — but the natural thing to
+ *  paste is the origin the index is served from, and the extensions repo's
+ *  own `pnpm dev-repo` documents its loop as "add http://localhost:8787".
+ *  Both must work. */
+const INDEX_FILE = "index.min.json";
+
+/** Candidate index URLs for what the user typed, in the order tried: the
+ *  URL as given, then the same URL with `index.min.json` appended. The
+ *  fallback is only reachable when the URL does not already name a JSON
+ *  file, so a genuine 404 on a real index URL is still reported as one
+ *  rather than being retried against a nonsense path. */
+function indexCandidates(url: string): string[] {
+  if (/\.json($|\?)/i.test(url)) return [url];
+  return [url, `${url.replace(/\/+$/, "")}/${INDEX_FILE}`];
+}
+
 export async function addRepo(url: string): Promise<RepoEntry> {
   const repos = await listRepos();
-  if (repos.some((r) => r.url === url)) {
+  const candidates = indexCandidates(url);
+  if (repos.some((r) => candidates.includes(r.url))) {
     throw new Error("That repo has already been added.");
   }
-  const { index } = await fetchRepoIndex(url);
+
+  // Whichever candidate actually resolves is what gets STORED, so repos.json
+  // always holds a real index URL and nothing downstream has to re-guess.
+  // resolveAssetUrl in particular resolves an extension's `code` and `icon`
+  // relative to this, and it would resolve them against the wrong base if we
+  // saved the origin while having fetched the index from a subpath.
+  let index: RepoIndex | undefined;
+  let resolved = url;
+  let firstError: unknown;
+  for (const candidate of candidates) {
+    try {
+      index = (await fetchRepoIndex(candidate)).index;
+      resolved = candidate;
+      break;
+    } catch (e) {
+      firstError ??= e;
+    }
+  }
+  // The error reported is the one for the URL the user actually typed, not
+  // whatever the appended-path attempt happened to say.
+  if (!index) throw firstError;
+
   const entry: RepoEntry = {
-    url,
+    url: resolved,
     name: index.name,
     addedAt: new Date().toISOString(),
   };

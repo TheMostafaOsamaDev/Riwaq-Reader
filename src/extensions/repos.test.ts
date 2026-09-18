@@ -193,6 +193,58 @@ describe("addRepo / removeRepo", () => {
     );
   });
 
+  it("accepts a bare origin and stores the index url it resolved to", async () => {
+    // The extensions repo's own `pnpm dev-repo` documents its loop as "add
+    // http://localhost:8787", but the index is served at /index.min.json and
+    // the origin itself 404s. Both spellings have to work.
+    const seen: string[] = [];
+    invokeImpl = async (_cmd, args) => {
+      const url = (args as { url: string }).url;
+      seen.push(url);
+      if (!url.endsWith("index.min.json")) throw new Error("404 Not Found");
+      return okResponse(mirrorIndex);
+    };
+
+    const entry = await addRepo("http://localhost:8787");
+
+    expect(seen).toEqual([
+      "http://localhost:8787",
+      "http://localhost:8787/index.min.json",
+    ]);
+    // The RESOLVED url is what persists — resolveAssetUrl resolves each
+    // extension's code/icon against it, so storing the origin would point
+    // those at the wrong base.
+    expect(entry.url).toBe("http://localhost:8787/index.min.json");
+    expect((await listRepos()).map((r) => r.url)).toContain(
+      "http://localhost:8787/index.min.json",
+    );
+  });
+
+  it("reports the error for the url the user typed, not the appended one", async () => {
+    // A host that is simply unreachable must not be reported as "couldn't
+    // find /index.min.json" — that sends the reader looking for a path
+    // problem when the real one is the host.
+    invokeImpl = async (_cmd, args) => {
+      const url = (args as { url: string }).url;
+      throw new Error(url.endsWith("index.min.json") ? "404" : "ECONNREFUSED");
+    };
+    await expect(addRepo("http://nope.test")).rejects.toThrow(/ECONNREFUSED/);
+  });
+
+  it("does not append a second path to a url that already names a json file", async () => {
+    // Otherwise a genuine 404 on a real index url would be retried against
+    // .../index.min.json/index.min.json and reported as that.
+    const seen: string[] = [];
+    invokeImpl = async (_cmd, args) => {
+      seen.push((args as { url: string }).url);
+      throw new Error("404");
+    };
+    await expect(addRepo("https://mirror.test/index.min.json")).rejects.toThrow(
+      /404/,
+    );
+    expect(seen).toEqual(["https://mirror.test/index.min.json"]);
+  });
+
   it("refuses to add a repo url that's already present", async () => {
     await listRepos(); // seeds OFFICIAL_REPO_URL
     await expect(addRepo(OFFICIAL_REPO_URL)).rejects.toThrow(/already/i);
