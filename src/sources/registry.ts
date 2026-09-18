@@ -57,6 +57,30 @@ interface Entry {
 let entries = new Map<string, Entry>();
 let initialized = false;
 
+/** Bumped once per successful commit of the table below, and the value
+ *  `useExtensionsRevision` reads. Consumers that captured an answer from
+ *  the accessors — a novel page's `source`, a library card's icon — have no
+ *  other way to learn that the answer changed, because the accessors are
+ *  synchronous by contract and nothing re-renders on its own when a load
+ *  lands. Reading a NUMBER rather than a boolean also covers the refresh
+ *  case: a source installed or removed while a card is on screen moves this
+ *  even though `initialized` was already true. */
+let revision = 0;
+const listeners = new Set<() => void>();
+
+/** Subscribe to registry commits. Returns the unsubscribe function, i.e.
+ *  exactly `useSyncExternalStore`'s first argument. */
+export function subscribeExtensions(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function extensionsRevision(): number {
+  return revision;
+}
+
 /** `convertFileSrc` wraps an ABSOLUTE path into the `asset://` URL the
  *  webview can load — it does not resolve anything itself. iconPath() is
  *  relative to AppData (that is what the fs plugin's `baseDir` wants), so
@@ -70,6 +94,23 @@ let cachedAppDataDir: string | null = null;
 async function appDataRoot(): Promise<string> {
   if (cachedAppDataDir === null) cachedAppDataDir = await appDataDir();
   return cachedAppDataDir;
+}
+
+/** The finished `asset://` URL per extension id, so the `join` above is not
+ *  a second IPC round trip per installed extension on every Store visit —
+ *  it sat inside the per-extension loop below and was paid even when the
+ *  bundle itself was a cache hit. The path is a pure function of the id and
+ *  the app-data root, neither of which changes within a process, so an
+ *  update or reinstall resolves to the same URL it did before (as it
+ *  already did: nothing cache-busts an extension icon). */
+const iconUrls = new Map<string, string>();
+async function iconUrlFor(id: string): Promise<string> {
+  let url = iconUrls.get(id);
+  if (url === undefined) {
+    url = convertFileSrc(await join(await appDataRoot(), iconPath(id)));
+    iconUrls.set(id, url);
+  }
+  return url;
 }
 
 /** Generation counter for overlapping loads. Two can overlap — a Store
@@ -157,9 +198,7 @@ export async function initExtensions(): Promise<void> {
       baseUrl: manifest.baseUrl,
       language: manifest.language,
       description: manifest.description,
-      iconUrl: manifest.icon
-        ? convertFileSrc(await join(await appDataRoot(), iconPath(manifest.id)))
-        : undefined,
+      iconUrl: manifest.icon ? await iconUrlFor(manifest.id) : undefined,
       version: manifest.version,
       installedFrom: origin.repoUrl,
     };
@@ -200,6 +239,18 @@ export async function initExtensions(): Promise<void> {
     }
   }
 
+  // A newer load claimed the registry while this one was evaluating, and
+  // it listed the disk later than this one did. Committing here would
+  // undo it.
+  //
+  // This guard comes BEFORE the cache prune below on purpose. `live` is
+  // this load's view of the disk, so a stale load pruning by it would
+  // delete the entries the newer load has just inserted for bundles this
+  // one never saw — silently emptying the cache in exactly the overlapping
+  // case it exists to survive, and then returning without committing
+  // anything in exchange.
+  if (gen !== generation) return;
+
   // Drop every bundle that is no longer installed at that exact identity,
   // so an uninstall or an update releases the old module instead of the
   // cache growing for the life of the process.
@@ -207,13 +258,45 @@ export async function initExtensions(): Promise<void> {
     if (!live.has(key)) evaluated.delete(key);
   }
 
-  // A newer load claimed the registry while this one was evaluating, and
-  // it listed the disk later than this one did. Committing here would
-  // undo it.
-  if (gen !== generation) return;
-
   entries = next;
   initialized = true;
+  revision++;
+  // A copy, so a listener that unsubscribes itself while being notified
+  // cannot perturb the iteration.
+  for (const listener of [...listeners]) listener();
+}
+
+/** The memoised "the registry has been loaded at least once" path.
+ *
+ * `initExtensions()` is the explicit REFRESH: it re-lists the disk every
+ * time, which is what the Store's mount and the Extensions manager want
+ * after a mutation. This is what every other consumer wants — the registry
+ * populated, once, without each of them paying for a re-list or racing the
+ * others into overlapping loads.
+ *
+ * Placement matters and is the same argument the Store's own mount rests
+ * on (see the header comment at components/Store.tsx): every caller of this
+ * is reached by user navigation — a novel page, the streaming reader, the
+ * search overlay — so the first extensions fs call lands long after the
+ * page-load window in which this codebase's Android lock-ordering deadlock
+ * is possible. It must NOT be called from app startup or from the Library's
+ * mount; three separate attempts at starting extension loading inside that
+ * window each reproduced the deadlock on device.
+ *
+ * Never rejects, for the same reason `initExtensions` does not.
+ */
+let loadedOnce: Promise<void> | null = null;
+
+export function ensureExtensions(): Promise<void> {
+  if (initialized) return Promise.resolve();
+  loadedOnce ??= initExtensions().then(() => {
+    // `initialized` is still false only when the load could not even list
+    // the installed directory — a transient FS error, which initExtensions
+    // deliberately swallows. Drop the memo so the next consumer to mount
+    // retries instead of inheriting that one failure for the whole session.
+    if (!initialized) loadedOnce = null;
+  });
+  return loadedOnce;
 }
 
 export function isInitialized(): boolean {
@@ -260,6 +343,11 @@ export function findSourceForUrl(url: string): Source | null {
 
 /** Installed + available, for the Extensions manager. */
 export async function loadCatalog() {
+  // Listed ONCE and threaded into buildCatalog below. Re-listing after the
+  // repo fetches would not just cost a second directory walk: an install
+  // landing between the two reads would leave the catalogue describing a
+  // different disk from the one the rest of this function reasoned about.
+  const installed = await listInstalled();
   const repos = await listRepos();
   const contents = await Promise.all(
     repos.map(async (repo) => {
@@ -312,6 +400,6 @@ export async function loadCatalog() {
   return {
     repos: stamped,
     contents,
-    catalog: buildCatalog(await listInstalled(), contents),
+    catalog: buildCatalog(installed, contents),
   };
 }

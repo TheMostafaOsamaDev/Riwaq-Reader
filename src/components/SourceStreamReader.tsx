@@ -31,6 +31,7 @@ import { Icon } from "./Icon";
 import type { ChapterItem, EpubBook, EpubChapter } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
+import { useLoadedExtensions } from "../sources/useExtensions";
 import { findSourceEntry, updateSourceReadingPosition } from "../store/library";
 import {
   chapterImageSrc,
@@ -87,7 +88,18 @@ export function SourceStreamReader({
   startChapterId,
   onClose,
 }: Props) {
-  const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
+  // Loaded from here as well as from the Store's mount: this reader opens
+  // straight from a library card, so on a cold launch where the Store was
+  // never visited `getSource` answered null and every undownloaded chapter
+  // reported "this chapter needs its extension" even though the extension
+  // was installed and fine. `revision` re-reads it when the load commits.
+  // See sources/useExtensions.ts for why the load starts here and not at
+  // app startup.
+  const revision = useLoadedExtensions();
+  const source = useMemo<Source | null>(
+    () => getSource(sourceId),
+    [sourceId, revision],
+  );
   // UI locale/direction for this reader's OWN chrome (the fixed-pane
   // loading/error overlays below, and the wrapper around DesktopReader /
   // MobileReader). The scraped chapter content stays independent — its

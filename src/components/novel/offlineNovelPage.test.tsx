@@ -80,6 +80,13 @@ vi.mock("../../sources/registry", () => ({
   getSourceMeta: () => null,
   getExtensionStatus: () => extensionStatus,
   getExtensionError: () => extensionError,
+  // The view loads the registry itself now (sources/useExtensions.ts), so
+  // the mock has to answer that path too. This fixture stands for a
+  // registry that has already settled: ensureExtensions is a no-op and the
+  // revision never moves, which is the state the assertions below describe.
+  ensureExtensions: async () => {},
+  subscribeExtensions: () => () => {},
+  extensionsRevision: () => 0,
 }));
 
 const deleteBook = vi.fn(async (_id: string) => {});

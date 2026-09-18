@@ -33,6 +33,7 @@ import {
   getSource,
   getSourceMeta,
 } from "../../sources/registry";
+import { useLoadedExtensions } from "../../sources/useExtensions";
 import {
   addNovelToLibrary,
   coverSrcFor,
@@ -112,11 +113,32 @@ export function NovelDetailView({
   onNewShelfFromDetail,
 }: Props) {
   const { tr } = useI18n();
-  const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
+  // The registry is loaded from here, not only from the Store's mount. This
+  // page is reachable from a library card without the Store ever having been
+  // opened in the session (DesktopLibrary/MobileLibrary render one OR the
+  // other — they are arms of the same ternary), and then every lookup below
+  // answered "not installed" for an extension that is installed and working:
+  // the banner said so, and per-chapter download, per-volume download,
+  // Download range, Save as offline book and opening an undownloaded chapter
+  // were all switched off.
+  //
+  // `revision` is in each dependency list below so the page re-reads the
+  // registry and corrects itself when the load commits. Loading from HERE —
+  // a view the user navigated to — rather than from the Library's mount or
+  // app startup is the same placement argument the Store rests on; see
+  // sources/useExtensions.ts.
+  const revision = useLoadedExtensions();
+  const source = useMemo<Source | null>(
+    () => getSource(sourceId),
+    [sourceId, revision],
+  );
   // Display metadata comes from the registry: the contract's `Source` has no
   // `meta` — an extension does not declare its own catalogue entry, the host
   // builds one from its manifest.
-  const sourceMeta = useMemo(() => getSourceMeta(sourceId), [sourceId]);
+  const sourceMeta = useMemo(
+    () => getSourceMeta(sourceId),
+    [sourceId, revision],
+  );
   // Why the source is unusable, when it is. "missing" (never installed or
   // removed) reads differently from "broken" (installed, wouldn't load) and
   // "api-version" (installed, wants a newer app) — they have different
@@ -126,10 +148,10 @@ export function NovelDetailView({
     if (source) return null;
     const status = getExtensionStatus(sourceId);
     return status === "ok" ? "missing" : status;
-  }, [source, sourceId]);
+  }, [source, sourceId, revision]);
   const extensionError = useMemo(
     () => (problem === "broken" ? getExtensionError(sourceId) : undefined),
-    [problem, sourceId],
+    [problem, sourceId, revision],
   );
   // A removed extension takes its manifest — and so its display name —
   // with it, leaving the id as the only thing left to call it.

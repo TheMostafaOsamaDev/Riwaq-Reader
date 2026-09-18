@@ -33,11 +33,24 @@
 // The Store is reached only by user navigation, long after page load has
 // finished — there is no page-load race window left to lose at all, which
 // closes the hazard structurally rather than narrowing it probabilistically
-// the way every startup-side deferral attempt did. The accepted cost: a
-// download auto-resuming at launch can't find its source until the user has
-// opened the Store at least once in this session; that path already
-// null-checks a missing source and reports it, so it degrades visibly
-// rather than silently or unsafely.
+// the way every startup-side deferral attempt did.
+//
+// That argument is about the TIMING, not about this component, and the
+// Store is not the only view the user navigates to. A library-backed novel
+// page and the Store are arms of one ternary in DesktopLibrary /
+// MobileLibrary, so a novel page is on screen precisely when the Store has
+// never mounted — and with the load living only here, the registry was
+// empty underneath it. Those views now inherit this same reasoning through
+// `ensureExtensions()` (sources/useExtensions.ts): same "reached by user
+// navigation" premise, one memoised load between them. This call stays as
+// it is because it is the REFRESH — re-listing per Store visit is what
+// picks up an install or removal — and it must not move to App startup or
+// to the Library's mount.
+//
+// The accepted cost that remains: a download auto-resuming at launch can't
+// find its source until some navigated view has loaded the registry in this
+// session; that path already null-checks a missing source and reports it,
+// so it degrades visibly rather than silently or unsafely.
 import { useCallback, useEffect, useState } from "react";
 import { ExtensionsView } from "./ExtensionsView";
 import { SourcesListView } from "./SourcesListView";
@@ -97,7 +110,7 @@ export function Store({
   // Re-running it on every re-mount is deliberate: the Store unmounts on a
   // tab switch, and re-listing is what picks up a source installed or
   // removed since the last visit without an app restart. registry.ts caches
-  // each bundle's evaluation by `id@version@sha256`, so the repeat cost is a
+  // each bundle's evaluation by `id@sha256`, so the repeat cost is a
   // directory listing and a couple of small reads, not a fresh blob-URL
   // import and re-execution of every extension per visit.
   const [extensionsReady, setExtensionsReady] = useState(false);
