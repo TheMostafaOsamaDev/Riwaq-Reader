@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createLineBank,
+  glideFrame,
   glideStep,
-  settleDelta,
-  snapToLine,
   wheelDeltaToPixels,
 } from "./lineScroll";
 
@@ -23,40 +22,6 @@ describe("wheelDeltaToPixels", () => {
 
   it("reads page-mode deltas as pages", () => {
     expect(wheelDeltaToPixels(1, 2)).toBe(400);
-  });
-});
-
-describe("snapToLine", () => {
-  it("lands on the nearest whole line", () => {
-    expect(snapToLine(0, LINE)).toBe(0);
-    expect(snapToLine(13, LINE)).toBe(0);
-    expect(snapToLine(15, LINE)).toBeCloseTo(LINE, 5);
-    expect(snapToLine(LINE * 4 + 1, LINE)).toBeCloseTo(LINE * 4, 5);
-  });
-
-  it("leaves the position alone when there is no line box to snap to", () => {
-    // Nothing rendered to measure — guessing a line box would move the
-    // reader's position for no reason.
-    expect(snapToLine(123.4, 0)).toBe(123.4);
-  });
-});
-
-describe("settleDelta", () => {
-  it("travels to the nearer boundary, never more than half a line", () => {
-    expect(settleDelta(0, LINE)).toBe(0);
-    // Just past a boundary: pull back.
-    expect(settleDelta(2, LINE)).toBeCloseTo(-2, 5);
-    // Most of the way to the next: push on.
-    expect(settleDelta(25, LINE)).toBeCloseTo(LINE - 25, 5);
-    for (const top of [0, 5, 13.5, 14, 27, 100, 1234.56]) {
-      expect(Math.abs(settleDelta(top, LINE))).toBeLessThanOrEqual(
-        LINE / 2 + 1e-9,
-      );
-    }
-  });
-
-  it("does nothing without a line box", () => {
-    expect(settleDelta(99, 0)).toBe(0);
   });
 });
 
@@ -143,5 +108,76 @@ describe("createLineBank", () => {
     bank.spend(20, LINE);
     bank.reset();
     expect(bank.spend(13, LINE)).toBe(0);
+  });
+});
+
+/** A scroller that stores whole pixels, the way a real one does.
+ *
+ *  The two engines this app ships on disagree about HOW: Chromium rounds
+ *  (300.4 -> 300, 300.5 -> 301) while WebKit truncates (300.9 -> 300). Both
+ *  are exercised below, because both stall a glide and they stall it by
+ *  different distances — truncation needs a step of a whole pixel to move at
+ *  all, so it stalls more than twice as far out. Measured in both engines. */
+function scroller(quantise: (v: number) => number, from = 0) {
+  let position = quantise(from);
+  return {
+    get position() {
+      return position;
+    },
+    write(v: number) {
+      position = quantise(v);
+      return position;
+    },
+  };
+}
+
+const ENGINES: [string, (v: number) => number][] = [
+  ["Chromium rounds", Math.round],
+  ["WebKit truncates", Math.floor],
+];
+
+describe("glideFrame", () => {
+  it.each(ENGINES)(
+    "comes to rest on a line target, and says so (%s)",
+    (_engine, quantise) => {
+      // Every line target is fractional — each is a multiple of a 27.2px line
+      // box. glideStep alone never reaches one: its step is 22% of the
+      // remaining gap, which stops changing a whole-pixel scroller while the
+      // gap is still 1.5-2px (Chromium) or 3.6-4.5px (WebKit). The reader then
+      // rests visibly off the line it was aiming for, and because the pump's
+      // idle test is `scrollTop === target`, which never becomes true, its
+      // requestAnimationFrame loop also runs for ever.
+      const target = LINE * 15;
+      const s = scroller(quantise, 300);
+      let state = { position: s.position, target };
+      let frames = 0;
+      while (state.position !== state.target && frames < 200) {
+        state = glideFrame(state.position, state.target, (v) => s.write(v));
+        frames += 1;
+      }
+
+      expect(frames).toBeLessThan(200);
+      // Rests as close to the line as a whole-pixel scroller can get...
+      expect(Math.abs(s.position - target)).toBeLessThan(1);
+      // ...and reports that as the target, so the caller's equality test goes
+      // true and its animation loop can stand down.
+      expect(state.position).toBe(state.target);
+    },
+  );
+
+  it("glides toward a far target rather than jumping to it", () => {
+    // The landing rule must not fire while there is real distance to cover,
+    // or every scroll becomes a teleport.
+    const s = scroller(Math.round, 0);
+    const state = glideFrame(0, 1000, (v) => s.write(v));
+    expect(state.position).toBe(220); // 22% of the gap
+    expect(state.target).toBe(1000); // still heading there
+  });
+
+  it("lands immediately when motion is reduced", () => {
+    const s = scroller(Math.round, 0);
+    const state = glideFrame(0, LINE * 15, (v) => s.write(v), true);
+    expect(state.position).toBe(408);
+    expect(state.position).toBe(state.target);
   });
 });
