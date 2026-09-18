@@ -8,11 +8,35 @@
 //
 // Each sub-view receives a small set of callbacks (`onOpenSource`,
 // `onOpenNovel`, `onBack`) so navigation flows in one direction through
-// here. The Store itself is mounted inside the Library's body when the
-// "Store" tab is active; switching tabs back to "Library" leaves this
-// component's state intact (React keeps the instance alive), so the user
-// returns to whatever they were browsing.
-
+// here. The Store is mounted inside the Library's body only while the
+// "Store" tab is active — AnimatedSwap actually unmounts it (after its
+// exit-fade) the moment the user switches away, and mounts a fresh
+// instance on return. That is deliberate and load-bearing for the effect
+// below, not just an implementation detail: switching tabs does NOT
+// preserve `view`/`rangeDialog` state.
+//
+// initExtensions() is called from THIS component's own mount effect, not
+// from App.tsx's startup. It used to be App's — three separate,
+// increasingly-desperate attempts at starting it during app startup
+// (undeferred; deferred past page load same as main.tsx's
+// migrateLegacyRoot; deferred AND serialized behind migrateLegacyRoot) each
+// independently reproduced this codebase's documented Android
+// lock-ordering deadlock (main.tsx's migrateLegacyRoot comment) on live
+// device testing — confirmed via `debuggerd -b` thread dumps, at roughly a
+// coin-flip rate across all three, none of them distinguishable from each
+// other or from the pre-existing single-call baseline. The common thread:
+// all three started extensions' first fs call somewhere in the app's
+// STARTUP window, which is the one time window a native page-load race is
+// even possible.
+//
+// The Store is reached only by user navigation, long after page load has
+// finished — there is no page-load race window left to lose at all, which
+// closes the hazard structurally rather than narrowing it probabilistically
+// the way every startup-side deferral attempt did. The accepted cost: a
+// download auto-resuming at launch can't find its source until the user has
+// opened the Store at least once in this session; that path already
+// null-checks a missing source and reports it, so it degrades visibly
+// rather than silently or unsafely.
 import { useCallback, useEffect, useState } from "react";
 import { SourcesListView } from "./SourcesListView";
 import { onOpenStoreSource, takePendingStoreSource } from "../store/uiIntents";
@@ -20,17 +44,12 @@ import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { ThemedSkeleton } from "./Skeleton";
+import { initExtensions } from "../sources/registry";
 import type { Theme } from "../styles/tokens";
 
 interface Props {
   theme: Theme;
   layout: "desktop" | "mobile";
-  /** True once initExtensions() (kicked off from an effect in App.tsx,
-   *  never awaited before first paint) has settled. Registry accessors
-   *  answer empty/null until then, so the sources list has nothing real to
-   *  show yet — a Skeleton takes its place instead of a misleading "no
-   *  sources" empty state. */
-  extensionsReady: boolean;
   /** Open the source streaming reader for a novel at the given chapter
    *  (defaults to the first chapter when not specified). */
   onStreamRead: (
@@ -52,7 +71,6 @@ type StoreView =
 export function Store({
   theme,
   layout,
-  extensionsReady,
   onStreamRead,
   onImportComplete,
 }: Props) {
@@ -61,6 +79,19 @@ export function Store({
     sourceId: string;
     novelUrl: string;
   } | null>(null);
+
+  // True once initExtensions() has settled for THIS mount. No deferral
+  // needed here — unlike App.tsx's startup window, there is no native
+  // page-load race to dodge by the time the user has navigated to the
+  // Store. initExtensions() never rejects (see registry.ts's doc comment),
+  // so this needs no `.catch`; re-running it on every re-mount is safe and
+  // intentional (registry.ts: "Safe to call again after an install or
+  // uninstall"), so a source installed/removed since the last visit is
+  // picked up on each fresh mount rather than needing an app restart.
+  const [extensionsReady, setExtensionsReady] = useState(false);
+  useEffect(() => {
+    void initExtensions().finally(() => setExtensionsReady(true));
+  }, []);
 
   const openSource = useCallback((sourceId: string) => {
     setView({ kind: "source", sourceId });

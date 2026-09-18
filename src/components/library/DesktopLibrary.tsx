@@ -33,7 +33,6 @@ export function DesktopLibrary({
   onImportFolder,
   onStreamRead,
   onSourceImportComplete,
-  extensionsReady,
   sourceDetailView,
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
@@ -232,7 +231,6 @@ export function DesktopLibrary({
                   layout="desktop"
                   onStreamRead={onStreamRead}
                   onImportComplete={onSourceImportComplete}
-                  extensionsReady={extensionsReady}
                 />
               </Suspense>
             ) : activeShelf ? (

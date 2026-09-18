@@ -44,7 +44,6 @@ export function MobileLibrary({
   onImportFolder: _onImportFolder,
   onStreamRead,
   onSourceImportComplete,
-  extensionsReady,
   sourceDetailView,
   onCloseSourceDetailView,
   onOpenSourceDetailRangeDialog,
@@ -271,7 +270,6 @@ export function MobileLibrary({
                   layout="mobile"
                   onStreamRead={onStreamRead}
                   onImportComplete={onSourceImportComplete}
-                  extensionsReady={extensionsReady}
                 />
               </Suspense>
             </div>

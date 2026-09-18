@@ -21,6 +21,7 @@ import {
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
+import { migrateLegacyRoot } from "../store/legacyRoot";
 
 const BASE = BaseDirectory.AppData;
 export const EXTENSIONS_DIR = "riwaq/extensions";
@@ -58,7 +59,34 @@ async function ensureDir(path: string): Promise<void> {
   }
 }
 
+// Every fs entry point below awaits this memoized promise FIRST, before its
+// own first fs call — mirroring store/library.ts's ensureRoot(), which does
+// the same for every store/* module that touches the filesystem (see
+// legacyRoot.ts's own doc comment: "Each of those paths MUST await
+// migrateLegacyRoot() first").
+//
+// Why it matters here specifically: the FIRST fs-plugin call in the whole
+// process makes Tauri resolve the plugin's scope via a JNI round trip on
+// Android, while holding a lock the native onPageLoaded dispatch also
+// wants — see main.tsx's migrateLegacyRoot comment for the full deadlock.
+// initExtensions() (App.tsx) is deferred past page load, same as
+// migrateLegacyRoot() itself, but TWO independently-deferred calls are two
+// independent rolls against that same race — measured on-device at a 50%
+// stall rate, worse than the 30% baseline a single deferred call has.
+// Awaiting the SAME memoized promise here — rather than giving this module
+// its own independent "first" fs call — collapses that back to one roll:
+// by the time this resolves, the scope is already settled (whether this
+// call started the migration or main.tsx's did), so listInstalled()'s own
+// `exists()` below is never the risky one.
+//
+// Add this to any new fs-touching export in this file, or it silently
+// reopens the hazard for that one function.
+async function ensureMigrated(): Promise<void> {
+  await migrateLegacyRoot();
+}
+
 export async function listInstalled(): Promise<InstalledRecord[]> {
+  await ensureMigrated();
   if (!(await exists(INSTALLED_DIR, { baseDir: BASE }))) return [];
   const entries = await readDir(INSTALLED_DIR, { baseDir: BASE });
   const out: InstalledRecord[] = [];
@@ -91,6 +119,7 @@ export async function listInstalled(): Promise<InstalledRecord[]> {
 }
 
 export async function readBundleSource(id: string): Promise<string> {
+  await ensureMigrated();
   return readTextFile(`${dirOf(id)}/index.js`, { baseDir: BASE });
 }
 
@@ -103,6 +132,7 @@ export async function writeInstalled(
     origin: OriginRecord;
   },
 ): Promise<void> {
+  await ensureMigrated();
   // The directory name (`id`) is the identity every other function in this
   // module keys on — readBundleSource, iconPath, removeInstalled all take
   // it, not a value read out of manifest.json. A manifest that disagrees
@@ -181,6 +211,7 @@ export async function writeInstalled(
 }
 
 export async function removeInstalled(id: string): Promise<void> {
+  await ensureMigrated();
   if (await exists(dirOf(id), { baseDir: BASE })) {
     await remove(dirOf(id), { baseDir: BASE, recursive: true });
   }

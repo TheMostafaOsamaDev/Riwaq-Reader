@@ -122,12 +122,6 @@ interface Props {
   onOpenSettings: () => void;
   /** When off, deleting a book skips the confirm dialog and deletes at once. */
   confirmDelete: boolean;
-  /** True once installed novel-source extensions have finished loading
-   *  (App.tsx kicks this off from an effect after mount — see App.tsx).
-   *  Forwarded to the Store only; nothing else here depends on it, so the
-   *  shelf, shelves, and every other Library destination render exactly as
-   *  before regardless of its value. */
-  extensionsReady: boolean;
 }
 
 function useBooks() {
@@ -179,7 +173,6 @@ export function Library({
   streamActive,
   onOpenSettings,
   confirmDelete,
-  extensionsReady,
 }: Props) {
   const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
@@ -1088,7 +1081,6 @@ export function Library({
     onImportFolder,
     onStreamRead,
     onSourceImportComplete,
-    extensionsReady,
     sourceDetailView,
     onCloseSourceDetailView: () => back(),
     onOpenSourceDetailRangeDialog: () => {
