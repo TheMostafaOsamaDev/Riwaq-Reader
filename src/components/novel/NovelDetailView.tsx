@@ -16,9 +16,24 @@
 // All scrape calls go through getSource(sourceId). Errors land in the
 // inline error pane; nothing here owns long-running tasks (the importer
 // reports through the global progress modal).
+//
+// getSource can answer null — the extension behind a saved novel can be
+// uninstalled, or fail to load, at any time. That does NOT blank the page:
+// everything the user saved (metadata, chapter listing, downloaded
+// chapters) is on disk and renders exactly as it always does, with an
+// ExtensionNotice above it and every control that would need the network
+// disabled in place rather than hidden. Only a novel with no snapshot at
+// all falls back to the bare "isn't installed" line, because then there
+// genuinely is nothing to show.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getSource, getSourceMeta } from "../../sources/registry";
+import {
+  getExtensionError,
+  getExtensionStatus,
+  getSource,
+  getSourceMeta,
+} from "../../sources/registry";
+import { useLoadedExtensions } from "../../sources/useExtensions";
 import {
   addNovelToLibrary,
   coverSrcFor,
@@ -36,6 +51,7 @@ import { SaveAsOfflineBookDialog } from "../SaveAsOfflineBookDialog";
 import { ShelfChecklist } from "../ShelfChecklist";
 import type { Shelf } from "../../store/shelves";
 import { ChapterSearch } from "./ChapterSearch";
+import { ExtensionNotice, type ExtensionProblem } from "./ExtensionNotice";
 import { NovelAbout } from "./NovelAbout";
 import { NovelHero } from "./NovelHero";
 import { VolumesAccordion } from "./VolumesAccordion";
@@ -97,7 +113,54 @@ export function NovelDetailView({
   onNewShelfFromDetail,
 }: Props) {
   const { tr } = useI18n();
-  const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
+  // The registry is loaded from here, not only from the Store's mount. This
+  // page is reachable from a library card without the Store ever having been
+  // opened in the session (DesktopLibrary/MobileLibrary render one OR the
+  // other — they are arms of the same ternary), and then every lookup below
+  // answered "not installed" for an extension that is installed and working:
+  // the banner said so, and per-chapter download, per-volume download,
+  // Download range, Save as offline book and opening an undownloaded chapter
+  // were all switched off.
+  //
+  // `revision` is in each dependency list below so the page re-reads the
+  // registry and corrects itself when the load commits. Loading from HERE —
+  // a view the user navigated to — rather than from the Library's mount or
+  // app startup is the same placement argument the Store rests on; see
+  // sources/useExtensions.ts.
+  const revision = useLoadedExtensions();
+  const source = useMemo<Source | null>(
+    () => getSource(sourceId),
+    [sourceId, revision],
+  );
+  // Display metadata comes from the registry: the contract's `Source` has no
+  // `meta` — an extension does not declare its own catalogue entry, the host
+  // builds one from its manifest.
+  const sourceMeta = useMemo(
+    () => getSourceMeta(sourceId),
+    [sourceId, revision],
+  );
+  // Why the source is unusable, when it is. "missing" (never installed or
+  // removed) reads differently from "broken" (installed, wouldn't load) and
+  // "api-version" (installed, wants a newer app) — they have different
+  // fixes, so the banner says different things. `null` while the source
+  // works, which is also what turns every gate below off.
+  const problem = useMemo<ExtensionProblem | null>(() => {
+    if (source) return null;
+    const status = getExtensionStatus(sourceId);
+    return status === "ok" ? "missing" : status;
+  }, [source, sourceId, revision]);
+  const extensionError = useMemo(
+    () => (problem === "broken" ? getExtensionError(sourceId) : undefined),
+    [problem, sourceId, revision],
+  );
+  // A removed extension takes its manifest — and so its display name —
+  // with it, leaving the id as the only thing left to call it.
+  const sourceLabel = sourceMeta?.name ?? sourceId;
+  /** Hover/focus text for every control this page had to switch off. Null
+   *  when the source works, which is how each call site decides. */
+  const disabledReason = problem
+    ? tr("novel.offline.needsExtension", { source: sourceLabel })
+    : null;
   const [state, setState] = useState<State>({
     loading: true,
     error: null,
@@ -134,23 +197,25 @@ export function NovelDetailView({
   // `shelves`, and `onToggleShelf` (see the `onOpenShelfList` guard below).
   const [shelfListOpen, setShelfListOpen] = useState(false);
 
-  // Two data sources, selected by `libraryEntryIdProp`:
+  // Three data sources, in order of preference:
   //   - in-library:  read source.json from disk, then refresh from
   //                  network in the background so the user sees newly
   //                  published chapters next time they reopen.
   //   - not yet:     direct source.getNovel call (existing flow).
+  //   - no source:   the snapshot alone, and nothing else. Same render
+  //                  path as the first case with the refresh left off —
+  //                  a second one would be a second thing to keep right.
   //
   // The local-first path swaps the chapter listing in-place on refresh
   // success — chapter flags are preserved because writeSnapshotFromSourceNovel
   // merges by URL.
   useEffect(() => {
-    if (!source) return;
     let cancelled = false;
     setState({ loading: true, error: null, novel: null });
     setChapterFlags(new Map());
 
-    const fetchFromSource = async () => {
-      const novel = await source.getNovel(novelUrl);
+    const fetchFromSource = async (src: Source) => {
+      const novel = await src.getNovel(novelUrl);
       if (cancelled) return;
       if (libraryEntryIdProp) {
         // Library-backed: write the snapshot first so the merge
@@ -182,11 +247,20 @@ export function NovelDetailView({
 
     (async () => {
       try {
-        if (libraryEntryIdProp) {
+        // Which entry's snapshot we may render. Handed to us on the
+        // library-card path; looked up only when there is no source,
+        // because then the snapshot is the ONLY thing that can fill this
+        // page and it would be perverse not to go and find it.
+        let entryId = libraryEntryIdProp;
+        if (!entryId && !source) {
+          entryId = (await findSourceEntry(sourceId, novelUrl))?.id;
+          if (cancelled) return;
+        }
+        if (entryId) {
           const { readSnapshot, snapshotToSourceNovel } = await import(
             "../../store/sourceLibrary"
           );
-          const snap = await readSnapshot(libraryEntryIdProp);
+          const snap = await readSnapshot(entryId);
           if (snap && !cancelled) {
             setState({
               loading: false,
@@ -196,13 +270,21 @@ export function NovelDetailView({
             setChapterFlags(buildFlagMap(snap));
             // Refresh from network in the background; failure is
             // silent — the local copy stays visible.
-            fetchFromSource().catch(() => {});
+            if (source) fetchFromSource(source).catch(() => {});
             return;
           }
           // No snapshot on disk yet — fall through to a normal fetch
           // and writeSnapshot.
         }
-        await fetchFromSource();
+        if (!source) {
+          // Nothing saved, and nothing left to fetch it with. The render
+          // below turns this into the plain "isn't installed" line, which
+          // is the honest answer: there is no novel here.
+          if (!cancelled)
+            setState({ loading: false, error: null, novel: null });
+          return;
+        }
+        await fetchFromSource(source);
       } catch (e) {
         if (cancelled) return;
         setState({
@@ -305,13 +387,24 @@ export function NovelDetailView({
     }
   }, [working, libraryEntryId, onImportComplete, tr]);
 
-  if (!source) {
+  // Nothing on disk AND nothing to fetch with. Not an error pane — there is
+  // no failure to report, only a novel this device has never had.
+  if (!source && !state.loading && !state.novel) {
     return (
       <div style={{ padding: 40, color: theme.muted }}>
         {tr("store.notInstalled", { sourceId })}
       </div>
     );
   }
+
+  // The first downloaded chapter, for the hero's Read action when there is
+  // no source left to stream the rest with. Undefined when nothing is
+  // downloaded, which is also when Read comes up disabled.
+  const firstDownloadedChapterId = !problem
+    ? undefined
+    : state.novel?.volumes
+        .flatMap((v) => v.chapters)
+        .find((c) => chapterFlags.get(c.id)?.downloadedAt)?.id;
 
   return (
     <div
@@ -374,13 +467,22 @@ export function NovelDetailView({
         </div>
       ) : (
         <>
+          {problem && (
+            <ExtensionNotice
+              theme={theme}
+              layout={layout}
+              problem={problem}
+              sourceName={sourceLabel}
+              error={extensionError}
+            />
+          )}
           <NovelHero
             localCoverUrl={localCoverUrl}
             theme={theme}
             layout={layout}
             novel={state.novel}
-            sourceName={source.meta.name}
-            sourceIconUrl={getSourceMeta(source.meta.id)?.iconUrl}
+            sourceName={sourceLabel}
+            sourceIconUrl={sourceMeta?.iconUrl}
             working={working}
             chapterCount={state.novel.volumes.reduce(
               (a, v) => a + v.chapters.length,
@@ -388,7 +490,16 @@ export function NovelDetailView({
             )}
             inLibrary={libraryEntryId != null}
             libraryCheckDone={libraryEntryId !== undefined}
-            onRead={() => onStreamRead(undefined)}
+            // With no source there is nothing to stream, so Read means
+            // "open the first chapter that IS on this device" — and says
+            // why when there isn't one.
+            onRead={() => onStreamRead(firstDownloadedChapterId)}
+            readDisabledReason={
+              problem && firstDownloadedChapterId === undefined
+                ? tr("novel.offline.nothingDownloaded", { source: sourceLabel })
+                : undefined
+            }
+            downloadDisabledReason={disabledReason ?? undefined}
             onAddToLibrary={onAddToLibrary}
             onRemoveFromLibrary={onRemoveFromLibrary}
             onOpenRangeDialog={onOpenRangeDialog}
@@ -431,7 +542,10 @@ export function NovelDetailView({
               onEnqueued={() => setSaveOfflineOpen(false)}
             />
           )}
-          {typeof source.searchChapters === "function" && (
+          {/* Chapter search is a live query against the site. No source,
+              no search — there is nothing to disable, the affordance
+              simply has no offline meaning. */}
+          {source && typeof source.searchChapters === "function" && (
             <ChapterSearch
               theme={theme}
               layout={layout}
@@ -449,6 +563,8 @@ export function NovelDetailView({
             novelUrl={novelUrl}
             libraryEntryId={libraryEntryId ?? undefined}
             chapterFlags={chapterFlags}
+            disabledReason={disabledReason}
+            offlineSourceName={problem ? sourceLabel : undefined}
             onOpenChapter={openChapter}
             onChapterFlagsChange={setChapterFlags}
             onNovelPatch={(updater) =>

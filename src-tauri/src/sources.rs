@@ -6,7 +6,9 @@
 //                             with caller-controlled headers/method/body. The
 //                             frontend uses this for sites whose data lives
 //                             in the initial HTML. Works on desktop AND
-//                             mobile (Android, iOS).
+//                             mobile (Android, iOS). NOT stateless: every
+//                             request goes through one process-wide client
+//                             with a cookie jar — see http_client() below.
 //
 //   source_render_and_extract spawns a hidden WebviewWindow, navigates it to
 //                             the target URL, runs a caller-provided JS
@@ -84,7 +86,7 @@ pub async fn source_fetch(
         headers: None,
         body: None,
     });
-    let client = build_client()?;
+    let client = http_client()?;
     let method = opts.method.as_deref().unwrap_or("GET").to_uppercase();
     let parsed_method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| format!("Invalid method '{method}': {e}"))?;
@@ -99,6 +101,17 @@ pub async fn source_fetch(
         req = req.body(body);
     }
     let resp = req.send().await.map_err(|e| e.to_string())?;
+    // A body the server has told us up front is enormous is refused before
+    // it is read. Only a declared length can be checked here: `text()` does
+    // charset decoding from the response's own content-type, which several
+    // scraped sites depend on, so it is not replaced with a byte loop.
+    if let Some(len) = resp.content_length() {
+        if len > MAX_FETCH_BYTES as u64 {
+            return Err(format!(
+                "Response from {url} is {len} bytes, over the {MAX_FETCH_BYTES}-byte limit."
+            ));
+        }
+    }
     let status = resp.status().as_u16();
     let mut headers = HashMap::new();
     for (k, v) in resp.headers().iter() {
@@ -129,7 +142,7 @@ pub async fn source_fetch_bytes(
         headers: None,
         body: None,
     });
-    let client = build_client()?;
+    let client = http_client()?;
     let method = opts.method.as_deref().unwrap_or("GET").to_uppercase();
     let parsed_method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| format!("Invalid method '{method}': {e}"))?;
@@ -144,8 +157,47 @@ pub async fn source_fetch_bytes(
     if !status.is_success() {
         return Err(format!("HTTP {status} for {url}"));
     }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    Ok(Response::new(bytes.to_vec()))
+    Ok(Response::new(read_capped(resp, &url).await?))
+}
+
+/// Hard ceiling on one fetched body.
+///
+/// Nothing this app fetches through these commands is large: a page of
+/// HTML, a cover image, an extension bundle. `resp.bytes()` had no ceiling
+/// at all, so a repository (or any scraped host) serving a multi-gigabyte
+/// body had all of it buffered into this process before the frontend saw a
+/// byte — and on Android the whole thing then crosses the IPC bridge, where
+/// the process budget is far smaller than a desktop's.
+///
+/// Generous on purpose: it is a bound on hostile input, not a budget for
+/// real content. The extension-bundle limit the frontend enforces
+/// (MAX_BUNDLE_BYTES in src/extensions/repos.ts) is much tighter.
+const MAX_FETCH_BYTES: usize = 32 * 1024 * 1024;
+
+/// Read a response body, refusing to buffer more than `MAX_FETCH_BYTES`.
+///
+/// Checks the declared length first — which costs nothing and rejects the
+/// honest case before a single byte is read — and then counts what actually
+/// arrives, because a chunked response declares no length at all and a
+/// declared one is only a claim.
+async fn read_capped(mut resp: reqwest::Response, url: &str) -> Result<Vec<u8>, String> {
+    if let Some(len) = resp.content_length() {
+        if len > MAX_FETCH_BYTES as u64 {
+            return Err(format!(
+                "Response from {url} is {len} bytes, over the {MAX_FETCH_BYTES}-byte limit."
+            ));
+        }
+    }
+    let mut out: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+        if out.len() + chunk.len() > MAX_FETCH_BYTES {
+            return Err(format!(
+                "Response from {url} went over the {MAX_FETCH_BYTES}-byte limit."
+            ));
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
 }
 
 // Fields here are all used by serde's deserializer + by the desktop
@@ -272,15 +324,46 @@ pub async fn source_render_and_extract(
     )
 }
 
-fn build_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/124.0 Safari/537.36 Leaflet/0.1",
-        )
-        .gzip(true)
-        .build()
-        .map_err(|e| e.to_string())
+static HTTP_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> =
+    std::sync::OnceLock::new();
+
+/// The one HTTP client every source request goes through.
+///
+/// Shared, not per-request, because `SourceHost` promises extensions that
+/// all their fetches share a cookie jar the way a browser tab's do — and a
+/// fresh `Client` per call means a fresh, empty jar per call. Cenele scrapes
+/// a WordPress nonce off one page and replays it against admin-ajax.php in a
+/// later call; WordPress nonces are session-scoped, so that only works if the
+/// session cookie set by the first request is still sent on the second.
+///
+/// Two consequences worth stating, because until this client existed every
+/// request built a fresh one with no cookie store at all:
+///
+///   - The jar is PROCESS-WIDE, not per-extension. reqwest scopes cookies by
+///     domain, so this is not a cross-site leak — but two extensions that
+///     scrape the same host now share one session with each other, and a
+///     session survives for the life of the process rather than the life of
+///     a call. Nothing today depends on that isolation; if something ever
+///     does, it needs a client per extension id, not a flag here.
+///   - The User-Agent is a current macOS Chrome string, on every platform,
+///     replacing the Linux/Leaflet one this used to send. It is what the
+///     scraped sites (and Cloudflare in front of one of them) expect to see;
+///     it is deliberately not the real platform.
+fn http_client() -> Result<reqwest::Client, String> {
+    HTTP_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .user_agent(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+                     AppleWebKit/537.36 (KHTML, like Gecko) \
+                     Chrome/131.0.0.0 Safari/537.36",
+                )
+                .cookie_store(true)
+                .gzip(true)
+                .build()
+                .map_err(|e| e.to_string())
+        })
+        .clone()
 }
 
 #[cfg(desktop)]
@@ -949,5 +1032,15 @@ mod tests {
         let resp: FetchResponse = serde_json::from_str(json).expect("bridge response");
         assert_eq!(resp.status_for_test(), 200);
         assert_eq!(resp.text_for_test(), "<html/>");
+    }
+
+    /// `http_client()` must succeed on repeated calls. The shared-instance
+    /// property (one client, one cookie jar, for the process lifetime) is
+    /// guaranteed by `OnceLock` by construction, not by this test — the
+    /// cookie-jar behaviour itself is exercised end-to-end elsewhere.
+    #[test]
+    fn http_client_builds_on_repeated_calls() {
+        assert!(http_client().is_ok(), "first call must build a client");
+        assert!(http_client().is_ok(), "second call must reuse the client");
     }
 }

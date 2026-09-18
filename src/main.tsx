@@ -4,6 +4,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./styles/global.css";
 import { markBoot } from "./lib/diagnostics/breadcrumbs";
+import { deferPastPageLoad } from "./lib/deferPastPageLoad";
 import { migrateLegacyRoot } from "./store/legacyRoot";
 
 // The app-data root is migrated BEFORE the tree mounts, not lazily from inside
@@ -67,17 +68,12 @@ markBoot("module");
 // Deferring costs nothing. Every store entry point already awaits this same
 // memoized promise before its first read, so ordering is unchanged — only the
 // start moves past the window where it can collide with page load.
-function startLegacyRootMigration(): void {
-  // A macrotask after `load` — `load` alone still overlaps the native
-  // onPageFinished dispatch on some launches.
-  setTimeout(() => void migrateLegacyRoot(), 0);
-}
-
-if (document.readyState === "complete") {
-  startLegacyRootMigration();
-} else {
-  window.addEventListener("load", startLegacyRootMigration, { once: true });
-}
+//
+// The readyState-check + `load`-listener + macrotask mechanism itself lives
+// in deferPastPageLoad.ts rather than being hand-rolled here, so that a
+// second call site whose first act is an fs/scope-resolving Tauri call gets
+// the identical timing instead of a near-copy of it.
+deferPastPageLoad(() => void migrateLegacyRoot());
 
 // The boundary wraps App because a throw anywhere outside the two reader views
 // used to unmount the whole tree, leaving the boot background and nothing else
