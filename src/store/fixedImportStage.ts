@@ -92,7 +92,8 @@ export async function stageFixedImport(
 ): Promise<FixedImportDraft> {
   const format =
     kind ?? ("bytes" in source ? detectBookFormat(source.bytes) : "pdf");
-  if (format === "pdf") return stagePdf(source, filename, staged, fallbackTitle);
+  if (format === "pdf")
+    return stagePdf(source, filename, staged, fallbackTitle);
   if (!("bytes" in source)) {
     throw new Error("DOCX staging needs the file's bytes");
   }
