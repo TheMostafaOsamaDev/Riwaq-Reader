@@ -124,6 +124,19 @@ export async function openPdfDocument(source: PdfSource): Promise<PdfDoc> {
       // direction-neutral context, so pin it regardless of where the canvas
       // hangs in the DOM.
       canvas.style.direction = "ltr";
+      // `font-size-adjust` is inherited, and global.css sets it on `body` to
+      // normalize the UI font's apparent size. A canvas under that inherits
+      // it, and then the engine rescales every glyph pdf.js draws to hit that
+      // x-height ratio — while pdf.js keeps positioning them from the font's
+      // REAL metrics. The glyphs outgrow their advance slots and pile up: a
+      // page of Arabic body text collapses into a black smear, while a
+      // heading in a font whose natural ratio happens to be near 0.525 looks
+      // fine, which is what made it look like a font-loading bug.
+      //
+      // Measured on the reported file: 15 clean text bands become 7, three of
+      // them 122/100/71px tall where a line is 15px. BookBody already resets
+      // this for reflowable content; a PDF page needs it for the same reason.
+      canvas.style.fontSizeAdjust = "none";
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.direction = "ltr";
