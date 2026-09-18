@@ -55,9 +55,10 @@ async function fetchWithChallengeRetry(
   url: string,
   options: FetchOptions | undefined,
 ): Promise<FetchResponse> {
+  const normalized = normalizeFetchOptions(options);
   const resp = await invoke<TauriFetchResponse>("source_fetch", {
     url,
-    options: normalizeFetchOptions(options),
+    options: normalized,
   });
   if (!isChallengeResponse(resp)) return resp as FetchResponse;
 
@@ -66,16 +67,30 @@ async function fetchWithChallengeRetry(
   );
   try {
     return (await invoke<TauriFetchResponse>("source_session_fetch", {
-      input: { url, ...normalizeFetchOptions(options) },
+      input: { url, ...normalized },
     })) as FetchResponse;
   } catch (e) {
     // Mobile has no session webview. Say so plainly rather than letting a
     // parser report a selector regression that does not exist.
+    //
+    // `hostname` is resolved defensively: a source that passes a relative
+    // or malformed URL would otherwise make `new URL()` throw from inside
+    // this handler, replacing this deliberately plain message with an
+    // opaque one AND discarding the original failure — the exact outcome
+    // the paragraph above exists to prevent.
     throw new Error(
-      `${new URL(url).hostname} is blocking automated access (Cloudflare ` +
+      `${hostnameOf(url)} is blocking automated access (Cloudflare ` +
         `challenge) and the in-app browser check could not run: ` +
         `${e instanceof Error ? e.message : String(e)}`,
     );
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
   }
 }
 

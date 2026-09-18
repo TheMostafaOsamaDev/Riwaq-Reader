@@ -10,7 +10,13 @@
 // directions — an installed extension's manifest (SourceMetadata) and a
 // repo index entry (RepoIndexEntry) — and both render it the same way.
 
-import type { Locale } from "../i18n";
+// Deliberately the CONTRACT's Locale, not the app's own `../i18n` one.
+// Both are `"en" | "ar"` today, but types.ts is under a standing
+// verbatim-recopy instruction, so the two can drift independently. Taking
+// the contract's here makes the call sites (which pass `useI18n().locale`)
+// the seam where a drift surfaces as a type error, instead of `host.locale`
+// and `pickDescription` silently disagreeing about the UI language.
+import type { Locale } from "./types";
 
 /** The description to show for `locale`: that locale, else `en`, else
  *  whatever the extension did ship. Undefined when there is nothing to
