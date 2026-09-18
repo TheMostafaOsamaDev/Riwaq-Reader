@@ -41,7 +41,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExtensionsView } from "./ExtensionsView";
 import { SourcesListView } from "./SourcesListView";
-import { onOpenStoreSource, takePendingStoreSource } from "../store/uiIntents";
+import {
+  onOpenExtensionsManager,
+  onOpenStoreSource,
+  takePendingExtensionsManager,
+  takePendingStoreSource,
+} from "../store/uiIntents";
 import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
@@ -146,6 +151,18 @@ export function Store({
     return onOpenStoreSource((sourceId) =>
       setView({ kind: "source", sourceId }),
     );
+  }, []);
+
+  // "Open Extensions", asked for from anywhere — in practice the notice a
+  // saved novel shows when its extension is gone. Consumed on mount too:
+  // the request usually arrives from a library-backed novel page, i.e.
+  // while this component does not exist yet, and the Library answers it by
+  // switching to the Store — which is what mounts us.
+  useEffect(() => {
+    if (takePendingExtensionsManager()) setView({ kind: "extensions" });
+    return onOpenExtensionsManager(() => {
+      if (takePendingExtensionsManager()) setView({ kind: "extensions" });
+    });
   }, []);
 
   return (

@@ -703,6 +703,33 @@ export const en = {
   // site later.
   "novel.chapterNoTitleFallback": "{n} - No Title",
 
+  // A saved novel whose source extension is gone (uninstalled), failed to
+  // load, or wants a newer app. The page still renders in full from the
+  // snapshot on disk — these strings are the banner that says why the
+  // online half of it is unavailable, plus the hover/focus reasons on each
+  // control that had to be disabled. "{source}" is the extension's own
+  // display name when the app still knows it, and its id otherwise — a
+  // removed extension takes its manifest with it.
+  "novel.offline.missingTitle": "The “{source}” extension isn't installed",
+  "novel.offline.missingBody":
+    "Everything saved on this device is below — details, the chapter list, and any chapter you downloaded. Install the extension again to download new chapters or refresh the listing.",
+  "novel.offline.brokenTitle": "The “{source}” extension failed to load",
+  "novel.offline.brokenBody":
+    "What is saved on this device still opens. New downloads and refreshes need a working extension — Retry or reinstall it under Extensions. ({error})",
+  "novel.offline.apiVersionTitle":
+    "The “{source}” extension needs a newer Riwaq",
+  "novel.offline.apiVersionBody":
+    "What is saved on this device still opens. Update the app to download new chapters again.",
+  "novel.offline.openExtensions": "Open Extensions",
+  "novel.offline.needsExtension":
+    "Needs the “{source}” extension — install it to download again.",
+  "novel.offline.chapterNotDownloaded":
+    "Not downloaded — reading it needs the “{source}” extension.",
+  "novel.offline.volumeNotLoaded":
+    "These chapters were never loaded onto this device — fetching them needs the “{source}” extension.",
+  "novel.offline.nothingDownloaded":
+    "No chapter is downloaded — reading needs the “{source}” extension.",
+
   // streaming reader (SourceStreamReader.tsx) — status/error chrome unique
   // to the source-backed streaming reader (novel load, chapter fetch). The
   // reader's own toolbar/back/prev/next/TOC/progress/settings chrome reuses
@@ -715,6 +742,11 @@ export const en = {
   "stream.loadingChapter": "Loading chapter…",
   "stream.chapterErrorTitle": "Couldn't load this chapter",
   "stream.backToNovel": "Back to novel",
+  // Reader-side twin of novel.offline.*: the novel opened from its saved
+  // snapshot, but this particular chapter was never downloaded and there is
+  // no extension left to fetch it with.
+  "stream.chapterNeedsExtension":
+    "This chapter isn't saved on this device, and the “{source}” extension isn't installed — install it to read this one.",
 
   // docx manage-import view (DocxManageView.tsx) — the "manage before
   // importing" section manager for staged .docx conversions. The document's

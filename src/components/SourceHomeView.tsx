@@ -25,6 +25,7 @@ import { NovelCard } from "./NovelCard";
 import { appendPage, searchView, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
+import { openExtensionsManager } from "../store/uiIntents";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
 
 interface Props {
@@ -184,6 +185,9 @@ export function SourceHomeView({
     void runSearch(searchInput);
   }, [runSearch, searchInput]);
 
+  // Browsing a source IS the network, so there is nothing to render offline
+  // here — unlike a saved novel, which keeps its whole page. The one thing
+  // worth adding is the way out: the manager that can install it back.
   if (!source) {
     return (
       <div
@@ -191,9 +195,22 @@ export function SourceHomeView({
           padding: 40,
           color: theme.muted,
           fontFamily: FONT_STACKS.sans,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 16,
         }}
       >
-        {tr("store.notInstalled", { sourceId })}
+        <span>{tr("store.notInstalled", { sourceId })}</span>
+        <Button
+          theme={theme}
+          variant="secondary"
+          onClick={openExtensionsManager}
+          leadingIcon={<Icon name="layers" size={14} />}
+          style={{ minHeight: 44 }}
+        >
+          {tr("novel.offline.openExtensions")}
+        </Button>
       </div>
     );
   }

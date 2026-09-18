@@ -17,12 +17,17 @@ import {
   type ChapterFlags,
 } from "../../store/chapterDeletion";
 import { CHAPTER_ROW_HEIGHT, ChapterRow } from "./ChapterRow";
+import { DisabledHint } from "./DisabledHint";
 import { buildFlagMap } from "./flagMap";
 import { VolumeChaptersSkeleton, VolumeErrorPanel } from "./VolumePlaceholders";
 export interface VolumesAccordionProps {
   theme: Theme;
   layout: "desktop" | "mobile";
-  source: Source;
+  /** Null when the extension behind this novel is uninstalled or broken.
+   *  The accordion then renders the persisted listing exactly as it always
+   *  does — every chapter, every downloaded/read indicator — with the
+   *  actions that would reach the site disabled rather than hidden. */
+  source: Source | null;
   novel: SourceNovel;
   novelUrl: string;
   /** Library entry id when this view is bound to a shelf entry. Drives
@@ -32,6 +37,14 @@ export interface VolumesAccordionProps {
   /** Per-chapter flag lookup. Read chapters dim. Downloaded chapters
    *  show the "downloaded" indicator on their row. */
   chapterFlags: Map<number, ChapterFlags>;
+  /** Why every download affordance in here is switched off, when it is —
+   *  shown on hover/focus of the control itself. Null while the source
+   *  works. Deletes, which are purely local, stay live either way. */
+  disabledReason?: string | null;
+  /** The extension's display name, set only when it can't be used. Drives
+   *  the per-row "not downloaded" reason and the note inside a volume whose
+   *  chapters were never fetched onto this device. */
+  offlineSourceName?: string;
   onOpenChapter: (chapterId: number) => void;
   /** Bumped by the download / queue subsystem when a chapter's flags
    *  change so the accordion re-renders. The setter accepts a new map
@@ -59,11 +72,18 @@ export function VolumesAccordion({
   novelUrl,
   libraryEntryId,
   chapterFlags,
+  disabledReason,
+  offlineSourceName,
   onOpenChapter,
   onChapterFlagsChange,
   onNovelPatch,
 }: VolumesAccordionProps) {
   const { tr } = useI18n();
+  // Built once, not per row: ChapterRow is memoized, and a fresh string per
+  // render would re-render every mounted row on every queue tick.
+  const chapterOfflineReason = offlineSourceName
+    ? tr("novel.offline.chapterNotDownloaded", { source: offlineSourceName })
+    : undefined;
   // Open the first volume by default; subsequent volumes start collapsed
   // to keep the page short on a 100+ chapter novel.
   const [open, setOpen] = useState<Set<number>>(
@@ -92,7 +112,9 @@ export function VolumesAccordion({
     () => new Map(),
   );
   const expandedRef = useRef<Set<number>>(new Set());
-  const isLazy = source.hasLazyVolumes === true;
+  // No source, no lazy loading: fetching a volume's chapters is a network
+  // call. The volume body says so instead of expanding into nothing.
+  const isLazy = source?.hasLazyVolumes === true;
 
   // Cancel-on-unmount guards. Tracks every in-flight fetch by volume
   // id so an unmount mid-load doesn't leak setState calls into a
@@ -115,7 +137,7 @@ export function VolumesAccordion({
 
   const loadVolume = useCallback(
     async (volumeId: number) => {
-      if (!isLazy) return;
+      if (!isLazy || !source) return;
       if (loadingVolumes.has(volumeId)) return;
       // Did we already load it once this mount? Avoid hammering on
       // every collapse/expand toggle.
@@ -544,7 +566,9 @@ export function VolumesAccordion({
   } | null>(null);
   const downloadVolume = useCallback(
     async (volumeId: number) => {
-      if (!libraryEntryId) return;
+      // `source` is the real guard, not the disabled button: this is
+      // reachable from the confirm dialog, which can outlive the tap.
+      if (!libraryEntryId || !source) return;
       if (downloadingVol.has(volumeId)) return;
       const vol = novel.volumes.find((v) => v.id === volumeId);
       if (!vol) return;
@@ -923,62 +947,79 @@ export function VolumesAccordion({
                 </span>
               </button>
               {libraryEntryId && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (volAllDownloaded || volDownloading) return;
-                    // A lazy volume has no chapter list yet, so volPending is
-                    // the source's reported count and nothing is known to be
-                    // on disk — the fetch happens after the user confirms.
-                    setVolumeConfirm({
-                      id: v.id,
-                      title: v.title,
-                      pending: volPending,
-                      skipped: volLoaded ? count - volPending : 0,
-                    });
-                  }}
-                  disabled={volAllDownloaded || volDownloading}
-                  title={
-                    volAllDownloaded
-                      ? tr("novel.volumeAllDownloaded")
-                      : volDownloading
-                        ? tr("novel.downloadingVolume")
-                        : tr("novel.downloadVolume")
-                  }
-                  aria-label={
-                    volAllDownloaded
-                      ? tr("novel.volumeAllDownloaded")
-                      : tr("novel.downloadVolume")
-                  }
-                  style={{
-                    flexShrink: 0,
-                    width: 42,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "none",
-                    background: "transparent",
-                    color: volAllDownloaded ? theme.muted : theme.ink,
-                    cursor:
-                      volAllDownloaded || volDownloading
-                        ? "default"
-                        : "pointer",
-                    opacity: volDownloading ? 0.5 : volAllDownloaded ? 0.55 : 1,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!volAllDownloaded && !volDownloading) {
-                      e.currentTarget.style.background = theme.hover;
+                <DisabledHint reason={disabledReason}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (volAllDownloaded || volDownloading || disabledReason)
+                        return;
+                      // A lazy volume has no chapter list yet, so volPending is
+                      // the source's reported count and nothing is known to be
+                      // on disk — the fetch happens after the user confirms.
+                      setVolumeConfirm({
+                        id: v.id,
+                        title: v.title,
+                        pending: volPending,
+                        skipped: volLoaded ? count - volPending : 0,
+                      });
+                    }}
+                    disabled={
+                      volAllDownloaded || volDownloading || !!disabledReason
                     }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <Icon
-                    name={volAllDownloaded ? "check" : "download"}
-                    size={15}
-                  />
-                </button>
+                    title={
+                      disabledReason
+                        ? disabledReason
+                        : volAllDownloaded
+                          ? tr("novel.volumeAllDownloaded")
+                          : volDownloading
+                            ? tr("novel.downloadingVolume")
+                            : tr("novel.downloadVolume")
+                    }
+                    aria-label={
+                      volAllDownloaded
+                        ? tr("novel.volumeAllDownloaded")
+                        : tr("novel.downloadVolume")
+                    }
+                    style={{
+                      flexShrink: 0,
+                      width: 42,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      background: "transparent",
+                      color: volAllDownloaded ? theme.muted : theme.ink,
+                      cursor:
+                        disabledReason || volAllDownloaded || volDownloading
+                          ? "default"
+                          : "pointer",
+                      opacity: disabledReason
+                        ? 0.45
+                        : volDownloading
+                          ? 0.5
+                          : volAllDownloaded
+                            ? 0.55
+                            : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (
+                        !volAllDownloaded &&
+                        !volDownloading &&
+                        !disabledReason
+                      ) {
+                        e.currentTarget.style.background = theme.hover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <Icon
+                      name={volAllDownloaded ? "check" : "download"}
+                      size={15}
+                    />
+                  </button>
+                </DisabledHint>
               )}
               {libraryEntryId && (
                 <button
@@ -1049,6 +1090,27 @@ export function VolumesAccordion({
                     />
                   );
                 }
+                // A lazy volume this device never fetched, opened with no
+                // extension to fetch it with. Without this the volume
+                // expands into nothing at all, which reads as a bug rather
+                // than as the one thing here that genuinely isn't saved.
+                if (empty && offlineSourceName) {
+                  return (
+                    <div
+                      style={{
+                        padding: "14px 18px",
+                        borderTop: `0.5px solid ${theme.rule}`,
+                        color: theme.muted,
+                        fontSize: 12.5,
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      {tr("novel.offline.volumeNotLoaded", {
+                        source: offlineSourceName,
+                      })}
+                    </div>
+                  );
+                }
                 return null;
               })()}
             {isOpen && v.chapters.length > 0 && (
@@ -1088,6 +1150,14 @@ export function VolumesAccordion({
                     libraryEntryId={libraryEntryId}
                     novelTitle={novel.title}
                     queueJob={activeJobs.get(c.id)}
+                    downloadDisabledReason={disabledReason}
+                    // Only the rows that would have to stream. A chapter
+                    // already on this device opens exactly as it always did.
+                    openDisabledReason={
+                      chapterFlags.get(c.id)?.downloadedAt
+                        ? undefined
+                        : chapterOfflineReason
+                    }
                     onOpenChapter={onOpenChapter}
                     onRequestDelete={deleteOneChapter}
                     selecting={selecting}
