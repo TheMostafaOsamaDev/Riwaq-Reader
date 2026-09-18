@@ -33,6 +33,7 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
   writeTextFile: vi.fn(
     async (p: string, c: string, opts?: { baseDir?: unknown }) => {
       requireBaseDir(opts);
+      if (failWritesMatching?.test(p)) throw new Error(`EIO ${p}`);
       files.set(p, c);
     },
   ),
@@ -58,6 +59,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import {
+  MAX_BUNDLE_BYTES,
   OFFICIAL_REPO_URL,
   acknowledgeTrustNotice,
   addRepo,
@@ -67,11 +69,17 @@ import {
   parseRepoIndex,
   removeRepo,
   resolveAssetUrl,
+  saveRepos,
 } from "./repos";
+
+/** When set, every writeTextFile to a matching path fails. Lets a test put
+ *  a disk error on one specific write rather than on all of them. */
+let failWritesMatching: RegExp | null = null;
 
 beforeEach(() => {
   files.clear();
   dirs.clear();
+  failWritesMatching = null;
   invokeImpl = async (cmd) => {
     throw new Error(`invoke not stubbed for ${cmd}`);
   };
@@ -178,6 +186,16 @@ describe("parseRepoIndex — the id is a path component", () => {
     expect(ids(withId("a"))).toEqual(["a"]);
   });
 
+  it("drops an entry whose declared size is over the bundle limit", () => {
+    const doc = structuredClone(valid) as { extensions: unknown[] };
+    const fat = structuredClone(valid.extensions[0]) as Record<string, unknown>;
+    fat.size = MAX_BUNDLE_BYTES + 1;
+    doc.extensions = [fat];
+    expect(parseRepoIndex(doc).extensions).toEqual([]);
+    // ...and the ordinary one beside it is still fine.
+    expect(ids(withId("cenele"))).toEqual(["cenele"]);
+  });
+
   it("keeps the good entries when a bad id sits beside them", () => {
     const doc = structuredClone(valid) as { extensions: unknown[] };
     const evil = structuredClone(valid.extensions[0]) as Record<
@@ -240,6 +258,41 @@ describe("listRepos", () => {
 
     const repos = await listRepos();
     expect(repos).toEqual(persisted);
+  });
+
+  it("does not replace an unreadable repos.json with the official seed", async () => {
+    // Absent and unreadable are different things. A blanket catch treated
+    // them as one, so a transient read error or a half-written repos.json
+    // silently seeded the official repo OVER every repository the user had
+    // added — the file was gone before they could notice.
+    const persisted = JSON.stringify([
+      { url: "https://custom.test/index.min.json", name: "C", addedAt: "x" },
+    ]);
+    files.set("riwaq/extensions/repos.json", `${persisted} <-- truncated`);
+
+    await expect(listRepos()).rejects.toThrow();
+
+    expect(files.get("riwaq/extensions/repos.json")).toBe(
+      `${persisted} <-- truncated`,
+    );
+  });
+
+  it("still seeds when the file is genuinely absent", async () => {
+    // The counterweight to the case above: refusing to seed at all would
+    // satisfy it and leave a first run with no repositories.
+    expect(files.has("riwaq/extensions/repos.json")).toBe(false);
+    expect((await listRepos()).map((r) => r.url)).toEqual([OFFICIAL_REPO_URL]);
+  });
+
+  it("does not quietly drop the trust acknowledgement when repos.json won't parse", async () => {
+    // saveRepos read-then-writes so a list update keeps the flag that
+    // shares the file. Swallowing the read failure wrote the loss back:
+    // the user is asked to accept the notice again, with no sign why.
+    files.set("riwaq/extensions/repos.json", "{ not json");
+    await expect(
+      saveRepos([{ url: "https://r.test/i.json", name: "R", addedAt: "x" }]),
+    ).rejects.toThrow();
+    expect(files.get("riwaq/extensions/repos.json")).toBe("{ not json");
   });
 });
 
@@ -391,6 +444,39 @@ describe("fetchRepoIndex", () => {
     invokeImpl = async () => ({ status: 500, text: "oops", headers: {} });
     const fallback = await fetchRepoIndex("https://mirror.test/index.min.json");
     expect(fallback.cached).toBe(true);
+  });
+
+  it("reports a healthy repo even when the cache write fails", async () => {
+    // The cache write used to sit inside the fetch's own try, so a disk
+    // error AFTER a perfectly successful fetch fell into the cache
+    // fallback: with an older cache it reported a fresh index as stale,
+    // and with none it rethrew a filesystem error as "repo unreachable".
+    invokeImpl = async () => okResponse(valid);
+    failWritesMatching = /index-cache/;
+
+    const result = await fetchRepoIndex("https://mirror.test/index.min.json");
+
+    expect(result.cached).toBe(false);
+    expect(result.index.extensions[0].id).toBe("cenele");
+  });
+
+  it("does not replay a stale cache after a fetch that actually succeeded", async () => {
+    // The same bug's other face: with a cache already on disk, the failed
+    // write dropped through to it and answered `cached: true` — the Store
+    // then tells the user the repo could not be reached.
+    invokeImpl = async () => okResponse(valid);
+    const first = await fetchRepoIndex("https://mirror.test/index.min.json");
+    expect(first.cached).toBe(false);
+
+    const cacheKey = [...files.keys()].find((k) => k.includes("index-cache"));
+    const cachedBefore = files.get(cacheKey as string);
+
+    failWritesMatching = /index-cache/;
+    const second = await fetchRepoIndex("https://mirror.test/index.min.json");
+
+    expect(second.cached).toBe(false);
+    // ...and the write really did fail, so this is the path it claims.
+    expect(files.get(cacheKey as string)).toBe(cachedBefore);
   });
 
   it("throws when the repo is unreachable and there is no cache yet", async () => {

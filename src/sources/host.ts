@@ -12,13 +12,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isChallengeResponse } from "./challenge";
 import { extractPdfLines } from "./pdf/pdfChapter";
+import type { TauriFetchResponse } from "./tauriFetch";
 import type { FetchOptions, FetchResponse, Locale, SourceHost } from "./types";
-
-interface TauriFetchResponse {
-  status: number;
-  text: string;
-  headers: Record<string, string>;
-}
 
 /** The UI language, read outside the React tree. App.tsx keeps <html lang>
  *  in sync with the user's preference, and this module is plain DOM code
