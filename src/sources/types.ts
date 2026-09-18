@@ -1,13 +1,34 @@
+// VENDORED from Riwaq-Extensions @ packages/extension-api/src/types.ts.
+//
+// Types only. The contract's runtime helpers (parseHtml, absoluteUrl, …)
+// are bundled into each extension by the repo's builder and are never
+// imported by the host, so drift here can only ever surface as a
+// TypeScript error in this tree — never as a runtime mismatch. The real
+// runtime gate is the manifest's `apiVersion`, checked in loader.ts.
+//
+// When the contract changes upstream, re-copy this file verbatim.
+//
+// ONE deliberate app-side addition, which must be re-applied after every
+// re-copy: `SourceMetadata.installedFrom`. It records which repo an
+// extension was installed from, which is host bookkeeping — an extension
+// neither declares nor reads it — so it does not belong upstream.
+//
+// `pnpm format` will also reflow a signature or two (this tree's biome
+// config is not the upstream repo's). That is expected and cosmetic; only
+// the addition above is a semantic difference from the published contract.
+
 // The Sources subsystem. A "Source" is an installable extension that knows
 // how to browse + scrape a specific website (or family of sites) for
 // novels/books. Every source implements the `Source` interface below; the
-// host (Leaflet) drives them through their lifecycle, persists results
-// into the library, and isolates them from each other.
+// host drives them through their lifecycle, persists results into the
+// library, and isolates them from each other.
 //
-// Compared to the older NovelScraper C# tool, the same scraping logic lives
-// here as a small TS module, but the heavy lifting (HTTP, JS rendering) is
-// delegated to the Rust side through the `SourceHost` bridge — keeping the
-// extension code itself short and reviewable.
+// A source never talks to the network, a rendering engine, or the
+// filesystem directly. Those capabilities — HTTP, JS-rendered page
+// extraction, logging, the UI's current locale, and PDF chapter parsing —
+// arrive on the injected `SourceHost` the host supplies, by whatever means
+// it chooses. That keeps the extension code itself short, reviewable, and
+// portable across hosts.
 //
 // Three layers of data shape:
 //   - NovelCard: cheap stub used in homepage rows + search results
@@ -20,7 +41,10 @@
 // All shapes are JSON-serializable so a snapshot of any scrape can be
 // persisted for resume / debugging without losing fidelity.
 
-import type { MsgKey } from "../i18n";
+/** Major version of this contract. A manifest declares the `apiVersion` it
+ *  was built against; the host refuses to construct an extension whose
+ *  major does not match this value. */
+export const API_VERSION = 1;
 
 // ── chapter-body shapes (unchanged from the original importer) ─────────────
 
@@ -122,8 +146,12 @@ export interface SourceNovelMeta {
 
 export interface SourceNovel {
   title: string;
-  /** Best-effort author name. Sources unable to detect it return "Unknown".
-   *  The user can rename via the library's edit dialog post-import. */
+  /** Best-effort author name. Sources unable to detect it return `""`
+   *  (not a literal "Unknown") — both extensions in this repo do this
+   *  deliberately, so the host's own display-time fallback can localize
+   *  the empty case instead of a locale-frozen English string getting
+   *  baked into the novel's persisted data. The user can rename via the
+   *  library's edit dialog post-import. */
   author: string;
   /** Original-language title (e.g. "Master of Gu kol" for the Arabic
    *  KolNovel translation of "Reverend Insanity"). Surfaced in the header
@@ -152,13 +180,28 @@ export interface SourceNovel {
   volumes: SourceVolume[];
 }
 
+// ── locale + PDF extraction ─────────────────────────────────────────────────
+
+export type Locale = "en" | "ar";
+
+export interface ExtractedImage {
+  bytes: Uint8Array;
+  mimeType: string;
+  extension: string;
+}
+
 // ── host bridge ─────────────────────────────────────────────────────────────
 
 export interface FetchResponse {
   status: number;
   /** Response body as text. UTF-8 decoded by the host. */
   text: string;
-  /** Response headers, lowercased keys. */
+  /** Response headers, lowercased keys. A `Record<string, string>` holds
+   *  only one value per header name, so multiple `Set-Cookie` headers on
+   *  one response cannot be represented here at all — see the cookie-jar
+   *  requirement on `SourceHost.fetch` below for why that's necessarily
+   *  the host's own job, not something an extension could read out of
+   *  this shape and manage itself even if it wanted to. */
   headers: Record<string, string>;
 }
 
@@ -166,15 +209,6 @@ export interface FetchOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD";
   headers?: Record<string, string>;
   body?: string;
-}
-
-export interface SessionFetchOptions extends FetchOptions {
-  /** How long to let the origin's bot check clear on its own before the
-   *  session window is shown so the user can solve it. Default 6s. */
-  revealAfterMs?: number;
-  /** Ceiling on clearing the check, including the user's own time.
-   *  Default 180s. */
-  clearTimeoutMs?: number;
 }
 
 export interface RenderExtractOptions {
@@ -192,27 +226,60 @@ export interface RenderExtractOptions {
 }
 
 export interface SourceHost {
+  /** A GET/POST/PUT/DELETE/HEAD request through the host's own HTTP
+   *  client.
+   *
+   *  Session/cookie semantics: a host MUST behave as if every `fetch`
+   *  and `fetchBytes` call an extension makes within one session shares
+   *  a single cookie jar — sending cookies the site has previously set
+   *  and storing new ones, the same way a browser tab's requests do.
+   *  Some sites depend on this: extensions/cenele scrapes a WordPress
+   *  nonce off one page and replays it against `admin-ajax.php` in
+   *  later, separate `fetch` calls, and WordPress nonces are
+   *  session-scoped, so this only works if the session cookie set on
+   *  the first request is still being sent on the later ones. An
+   *  extension has no way to manage this itself even if it wanted to:
+   *  `FetchResponse.headers` is a `Record<string, string>`, which cannot
+   *  represent multiple `Set-Cookie` headers on one response, so there
+   *  is no shape here an extension could read a session cookie out of
+   *  and replay by hand. */
   fetch(url: string, options?: FetchOptions): Promise<FetchResponse>;
-  /** Fetch from inside a persistent browser session pinned to the URL's
-   *  origin, instead of over plain HTTP. For origins behind a bot
-   *  challenge that a plain client cannot satisfy — the request runs as
-   *  same-origin `fetch` in a real webview that has already cleared it.
-   *  Same response shape as `fetch`, so it is a drop-in transport swap.
-   *  Desktop only for now; rejects on mobile. */
-  sessionFetch(
-    url: string,
-    options?: SessionFetchOptions,
-  ): Promise<FetchResponse>;
+  /** Same as `fetch`, but returns raw bytes instead of decoded text —
+   *  for images and PDFs. Subject to the same cookie-jar requirement. */
   fetchBytes(url: string, options?: FetchOptions): Promise<Uint8Array>;
   renderAndExtract<T = unknown>(
     url: string,
     options: RenderExtractOptions,
   ): Promise<T>;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
+
+  /** UI language the host is currently rendering in. Extensions use this for
+   *  the handful of strings they synthesise themselves (volume/chapter
+   *  fallback titles, section headings a site does not label). Extensions
+   *  ship their own copy — they cannot reach the app's message catalogue. */
+  readonly locale: Locale;
+
+  /** PDF chapter extraction. pdf.js is far too heavy to bundle per extension,
+   *  so the host owns the single instance and exposes it here. Sources whose
+   *  chapters ship as PDFs call this instead of parsing bytes themselves. */
+  readonly pdf: {
+    extractChapter(
+      bytes: Uint8Array,
+      options: {
+        chapterUrl: string;
+        novelTitle?: string;
+        mintImageRef: (img: ExtractedImage) => string;
+      },
+    ): Promise<SourceLine[]>;
+  };
 }
 
 // ── the Source interface itself ─────────────────────────────────────────────
 
+/** Catalogue metadata for one source: id, display name, version, etc. The
+ *  host builds this from an extension's `manifest.json` and pairs it with
+ *  the `Source` instance it constructs — an extension does not declare or
+ *  return a `SourceMetadata` itself (see `Source` below). */
 export interface SourceMetadata {
   /** Stable machine-readable id, kebab-case. */
   id: string;
@@ -223,20 +290,20 @@ export interface SourceMetadata {
   baseUrl: string;
   /** BCP-47 language tag the source primarily produces. */
   language: string;
-  /** One-line description shown in the sources list, used verbatim. Prefer
-   *  `descriptionKey` for the app's own bundled sources so the copy
-   *  translates with the UI language; this plain field exists for future
-   *  sideloaded/third-party sources that ship their own (already-localized
-   *  or single-language) text. */
-  description?: string;
-  /** i18n key resolved via `tr()` for the sources-list card description.
-   *  Takes precedence over `description` when both are present — used by
-   *  the app's own bundled sources (see registry.ts). */
-  descriptionKey?: MsgKey;
+  /** Locale map for the one-line description shown in the sources list,
+   *  e.g. `{ en: "...", ar: "..." }`. `en` is required by convention as the
+   *  fallback when the host's current locale has no entry of its own.
+   *  Sourced from the extension's manifest — an extension never
+   *  constructs this itself (see the `Source` interface below). */
+  description?: Record<string, string>;
   /** Absolute URL of an icon/logo. Shown on the source card in the store.
    *  When absent the UI falls back to a generated avatar from the name. */
   iconUrl?: string;
   version: string;
+  /** APP-SIDE ADDITION (not in the upstream contract) — the URL of the repo
+   *  this extension was installed from. Host bookkeeping for the Extensions
+   *  manager; an extension neither declares nor reads it. */
+  installedFrom?: string;
 }
 
 /**
@@ -249,8 +316,6 @@ export interface SourceMetadata {
  * separate flag.
  */
 export interface Source {
-  readonly meta: SourceMetadata;
-
   /** Cheap predicate — does the URL look like one of this source's pages? */
   canHandle(url: string): boolean;
 

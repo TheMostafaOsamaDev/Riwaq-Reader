@@ -17,6 +17,21 @@ describe("isChallengeResponse", () => {
     ).toBe(true);
   });
 
+  it("detects the cf-mitigated header regardless of value case", () => {
+    // HTTP header VALUES are case-sensitive to a plain string compare, and
+    // nothing obliges an edge to send this one lower-cased. Without this
+    // case, deleting `.toLowerCase()` from the implementation fails zero
+    // tests, because the only other test touching that line already hands
+    // it an already-lower-case value.
+    expect(
+      isChallengeResponse({
+        status: 403,
+        headers: { "cf-mitigated": "Challenge" },
+        text: "",
+      }),
+    ).toBe(true);
+  });
+
   it("detects the interstitial body on a 403 without the header", () => {
     expect(
       isChallengeResponse({ status: 403, headers: {}, text: interstitial }),
