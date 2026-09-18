@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from "react";
 import { useI18n } from "../i18n/useI18n";
+import { pickDescription } from "../sources/description";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
 import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
@@ -18,27 +19,26 @@ interface Props {
 }
 
 export function SourcesListView({ theme, onOpenSource }: Props) {
-  const { tr } = useI18n();
+  const { locale, tr } = useI18n();
   const sources = useMemo(() => listSources(), []);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
 
-  // Live filter over the installed sources by name / URL / description. The
-  // description may be an i18n key (bundled sources) or plain text (future
-  // sideloaded ones), so resolve it before matching.
+  // Live filter over the installed sources by name / URL / description.
+  // An extension ships its description as a locale map, so resolve it to
+  // the display string before matching — otherwise the user would be
+  // searching a stringified object.
   const filtered = useMemo(() => {
     if (!q) return sources;
     return sources.filter((s) => {
-      const desc = s.descriptionKey
-        ? tr(s.descriptionKey)
-        : (s.description ?? "");
+      const desc = pickDescription(s.description, locale) ?? "";
       return (
         s.name.toLowerCase().includes(q) ||
         s.baseUrl.toLowerCase().includes(q) ||
         desc.toLowerCase().includes(q)
       );
     });
-  }, [sources, q, tr]);
+  }, [sources, q, locale]);
 
   return (
     <div
@@ -175,13 +175,10 @@ interface SourceCardProps {
 }
 
 function SourceCard({ theme, source, onClick }: SourceCardProps) {
-  const { tr } = useI18n();
-  // Bundled sources set `descriptionKey` so this copy translates with the
-  // UI language; `description` is a plain-text fallback for future
-  // sideloaded/third-party sources that ship their own text directly.
-  const description = source.descriptionKey
-    ? tr(source.descriptionKey)
-    : source.description;
+  const { locale } = useI18n();
+  // An extension ships its own description as a locale map — it cannot
+  // reach the app's message catalogue, so this is not an i18n key.
+  const description = pickDescription(source.description, locale);
 
   return (
     <button

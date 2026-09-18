@@ -98,6 +98,10 @@ export function NovelDetailView({
 }: Props) {
   const { tr } = useI18n();
   const source = useMemo<Source | null>(() => getSource(sourceId), [sourceId]);
+  // Display metadata comes from the registry: the contract's `Source` has no
+  // `meta` — an extension does not declare its own catalogue entry, the host
+  // builds one from its manifest.
+  const sourceMeta = useMemo(() => getSourceMeta(sourceId), [sourceId]);
   const [state, setState] = useState<State>({
     loading: true,
     error: null,
@@ -379,8 +383,8 @@ export function NovelDetailView({
             theme={theme}
             layout={layout}
             novel={state.novel}
-            sourceName={source.meta.name}
-            sourceIconUrl={getSourceMeta(source.meta.id)?.iconUrl}
+            sourceName={sourceMeta?.name ?? sourceId}
+            sourceIconUrl={sourceMeta?.iconUrl}
             working={working}
             chapterCount={state.novel.volumes.reduce(
               (a, v) => a + v.chapters.length,

@@ -157,7 +157,11 @@ export async function listRepos(): Promise<RepoEntry[]> {
   }
 }
 
-async function saveRepos(repos: RepoEntry[]): Promise<void> {
+/** Persist the repo list. Exported so `registry.loadCatalog` can stamp
+ *  `lastFetchedAt` after it reaches a repo — that write belongs to the
+ *  caller that knows a fetch just succeeded, not to `fetchRepoIndex`,
+ *  which is also used on paths that must not touch repos.json. */
+export async function saveRepos(repos: RepoEntry[]): Promise<void> {
   await ensureExtDir(EXTENSIONS_DIR);
   await writeTextFile(REPOS_FILE, JSON.stringify(repos, null, 2), {
     baseDir: BASE,
