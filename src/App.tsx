@@ -423,7 +423,15 @@ function App() {
     // interrupted jobs) doesn't trigger a notification flurry on
     // launch.
     (async () => {
-      await loadPersistedQueue();
+      try {
+        await loadPersistedQueue();
+      } catch (e) {
+        // A queue file that cannot be read must not take the other two
+        // down with it. Without them the session has no tray progress for
+        // downloads and no background task at all, and the rejection was
+        // also unhandled — surfacing only as a console warning at launch.
+        console.error("[downloads] could not restore the persisted queue:", e);
+      }
       startDownloadNotifier();
       startBackgroundTaskCoordinator();
     })();
