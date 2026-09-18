@@ -1,23 +1,19 @@
 import { useEffect, useRef } from "react";
 import {
   createLineBank,
-  glideStep,
+  glideFrame,
   measureLineBox,
-  settleDelta,
   wheelDeltaToPixels,
 } from "./lineScroll";
 
 /**
  * `wheel`   desktop: the reader owns wheel scrolling, gliding to a target that
  *           always rests on a whole line.
- * `settle`  mobile: touch scrolling is left entirely to the platform, and only
- *           the last few pixels are glided onto a line once the fling ends.
- * `off`     paginated modes, which do not scroll.
+ * `off`     paginated modes, which do not scroll — and mobile, which is left
+ *           entirely to the platform.
  */
-export type LineScrollMode = "off" | "wheel" | "settle";
+export type LineScrollMode = "off" | "wheel";
 
-/** Silence after a fling that means the platform has finished with it. */
-const SETTLE_AFTER_MS = 160;
 /** Stop the frame loop after this many still frames. */
 const IDLE_FRAMES = 12;
 /**
@@ -38,11 +34,17 @@ interface Options {
  * Line-aware scrolling for the reading surface. See lineScroll.ts for what
  * this is fixing and the numbers behind it; this file is only the wiring.
  *
- * Deliberately different per platform. A phone has no wheel, and touch
- * scrolling belongs to the compositor — attaching a non-passive listener that
- * calls preventDefault to a touch surface is how momentum scrolling gets
- * broken. So mobile never intercepts a gesture; it waits for the fling to
- * finish and then settles.
+ * Desktop only. Mobile used to glide onto the nearest line once a fling had
+ * finished, and that is deliberately gone: the whole point of resting on a
+ * line is that the reader does not have to notice it happening, and a move
+ * that starts AFTER the reader has stopped scrolling is the one move they
+ * always notice. Touch scrolling is now the platform's from beginning to end.
+ *
+ * The line alignment it was buying was mostly illusory anyway — it aimed at a
+ * grid computed from scrollTop 0, while paragraph margins (1.1em against a
+ * 1.6em line box) push the real lines off that grid from the second paragraph
+ * on, so it routinely moved the page to a position no less ragged than the one
+ * it started from.
  */
 export function useLineScroll({
   scrollRef,
@@ -84,11 +86,23 @@ export function useLineScroll({
       bank.current.reset();
     }
     if (el.scrollTop !== target.current) {
-      const next = reducedRef.current
-        ? target.current
-        : glideStep(el.scrollTop, target.current);
-      el.scrollTop = next;
-      applied.current = el.scrollTop;
+      // glideFrame writes through this setter and reads the position back, so
+      // it can tell when a step was too small for the scroller's pixel grain
+      // and land instead of stalling short. It returns the target to keep —
+      // its own landing position once it has arrived, which is what makes the
+      // equality test above go true so `idle` can count up and this loop can
+      // stand down. See lineScroll.ts.
+      const state = glideFrame(
+        el.scrollTop,
+        target.current,
+        (value) => {
+          el.scrollTop = value;
+          return el.scrollTop;
+        },
+        reducedRef.current,
+      );
+      target.current = state.target;
+      applied.current = state.position;
       idle.current = 0;
     } else {
       idle.current += 1;
@@ -159,51 +173,5 @@ export function useLineScroll({
 
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [mode, scrollRef]);
-
-  // ── mobile ───────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (mode !== "settle") return;
-    const el = scrollRef.current;
-    if (!el) return;
-    let timer = 0;
-
-    const onScroll = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        // Measure here too if the mount pass had nothing to measure. The
-        // wheel path needed the same guard: without it a single failed
-        // measurement at mount disables the feature for the whole session,
-        // because the early return skips the re-measure in wake().
-        let line = lineBox.current;
-        if (!(line > 0)) {
-          line = measureLineBox(el);
-          lineBox.current = line;
-        }
-        if (!(line > 0)) return;
-        const top = el.scrollTop;
-        const max = el.scrollHeight - el.clientHeight;
-        // Leave the extremes alone: snapping at the very end would scroll away
-        // from it and open a gap under the last line.
-        if (top < line || top > max - line) return;
-        const delta = settleDelta(top, line);
-        if (Math.abs(delta) < 0.5) return;
-        target.current = Math.max(0, Math.min(max, top + delta));
-        // Adopt the platform's position as ours BEFORE waking the loop. The
-        // pump treats an unexplained change in scrollTop as someone else
-        // moving the reader (a chapter turn, the scrubber) and resets the
-        // target to match — and a touch scroll is, by definition, not ours.
-        // Without this the guard destroyed every settle the moment it was
-        // asked for: scrollTop had moved 67px while `applied` still said 0.
-        applied.current = top;
-        wake.current();
-      }, SETTLE_AFTER_MS);
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      window.clearTimeout(timer);
-    };
   }, [mode, scrollRef]);
 }

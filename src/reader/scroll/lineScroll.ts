@@ -16,13 +16,30 @@
 //
 //   easing    glides to the target instead of applying each delta whole.
 //             Worst single-frame movement 209px -> 55px.
-//   snapping  comes to rest on a whole line. Alignment at rest 6.5px -> 0.8px.
+//   banking   spends only whole lines, so the glide's target is always on one
+//             and the page arrives aligned rather than being tugged into
+//             place after the reader has already stopped.
 //
-// Snapping ALONE is worse than doing nothing for the blur (77px mean per frame
-// against native's 52), which is worth knowing because "just snap to lines" is
-// the obvious naive fix. Both together is what reads well.
+// Quantising ALONE is worse than doing nothing for the blur (77px mean per
+// frame against native's 52), which is worth knowing because "just snap to
+// lines" is the obvious naive fix. Both together is what reads well.
 //
-// Everything here is pure. The DOM wiring lives in useLineScroll.
+// What is deliberately NOT here any more is a settle: a move that begins after
+// the reader has stopped scrolling. Mobile used to glide onto the nearest line
+// once a fling ended, and it was removed because a move nobody asked for is
+// the one move everybody notices.
+//
+// Worth knowing before adding any line-alignment back, because it is the
+// obvious thing to reach for and it does not work: rounding a position to a
+// multiple of the line box measured from scrollTop 0 aligns to a grid the text
+// is not on. BookBody gives each paragraph a 1.1em margin against a 1.6em line
+// box — 18.7px against 27.2px, not a multiple — so the REAL lines walk off
+// that grid from the second paragraph on. Measured drift across the first four
+// paragraphs: 3, 11.6, 7.1, 1.5px, against a half line of 13.6. Align to
+// measured line tops (Range.getClientRects) or not at all.
+//
+// Everything here is pure — glideFrame touches the scroller only through a
+// writer its caller passes in. The DOM wiring lives in useLineScroll.
 
 /** How much of the remaining gap a glide closes each frame. */
 export const GLIDE_FACTOR = 0.22;
@@ -43,23 +60,6 @@ export function wheelDeltaToPixels(deltaY: number, deltaMode = 0): number {
   return deltaY;
 }
 
-/** The nearest whole-line offset to `top`. */
-export function snapToLine(top: number, lineBox: number): number {
-  if (!(lineBox > 0)) return top;
-  return Math.round(top / lineBox) * lineBox;
-}
-
-/**
- * Signed distance from `top` to the nearest line boundary — what a settle has
- * to travel. Never more than half a line in either direction.
- */
-export function settleDelta(top: number, lineBox: number): number {
-  if (!(lineBox > 0)) return 0;
-  const frac = top % lineBox;
-  const delta = frac < lineBox / 2 ? -frac : lineBox - frac;
-  return delta === 0 ? 0 : delta;
-}
-
 /** One frame of exponential glide toward `target`. */
 export function glideStep(
   current: number,
@@ -70,6 +70,53 @@ export function glideStep(
   const gap = target - current;
   if (Math.abs(gap) <= settlePx) return target;
   return current + gap * factor;
+}
+
+export interface GlideFrameState {
+  /** Where the scroller is now. */
+  position: number;
+  /** Where it is still heading — equal to `position` once it has landed. */
+  target: number;
+}
+
+/**
+ * One frame of glide against a real scroller, which stores whole pixels.
+ *
+ * `glideStep` alone cannot land on a line. Every line target is a multiple of
+ * the line box (27.2px at the default settings) and so fractional, while a
+ * scroller only holds whole pixels — and the two engines this app ships on
+ * disagree about how: Chromium ROUNDS (300.4 -> 300, 300.5 -> 301), WebKit
+ * TRUNCATES (300.9 -> 300). Either way a step of 22% of the remaining gap
+ * eventually becomes too small to change the stored value, and the glide stops
+ * advancing while still short of the line it was aiming for: measured 1.5-2px
+ * short in Chromium, 3.6-4.5px in WebKit, which needs a whole pixel of step to
+ * move at all.
+ *
+ * That has two costs. The reader rests visibly off the line, so the feature
+ * does not do the one thing it exists to do. And the pump's idle test is
+ * `scrollTop === target`, which a target the scroller cannot store never
+ * satisfies, so `idle` never counts up and the requestAnimationFrame loop runs
+ * for ever after the reader has visibly stopped.
+ *
+ * Rather than model either engine's rounding — which would be wrong on one of
+ * them — this WATCHES. `write` assigns a position and returns what the
+ * scroller reads back; if that did not move, the step was below the grain, so
+ * we land on the target and adopt whatever the scroller stored. The adopted
+ * value is as close to the line as that engine can get, and reporting it as
+ * the target is what lets the caller's equality test go true and its loop
+ * stand down.
+ */
+export function glideFrame(
+  current: number,
+  target: number,
+  write: (value: number) => number,
+  reduced = false,
+): GlideFrameState {
+  const next = reduced ? target : glideStep(current, target);
+  const moved = write(next);
+  if (moved !== current) return { position: moved, target };
+  const landed = write(target);
+  return { position: landed, target: landed };
 }
 
 export interface LineBank {
