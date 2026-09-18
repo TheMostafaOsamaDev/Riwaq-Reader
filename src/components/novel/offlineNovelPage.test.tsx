@@ -204,6 +204,28 @@ function rowActionButton(row: HTMLElement): HTMLButtonElement {
   return button;
 }
 
+/** The React `onClick` a node was rendered with.
+ *
+ *  Needed because React refuses to dispatch a synthetic mouse event to a
+ *  form element whose PROPS say `disabled`, whatever the DOM attribute
+ *  says. So a disabled row's handler cannot be reached through the DOM at
+ *  all: clicking it and asserting nothing happened proves only what the
+ *  `disabled` assertion already proves, and leaves ChapterRow's in-handler
+ *  guard untested. This is the only way left to reach it.
+ *
+ *  Throws rather than returning undefined if React's internal key ever
+ *  moves, so a case built on it fails loudly instead of quietly measuring
+ *  nothing. */
+function reactOnClick(el: HTMLElement): (e: unknown) => unknown {
+  const key = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+  if (!key) throw new Error("no React props found on this node");
+  const props = (el as unknown as Record<string, { onClick?: unknown }>)[key];
+  if (typeof props.onClick !== "function") {
+    throw new Error("this node was rendered with no onClick");
+  }
+  return props.onClick as (e: unknown) => unknown;
+}
+
 function buttonWithText(text: string): HTMLButtonElement {
   const buttons = [...host.querySelectorAll("button")] as HTMLButtonElement[];
   const button = buttons.find((b) => (b.textContent ?? "").includes(text));
@@ -305,10 +327,18 @@ describe("saved novel, source extension gone — what is refused", () => {
     );
   });
 
-  it("never enqueues a download from a disabled row", async () => {
+  it("refuses the download even when the button is reachable", async () => {
+    // This used to click the disabled button and assert nothing was
+    // enqueued — which a DOM gives for free: a disabled <button> never
+    // delivers a click to a handler, so the case restated the `disabled`
+    // assertion above it and left ChapterRow's in-handler guard untested.
+    // Strip the attribute and click for real, so the guard is the only
+    // thing that can refuse.
     await mount();
     await act(async () => {
-      rowActionButton(rows()[1]).click();
+      await reactOnClick(rowActionButton(rows()[1]))({
+        stopPropagation() {},
+      });
     });
     expect(enqueue).not.toHaveBeenCalled();
   });
@@ -428,6 +458,30 @@ describe("the same page with the extension working", () => {
   it("leaves the range download live", async () => {
     await mount();
     expect(buttonWithText("Download range").disabled).toBe(false);
+  });
+
+  it("actually enqueues that chapter download", async () => {
+    // The counterweight to the in-handler guard above: without this,
+    // "nothing was enqueued" would pass for a row whose click never
+    // enqueues anything under any circumstances.
+    await mount();
+    await act(async () => {
+      rowActionButton(rows()[1]).click();
+    });
+    expect(enqueue).toHaveBeenCalled();
+  });
+
+  it("enqueues through the handler reached directly, too", async () => {
+    // The second half of that counterweight: it proves reactOnClick really
+    // reaches the handler, so the refusal case above is measuring the
+    // guard rather than a helper that quietly does nothing.
+    await mount();
+    await act(async () => {
+      await reactOnClick(rowActionButton(rows()[1]))({
+        stopPropagation() {},
+      });
+    });
+    expect(enqueue).toHaveBeenCalled();
   });
 });
 
