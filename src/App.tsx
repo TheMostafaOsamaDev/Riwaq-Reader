@@ -94,6 +94,7 @@ import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { initExtensions } from "./sources/registry";
 
 // Kept off the startup path — neither of these is needed to paint the library,
 // and a user who only reads EPUBs from their device never loads either.
@@ -427,6 +428,20 @@ function App() {
       startDownloadNotifier();
       startBackgroundTaskCoordinator();
     })();
+  }, []);
+
+  // Load installed novel-source extensions. Deliberately NOT awaited before
+  // this component returns its JSX, and started from an effect rather than
+  // during render — see main.tsx's migrateLegacyRoot comment for the
+  // Android blank launch that gating a mount on an async filesystem call
+  // caused. initExtensions() never rejects (see registry.ts's doc comment),
+  // so this needs no `.catch`. `extensionsReady` is threaded down to the
+  // Store only — nothing else in the app depends on extensions having
+  // loaded, so the library, reader, and settings render exactly as before
+  // regardless of how long this takes, or if it never resolves at all.
+  const [extensionsReady, setExtensionsReady] = useState(false);
+  useEffect(() => {
+    void initExtensions().finally(() => setExtensionsReady(true));
   }, []);
 
   const reduced = useReducedMotion();
@@ -956,6 +971,7 @@ function App() {
               streamActive={streaming !== null}
               onOpenSettings={openSettings}
               confirmDelete={t.confirmDelete}
+              extensionsReady={extensionsReady}
             />
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <Suspense fallback={<LazyViewFallback background={theme.bg} />}>

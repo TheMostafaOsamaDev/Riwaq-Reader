@@ -26,6 +26,10 @@ export interface LayoutProps {
   ) => void;
   /** Imported via a source — refresh shelf after the new entry lands. */
   onSourceImportComplete: () => void;
+  /** True once installed novel-source extensions have finished loading.
+   *  Forwarded straight through to the Store — nothing else in either
+   *  layout depends on it. */
+  extensionsReady: boolean;
   /** When non-null, the body shows NovelDetailView for a library-backed
    *  source entry instead of the shelf. Set by `handleOpen` in the parent
    *  when the user clicks a `kind: "source"` card. */
