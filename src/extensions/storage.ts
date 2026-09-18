@@ -4,11 +4,27 @@
 //   riwaq/extensions/
 //   ├── repos.json
 //   ├── index-cache/<hash>.json
-//   └── installed/<id>/{index.js,manifest.json,icon.png,.origin.json}
+//   ├── staging/<id>/    — a write in progress
+//   ├── trash/<id>/      — the previous install, mid-swap
+//   └── installed/<id>/{index.js,manifest.json,icon.png,origin.json}
 //
-// Writes land in a sibling `.tmp-<id>` directory and are renamed into
-// place, so an interrupted install can never leave a half-written bundle
-// that loader.ts would then try to evaluate.
+// Writes land in `staging/<id>` and are renamed into place, so an
+// interrupted install can never leave a half-written bundle that loader.ts
+// would then try to evaluate.
+//
+// NOTHING HERE MAY BE DOT-PREFIXED. These were `.tmp-<id>`, `.old-<id>` and
+// `.origin.json` — hidden, and sitting inside `installed/`, which is why
+// listInstalled had to filter them out by prefix. Tauri's fs scope refuses
+// them: tauri-plugin-fs resolves `require_literal_leading_dot` as
+// `.unwrap_or(cfg!(unix))`, so on macOS, Linux AND Android a `$APPDATA/**`
+// scope does not match any path component starting with a dot, and every
+// call against one fails with "forbidden path". Windows defaults the other
+// way, so this breaks on three platforms and passes on the one where a glob
+// test would most likely be written.
+//
+// Keeping staging and trash OUTSIDE `installed/` also means listInstalled
+// needs no prefix filter at all: every directory in there is a real
+// install, and no extension id can ever collide with a staging name.
 
 import {
   BaseDirectory,
@@ -26,6 +42,8 @@ import { migrateLegacyRoot } from "../store/legacyRoot";
 const BASE = BaseDirectory.AppData;
 export const EXTENSIONS_DIR = "riwaq/extensions";
 const INSTALLED_DIR = `${EXTENSIONS_DIR}/installed`;
+const STAGING_DIR = `${EXTENSIONS_DIR}/staging`;
+const TRASH_DIR = `${EXTENSIONS_DIR}/trash`;
 
 export interface ExtensionManifest {
   id: string;
@@ -84,13 +102,9 @@ export async function listInstalled(): Promise<InstalledRecord[]> {
   const entries = await readDir(INSTALLED_DIR, { baseDir: BASE });
   const out: InstalledRecord[] = [];
   for (const entry of entries) {
-    if (
-      !entry.isDirectory ||
-      entry.name.startsWith(".tmp-") ||
-      entry.name.startsWith(".old-")
-    ) {
-      continue;
-    }
+    // No prefix filter: staging and trash live outside this directory, so
+    // everything here is a real install.
+    if (!entry.isDirectory) continue;
     try {
       const manifest = JSON.parse(
         await readTextFile(`${dirOf(entry.name)}/manifest.json`, {
@@ -98,7 +112,7 @@ export async function listInstalled(): Promise<InstalledRecord[]> {
         }),
       ) as ExtensionManifest;
       const origin = JSON.parse(
-        await readTextFile(`${dirOf(entry.name)}/.origin.json`, {
+        await readTextFile(`${dirOf(entry.name)}/origin.json`, {
           baseDir: BASE,
         }),
       ) as OriginRecord;
@@ -139,11 +153,11 @@ export async function writeInstalled(
   }
 
   const target = dirOf(id);
-  const staging = `${INSTALLED_DIR}/.tmp-${id}`;
-  const aside = `${INSTALLED_DIR}/.old-${id}`;
+  const staging = `${STAGING_DIR}/${id}`;
+  const aside = `${TRASH_DIR}/${id}`;
 
   // Recovery: if an earlier call died between "move the old bundle aside"
-  // and "delete the old bundle" below, `.old-<id>` is left holding the
+  // and "delete the old bundle" below, `trash/<id>` is left holding the
   // previous install with nothing at `target`. Put it back before doing
   // anything else, so this call starts from a consistent state instead of
   // compounding an already-interrupted swap.
@@ -171,7 +185,7 @@ export async function writeInstalled(
     { baseDir: BASE },
   );
   await writeTextFile(
-    `${staging}/.origin.json`,
+    `${staging}/origin.json`,
     JSON.stringify(files.origin, null, 2),
     { baseDir: BASE },
   );
@@ -183,17 +197,23 @@ export async function writeInstalled(
   // bundle occupies `target`: move the old one aside, bring the new one in,
   // delete the old one last. Dying between the first two renames is exactly
   // what the recovery block above undoes on the next call; dying after both
-  // renames just leaves a harmless `.old-<id>` for the next call to clean up
+  // renames just leaves a harmless `trash/<id>` for the next call to clean up
   // (cleared here too, in case one is already sitting from that case).
   if (await exists(aside, { baseDir: BASE })) {
     await remove(aside, { baseDir: BASE, recursive: true });
   }
+  // Both rename destinations need their parent to exist. This used to come
+  // for free: staging lived at `installed/.tmp-<id>`, so creating it also
+  // created `installed/`. Now that staging and trash sit outside, nothing
+  // else does — and a rename into a missing directory fails.
   if (await exists(target, { baseDir: BASE })) {
+    await ensureDir(TRASH_DIR);
     await rename(target, aside, {
       oldPathBaseDir: BASE,
       newPathBaseDir: BASE,
     });
   }
+  await ensureDir(INSTALLED_DIR);
   await rename(staging, target, {
     oldPathBaseDir: BASE,
     newPathBaseDir: BASE,

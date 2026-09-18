@@ -89,7 +89,16 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
   ),
 }));
 
-import { rename } from "@tauri-apps/plugin-fs";
+import {
+  exists,
+  mkdir,
+  readDir,
+  readTextFile,
+  remove,
+  rename,
+  writeFile,
+  writeTextFile,
+} from "@tauri-apps/plugin-fs";
 import {
   listInstalled,
   readBundleSource,
@@ -160,13 +169,13 @@ describe("storage", () => {
     expect(await listInstalled()).toEqual([]);
   });
 
-  it("recovers a stale .old-<id> left by an interrupted upgrade", async () => {
+  it("recovers a stale trash/<id> left by an interrupted upgrade", async () => {
     await writeInstalled("demo", { source: "v1", manifest, origin });
 
     // Simulate a crash between "move old aside" and "delete old": target is
-    // gone, `.old-<id>` holds the pre-upgrade bundle.
+    // gone, `trash/<id>` holds the pre-upgrade bundle.
     const target = "riwaq/extensions/installed/demo";
-    const aside = "riwaq/extensions/installed/.old-demo";
+    const aside = "riwaq/extensions/trash/demo";
     for (const [k, v] of [...files.entries()]) {
       if (k === target || k.startsWith(`${target}/`)) {
         files.set(k.replace(target, aside), v);
@@ -177,7 +186,7 @@ describe("storage", () => {
     dirs.add(aside);
 
     // While in that state, the interrupted extension is invisible rather
-    // than reported broken — `.old-` is skipped exactly like `.tmp-`.
+    // than reported broken — it is not inside `installed/` at all.
     expect(await listInstalled()).toEqual([]);
 
     vi.mocked(rename).mockClear();
@@ -195,9 +204,54 @@ describe("storage", () => {
     expect(dirs.has(aside)).toBe(false);
   });
 
-  it("clears a stale .tmp-<id> staging directory before reuse", async () => {
+  it("never touches a dot-prefixed path, on any fs call", async () => {
+    // Tauri's fs scope refuses them on macOS, Linux and Android:
+    // tauri-plugin-fs resolves `require_literal_leading_dot` as
+    // `.unwrap_or(cfg!(unix))`, so a `$APPDATA/**` scope does not match a
+    // path component starting with a dot, and the call fails with
+    // "forbidden path". This module used `.tmp-<id>`, `.old-<id>` and
+    // `.origin.json` and every install died on the first of them.
+    //
+    // Windows defaults the other way, so a reader on that platform — or
+    // any test that only exercises the happy path — sees nothing wrong.
+    // This asserts over the paths ACTUALLY passed to the fs plugin during
+    // a full install → list → read → reinstall → remove cycle, rather
+    // than over the source text, so a new dot-prefixed name is caught
+    // however it is spelled or interpolated.
+    await writeInstalled("demo", { source: "v1", manifest, origin });
+    await listInstalled();
+    await readBundleSource("demo");
+    await writeInstalled("demo", { source: "v2", manifest, origin });
+    await removeInstalled("demo");
+
+    const paths: string[] = [];
+    for (const fn of [
+      exists,
+      mkdir,
+      readDir,
+      readTextFile,
+      remove,
+      writeFile,
+      writeTextFile,
+    ]) {
+      for (const call of vi.mocked(fn).mock.calls)
+        paths.push(call[0] as string);
+    }
+    // rename takes two paths, both of which are scope-checked.
+    for (const call of vi.mocked(rename).mock.calls) {
+      paths.push(call[0] as string, call[1] as string);
+    }
+
+    expect(paths.length).toBeGreaterThan(10);
+    const dotted = paths.filter((p) =>
+      p.split("/").some((seg) => seg.startsWith(".")),
+    );
+    expect(dotted).toEqual([]);
+  });
+
+  it("clears a stale staging/<id> directory before reuse", async () => {
     // Simulate a crash mid-install that left an icon behind in staging.
-    const staging = "riwaq/extensions/installed/.tmp-demo";
+    const staging = "riwaq/extensions/staging/demo";
     dirs.add(staging);
     files.set(`${staging}/icon.png`, new Uint8Array([1, 2, 3]));
 
