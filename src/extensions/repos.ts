@@ -137,11 +137,49 @@ async function cacheName(url: string): Promise<string> {
   return `${CACHE_DIR}/${hex}.json`;
 }
 
+/** What repos.json actually holds.
+ *
+ *  It used to be a bare `RepoEntry[]`, and installs from before the
+ *  Extensions manager still have one on disk — `readReposFile` reads either
+ *  shape and `saveRepos` writes the object one, so the upgrade happens on
+ *  the next write with no migration step. */
+interface ReposFile {
+  repos: RepoEntry[];
+  /** When the user acknowledged the "extensions run with the app's access"
+   *  notice, shown once before the first repository they add themselves.
+   *  It lives beside the repo list rather than in a file of its own because
+   *  it is a fact ABOUT that list — one place owns what the user has been
+   *  told about repositories. */
+  trustNoticeAcknowledgedAt?: string;
+}
+
+async function readReposFile(): Promise<ReposFile> {
+  const raw = JSON.parse(
+    await readTextFile(REPOS_FILE, { baseDir: BASE }),
+  ) as unknown;
+  if (Array.isArray(raw)) return { repos: raw as RepoEntry[] };
+  if (isRecord(raw) && Array.isArray(raw.repos)) {
+    return {
+      repos: raw.repos as RepoEntry[],
+      trustNoticeAcknowledgedAt:
+        typeof raw.trustNoticeAcknowledgedAt === "string"
+          ? raw.trustNoticeAcknowledgedAt
+          : undefined,
+    };
+  }
+  throw new Error("repos.json is neither a repo list nor a repos file");
+}
+
+async function writeReposFile(file: ReposFile): Promise<void> {
+  await ensureExtDir(EXTENSIONS_DIR);
+  await writeTextFile(REPOS_FILE, JSON.stringify(file, null, 2), {
+    baseDir: BASE,
+  });
+}
+
 export async function listRepos(): Promise<RepoEntry[]> {
   try {
-    return JSON.parse(
-      await readTextFile(REPOS_FILE, { baseDir: BASE }),
-    ) as RepoEntry[];
+    return (await readReposFile()).repos;
   } catch {
     // First run: the official repo is pre-added but not privileged — it
     // can be removed like any other.
@@ -162,9 +200,43 @@ export async function listRepos(): Promise<RepoEntry[]> {
  *  caller that knows a fetch just succeeded, not to `fetchRepoIndex`,
  *  which is also used on paths that must not touch repos.json. */
 export async function saveRepos(repos: RepoEntry[]): Promise<void> {
-  await ensureExtDir(EXTENSIONS_DIR);
-  await writeTextFile(REPOS_FILE, JSON.stringify(repos, null, 2), {
-    baseDir: BASE,
+  // Read-then-write so a list update never drops the acknowledgement flag
+  // that shares the file. The read is one small JSON file, and on the first
+  // ever write there is nothing to read.
+  let trustNoticeAcknowledgedAt: string | undefined;
+  try {
+    trustNoticeAcknowledgedAt = (await readReposFile())
+      .trustNoticeAcknowledgedAt;
+  } catch {
+    trustNoticeAcknowledgedAt = undefined;
+  }
+  await writeReposFile({ repos, trustNoticeAcknowledgedAt });
+}
+
+/** Has the user already been shown — and accepted — the notice that
+ *  extensions run with the app's access? Shown once, before the first
+ *  repository the user adds themselves. */
+export async function hasAcknowledgedTrustNotice(): Promise<boolean> {
+  try {
+    return Boolean((await readReposFile()).trustNoticeAcknowledgedAt);
+  } catch {
+    return false;
+  }
+}
+
+/** Record the acknowledgement. Idempotent: a second call keeps the first
+ *  timestamp rather than rewriting it. */
+export async function acknowledgeTrustNotice(): Promise<void> {
+  let file: ReposFile;
+  try {
+    file = await readReposFile();
+  } catch {
+    file = { repos: await listRepos() };
+  }
+  if (file.trustNoticeAcknowledgedAt) return;
+  await writeReposFile({
+    repos: file.repos,
+    trustNoticeAcknowledgedAt: new Date().toISOString(),
   });
 }
 

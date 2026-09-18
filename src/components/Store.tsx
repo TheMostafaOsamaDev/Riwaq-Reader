@@ -3,6 +3,7 @@
 // Owns the in-store navigation state:
 //
 //   sources    → cards for every installed extension
+//   extensions → the manager: install/update/remove, and repositories
 //   source     → one source's homepage (sections + search)
 //   novel      → one novel's detail page (header, accordion, actions)
 //
@@ -38,6 +39,7 @@
 // null-checks a missing source and reports it, so it degrades visibly
 // rather than silently or unsafely.
 import { useCallback, useEffect, useState } from "react";
+import { ExtensionsView } from "./ExtensionsView";
 import { SourcesListView } from "./SourcesListView";
 import { onOpenStoreSource, takePendingStoreSource } from "../store/uiIntents";
 import { SourceHomeView } from "./SourceHomeView";
@@ -65,6 +67,7 @@ interface Props {
 
 type StoreView =
   | { kind: "sources" }
+  | { kind: "extensions" }
   | { kind: "source"; sourceId: string }
   | { kind: "novel"; sourceId: string; novelUrl: string };
 
@@ -112,6 +115,10 @@ export function Store({
     setView({ kind: "source", sourceId });
   }, []);
 
+  const openExtensions = useCallback(() => {
+    setView({ kind: "extensions" });
+  }, []);
+
   const openNovel = useCallback((sourceId: string, novelUrl: string) => {
     setView({ kind: "novel", sourceId, novelUrl });
   }, []);
@@ -154,10 +161,22 @@ export function Store({
       >
         {view.kind === "sources" &&
           (extensionsReady ? (
-            <SourcesListView theme={theme} onOpenSource={openSource} />
+            <SourcesListView
+              theme={theme}
+              onOpenSource={openSource}
+              onOpenExtensions={openExtensions}
+            />
           ) : (
             <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
           ))}
+        {/* Not gated on `extensionsReady`: the manager loads its own
+            catalogue, and it is the one view that must stay reachable when
+            nothing loaded. Coming back re-mounts SourcesListView, which
+            re-lists the registry — so an install or a removal shows up
+            there without an app restart. */}
+        {view.kind === "extensions" && (
+          <ExtensionsView theme={theme} onBack={backToSources} />
+        )}
         {view.kind === "source" && (
           <SourceHomeView
             theme={theme}

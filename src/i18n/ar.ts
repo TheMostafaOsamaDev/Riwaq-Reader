@@ -488,6 +488,72 @@ export const ar: Messages = {
   "store.loadMore": "تحميل المزيد",
   "store.loadingMore": "جارٍ تحميل المزيد…",
   "store.notInstalled": "المصدر “{sourceId}” غير مثبَّت.",
+
+  "extensions.manage": "الإضافات",
+  "extensions.title": "الإضافات",
+  "extensions.subtitle":
+    "كل مصدر هو إضافة. ثبّت ما تريد منها، وأبقِها محدَّثة، واختر المستودعات التي تُعرض منها.",
+  "extensions.loadError":
+    "تعذّر تحميل فهرس الإضافات — اضغط إعادة المحاولة. ({error})",
+  "extensions.installedHeading": "المثبَّتة",
+  "extensions.availableHeading": "المتاحة",
+  "extensions.reposHeading": "المستودعات",
+  "extensions.noneInstalled":
+    "لا إضافات مثبَّتة بعد — ثبّت واحدة من قائمة المتاحة بالأسفل.",
+  "extensions.noneAvailable": "كل ما تعرضه مستودعاتك مثبَّت بالفعل.",
+  "extensions.install": "تثبيت",
+  "extensions.update": "تحديث",
+  "extensions.remove": "إزالة",
+  "extensions.retry": "إعادة المحاولة",
+  "extensions.unknownError": "لا تفاصيل متاحة",
+  "extensions.apiVersionNotice":
+    "تحتاج إلى إصدار أحدث من رِواق. حدّث التطبيق لتعمل؛ حتى ذلك الحين لا يمكن استخدامها.",
+  "extensions.brokenNotice":
+    "فشل تحميل هذه الإضافة، فلا يمكن تصفّح موقعها — إعادة المحاولة تُنزّلها من مستودعها من جديد، والإزالة تحذفها. ({error})",
+  "extensions.installFailed":
+    "فشل التثبيت ولم يُكتب شيء على هذا الجهاز — اضغط تثبيت للمحاولة مجدّدًا. ({error})",
+  "extensions.updateFailed":
+    "فشل التحديث والنسخة المثبَّتة كما هي — اضغط تحديث للمحاولة مجدّدًا. ({error})",
+  "extensions.retryFailed":
+    "تعذّر جلبها من جديد — اضغط إعادة المحاولة لتجربة أخرى. ({error})",
+  "extensions.removeFailed":
+    "تعذّرت إزالة هذه الإضافة — اضغط إزالة للمحاولة مجدّدًا. ({error})",
+  "extensions.removeTitle": "إزالة “{name}”؟",
+  "extensions.removeBody":
+    "ستُحذف حزمتها من هذا الجهاز ويختفي الموقع من المصادر. الكتب الموجودة في مكتبتك تبقى كما هي، ويمكنك تثبيتها مرّة أخرى في أي وقت.",
+  "extensions.repoAddLabel": "رابط المستودع",
+  "extensions.repoAddPlaceholder": "https://example.com/index.min.json",
+  "extensions.repoAdd": "إضافة",
+  "extensions.repoUrlInvalid":
+    "هذا ليس رابطًا صالحًا. رابط المستودع يبدأ بـ https:// ويشير إلى ملف الفهرس الخاص به.",
+  "extensions.repoAddFailed":
+    "تعذّرت إضافة هذا المستودع — تحقّق من الرابط وحاول مجدّدًا. ({error})",
+  "extensions.repoOfficialBadge": "مرفق مع رِواق",
+  "extensions.repoCountOne": "يعرض {n} إضافة",
+  "extensions.repoCountOther": "يعرض {n} إضافة",
+  "extensions.repoEmpty": "لا يعرض أي إضافة.",
+  "extensions.repoUnreachable":
+    "تعذّر الوصول إليه، ولا توجد نسخة محفوظة منه — إضافاته غير مدرَجة. ({error})",
+  "extensions.repoStale": "تعذّر الوصول إليه — يُعرض ما هو محفوظ على هذا الجهاز.",
+  "extensions.repoLastChecked": "آخر فحص {when}",
+  "extensions.repoNeverChecked": "لم يُفحص بعد",
+  "extensions.noRepos":
+    "لا مستودعات مُعدّة — أضف واحدًا بالأسفل لترى الإضافات التي يمكنك تثبيتها.",
+  "extensions.repoRemoveTitle": "إزالة “{name}”؟",
+  "extensions.repoRemoveBodyOne":
+    "{names} تبقى مثبَّتة وتعمل كما هي — يتوقّف فقط عرض التحديثات لها.",
+  "extensions.repoRemoveBodyOther":
+    "{names} تبقى جميعها مثبَّتة وتعمل كما هي — يتوقّف فقط عرض التحديثات لها.",
+  "extensions.repoRemoveBodyNone":
+    "لا شيء مثبَّت جاء من هذا المستودع، فلن يختفي سوى ما يعرضه.",
+  "extensions.repoRemoveFailed":
+    "تعذّرت إزالة هذا المستودع — اضغط إزالة للمحاولة مجدّدًا. ({error})",
+  "extensions.listSeparator": "، ",
+  "extensions.trustTitle": "الإضافات تعمل بصلاحيات رِواق",
+  "extensions.trustBody":
+    "كل ما تثبّته من مستودع يعمل داخل رِواق: يمكنه الوصول إلى المواقع التي يصل إليها التطبيق وقراءة ما يقرؤه. لا تضف مستودعًا إلا إن كنت تثق بمن ينشره.",
+  "extensions.trustConfirm": "فهمت — أضِفه",
+
   "carousel.scrollStart": "التمرير للخلف",
   "carousel.scrollEnd": "التمرير للأمام",
 
