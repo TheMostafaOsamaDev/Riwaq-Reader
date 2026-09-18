@@ -19,6 +19,11 @@ vi.mock("../extensions/loadModule", async () => {
   };
 });
 
+vi.mock("@tauri-apps/api/path", () => ({
+  appDataDir: async () => "/App Support/com.riwaq.reader",
+  join: async (...parts: string[]) => parts.join("/"),
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: async () => {
@@ -197,7 +202,13 @@ describe("initExtensions", () => {
       language: "ar",
       version: "1.0.0",
       description: { en: "hi" },
-      iconUrl: "asset://localhost/riwaq/extensions/installed/alpha/icon.png",
+      // ABSOLUTE. convertFileSrc does not resolve anything — it wraps a path
+      // it is given. iconPath() is relative to AppData, so handing it over
+      // unjoined produced a URL that resolved to nothing and every source
+      // fell back to the globe placeholder. This assertion previously
+      // pinned the relative form, i.e. it pinned the bug.
+      iconUrl:
+        "asset://localhost//App Support/com.riwaq.reader/riwaq/extensions/installed/alpha/icon.png",
       installedFrom: "https://r1.test/i.json",
     });
   });

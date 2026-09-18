@@ -6,6 +6,7 @@
 // initExtensions(); every accessor stays synchronous afterwards.
 
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { buildCatalog } from "../extensions/catalog";
 import { loadExtension } from "../extensions/loader";
 import {
@@ -55,6 +56,21 @@ interface Entry {
 
 let entries = new Map<string, Entry>();
 let initialized = false;
+
+/** `convertFileSrc` wraps an ABSOLUTE path into the `asset://` URL the
+ *  webview can load — it does not resolve anything itself. iconPath() is
+ *  relative to AppData (that is what the fs plugin's `baseDir` wants), so
+ *  it has to be joined onto the real app-data directory first, exactly as
+ *  store/library.ts's coverSrcFor does for book covers. Passing the
+ *  relative path produced a URL that resolved to nothing, and every
+ *  installed source fell back to the globe placeholder.
+ *
+ *  Memoised like library.ts's copy: one IPC round trip per process. */
+let cachedAppDataDir: string | null = null;
+async function appDataRoot(): Promise<string> {
+  if (cachedAppDataDir === null) cachedAppDataDir = await appDataDir();
+  return cachedAppDataDir;
+}
 
 /** Generation counter for overlapping loads. Two can overlap — a Store
  *  mount racing a post-install refresh — and without this the one that
@@ -142,7 +158,7 @@ export async function initExtensions(): Promise<void> {
       language: manifest.language,
       description: manifest.description,
       iconUrl: manifest.icon
-        ? convertFileSrc(iconPath(manifest.id))
+        ? convertFileSrc(await join(await appDataRoot(), iconPath(manifest.id)))
         : undefined,
       version: manifest.version,
       installedFrom: origin.repoUrl,
