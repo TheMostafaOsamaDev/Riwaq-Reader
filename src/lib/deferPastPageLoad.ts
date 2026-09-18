@@ -6,11 +6,11 @@
 // against the JavaBridge thread, permanently — measured 6/20 blank installs
 // with the call at module scope, 0/20 deferred to `load` plus a macrotask).
 //
-// Every call site whose first act is such a call must go through this, not
-// a hand-rolled copy of the same shape — main.tsx and App.tsx's
-// initExtensions() both do. Duplicating the readyState check
-// invites the two to drift apart and rot back into the module-scope bug in
-// only one of them.
+// main.tsx's migrateLegacyRoot deferral is the only call site today. Any
+// future one whose first act is such a call must go through this rather than
+// a hand-rolled copy of the same shape: duplicating the readyState check
+// invites the copies to drift apart and rot back into the module-scope bug
+// in only one of them.
 export function deferPastPageLoad(fn: () => void): void {
   const run = () => {
     // A macrotask after `load` — `load` alone still overlaps the native

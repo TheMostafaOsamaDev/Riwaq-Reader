@@ -1,10 +1,9 @@
 // @vitest-environment happy-dom
 //
-// Shared mechanism behind main.tsx's migrateLegacyRoot deferral (see the big
-// comment there for the full deadlock this dodges) and App.tsx's
-// initExtensions deferral (task 10, fix round 2). Both call sites' first act
-// is an fs/scope-resolving Tauri call, so both need the identical timing —
-// this file is what makes "identical" a fact rather than a hope.
+// The mechanism behind main.tsx's migrateLegacyRoot deferral — see the big
+// comment there for the full deadlock this dodges. That is its only call
+// site today; this file pins the timing contract so a second one inherits it
+// as a fact rather than imitating it by eye.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deferPastPageLoad } from "./deferPastPageLoad";
 

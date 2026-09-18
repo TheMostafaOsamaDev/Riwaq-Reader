@@ -1,28 +1,29 @@
-// Task 10 fix round 3 — the ACTUAL fix.
+// Every fs-touching export in storage.ts awaits the same memoized
+// migrateLegacyRoot() promise before its own first fs call. This file proves
+// that ORDER, not merely that the call happened at some point.
 //
-// Fix round 2 (deferPastPageLoad, kept) deferred initExtensions() past page
-// load, same as store/library.ts's migrateLegacyRoot(). That was necessary
-// but not sufficient: two INDEPENDENTLY deferred fs-touching call sites are
-// two independent rolls against the same native race (the first fs call in
-// the process resolves Tauri's plugin scope via a JNI round trip on
-// Android, while wry's onPageLoaded dispatch wants the same lock — see
-// main.tsx's migrateLegacyRoot comment). Measured on-device: 5/10 stalls,
-// worse than the single-call 6/20 baseline — matching 1-(1-0.3)^2.
+// Why the order matters: storage.ts writes under `riwaq/extensions`, and
+// creating that path CREATES the `riwaq/` root. migrateLegacyRoot() moves a
+// pre-rename `leaflet/` root across to `riwaq/` only while `riwaq/` does not
+// exist yet — so an extensions write that lands first makes the migration
+// decline to move, stranding an upgrading user's entire library under
+// `leaflet/`. legacyRoot.ts's header states that rule and that consequence;
+// store/library.ts's ensureRoot() is the same guard for every store/*
+// module. src/extensions/ was the only fs-touching module not following it.
 //
-// The fix is SERIALIZING, not deferring twice: every fs-touching export in
-// storage.ts now awaits the SAME memoized migrateLegacyRoot() promise
-// before its own first fs call (mirroring store/library.ts's ensureRoot()).
-// That collapses two independent "first fs call" candidates back into one —
-// whichever of migrateLegacyRoot()'s callers reaches it first actually does
-// the risky resolve; every other caller (including every storage.ts export)
-// just awaits the same already-in-flight-or-settled promise, which is safe
-// regardless of timing.
+// This serialisation is NOT a fix for the Android launch deadlock. It was
+// introduced as one, in this task's third fix round; on-device measurement
+// then put that mechanism no better than the baseline, and a later round
+// established that extensions loading was never the cause at all. The
+// deadlock is addressed structurally instead, by initialising extensions
+// from the Store's own mount — long after page load — see the header of
+// components/Store.tsx. Keep the serialisation for the data-safety reason
+// above; do not re-derive a causal claim about launches from it.
 //
-// This file proves ORDER, not just "was called at some point" — a wrong
-// implementation that called migrateLegacyRoot() from storage.ts but AFTER
-// its own exists()/readTextFile() call would satisfy "was called" while
-// leaving the hazard completely open, since the risky call would still be
-// storage.ts's own fs op, not migrateLegacyRoot()'s.
+// An implementation that called migrateLegacyRoot() from storage.ts but
+// AFTER its own exists()/mkdir() call would satisfy "was called" while
+// leaving the stranding wide open, which is why every test below asserts
+// position 0 rather than membership.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const order: string[] = [];

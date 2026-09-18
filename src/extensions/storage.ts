@@ -61,26 +61,19 @@ async function ensureDir(path: string): Promise<void> {
 
 // Every fs entry point below awaits this memoized promise FIRST, before its
 // own first fs call — mirroring store/library.ts's ensureRoot(), which does
-// the same for every store/* module that touches the filesystem (see
-// legacyRoot.ts's own doc comment: "Each of those paths MUST await
-// migrateLegacyRoot() first").
+// the same for every store/* module that touches the filesystem.
 //
-// Why it matters here specifically: the FIRST fs-plugin call in the whole
-// process makes Tauri resolve the plugin's scope via a JNI round trip on
-// Android, while holding a lock the native onPageLoaded dispatch also
-// wants — see main.tsx's migrateLegacyRoot comment for the full deadlock.
-// initExtensions() (App.tsx) is deferred past page load, same as
-// migrateLegacyRoot() itself, but TWO independently-deferred calls are two
-// independent rolls against that same race — measured on-device at a 50%
-// stall rate, worse than the 30% baseline a single deferred call has.
-// Awaiting the SAME memoized promise here — rather than giving this module
-// its own independent "first" fs call — collapses that back to one roll:
-// by the time this resolves, the scope is already settled (whether this
-// call started the migration or main.tsx's did), so listInstalled()'s own
-// `exists()` below is never the risky one.
+// This is not stylistic. Writing anything under `riwaq/extensions` creates
+// the `riwaq/` root, and migrateLegacyRoot() moves a pre-rename `leaflet/`
+// root across only while `riwaq/` does not exist yet. An extensions write
+// that gets there first makes the migration decline to move, stranding an
+// upgrading user's entire library under `leaflet/` — see legacyRoot.ts's
+// header, which states the rule and the consequence, and
+// storageMigrationOrder.test.ts, which pins the ordering by asserting
+// position 0 rather than membership.
 //
 // Add this to any new fs-touching export in this file, or it silently
-// reopens the hazard for that one function.
+// reopens that hazard for that one function.
 async function ensureMigrated(): Promise<void> {
   await migrateLegacyRoot();
 }
