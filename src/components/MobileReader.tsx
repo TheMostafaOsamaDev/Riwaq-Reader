@@ -27,7 +27,6 @@ import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
-import { useLineScroll } from "../reader/scroll/useLineScroll";
 import {
   FONT_STACKS,
   isRtlLanguage,
@@ -329,10 +328,6 @@ export function MobileReader({
   );
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Touch scrolling stays the platform's, momentum and all — nothing here
-  // intercepts a gesture. The only addition is a glide onto the nearest line
-  // once the fling has finished. See reader/scroll/lineScroll.ts.
-  useLineScroll({ scrollRef, mode: "settle", reducedMotion: reduced });
   const chromeRef = useRef<HTMLDivElement>(null);
   const startEndpointRef = useRef<RangeEndpoint | null>(null);
   const endEndpointRef = useRef<RangeEndpoint | null>(null);
