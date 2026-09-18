@@ -9,7 +9,16 @@ import type { CSSProperties, ReactNode } from "react";
  *  is gone: the control stays where it was, dimmed, and says why.
  *
  *  Renders nothing of its own when there is no reason, so every enabled
- *  case keeps exactly the markup it had. */
+ *  case keeps exactly the markup it had.
+ *
+ *  DESKTOP ONLY, in effect. `title` is a hover tooltip and Android has no
+ *  hover, so on the primary mobile target this mechanism never fires —
+ *  the same reasoning RepoList.tsx applies to a repo URL it refuses to
+ *  truncate. It is kept because nothing here is only explained by it: the
+ *  ExtensionNotice banner at the top of the page states the cause once,
+ *  for every control the page switched off, and each disabled control
+ *  stays visible in place rather than disappearing. This adds a per-control
+ *  reminder where the platform can show one; it is not the explanation. */
 export function DisabledHint({
   reason,
   style,

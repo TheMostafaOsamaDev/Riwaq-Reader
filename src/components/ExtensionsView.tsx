@@ -5,11 +5,19 @@
 // returns the same way, so it is a fourth Store view rather than a fifth
 // app tab: extensions exist to serve the Store, and nothing outside it.
 //
-// Every mutation is followed by `initExtensions()` and a fresh
-// `loadCatalog()`. initExtensions is the registry's refresh path and is
-// cheap to re-run — it re-lists from disk and only re-evaluates bundles
-// whose content hash changed — so the Store's sources list and this view
-// agree the moment an install or a removal finishes, with no app restart.
+// Every mutation that changes WHAT IS INSTALLED is followed by
+// `initExtensions()` and a fresh `loadCatalog()`. initExtensions is the
+// registry's refresh path and is cheap to re-run — it re-lists from disk
+// and only re-evaluates bundles whose content hash changed — so the Store's
+// sources list and this view agree the moment an install or a removal
+// finishes, with no app restart.
+//
+// Adding or removing a REPOSITORY is not one of those. Nothing on disk
+// under installed/ changes — a removed repo's extensions keep working, they
+// just stop being offered updates — so the registry has nothing new to
+// learn, and refreshing it there was a full re-list plus a bundle-cache
+// pass per repo edit for no change in what it would answer. Only
+// `loadCatalog()` runs, which is the thing that actually differs.
 //
 // The I/O lives behind `deps` for the same reason install.ts takes an
 // `InstallDeps`: it is what lets the tests drive all five card states, and
@@ -256,7 +264,8 @@ export function ExtensionsView({
       }
       await depsRef.current.addRepo(url);
       if (needsNotice) await depsRef.current.acknowledgeTrustNotice();
-      await depsRef.current.initExtensions();
+      // No initExtensions(): a new repo offers extensions, it does not
+      // install any. See the header.
       await reload();
       return "added";
     },
@@ -268,7 +277,9 @@ export function ExtensionsView({
       // Deliberately does not uninstall anything: the extensions that came
       // from this repo keep working, they just stop being offered updates.
       await depsRef.current.removeRepo(url);
-      await depsRef.current.initExtensions();
+      // No initExtensions() either: this deliberately leaves every
+      // installed extension in place, so the registry's answer is
+      // unchanged. See the header.
       await reload();
     },
     [reload],

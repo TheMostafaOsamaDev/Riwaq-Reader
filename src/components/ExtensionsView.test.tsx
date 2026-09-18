@@ -238,6 +238,34 @@ describe("ExtensionsView — what each card state offers", () => {
     ).toContain("Requires a newer version of Riwaq");
   });
 
+  it("refuses Install, with a reason, for an entry built against another contract major", async () => {
+    // loader.ts gates on the manifest's apiVersion, so this entry would
+    // install perfectly and then refuse to load — a plain Install button
+    // whose only possible outcome is a broken card. The index declares the
+    // apiVersion, so the card can say so before the download.
+    const entry = available("futuristic");
+    entry.entry = { ...entry.entry!, apiVersion: 2 };
+    await mount(makeDeps({ catalog: [entry] }));
+
+    const install = [...card("futuristic").querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Install",
+    ) as HTMLButtonElement;
+    expect(install.disabled).toBe(true);
+    expect(
+      card("futuristic").querySelector('[role="alert"]')?.textContent,
+    ).toContain("Built for a different version of Riwaq");
+  });
+
+  it("still offers Install for an entry on this contract major", async () => {
+    // The counterweight: a gate that refused everything would satisfy the
+    // case above and make the Available list uninstallable.
+    await mount(makeDeps({ catalog: [available("fresh")] }));
+    const install = [...card("fresh").querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Install",
+    ) as HTMLButtonElement;
+    expect(install.disabled).toBe(false);
+  });
+
   it("does not offer Update on a broken extension even when a newer version is listed", async () => {
     await mount(
       makeDeps({
@@ -405,6 +433,27 @@ describe("ExtensionsView — the one-time trust notice", () => {
       "https://mirror.test/index.min.json",
     );
     expect(deps.acknowledgeTrustNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-list the registry for a repository edit", async () => {
+    // Adding a repo changes what is OFFERED, never what is installed, so a
+    // registry refresh here is a full directory re-list plus a bundle-cache
+    // pass that cannot change a single answer the registry gives. The
+    // catalogue reload is the part that actually differs, so it must still
+    // happen.
+    const deps = makeDeps({ catalog: [] });
+    await mount(deps);
+    const catalogLoads = vi.mocked(deps.loadCatalog).mock.calls.length;
+
+    typeUrl("https://mirror.test/index.min.json");
+    submitForm();
+    await settle();
+
+    expect(deps.addRepo).toHaveBeenCalled();
+    expect(deps.initExtensions).not.toHaveBeenCalled();
+    expect(vi.mocked(deps.loadCatalog).mock.calls.length).toBeGreaterThan(
+      catalogLoads,
+    );
   });
 
   it("adds nothing when the notice is declined", async () => {

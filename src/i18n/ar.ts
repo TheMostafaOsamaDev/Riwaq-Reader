@@ -508,6 +508,8 @@ export const ar: Messages = {
   "extensions.unknownError": "لا تفاصيل متاحة",
   "extensions.apiVersionNotice":
     "تحتاج إلى إصدار أحدث من رِواق. حدّث التطبيق لتعمل؛ حتى ذلك الحين لا يمكن استخدامها.",
+  "extensions.apiVersionAvailableNotice":
+    "مبنيّة لإصدار آخر من رِواق، وتثبيتها الآن لن يتركها إلّا معطّلة. حدّث التطبيق لتُعرض هنا.",
   "extensions.brokenNotice":
     "فشل تحميل هذه الإضافة، فلا يمكن تصفّح موقعها — إعادة المحاولة تُنزّلها من مستودعها من جديد، والإزالة تحذفها. ({error})",
   "extensions.installFailed":
@@ -528,7 +530,7 @@ export const ar: Messages = {
     "هذا ليس رابطًا صالحًا. رابط المستودع يبدأ بـ https:// ويشير إلى ملف الفهرس الخاص به.",
   "extensions.repoAddFailed":
     "تعذّرت إضافة هذا المستودع — تحقّق من الرابط وحاول مجدّدًا. ({error})",
-  "extensions.repoOfficialBadge": "مرفق مع رِواق",
+  "extensions.repoOfficialBadge": "مستودع رِواق الرسمي",
   "extensions.staleList": "قد تكون هذه القائمة قديمة — تعذّر تحديثها. {error}",
   "extensions.retryNoRepo":
     "تعذّر إعادة تحميل هذه الإضافة، والمستودع الذي جاءت منه لم يعد مضافًا — أضفه مرة أخرى لإعادة التثبيت.",
