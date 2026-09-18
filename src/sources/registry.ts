@@ -16,6 +16,7 @@ import {
 } from "../extensions/repos";
 import {
   iconPath,
+  type InstalledRecord,
   listInstalled,
   readBundleSource,
 } from "../extensions/storage";
@@ -27,8 +28,18 @@ import type { Source, SourceMetadata } from "./types";
  *  cannot declare an alias and claim another extension's id. */
 const ID_ALIASES: Record<string, string> = { "kolnovel-pro": "kolnovel" };
 
+/** The installed id an `id` should be served by.
+ *
+ *  A literally-installed id always wins over the alias table, so the alias
+ *  is strictly a fallback for orphaned library rows — which is all it was
+ *  ever for. Resolving unconditionally would let the table shadow a real
+ *  extension: a repo shipping one genuinely named "kolnovel-pro" would be
+ *  listed under that id by `listSources` (which reports each entry's own
+ *  `meta.id`) while `getSource` handed back kolnovel's instance, or null
+ *  when kolnovel is not installed — a card with `status: "ok"` that cannot
+ *  be opened and whose metadata lookup answers null. */
 export function resolveSourceId(id: string): string {
-  return ID_ALIASES[id] ?? id;
+  return entries.has(id) ? id : (ID_ALIASES[id] ?? id);
 }
 
 type Status = "ok" | "broken" | "api-version" | "missing";
@@ -50,6 +61,7 @@ let initialized = false;
  * Deliberately NOT awaited before React mounts — see main.tsx on the
  * Android blank launch. Every accessor below returns an empty/null answer
  * until this resolves, which the Store already renders as "no sources".
+ * It never rejects, so calling it without a `.catch` is safe.
  *
  * The new table is built in a local map and swapped in at the end rather
  * than mutating the live one. A refresh therefore never exposes a window
@@ -58,7 +70,21 @@ let initialized = false;
  */
 export async function initExtensions(): Promise<void> {
   const next = new Map<string, Entry>();
-  const installed = await listInstalled();
+
+  // Never rejects. The doc comment above tells the startup path to call
+  // this WITHOUT awaiting it, so a rejection here would be an unhandled
+  // one — and listInstalled() sits outside the per-extension try below,
+  // so an unreadable extensions directory would reject the whole promise.
+  // On failure the previous table is left in place (a transient FS error
+  // must not blank a registry that is already working) and `initialized`
+  // stays false, so a later retry is still meaningful.
+  let installed: InstalledRecord[];
+  try {
+    installed = await listInstalled();
+  } catch (e) {
+    console.error("[extensions] could not list installed extensions:", e);
+    return;
+  }
 
   for (const record of installed) {
     const { manifest, origin } = record;
@@ -192,7 +218,15 @@ export async function loadCatalog() {
     changed = true;
     return { ...repo, lastFetchedAt: c.fetchedAt };
   });
-  if (changed) await saveRepos(stamped);
+  if (changed) {
+    // Bookkeeping only. A disk-write failure here must not blank the
+    // Extensions manager when every repo actually fetched fine.
+    try {
+      await saveRepos(stamped);
+    } catch (e) {
+      console.warn("[extensions] could not record repo fetch times:", e);
+    }
+  }
 
   return {
     repos: stamped,
