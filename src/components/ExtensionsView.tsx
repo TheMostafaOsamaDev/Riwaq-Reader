@@ -120,6 +120,7 @@ export function ExtensionsView({
   const [cardError, setCardError] = useState<Record<string, string>>({});
   const [pendingRemove, setPendingRemove] = useState<CatalogEntry | null>(null);
   const [trustOpen, setTrustOpen] = useState(false);
+  const [updatingAll, setUpdatingAll] = useState(false);
 
   // The trust notice gates an in-flight `addRepo`, so the dialog's answer
   // has to travel back to the awaiting caller rather than into state.
@@ -315,6 +316,39 @@ export function ExtensionsView({
   const installed = data?.catalog.filter((c) => c.installed) ?? [];
   const available = data?.catalog.filter((c) => !c.installed) ?? [];
 
+  // What "Update all" would act on. Exactly the set of cards that offer an
+  // Update button of their own — a broken extension is offered Retry
+  // instead, and sweeping it into a bulk update would hide a failure the
+  // user is meant to see per card.
+  const outdated = installed.filter(
+    (c) => c.updateAvailable && deps.getExtensionStatus(c.id) !== "broken",
+  );
+
+  /** The same per-extension path each card's Update runs, over each
+   *  outdated entry, one at a time.
+   *
+   *  Sequential, not concurrent: `run` re-lists the registry and reloads
+   *  the catalogue after each install, and two of those interleaving would
+   *  race the registry's own generation guard for nothing. It is also what
+   *  keeps a failure attributable — `run` leaves its error on that card,
+   *  so a bulk update that half-succeeded reads as exactly that rather
+   *  than as one banner naming nothing.
+   *
+   *  The list is snapshotted before the first update, because `run`
+   *  replaces `data` and with it `outdated`. */
+  const updateAll = async () => {
+    const targets = [...outdated];
+    setUpdatingAll(true);
+    try {
+      for (const item of targets) {
+        if (!alive.current) return;
+        await run(item, "update", "extensions.updateFailed");
+      }
+    } finally {
+      if (alive.current) setUpdatingAll(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -455,7 +489,27 @@ export function ExtensionsView({
             </div>
           )}
 
-          <Section theme={theme} title={tr("extensions.installedHeading")}>
+          <Section
+            theme={theme}
+            title={tr("extensions.installedHeading")}
+            action={
+              outdated.length > 0 && (
+                <Button
+                  theme={theme}
+                  variant="secondary"
+                  size="sm"
+                  style={{ minHeight: 44, minWidth: 44, paddingInline: 14 }}
+                  loading={updatingAll}
+                  disabled={updatingAll}
+                  onClick={() => void updateAll()}
+                >
+                  {tr("extensions.updateAll", {
+                    n: String(outdated.length),
+                  })}
+                </Button>
+              )
+            }
+          >
             {installed.length === 0 ? (
               <Empty theme={theme}>{tr("extensions.noneInstalled")}</Empty>
             ) : (
@@ -526,26 +580,49 @@ export function ExtensionsView({
 function Section({
   theme,
   title,
+  action,
   children,
 }: {
   theme: Theme;
   title: string;
+  /** Optional control on the trailing side of the heading — "Update all".
+   *  `marginInlineStart: auto` rather than a hand-flip, so it stays last in
+   *  reading order under RTL too, the same convention ExtensionCard's
+   *  action cluster uses. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section style={{ marginBottom: 32 }}>
-      <h3
+      <div
         style={{
-          margin: "0 0 12px 0",
-          fontSize: 12,
-          fontWeight: 600,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: theme.muted,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          // The heading's own bottom margin moves here so a section with no
+          // action keeps exactly the spacing it had.
+          marginBottom: 12,
+          minHeight: action ? 44 : undefined,
         }}
       >
-        {title}
-      </h3>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: theme.muted,
+          }}
+        >
+          {title}
+        </h3>
+        {action && (
+          <div style={{ marginInlineStart: "auto", flexShrink: 0 }}>
+            {action}
+          </div>
+        )}
+      </div>
       {children}
     </section>
   );

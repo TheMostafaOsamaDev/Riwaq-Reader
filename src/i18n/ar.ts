@@ -503,6 +503,7 @@ export const ar: Messages = {
   "extensions.noneAvailable": "كل ما تعرضه مستودعاتك مثبَّت بالفعل.",
   "extensions.install": "تثبيت",
   "extensions.update": "تحديث",
+  "extensions.updateAll": "تحديث الكل ({n})",
   "extensions.remove": "إزالة",
   "extensions.retry": "إعادة المحاولة",
   "extensions.unknownError": "لا تفاصيل متاحة",
