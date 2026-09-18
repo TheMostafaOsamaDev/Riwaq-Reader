@@ -81,16 +81,31 @@ export function Store({
   } | null>(null);
 
   // True once initExtensions() has settled for THIS mount. No deferral
-  // needed here — unlike App.tsx's startup window, there is no native
-  // page-load race to dodge by the time the user has navigated to the
+  // needed here — unlike the app's startup window, there is no native
+  // page-load race left to dodge by the time the user has navigated to the
   // Store. initExtensions() never rejects (see registry.ts's doc comment),
-  // so this needs no `.catch`; re-running it on every re-mount is safe and
-  // intentional (registry.ts: "Safe to call again after an install or
-  // uninstall"), so a source installed/removed since the last visit is
-  // picked up on each fresh mount rather than needing an app restart.
+  // so this needs no `.catch`.
+  //
+  // Re-running it on every re-mount is deliberate: the Store unmounts on a
+  // tab switch, and re-listing is what picks up a source installed or
+  // removed since the last visit without an app restart. registry.ts caches
+  // each bundle's evaluation by `id@version@sha256`, so the repeat cost is a
+  // directory listing and a couple of small reads, not a fresh blob-URL
+  // import and re-execution of every extension per visit.
   const [extensionsReady, setExtensionsReady] = useState(false);
   useEffect(() => {
-    void initExtensions().finally(() => setExtensionsReady(true));
+    // The load is not cancellable (it is filesystem reads and module
+    // evaluation), but the setState must not land on an unmounted tree: a
+    // fast tab-switch away and back leaves the first mount's promise still
+    // in flight. React 19 drops that update silently; this makes the intent
+    // explicit rather than relying on it.
+    let live = true;
+    void initExtensions().finally(() => {
+      if (live) setExtensionsReady(true);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
   const openSource = useCallback((sourceId: string) => {

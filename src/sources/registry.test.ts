@@ -36,6 +36,10 @@ let bundleGate: { blocked: Promise<void>; entered: () => void } | null = null;
 /** When set, listInstalled rejects with it — the one failure arm that sits
  *  outside initExtensions()' per-extension try/catch. */
 let listInstalledThrows: Error | null = null;
+/** Every id whose bundle source was actually read, in order. The registry
+ *  caches a bundle's evaluation by `id@version@sha256`, so this is how a
+ *  test tells "loaded again" from "served from the cache". */
+let bundleReads: string[] = [];
 
 vi.mock("../extensions/storage", () => ({
   listInstalled: async () => {
@@ -43,6 +47,7 @@ vi.mock("../extensions/storage", () => ({
     return installed;
   },
   readBundleSource: async (id: string) => {
+    bundleReads.push(id);
     if (bundleGate) {
       bundleGate.entered();
       await bundleGate.blocked;
@@ -101,10 +106,19 @@ import {
   resolveSourceId,
 } from "./registry";
 
+/** Bumped per test. The registry caches a bundle's evaluation by
+ *  `id@version@sha256`, and these fixtures reuse ids across tests while
+ *  varying the bundle text — which in production would mean a different
+ *  hash. Without the salt, one test's `alpha` would be served from another
+ *  test's evaluation and the suite would become order-dependent. Tests that
+ *  exercise the cache deliberately pass an explicit sha instead. */
+let shaSalt = 0;
+
 const record = (
   id: string,
   over: Partial<InstalledRecord["manifest"]> = {},
   repoUrl = "https://repo.test/index.min.json",
+  sha256 = `${shaSalt}`.padStart(64, "0"),
 ): InstalledRecord => ({
   manifest: {
     id,
@@ -117,7 +131,7 @@ const record = (
   },
   origin: {
     repoUrl,
-    sha256: "a".repeat(64),
+    sha256,
     installedAt: "2026-01-01T00:00:00Z",
   },
 });
@@ -127,6 +141,8 @@ const bundleFor = (id: string) =>
   `export default (host) => ({ canHandle: (u) => u.startsWith("https://${id}.test") });`;
 
 beforeEach(() => {
+  shaSalt++;
+  bundleReads = [];
   installed = [];
   bundles = {};
   repoList = [];
@@ -347,6 +363,197 @@ describe("findSourceForUrl", () => {
   });
 });
 
+describe("bundle evaluation cache", () => {
+  // initExtensions() runs once per Store VISIT, not once per app session —
+  // the Store unmounts on a tab switch. Re-listing installed extensions is
+  // cheap and is what keeps installs and removals visible; re-EVALUATING an
+  // unchanged bundle is a blob-URL import plus real JS execution, and is
+  // what this cache skips. The key is `id@sha256`.
+  //
+  // Instance identity is the probe, not just the read count: loadExtension
+  // calls the bundle's default export to build the Source, so a genuine
+  // re-evaluation always yields a different object even though the module
+  // itself may be cached by the runtime.
+  // Distinct per test as well as per call: the cache key includes the hash,
+  // so a literal shared across tests would serve one test's evaluation to
+  // the next and make the block order-dependent.
+  const sha = (n: number) => `${shaSalt}-${n}`.padStart(64, "f");
+
+  it("serves an unchanged bundle from the cache on the next call", async () => {
+    installed = [record("alpha", {}, undefined, sha(1))];
+    bundles = { alpha: bundleFor("alpha") };
+    await initExtensions();
+    const first = getSource("alpha");
+
+    await initExtensions();
+
+    expect(getSource("alpha")).toBe(first);
+    expect(bundleReads).toEqual(["alpha"]);
+  });
+
+  it("re-evaluates an update, and reports its new version", async () => {
+    // The ordinary update path: new bytes, so a new hash, so a new
+    // evaluation — and the metadata the UI shows moves with it.
+    installed = [record("alpha", {}, undefined, sha(1))];
+    bundles = { alpha: bundleFor("alpha") };
+    await initExtensions();
+    const first = getSource("alpha");
+
+    installed = [record("alpha", { version: "1.1.0" }, undefined, sha(2))];
+    await initExtensions();
+
+    expect(getSource("alpha")).not.toBe(first);
+    expect(getSourceMeta("alpha")?.version).toBe("1.1.0");
+    expect(bundleReads).toEqual(["alpha", "alpha"]);
+  });
+
+  it("reports a manifest change even when the bundle is served from cache", async () => {
+    // Only the load RESULT is cached; the metadata is rebuilt from the
+    // manifest every time. Caching the whole entry would freeze the version,
+    // name and icon the Extensions manager shows until an app restart.
+    installed = [record("alpha", {}, undefined, sha(1))];
+    bundles = { alpha: bundleFor("alpha") };
+    await initExtensions();
+    const first = getSource("alpha");
+
+    installed = [
+      record("alpha", { version: "1.1.0", name: "Renamed" }, undefined, sha(1)),
+    ];
+    await initExtensions();
+
+    expect(getSource("alpha")).toBe(first);
+    expect(bundleReads).toEqual(["alpha"]);
+    expect(getSourceMeta("alpha")?.version).toBe("1.1.0");
+    expect(getSourceMeta("alpha")?.name).toBe("Renamed");
+  });
+
+  it("re-evaluates when the bundle bytes change under the same version", async () => {
+    // A sideloaded rebuild, or a repo that republished an asset without
+    // bumping the manifest. The version alone would call this unchanged;
+    // the hash is what makes it a different bundle.
+    installed = [record("alpha", {}, undefined, sha(1))];
+    bundles = { alpha: bundleFor("alpha") };
+    await initExtensions();
+    const first = getSource("alpha");
+
+    installed = [record("alpha", {}, undefined, sha(2))];
+    bundles = {
+      alpha: `export default () => ({ canHandle: () => false });`,
+    };
+    await initExtensions();
+
+    expect(getSource("alpha")).not.toBe(first);
+    expect(getSource("alpha")?.canHandle("https://alpha.test/x")).toBe(false);
+  });
+
+  it("keeps two extensions apart when their bundles are byte-identical", async () => {
+    // A fork republished under a second id, or the same bundle listed by two
+    // repos. Each Source is built with a host bound to its OWN id, so they
+    // must be separate instances however identical the bytes are — a key on
+    // the hash alone would hand the second one the first one's host.
+    const shared = sha(1);
+    installed = [
+      record("alpha", {}, undefined, shared),
+      record("alpha-fork", {}, undefined, shared),
+    ];
+    bundles = { alpha: bundleFor("alpha"), "alpha-fork": bundleFor("alpha") };
+
+    await initExtensions();
+
+    expect(getSource("alpha")).not.toBeNull();
+    expect(getSource("alpha-fork")).not.toBe(getSource("alpha"));
+    expect(bundleReads).toEqual(["alpha", "alpha-fork"]);
+  });
+
+  it("forgets a bundle once its extension is uninstalled", async () => {
+    // Otherwise the cache grows for the life of the process, holding a
+    // module the user has removed. Re-installing the SAME identity is what
+    // proves the entry was really dropped rather than merely unreferenced.
+    const only = record("alpha", {}, undefined, sha(1));
+    installed = [only];
+    bundles = { alpha: bundleFor("alpha") };
+    await initExtensions();
+
+    installed = [];
+    await initExtensions();
+    expect(getSource("alpha")).toBeNull();
+
+    installed = [only];
+    await initExtensions();
+
+    expect(bundleReads).toEqual(["alpha", "alpha"]);
+    expect(getSource("alpha")?.canHandle("https://alpha.test/x")).toBe(true);
+  });
+
+  it("does not cache a bundle that could not be read", async () => {
+    // readBundleSource failing is environmental, not a property of the
+    // bundle bytes the key names — a file that was mid-write, or a
+    // permission blip. Caching it would leave the extension broken for the
+    // rest of the session even after the cause cleared.
+    installed = [record("alpha", {}, undefined, sha(1))];
+    bundles = {};
+    await initExtensions();
+    expect(getExtensionStatus("alpha")).toBe("broken");
+
+    bundles = { alpha: bundleFor("alpha") };
+    await initExtensions();
+
+    expect(getExtensionStatus("alpha")).toBe("ok");
+    expect(getSource("alpha")?.canHandle("https://alpha.test/x")).toBe(true);
+  });
+
+  it("does cache a bundle that failed on its own contents", async () => {
+    // The other side of that split: a bundle that throws on evaluation, or
+    // declares the wrong apiVersion, will do so identically every time for
+    // these exact bytes. Re-running it per Store visit buys nothing.
+    installed = [record("broken", {}, undefined, sha(1))];
+    bundles = { broken: `throw new Error("kaboom");` };
+    await initExtensions();
+    expect(getExtensionStatus("broken")).toBe("broken");
+
+    await initExtensions();
+
+    expect(getExtensionStatus("broken")).toBe("broken");
+    expect(getExtensionError("broken")).toMatch(/kaboom/);
+    expect(bundleReads).toEqual(["broken"]);
+  });
+
+  it("lets a newer load win over a slower one that started first", async () => {
+    // Two loads can overlap — a Store mount racing a post-install refresh.
+    // Committing on completion order would let the one that listed the disk
+    // EARLIER overwrite the one that listed it later.
+    installed = [record("alpha", {}, undefined, sha(1))];
+    bundles = { alpha: bundleFor("alpha"), beta: bundleFor("beta") };
+
+    let release!: () => void;
+    let entered!: () => void;
+    const reached = new Promise<void>((r) => {
+      entered = r;
+    });
+    bundleGate = {
+      blocked: new Promise<void>((r) => {
+        release = r;
+      }),
+      entered,
+    };
+
+    const stale = initExtensions();
+    await reached; // inside the loop, alpha not yet evaluated
+
+    // A second load lists the disk after an uninstall+install and finishes
+    // first, because it is not gated.
+    bundleGate = null;
+    installed = [record("beta", {}, undefined, sha(2))];
+    await initExtensions();
+    expect(listSources().map((m) => m.id)).toEqual(["beta"]);
+
+    release();
+    await stale;
+
+    expect(listSources().map((m) => m.id)).toEqual(["beta"]);
+    expect(getSource("alpha")).toBeNull();
+  });
+});
 describe("id aliases", () => {
   it("resolves a library book's retired sourceId through every accessor", async () => {
     installed = [record("kolnovel")];
