@@ -708,9 +708,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         </div>
       )}
 
-      {focus.hint > 0 && (
+      {focus.hintVisible && (
         <FocusHint
-          key={focus.hint}
           theme={theme}
           title={tr("reader.focusMode")}
           body={tr("reader.focusHintBody")}
