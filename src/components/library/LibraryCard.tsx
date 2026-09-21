@@ -35,6 +35,7 @@ export const LibraryCard = memo(function LibraryCard({
   // computed once so the tooltip, font-family pick, and rendered text all
   // agree on what's actually on screen.
   const displayTitle = book.title || tr("common.untitled");
+  const displayAuthor = book.author || tr("common.unknownAuthor");
   return (
     <div
       // Pin the whole card to the cover width so the title row's
@@ -115,8 +116,21 @@ export const LibraryCard = memo(function LibraryCard({
         >
           {displayTitle}
         </div>
-        <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
-          {book.author || tr("common.unknownAuthor")}
+        <div
+          title={displayAuthor}
+          style={{
+            fontSize: 11,
+            color: theme.muted,
+            marginTop: 2,
+            // One line, like the title above it. The card is pinned to the
+            // cover width, so an author long enough to wrap pushed the meter
+            // a line below the one on the card beside it.
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {displayAuthor}
         </div>
         <div
           style={{
