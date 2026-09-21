@@ -5,7 +5,13 @@ import type { BookIndexEntry } from "../../store/library";
 import { paletteForId } from "../../store/palette";
 import { titleFontFor, type Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
-import { MOBILE_CARD_INTRINSIC_H, sourceCornerMarker } from "./cardChrome";
+import {
+  MOBILE_AUTHOR_H,
+  MOBILE_CARD_INTRINSIC_H,
+  MOBILE_CARD_TEXT as M,
+  MOBILE_TITLE_H,
+  sourceCornerMarker,
+} from "./cardChrome";
 
 /** Mobile shelf-grid card. Memoized for the same reason as `LibraryCard`. */
 export const MobileShelfCard = memo(function MobileShelfCard({
@@ -34,6 +40,7 @@ export const MobileShelfCard = memo(function MobileShelfCard({
   // computed once so the font-family/line-height pick and the rendered
   // text agree on what's actually on screen.
   const displayTitle = book.title || tr("common.untitled");
+  const displayAuthor = book.author || tr("common.unknownAuthor");
   return (
     <div
       onClick={() => {
@@ -71,48 +78,71 @@ export const MobileShelfCard = memo(function MobileShelfCard({
         fluid
       />
       <div
+        title={displayTitle}
         style={{
           fontFamily: titleFontFor(displayTitle),
-          fontSize: 12,
+          fontSize: M.titleSize,
           fontWeight: 500,
-          marginTop: 8,
-          lineHeight: 1.3,
+          marginTop: M.titleGap,
+          lineHeight: M.titleLeading,
           color: theme.ink,
           letterSpacing: "-0.005em",
-          // Clamp the title to 2 lines so cards keep a consistent height
-          // instead of jumping to 3+ lines on long titles, and let unbreakable
-          // tokens wrap so they don't blow out the cell.
+          // Two lines, always. Clamped so a long title cannot grow the card,
+          // and reserved so a short one cannot shrink it — either way the
+          // author below starts at the same offset in every card of the row.
+          // `wordBreak` lets an unbreakable token wrap rather than blow out
+          // the cell.
           display: "-webkit-box",
-          WebkitLineClamp: 2,
+          WebkitLineClamp: M.titleLines,
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
+          minHeight: MOBILE_TITLE_H,
           wordBreak: "break-word",
         }}
       >
         {displayTitle}
       </div>
-      <div style={{ fontSize: 9.5, color: theme.muted, marginTop: 2 }}>
-        {book.author || tr("common.unknownAuthor")}
+      <div
+        title={displayAuthor}
+        style={{
+          fontSize: M.authorSize,
+          lineHeight: M.authorLeading,
+          color: theme.muted,
+          marginTop: M.authorGap,
+          minHeight: MOBILE_AUTHOR_H,
+          // One line, cropped at the cell edge. An author long enough to wrap
+          // used to push the rail down and leave the card taller than the one
+          // beside it.
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {displayAuthor}
       </div>
-      {book.progress > 0 && book.progress < 1 && (
-        <div
-          style={{
-            height: 2,
-            background: theme.rule,
-            borderRadius: 1,
-            marginTop: 6,
-          }}
-        >
+      {/* The rail's row is always present, so a card's height never depends
+          on whether the book has been opened. Only what is drawn inside it
+          does. */}
+      <div style={{ height: M.railH, marginTop: M.railGap }}>
+        {book.progress > 0 && book.progress < 1 && (
           <div
             style={{
-              width: `${book.progress * 100}%`,
               height: "100%",
-              background: theme.muted,
+              background: theme.rule,
               borderRadius: 1,
             }}
-          />
-        </div>
-      )}
+          >
+            <div
+              style={{
+                width: `${book.progress * 100}%`,
+                height: "100%",
+                background: theme.muted,
+                borderRadius: 1,
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 });
