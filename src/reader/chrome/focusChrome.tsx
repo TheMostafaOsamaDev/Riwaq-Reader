@@ -22,7 +22,7 @@ import { EASE, MOTION } from "../../styles/motion";
 import { FONT_STACKS, type Theme, Z } from "../../styles/tokens";
 import { chromeEdges } from "./focusEdges";
 import { glassBar, type GlassBar, type GlassEdge } from "./glass";
-import { migrateStorageKey } from "../../lib/legacyStorage";
+import { useOnceHint } from "./useOnceHint";
 
 /** How long a revealed bar lingers after the pointer leaves its edge, in ms. */
 const CHROME_LINGER_MS = 450;
@@ -44,29 +44,10 @@ const CHROME_LINGER_MS = 450;
 export const CHROME_INSET_TOP = 66;
 /** Height of the bottom bar (ReaderProgressBar: 6px + a 44px track + 14px). */
 export const CHROME_INSET_BOTTOM = 65;
-/** How long the first-run hint stays up. Matches `.riwaq-focus-hint`. */
-export const FOCUS_HINT_MS = 3200;
-/** Set once the first-run focus-mode hint has been shown. */
+/** Set once the first-run focus-mode hint has been shown. The phone's hint
+ *  says something else and is dismissed separately, so it keeps its own key —
+ *  see MobileReader. */
 const FOCUS_HINT_KEY = "riwaq:focus-hint-seen";
-
-function focusHintSeen(): boolean {
-  // Private-mode / blocked-storage browsers throw on access; treating that as
-  // "already seen" is the quiet failure — better a missing hint than a crash.
-  try {
-    migrateStorageKey(FOCUS_HINT_KEY);
-    return localStorage.getItem(FOCUS_HINT_KEY) === "1";
-  } catch {
-    return true;
-  }
-}
-
-function markFocusHintSeen(): void {
-  try {
-    localStorage.setItem(FOCUS_HINT_KEY, "1");
-  } catch {
-    // Nothing to do — the hint simply shows again next time.
-  }
-}
 
 export interface FocusChromeOptions {
   /** The persisted `focusMode` tweak. */
@@ -91,8 +72,9 @@ export interface FocusChrome {
   floating: boolean;
   showTop: boolean;
   showBottom: boolean;
-  /** Bumped once per hint; 0 = nothing to show. Use as a React `key`. */
-  hint: number;
+  /** Whether the first-run hint should be on screen. True at most once per
+   *  install — conditional mounting restarts its keyframe, so no `key`. */
+  hintVisible: boolean;
   toggle: () => void;
   /** Spread onto the reader root so pointer proximity can summon the bars. */
   rootHandlers: {
@@ -131,10 +113,8 @@ export function useFocusChrome({
   const floating = enabled && active;
   const [revealTop, setRevealTop] = useState(false);
   const [revealBottom, setRevealBottom] = useState(false);
-  // Bumped once, ever, to play the first-run hint. Counter rather than a
-  // boolean so the toast remounts (and its keyframe restarts) if it ever fires
-  // more than once in a session.
-  const [hint, setHint] = useState(0);
+  // The first-run hint. Its own timer and storage live in the shared hook.
+  const hint = useOnceHint(FOCUS_HINT_KEY);
   const showTop = !floating || revealTop;
   const showBottom = !floating || revealBottom;
 
@@ -144,7 +124,6 @@ export function useFocusChrome({
   // forever as long as the pointer kept moving anywhere in the window.
   const inEdge = useRef({ top: false, bottom: false });
   const hideTimers = useRef({ top: 0, bottom: 0 });
-  const hintTimer = useRef(0);
   const setEdgeShown = (edge: "top" | "bottom", shown: boolean) =>
     (edge === "top" ? setRevealTop : setRevealBottom)(shown);
   const revealEdge = useCallback((edge: "top" | "bottom") => {
@@ -164,7 +143,6 @@ export function useFocusChrome({
     () => () => {
       window.clearTimeout(hideTimers.current.top);
       window.clearTimeout(hideTimers.current.bottom);
-      window.clearTimeout(hintTimer.current);
     },
     [],
   );
@@ -206,14 +184,7 @@ export function useFocusChrome({
     inEdge.current = { top: false, bottom: false };
     setRevealTop(false);
     setRevealBottom(false);
-    if (!focusHintSeen()) {
-      markFocusHintSeen();
-      setHint((n) => n + 1);
-      // Unmount once the keyframe has finished — `forwards` would otherwise
-      // leave an invisible pill in the tree (and in the a11y tree) for good.
-      window.clearTimeout(hintTimer.current);
-      hintTimer.current = window.setTimeout(() => setHint(0), FOCUS_HINT_MS);
-    }
+    hint.show();
   };
 
   // Escape leaves focus mode — the keyboard route back to the chrome, since a
@@ -318,7 +289,7 @@ export function useFocusChrome({
     floating,
     showTop,
     showBottom,
-    hint,
+    hintVisible: hint.visible,
     toggle,
     rootHandlers: {
       onMouseMove: (e: ReactMouseEvent) => {

@@ -19,6 +19,9 @@ import {
   ReaderProgressBar,
 } from "../reader/chrome/ReaderProgressBar";
 import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
+import { FocusHint } from "../reader/chrome/focusChrome";
+import { FocusRail } from "../reader/chrome/FocusRail";
+import { useOnceHint } from "../reader/chrome/useOnceHint";
 import { glassBar } from "../reader/chrome/glass";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
@@ -267,6 +270,11 @@ function mobileTab(theme: Theme): CSSProperties {
  *  inside the text. */
 const MOBILE_READING_INSETS = { top: 44, bottom: 44 };
 
+/** Set once the phone's first-run focus-mode hint has been shown. Separate
+ *  from desktop's `riwaq:focus-hint-seen`: different wording, dismissed
+ *  independently. */
+const MOBILE_FOCUS_HINT_KEY = "riwaq:m-focus-hint-seen";
+
 export function MobileReader({
   theme,
   themeKey,
@@ -298,6 +306,11 @@ export function MobileReader({
   // smooth instead of a hard cut. Pointer-events are dropped while
   // hidden so taps fall through to the reader.
   const chromeHidden = !showChrome;
+  // First trip into focus mode only: the gesture that got them here is the
+  // one that gets them back, and nothing on screen says so once the chrome
+  // has gone. Desktop's hint names a pointer, which a phone has not got, so
+  // the two have their own wording and their own key.
+  const focusHint = useOnceHint(MOBILE_FOCUS_HINT_KEY);
   const chromeTransition = reduced
     ? "none"
     : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
@@ -342,6 +355,15 @@ export function MobileReader({
   // next — see landingAppliesTo.
   const landAtStartRef = useRef<number | null>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
+  // The same rail, pinned to the top of the screen while the chrome is
+  // away. Its own ref rather than a relocated one: the header stays
+  // mounted and merely translates off-screen, so moving the ref between
+  // them would leave whichever bar lost it frozen at its last width.
+  const focusFillRef = useRef<HTMLDivElement>(null);
+  // The fraction the rails were last painted at. The pinned rail mounts on a
+  // tap, which is not a scroll — without this it would sit empty until the
+  // reader next moved.
+  const lastFractionRef = useRef(0);
   // Content direction — derived from the BOOK's own language, independent of
   // the UI locale above. BookBody sets its own `dir` from this on its own
   // element, so it never inherits from the chrome wrapper below.
@@ -468,10 +490,18 @@ export function MobileReader({
     let raf = 0;
     const paint = () => {
       raf = 0;
-      if (!progressFillRef.current) return;
-      progressFillRef.current.style.width = fractionToWidth(
-        chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
+      const fraction = chapterScrollFraction(
+        el.scrollTop,
+        el.scrollHeight,
+        el.clientHeight,
       );
+      lastFractionRef.current = fraction;
+      const w = fractionToWidth(fraction);
+      // Both rails. Only one is on screen at a time, but the header's stays
+      // mounted while hidden, so keeping both current costs one CSSOM write
+      // and means neither can be stale the instant it is revealed.
+      if (progressFillRef.current) progressFillRef.current.style.width = w;
+      if (focusFillRef.current) focusFillRef.current.style.width = w;
     };
     const onScroll = () => {
       if (raf) return;
@@ -1054,7 +1084,12 @@ export function MobileReader({
         // highlight, which also opens its action popover through the
         // document-level click handler. The reading surface is scroll-only:
         // the edge bands that used to page up and down are gone.
-        onClick={() => setShowChrome((s) => !s)}
+        onClick={() => {
+          const next = !showChrome;
+          setShowChrome(next);
+          if (next) focusHint.dismiss();
+          else focusHint.show();
+        }}
         style={{
           flex: 1,
           overflow: "auto",
@@ -1088,6 +1123,12 @@ export function MobileReader({
           position: "relative",
         }}
         className="no-scrollbar"
+        // `no-scrollbar` only suppresses the NATIVE bar. The app also paints
+        // its own floating thumb over every scroller that has not opted out,
+        // and on a phone that is a second progress indicator drawn down the
+        // edge of the page — redundant beside the chapter rail, and furniture
+        // in a mode meant to have none. Desktop keeps its thumb.
+        data-no-overlay-scrollbar
       >
         {currentChapter > 0 ? (
           <ChapterStartLink
@@ -1376,6 +1417,24 @@ export function MobileReader({
             setActiveHl(null);
           }}
           onDismiss={() => setActiveHl(null)}
+        />
+      )}
+      {/* Focus mode's only furniture. Mounted just while the chrome is away,
+          so the header's own rail is never doubled. */}
+      {chromeHidden && (
+        <FocusRail
+          fillRef={focusFillRef}
+          theme={theme}
+          rtl={rtl}
+          initialFraction={lastFractionRef.current}
+        />
+      )}
+      {focusHint.visible && (
+        <FocusHint
+          theme={theme}
+          title={tr("reader.focusMode")}
+          body={tr("reader.mobileFocusHintBody")}
+          isAr={dir === "rtl"}
         />
       )}
     </div>
