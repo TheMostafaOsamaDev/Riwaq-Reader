@@ -88,7 +88,11 @@ export async function createPdfPageSource(
   );
 }
 
-async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
+/** Exported for tests: lets a fake `PdfDoc` drive the mount table without a
+ *  real file, a worker, or Tauri. */
+export async function createPdfPageSourceFrom(
+  doc: PdfDoc,
+): Promise<FixedPageSource> {
   const sizeCache = new Map<number, { w: number; h: number }>();
   // Insertion-ordered so the first key is the oldest — cheap LRU.
   const mounted = new Map<number, Mounted>();
@@ -213,6 +217,39 @@ async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
     return n;
   }
 
+  /** Hand one page's memory back.
+   *
+   *  Detaching the wrap is not enough, and the reason is worth keeping.
+   *  Measured in a standalone WKWebView, 60 detached 2000x2000 canvases that
+   *  nothing references are collected within about two seconds — but if
+   *  anything still points at them the process holds all 935MB flat,
+   *  indefinitely. Something does point at them: pdf.js keeps every page it
+   *  has handed out, a page keeps its render task, and the task keeps the
+   *  canvas context, so an evicted page stayed reachable and its bitmap
+   *  stayed allocated. A desktop session ended up 1.3GB deep in 82 of them
+   *  against a 96MB budget, because the accounting below only ever described
+   *  this map.
+   *
+   *  Zeroing the dimensions frees the backing store whoever is holding the
+   *  element, which is why it happens here rather than being left to the
+   *  collector — it does not depend on having found every referrer. The text
+   *  layer goes the same way: a span per glyph run, an inline style on each.
+   *
+   *  A render still in flight for this page draws into a 0x0 canvas and throws
+   *  inside pdf.js, which already treats that as a supersede and swallows it —
+   *  the same outcome as before, when the draw landed on a detached canvas. */
+  function release(i: number, m: Mounted) {
+    m.wrap.remove();
+    m.text.textContent = "";
+    m.marks.textContent = "";
+    m.canvas.width = 0;
+    m.canvas.height = 0;
+    m.bytes = 0;
+    // The bitmap is ours; the page behind it belongs to pdf.js, which holds
+    // every page it has handed out until the document closes.
+    doc.releasePage(i);
+  }
+
   /** Drop least-recently-used canvases until we're inside both the byte budget
    *  and the count ceiling, never touching `keep` or anything the viewer has
    *  retained, and never going below MIN_MOUNTED — a turn's working set
@@ -239,7 +276,7 @@ async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
       if (victim === undefined) break;
       const m = mounted.get(victim)!;
       bytes -= m.bytes;
-      m.wrap.remove();
+      release(victim, m);
       mounted.delete(victim);
     }
   }
@@ -321,7 +358,7 @@ async function createPdfPageSourceFrom(doc: PdfDoc): Promise<FixedPageSource> {
     },
 
     destroy() {
-      for (const m of mounted.values()) m.wrap.remove();
+      for (const [i, m] of mounted) release(i, m);
       mounted.clear();
       doc.destroy();
     },
