@@ -65,6 +65,13 @@ export interface PdfDoc {
     container: HTMLElement,
     scale: number,
   ): Promise<void>;
+  /** Let go of page `i`'s cached resources.
+   *
+   *  pdf.js holds on to every page it has handed out until the document is
+   *  destroyed — the operator list, the decoded images, the fonts — so a
+   *  reader that visits 200 pages ends the session holding all 200. Nothing
+   *  else ever drops one. Call this when a page leaves the working set. */
+  releasePage(i: number): void;
   destroy(): void;
 }
 
@@ -187,6 +194,21 @@ export async function openPdfDocument(source: PdfSource): Promise<PdfDoc> {
       } finally {
         if (textTasks.get(container) === layer) textTasks.delete(container);
       }
+    },
+
+    releasePage(i) {
+      // `cleanup` reports failure rather than tearing down a page that is
+      // mid-render, so there is no need to coordinate with renderTasks here.
+      // The page stays usable either way: pdf.js refetches what it needs if
+      // the page is ever drawn again.
+      void doc
+        .getPage(i + 1)
+        .then((page) => {
+          page.cleanup();
+        })
+        .catch(() => {
+          // the document is closing, or that page never loaded
+        });
     },
 
     destroy() {
