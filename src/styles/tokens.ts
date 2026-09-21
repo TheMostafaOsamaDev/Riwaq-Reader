@@ -664,6 +664,9 @@ export const Z_LOCAL = {
 } as const;
 
 export const Z = {
+  /** The phone's focus-mode progress rail. Over the page, under the bars, so
+   *  a bar sliding back in covers it rather than interleaving with it. */
+  focusRail: 90,
   /** Reader bars pinned over the page. */
   readerChrome: 100,
   /** Sidebar, mobile sheet, detail-view header — furniture beside content. */
