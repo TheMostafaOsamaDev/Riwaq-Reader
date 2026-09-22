@@ -88,7 +88,6 @@ import {
 import { useI18n } from "../i18n/useI18n";
 import { formatNum } from "../i18n";
 import { useReducedMotion } from "../styles/motion";
-import { useLineScroll } from "../reader/scroll/useLineScroll";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
@@ -203,13 +202,16 @@ export function DesktopReader({
   // ── Focus mode ────────────────────────────────────────────────────────────
   // Shared with the fixed-page reader — see reader/chrome/focusChrome.tsx.
   const reduced = useReducedMotion();
-  // Wheel scrolling glides and comes to rest on a whole line. Scroll mode
-  // only — the paginated modes do not scroll. See reader/scroll/lineScroll.ts.
-  useLineScroll({
-    scrollRef,
-    mode: mode === "scroll" ? "wheel" : "off",
-    reducedMotion: reduced,
-  });
+  // Wheel scrolling is the browser's. The reader used to take it over —
+  // cancelling the event and re-animating scrollTop towards a line-aligned
+  // target — to come to rest on a whole line. Measured in WebKit, that cost
+  // double the input latency and ~21 extra frames of drift after the wheel
+  // stopped, moved the same distance, and rested 11.6px from the nearest real
+  // line against 4.1px for doing nothing: it aimed at a grid computed from
+  // scrollTop 0, and paragraph margins (1.1em) are not a multiple of the line
+  // box (1.6em), so real lines walk off that grid almost immediately. Line
+  // resting is worth having, but it has to snap to MEASURED line tops
+  // (Range.getClientRects) and land at once rather than drift there.
   const panelOpen = activePanel !== null;
   const focus = useFocusChrome({
     active: t.focusMode,
