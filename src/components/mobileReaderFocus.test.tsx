@@ -16,13 +16,15 @@
 // the structure rather than measured pixels. Real measured alignment is
 // checked in a WKWebView.
 
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EpubBook } from "../epub/types";
 import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
+import { ar } from "../i18n/ar";
 import { I18nProvider } from "../i18n/I18nProvider";
 import type { BookState } from "../store/library";
+import { GLASS_CLASS } from "../reader/chrome/glass";
 import { THEMES } from "../styles/tokens";
 import { MobileReader } from "./MobileReader";
 
@@ -55,39 +57,55 @@ const STATE: BookState = {
 
 let host: HTMLDivElement;
 let root: Root;
+/** Chapters the reader asked to move to, oldest first. */
+let moves: number[] = [];
 
-/** Mount a fresh reader into `host`. Called per test, and again by the case
- *  that needs the hint's flag to survive a remount. */
-function mount() {
+/** A LIVE reader: `onChapterChange` really moves it, so a tap on an in-page
+ *  control re-renders the page the way the app does rather than leaving it
+ *  frozen on chapter 0. The chapter-turn cases depend on that — a turn that
+ *  never happens cannot show what the turn does to the chrome. */
+function Harness({ start }: { start: number }) {
+  const [chapter, setChapter] = useState(start);
+  return (
+    <I18nProvider locale="ar">
+      <MobileReader
+        theme={THEMES.sepia}
+        themeKey="sepia"
+        t={DEFAULT_TWEAKS}
+        setTweak={() => {}}
+        book={BOOK}
+        state={{ ...STATE, currentChapter: chapter }}
+        currentChapter={chapter}
+        resumeParagraph={0}
+        jumpNonce={0}
+        onChapterChange={(next) => {
+          moves.push(next);
+          setChapter(next);
+        }}
+        onParagraphChange={() => {}}
+        onCreateHighlight={() => {}}
+        onDeleteHighlight={() => {}}
+        onUpdateHighlightNote={() => {}}
+        onJumpToHighlight={() => {}}
+        onBack={() => {}}
+      />
+    </I18nProvider>
+  );
+}
+
+/** Mount a fresh reader into `host`, opened on chapter `start`. Called per
+ *  test, and again by the cases that need a different chapter or need the
+ *  hint's flag to survive a remount. */
+function mount(start = 0) {
   root = createRoot(host);
   act(() => {
-    root.render(
-      <I18nProvider locale="ar">
-        <MobileReader
-          theme={THEMES.sepia}
-          themeKey="sepia"
-          t={DEFAULT_TWEAKS}
-          setTweak={() => {}}
-          book={BOOK}
-          state={STATE}
-          currentChapter={0}
-          resumeParagraph={0}
-          jumpNonce={0}
-          onChapterChange={() => {}}
-          onParagraphChange={() => {}}
-          onCreateHighlight={() => {}}
-          onDeleteHighlight={() => {}}
-          onUpdateHighlightNote={() => {}}
-          onJumpToHighlight={() => {}}
-          onBack={() => {}}
-        />
-      </I18nProvider>,
-    );
+    root.render(<Harness start={start} />);
   });
 }
 
 beforeEach(() => {
   localStorage.clear();
+  moves = [];
   host = document.createElement("div");
   document.body.appendChild(host);
   mount();
@@ -119,6 +137,44 @@ function focusRail(): HTMLElement | null {
 
 function hint(): HTMLElement | null {
   return host.querySelector<HTMLElement>(".riwaq-focus-hint");
+}
+
+/** True while the header and the bottom bar are both gone — i.e. focus mode.
+ *  Read off the bars rather than off the rail: the rail is a consequence of
+ *  the same flag, but the bars are the thing the reader watches leave.
+ *
+ *  The count is asserted because `every` on an empty list is `true` — a
+ *  selector that stopped matching would otherwise report permanent focus
+ *  mode and every case below would pass on nothing. */
+function chromeIsAway(): boolean {
+  const bars = [
+    ...host.querySelectorAll<HTMLElement>(`.${GLASS_CLASS}[aria-hidden]`),
+  ];
+  if (bars.length !== 2)
+    throw new Error(`expected 2 chrome bars, saw ${bars.length}`);
+  return bars.every((bar) => bar.getAttribute("aria-hidden") === "true");
+}
+
+/** Re-open the reader in the MIDDLE of the book — the only place where both
+ *  the way back and the way forward are on the page at once. */
+function openMidBook() {
+  act(() => root.unmount());
+  mount(1);
+}
+
+/** Tap an in-page control the way a thumb does: on the label inside it, not
+ *  on the button box. A tap that landed on the button itself would miss the
+ *  bug entirely — what bubbles to the page is the same either way, but only
+ *  the inner node proves the fix looks past the node actually hit. */
+function tapControl(label: string) {
+  const el = [...host.querySelectorAll<HTMLElement>("button")].find((b) =>
+    (b.getAttribute("aria-label") ?? b.textContent ?? "").startsWith(label),
+  );
+  if (!el) throw new Error(`no control named ${label}`);
+  const inner = el.querySelector("span") ?? el;
+  act(() => {
+    inner.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
 }
 
 describe("the phone reading surface", () => {
@@ -191,5 +247,50 @@ describe("the first trip into focus mode", () => {
     mount();
     tapPage();
     expect(hint()).toBeNull();
+  });
+});
+
+// A tap on the page toggles the chrome, and the two chapter controls live ON
+// the page — so their tap bubbled to the same handler and turned the chrome
+// back on. Reported from a phone: enter focus mode, tap through to the next
+// chapter, and the header and bottom bar are back. The one control meant to
+// keep you reading was the one that threw you out of the reading mode.
+describe("the in-page chapter controls, in focus mode", () => {
+  beforeEach(openMidBook);
+
+  it("turns forward without bringing the chrome back", () => {
+    tapPage();
+    expect(chromeIsAway()).toBe(true);
+    tapControl(ar["reader.nextChapter"]);
+    expect(moves).toEqual([2]);
+    expect(chromeIsAway()).toBe(true);
+    expect(focusRail()).not.toBeNull();
+  });
+
+  it("turns back without bringing the chrome back", () => {
+    tapPage();
+    tapControl(ar["reader.prevChapter"]);
+    expect(moves).toEqual([0]);
+    expect(chromeIsAway()).toBe(true);
+  });
+
+  it("keeps the chrome away for the foot's marginal links too", () => {
+    // Same block, same bubble. Opening the contents or going back to the top
+    // of the chapter are moves made INSIDE focus mode; neither is a request
+    // to leave it.
+    tapPage();
+    tapControl(ar["reader.topOfChapter"]);
+    expect(chromeIsAway()).toBe(true);
+    tapControl(ar["reader.toc"]);
+    expect(chromeIsAway()).toBe(true);
+  });
+
+  it("still lets a tap on the page itself work the chrome", () => {
+    // The guard has to be narrow: the paper around the controls is still the
+    // toggle, and so is the text.
+    tapPage();
+    expect(chromeIsAway()).toBe(true);
+    tapPage();
+    expect(chromeIsAway()).toBe(false);
   });
 });
