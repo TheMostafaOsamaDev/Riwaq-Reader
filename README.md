@@ -36,10 +36,10 @@ nothing to sign into.
 
 ### 📚 A Store that reads the web for you
 
-Browse Arabic web-novel sites from inside the app. Riwaq ships with three sources, renders
-each site's own home page as native carousels, and searches them without opening a browser.
-Pick a novel and you can **stream it chapter by chapter**, **add it to your library**, or
-**download a range of chapters** for offline reading.
+Browse Arabic web-novel sites from inside the app. Riwaq renders each site's own home page
+as native carousels and searches it without opening a browser. Pick a novel and you can
+**stream it chapter by chapter**, **add it to your library**, or **download a range of
+chapters** for offline reading.
 
 ![Browsing a source in the Store](docs/screenshots/desktop/11-store-browse.png)
 
@@ -47,6 +47,22 @@ Every novel gets a real detail page — synopsis, genres, volumes, full chapter 
 one-tap download per chapter or per volume.
 
 ![A novel detail page](docs/screenshots/desktop/12-store-novel.png)
+
+### 🧩 Sources are extensions, not a fixed list
+
+No website is compiled into Riwaq. Every source is an **extension**, installed from a
+repository and updated on its own schedule — so a site that changes its markup can be fixed
+without waiting for a new version of the app.
+
+Riwaq's own repository is configured out of the box; add another and its extensions appear
+beside them. Install, update — one at a time or **Update all** — or remove, from one screen.
+Removing a *repository* leaves its extensions installed and working; they simply stop being
+offered updates.
+
+An extension runs inside the app, with the app's reach, so adding a repository asks you to
+confirm you trust whoever publishes it. One built for a newer Riwaq than you are running
+says so up front instead of failing later, and a repository that can't be reached falls back
+to the copy saved on your device rather than emptying the list.
 
 ### 🌙 Focus mode
 
@@ -164,6 +180,7 @@ converted on import, with a step to pick the cover and review images first.
 | **Reader** | Two-page / single-page / scrolling layouts, tap-to-turn with adjustable zones, chapter progress bar, page-turn animation, keep-screen-awake |
 | **Navigation** | Contents with per-volume grouping, chapter search, a *Now* marker and jump-to-current; a progress scrubber across the whole book |
 | **Library** | Continue-reading hero, shelves, status filters, right-click menu, editable title / author / description / cover |
+| **Extensions** | Every source installs at runtime from a repository — install, update, remove, or add a repository of your own. An unreachable one falls back to the copy on your device. |
 | **Settings** | A full settings page with its own search — appearance, reading, behaviour, downloads, data. Export, import, or reset every preference. |
 | **Platforms** | Windows, macOS, Linux, Android — one codebase, layout-aware shells (bottom nav on phones, sidebar on desktop) |
 | **Privacy** | No account, no sync, no telemetry. State is plain JSON on your disk. The only network traffic is the Store, when you use it. |
@@ -315,11 +332,18 @@ choice about who gets updates.
 
 ## Sources
 
-| Source | Site | Notes |
+Sources are extensions, published from
+[Riwaq-Extensions](https://github.com/TheMostafaOsamaDev/Riwaq-Extensions) — the repository
+Riwaq is configured with out of the box. The roster changes there rather than here, so
+**Store → Extensions** in the app is always the current list. At the time of writing it
+offers:
+
+| Extension | Site | What it carries |
 |---|---|---|
-| **فضاء الروايات** | [cenele.com](https://cenele.com) | Arabic translations of Asian web novels. Some pages sit behind bot protection; the first request to a chapter may need a session refresh. |
-| **ملوك الروايات** | [kolnovel.com](https://kolnovel.com) | Arabic translations of Korean / Chinese / Japanese web novels. |
-| **ملوك الروايات** | [kolnovel.com](https://kolnovel.com) | The same site again, through Riwaq's alternate **Pro** reader. |
+| **فضاء الروايات** | [cenele.com](https://cenele.com) | Chinese and Korean web novels translated into Arabic. Some pages sit behind bot protection, so the first request to a chapter may need a session refresh. |
+| **ملوك الروايات** | [kolnovel.com](https://kolnovel.com) | Arabic translations of web novels from KolNovel. |
+| **بحر الروايات** | [seanovel.org](https://seanovel.org) | Korean, Chinese and Japanese web novels translated into Arabic. |
+| **شمس الروايات** | [sunovels.com](https://sunovels.com) | Arabic translated and original web novels, updated daily. |
 
 Riwaq hosts and redistributes nothing. The Store reads publicly available pages so you can
 read them offline. Support the translators and official releases where they exist.
