@@ -270,6 +270,11 @@ function mobileTab(theme: Theme): CSSProperties {
  *  inside the text. */
 const MOBILE_READING_INSETS = { top: 44, bottom: 44 };
 
+/** A control standing on the reading surface, as opposed to the surface
+ *  itself. Tapping one is a request to use it, never to toggle the chrome —
+ *  see the reading surface's `onClick`. */
+const PAGE_CONTROL = 'button, a, [role="button"]';
+
 /** Set once the phone's first-run focus-mode hint has been shown. Separate
  *  from desktop's `riwaq:focus-hint-seen`: different wording, dismissed
  *  independently. */
@@ -1084,7 +1089,22 @@ export function MobileReader({
         // highlight, which also opens its action popover through the
         // document-level click handler. The reading surface is scroll-only:
         // the edge bands that used to page up and down are gone.
-        onClick={() => {
+        //
+        // "The page" is the paper and the type, NOT the controls standing on
+        // it. The previous-chapter capsule and the end-of-chapter card are
+        // children of this element, so their tap bubbled up here and toggled
+        // the chrome too: a reader in focus mode who turned a chapter got the
+        // header and the bottom bar back with it, thrown out of the mode by
+        // the one control whose whole job is to keep them reading.
+        //
+        // Asked of the DOM by role rather than threaded through each control
+        // as `stopPropagation`: every control here is a real <button>, so one
+        // question settles the four that exist and whatever is added next to
+        // the foot of a chapter. Narrow on purpose — the paper around a
+        // control still toggles, and so does the text. A highlight is NOT
+        // covered: a <mark> is text, and tapping text is the gesture.
+        onClick={(e) => {
+          if ((e.target as HTMLElement | null)?.closest(PAGE_CONTROL)) return;
           const next = !showChrome;
           setShowChrome(next);
           if (next) focusHint.dismiss();
