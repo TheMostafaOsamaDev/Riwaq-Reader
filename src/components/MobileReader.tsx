@@ -19,9 +19,9 @@ import {
   ReaderProgressBar,
 } from "../reader/chrome/ReaderProgressBar";
 import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
-import { FocusHint } from "../reader/chrome/focusChrome";
 import { FocusRail } from "../reader/chrome/FocusRail";
-import { useOnceHint } from "../reader/chrome/useOnceHint";
+import { FocusLock, FocusPill } from "../reader/chrome/FocusSigns";
+import { isDoubleTap, type Tap } from "../reader/chrome/focusGesture";
 import { glassBar } from "../reader/chrome/glass";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
@@ -302,11 +302,6 @@ export const READING_INSET_TOP =
  *  see the reading surface's `onClick`. */
 const PAGE_CONTROL = 'button, a, [role="button"]';
 
-/** Set once the phone's first-run focus-mode hint has been shown. Separate
- *  from desktop's `riwaq:focus-hint-seen`: different wording, dismissed
- *  independently. */
-const MOBILE_FOCUS_HINT_KEY = "riwaq:m-focus-hint-seen";
-
 export function MobileReader({
   theme,
   themeKey,
@@ -330,19 +325,35 @@ export function MobileReader({
   onBack,
 }: Props) {
   const { tr, dir, locale } = useI18n();
-  const [showChrome, setShowChrome] = useState(true);
+  // Focus mode is the PERSISTED tweak, the same one the desktop reader uses
+  // — not local state. It used to be a `showChrome` boolean that reset to
+  // true on every mount, so a reload, a hot update or simply re-opening the
+  // book dropped the reader out of the mode with no acknowledgement. A mode
+  // you entered on purpose should still be there when you come back.
+  const focusOn = t.focusMode;
+  const setFocusOn = (next: boolean) => setTweak("focusMode", next);
   const [showProgress, setShowProgress] = useState(true);
   const reduced = useReducedMotion();
-  // Top/bottom chrome bars stay mounted and animate via transform +
-  // opacity when `showChrome` toggles, so a tap-to-read fade is
-  // smooth instead of a hard cut. Pointer-events are dropped while
-  // hidden so taps fall through to the reader.
-  const chromeHidden = !showChrome;
-  // First trip into focus mode only: the gesture that got them here is the
-  // one that gets them back, and nothing on screen says so once the chrome
-  // has gone. Desktop's hint names a pointer, which a phone has not got, so
-  // the two have their own wording and their own key.
-  const focusHint = useOnceHint(MOBILE_FOCUS_HINT_KEY);
+  // Top/bottom chrome bars stay mounted and animate via transform + opacity,
+  // so entering focus mode is a fade rather than a hard cut. Pointer-events
+  // are dropped while hidden so taps fall through to the reader.
+  const chromeHidden = focusOn;
+  // The pill, shown on EVERY entry rather than once per install: it carries
+  // the exit gesture, and a reader who enters focus mode twice a year needs
+  // telling both times. `pillKey` remounts it so its timer restarts.
+  const [pillKey, setPillKey] = useState(0);
+  const [pillUp, setPillUp] = useState(false);
+  useEffect(() => {
+    if (!pillUp) return;
+    const id = window.setTimeout(() => setPillUp(false), 2200);
+    return () => window.clearTimeout(id);
+  }, [pillUp, pillKey]);
+  /** Show the mode's name and its exit, restarting the timer if it is up. */
+  const announceFocus = () => {
+    setPillKey((n) => n + 1);
+    setPillUp(true);
+  };
+
   const chromeTransition = reduced
     ? "none"
     : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
@@ -357,10 +368,8 @@ export function MobileReader({
   //
   // Rejects and no-ops everywhere but Android, so no platform check is needed.
   useEffect(() => {
-    void invoke("set_immersive_mode", { immersive: !showChrome }).catch(
-      () => {},
-    );
-  }, [showChrome]);
+    void invoke("set_immersive_mode", { immersive: focusOn }).catch(() => {});
+  }, [focusOn]);
   // Leaving the reader always restores them, whatever state the chrome was in.
   // Kept apart from the effect above deliberately: as that one's cleanup it
   // would fire on every toggle, showing the bars again a frame after each
@@ -374,6 +383,8 @@ export function MobileReader({
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
+  /** The last page tap, for the double-tap test. */
+  const lastTapRef = useRef<Tap | null>(null);
   const startEndpointRef = useRef<RangeEndpoint | null>(null);
   const endEndpointRef = useRef<RangeEndpoint | null>(null);
   const paragraphRef = useRef<HTMLElement | null>(null);
@@ -410,8 +421,8 @@ export function MobileReader({
   // Read by the scroll-to-resume effect so it knows whether the chrome is
   // currently occluding the top of the scroll area. Tracked via a ref so a
   // chrome toggle alone doesn't re-trigger the scroll.
-  const showChromeRef = useRef(showChrome);
-  showChromeRef.current = showChrome;
+  const showChromeRef = useRef(!focusOn);
+  showChromeRef.current = !focusOn;
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
 
@@ -1094,20 +1105,39 @@ export function MobileReader({
             })}
           </div>
         </div>
-        {/* Mirrors the back button so the title block is centred on the BAR
-              rather than on the space left over beside the button. Without it
-              the flex row is asymmetric — button + gap on one side, nothing on
-              the other — and the title sits 22px off-centre (toward the left
-              in RTL, where the button is on the right). */}
-        <div
-          aria-hidden
+        {/* The way IN to focus mode, in the corner opposite the home button.
+              That corner was an aria-hidden spacer whose only job was keeping
+              the title centred on the BAR rather than on the space left beside
+              the back button — so the control costs no layout at all: it is
+              the same 36px box, now with something in it, and the title stays
+              centred for the same reason it was before.
+
+              Not a sixth tab in the bottom row: that row is shared with the
+              fixed-page reader, which has its own focus control already.
+
+              36px of ink, 44px of target. The negative margin gives back the
+              8px the padding takes, so the row's metrics are unchanged. */}
+        <button
+          onClick={() => {
+            setFocusOn(true);
+            // Entering is "just the book": a sheet left open would float over
+            // a chrome-less page with no way back to its own controls.
+            setSheet(null);
+            announceFocus();
+          }}
+          aria-label={tr("reader.focusMode")}
           style={{
+            ...mobileTab(theme),
             width: 36,
             height: 36,
+            padding: 4,
+            margin: -4,
+            boxSizing: "content-box",
             flexShrink: 0,
-            pointerEvents: "none",
           }}
-        />
+        >
+          <Icon name="focus" size={16} />
+        </button>
       </div>
 
       <div
@@ -1132,10 +1162,22 @@ export function MobileReader({
         // covered: a <mark> is text, and tapping text is the gesture.
         onClick={(e) => {
           if ((e.target as HTMLElement | null)?.closest(PAGE_CONTROL)) return;
-          const next = !showChrome;
-          setShowChrome(next);
-          if (next) focusHint.dismiss();
-          else focusHint.show();
+          // Outside focus mode the page tap does NOTHING. It used to toggle
+          // the chrome, which made a bare screen reachable by accident and
+          // gave the app two overlapping routes to the same state. Focus mode
+          // is entered from its control now; one concept, one way in.
+          if (!focusOn) return;
+          const tap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+          if (isDoubleTap(lastTapRef.current, tap)) {
+            lastTapRef.current = null;
+            setFocusOn(false);
+            setPillUp(false);
+            return;
+          }
+          lastTapRef.current = tap;
+          // A single tap has no job left, and doing nothing at all reads as a
+          // frozen app — so it answers the question that prompted it.
+          announceFocus();
         }}
         style={{
           flex: 1,
@@ -1479,12 +1521,23 @@ export function MobileReader({
           initialFraction={lastFractionRef.current}
         />
       )}
-      {focusHint.visible && (
-        <FocusHint
+      {focusOn && (
+        <FocusLock
+          theme={theme}
+          label={tr("reader.exitFocusMode")}
+          onExit={() => {
+            setFocusOn(false);
+            setPillUp(false);
+          }}
+        />
+      )}
+      {focusOn && pillUp && (
+        <FocusPill
+          key={pillKey}
           theme={theme}
           title={tr("reader.focusMode")}
-          body={tr("reader.mobileFocusHintBody")}
-          isAr={dir === "rtl"}
+          hint={tr("reader.focusExitHint")}
+          reduced={reduced}
         />
       )}
     </div>
