@@ -1,127 +1,135 @@
 <div align="center">
 
+<img src="public/brand/mark-ink.webp" width="96" alt="Riwaq"/>
+
 # رواق · Riwaq
 
 **A calm, offline-first e-book reader.**
+EPUB · PDF · Word — Windows, macOS, Linux and Android.
 
-EPUB · PDF · Word — on Windows, macOS, Linux and Android.
-No accounts, no sync, no analytics. Your books stay on your device.
+<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest"><img height="60" alt="Download from GitHub Releases" src="https://img.shields.io/badge/Download-GitHub%20Releases-3a2f1f?style=for-the-badge&logo=github"/></a>
+<a href="https://f-droid.org/packages/com.riwaq.reader"><img height="60" alt="Get it on F-Droid" src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"/></a>
+<a href="https://flathub.org/apps/io.github.themostafaosamadev.Riwaq"><img height="60" alt="Get it on Flathub" src="https://flathub.org/api/badge?svg&locale=en"/></a>
+<a href="https://github.com/RookieEnough/Orion-Store"><img height="60" alt="Get it on Orion Store" src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png"/></a>
 
-[Download](#download) · [Features](#what-makes-it-good) · [Sources](#sources) · [Screenshots](#screenshots) · [Development](#development)
+<sub>F-Droid, Flathub and Orion listings are in review — GitHub Releases works today.</sub>
 
 </div>
 
+---
+
+Riwaq (رواق) is a reading app for people who read a lot, in Arabic and in English, and who
+would rather own their books than rent them. No account. No sync. No telemetry. Everything
+is a file on your disk.
+
+What follows is the app in the order you'd meet it.
+
+---
+
+## 1 · You start with a library
+
+Books come in from a file picker, a folder of EPUBs, drag and drop, or **Open with** from
+your file manager and Android's share sheet. Re-importing the same file reuses the book
+rather than duplicating it.
+
 ![The Riwaq library on desktop](docs/screenshots/desktop/01-library.png)
 
----
-
-## What is Riwaq?
-
-Riwaq (رواق) reads the books you already have — EPUBs, scanned PDFs, `.docx` drafts,
-translated web novels — in whatever language they're written in. The interface comes in
-English and Arabic, and it goes out of its way on the things long reading sessions depend
-on: typography you can actually tune, layouts that hold still, and text that stays
-readable for hours.
-
-Right-to-left gets first-class treatment rather than an afterthought — mirrored interface,
-diacritics, Naskh and Kufi faces — which is unusual enough to be worth saying out loud.
-
-It is one app on every platform: a Tauri 2 shell around a React 19 front end, desktop and
-phone from the same codebase. Everything is a file on your disk — no database, no cloud,
-nothing to sign into.
+Progress sits on every cover. Format badges mark PDFs and Word files, source badges mark
+web novels. Filter by Reading, Finished or Wishlist, or make shelves of your own. `⌘K`
+opens a palette over the whole app — find a book as you type, or jump to any view.
 
 ---
 
-## What makes it good
+## 2 · Or you find one on the web
 
-### 📚 A Store that reads the web for you
-
-Browse Arabic web-novel sites from inside the app. Riwaq renders each site's own home page
-as native carousels and searches it without opening a browser. Pick a novel and you can
-**stream it chapter by chapter**, **add it to your library**, or **download a range of
-chapters** for offline reading.
+Riwaq browses Arabic web-novel sites from inside the app, rendering each site's own home
+page as native carousels and searching it without opening a browser.
 
 ![Browsing a source in the Store](docs/screenshots/desktop/11-store-browse.png)
 
-Every novel gets a real detail page — synopsis, genres, volumes, full chapter list — with
-one-tap download per chapter or per volume.
+Every novel gets a real detail page — synopsis, genres, volumes, the full chapter list.
+From here you can read it online, add it to your library, download a range of chapters, or
+bake the whole novel into a standalone EPUB.
 
 ![A novel detail page](docs/screenshots/desktop/12-store-novel.png)
 
-### 🧩 Sources are extensions, not a fixed list
+**No website is compiled into Riwaq.** Every source is an extension, installed from a
+repository and updated on its own schedule — so a site that changes its markup gets fixed
+without waiting for a new version of the app. Riwaq's own repository is configured out of
+the box; add another and its extensions appear beside them.
 
-No website is compiled into Riwaq. Every source is an **extension**, installed from a
-repository and updated on its own schedule — so a site that changes its markup can be fixed
-without waiting for a new version of the app.
-
-Riwaq's own repository is configured out of the box; add another and its extensions appear
-beside them. Install, update — one at a time or **Update all** — or remove, from one screen.
-Removing a *repository* leaves its extensions installed and working; they simply stop being
-offered updates.
-
-![The extensions manager — installed, available, and where they come from](docs/screenshots/desktop/25-extensions.png)
+![The extensions manager](docs/screenshots/desktop/25-extensions.png)
 
 An extension runs inside the app, with the app's reach, so adding a repository asks you to
-confirm you trust whoever publishes it. One built for a newer Riwaq than you are running
-says so up front instead of failing later, and a repository that can't be reached falls back
-to the copy saved on your device rather than emptying the list.
+confirm you trust whoever publishes it. A repository that can't be reached falls back to the
+copy saved on your device rather than emptying the list.
 
 ![Repositories, with Riwaq's own and a field to add another](docs/screenshots/desktop/26-extension-repos.png)
 
-### 🌙 Focus mode
+---
 
-One click and everything but the page disappears. No toolbar, no progress bar, no chrome —
-on the phone, not even the Android system bars.
+## 3 · Then you read it
 
-![Focus mode](docs/screenshots/desktop/03-focus-mode.png)
+The reader is the point, and most of the work went here.
 
-On desktop the controls come back when the pointer nears the top or bottom edge. The phone
-has no pointer, so it says what it is instead: entering names the mode and the way out, and
-a small lock stays in the corner afterwards so a reader who looks away and back can still
-tell. Leaving takes a deliberate **double-tap** — or a tap on that lock, which is a real
-button, because a mode whose only exit is a gesture is a mode someone can get stuck in.
+![Reading, two-page RTL spread](docs/screenshots/desktop/02-reader.png)
 
-<table>
-<tr>
-<td width="33%"><img src="docs/screenshots/mobile/02-reader.png" alt="The phone reader, with focus mode in the header's corner"/><br/><b>Enter</b> — from the header</td>
-<td width="33%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode names it and the exit gesture"/><br/><b>Arrive</b> — it says what it is</td>
-<td width="33%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus mode at rest, with only a small lock in the corner"/><br/><b>Stay</b> — just the page, and a lock</td>
-</tr>
-</table>
-
-### ✍️ Typography you can actually tune
-
-**16 reading faces** in four groups — Naskh book faces, modern sans, Kufi, and display.
-One picker drives both scripts: every row previews Arabic and Latin side by side, and a
-family that only carries one of them shows the fallback rather than hiding it. You pick by
-eye, not by name.
+**Sixteen bundled faces** across Naskh book faces, modern sans, Kufi and display. One
+picker drives both scripts: every row previews Arabic and Latin side by side. Each face is
+corrected to a common apparent size, so `17px` reads the same whichever you pick — the size
+slider keeps meaning one thing across all sixteen.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/desktop/05-fonts.png" alt="Font picker showing each family in its own face"/></td>
+<td width="50%"><img src="docs/screenshots/desktop/05-fonts.png" alt="Font picker previewing both scripts"/></td>
 <td width="50%"><img src="docs/screenshots/desktop/04-typography.png" alt="Typography controls"/></td>
 </tr>
 </table>
 
 Then tune it: size, line height, letter spacing, paragraph spacing, content width,
-alignment, hyphenation. Read as **two pages**, a **single page**, or a **continuous scroll**.
-
-### 🎨 Four themes, light to OLED
-
-Light, Sepia, Dark, and a true-black OLED — or follow your system.
+alignment, hyphenation. Read as two pages, a single page, or a continuous scroll. Four
+themes — Light, Sepia, Dark, true-black OLED — or follow the system.
 
 <table>
 <tr>
 <td width="50%"><img src="docs/screenshots/desktop/19-dark-reader.png" alt="Reader in dark theme"/></td>
-<td width="50%"><img src="docs/screenshots/desktop/20-dark-library.png" alt="Library in dark theme"/></td>
+<td width="50%"><img src="docs/screenshots/desktop/18-arabic-rtl.png" alt="The interface in Arabic, fully right-to-left"/></td>
 </tr>
 </table>
 
-### 🖍️ Highlights you can actually find again
+Switch the interface to العربية and it mirrors all the way down — sidebar to the right,
+icons flipped, every label followed through. Right-to-left is first-class here, not a
+stylesheet afterthought.
 
-Select any passage, pick one of four colours, and attach a note about why it mattered.
-The sidebar collects every highlight in the book with its chapter, so you can walk back
-through them later.
+---
+
+## 4 · And when you want only the book
+
+One control and everything but the page disappears. No toolbar, no progress bar, no chrome
+— on the phone, not even the Android system bars.
+
+![Focus mode](docs/screenshots/desktop/03-focus-mode.png)
+
+On desktop the controls return when the pointer nears an edge. The phone has no pointer, so
+it says what it is instead: entering names the mode and the way out, and a small lock stays
+in the corner so a reader who looks away and back can still tell. Leaving takes a deliberate
+double-tap — or a tap on that lock, which is a real button, because a mode whose only exit
+is a gesture is a mode someone can get stuck in.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/screenshots/mobile/02-reader.png" alt="Focus mode lives in the header's corner"/><br/><b>Enter</b> — from the header</td>
+<td width="33%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering names the mode and the exit"/><br/><b>Arrive</b> — it says what it is</td>
+<td width="33%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="At rest: the page, and a lock"/><br/><b>Stay</b> — the page, and a lock</td>
+</tr>
+</table>
+
+---
+
+## 5 · You mark what mattered
+
+Select any passage, pick one of four colours, attach a note about why. The sidebar collects
+every highlight in the book with its chapter, so you can walk back through them later.
 
 <table>
 <tr>
@@ -130,57 +138,47 @@ through them later.
 </tr>
 </table>
 
-### 🌐 Two interface languages, mirrored properly
+Navigation keeps up: contents grouped by volume, chapter search, a *Now* marker and
+jump-to-current, and a scrubber across the whole book.
 
-English and العربية, and the translation goes all the way down — not just the book text.
-Switch to Arabic and the sidebar moves to the right, icons flip, and every label follows.
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/desktop/08-contents.png" alt="Contents"/></td>
+<td width="50%"><img src="docs/screenshots/desktop/09-progress.png" alt="Progress"/></td>
+</tr>
+</table>
 
-![The interface in Arabic, fully right-to-left](docs/screenshots/desktop/18-arabic-rtl.png)
+---
 
-### 🗂️ A library that stays tidy
+## 6 · You keep it, or you don't
 
-Reading progress on every cover, format badges for PDF and Word, source badges for novels,
-status filters (Reading / Finished / Wishlist), and your own shelves for anything else.
-
-`⌘K` opens a command palette over the whole app — search books and authors as you type, or
-jump straight to any view.
-
-![Searching the library from the command palette](docs/screenshots/desktop/16-search.png)
-
-### ⬇️ Downloads that survive a restart
-
-A real queue: per-chapter and per-volume downloads, concurrency limits, Wi-Fi-only mode,
-retry for interrupted jobs, and system notifications while it works. Or bake a whole novel
-into a standalone EPUB — one file, or one per volume — that lands in your library next to
-everything else.
+A real download queue: per-chapter and per-volume, concurrency limits, Wi-Fi-only mode,
+retry for interrupted jobs, notifications while it works.
 
 ![Download queue](docs/screenshots/desktop/13-downloads.png)
 
-Baking a novel into an EPUB asks how you want it: one file, or one per volume — which for a
+Baking a novel into an EPUB asks how you want it — one file, or one per volume, which for a
 fourteen-volume novel is the difference between a book you can finish and a book you can
 only scroll.
 
 ![Saving a novel as a standalone EPUB](docs/screenshots/desktop/27-save-as-epub.png)
 
-### 🗑️ …and downloads you can take back
-
-Reclaim the disk without losing your place. Hover a downloaded chapter and its marker turns
-into a delete button — one click, and a toast offers the download straight back. For a
-bigger clear-out a volume will drop just the chapters you have already read, or all of them;
-or long-press (right-click on desktop) any chapter to start selecting a run of them and
-delete the lot in one go. Deleting only ever removes the file: the chapter stays in the list,
-still readable online, and your reading progress is left alone.
-
-![Deleting one chapter's download from its row](docs/screenshots/desktop/22-delete-row.png)
+And you can take it back. Hover a downloaded chapter and its marker becomes a delete button
+— one click, and a toast offers the download straight back. A volume will drop just the
+chapters you've read, or all of them; or long-press (right-click on desktop) to select a run
+and delete the lot. Deleting only removes the file: the chapter stays in the list, still
+readable online, and your reading progress is untouched.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/desktop/23-delete-selection.png" alt="Several chapters selected for deletion at once"/></td>
-<td width="50%"><img src="docs/screenshots/desktop/24-delete-volume-menu.png" alt="A volume offering to delete read downloads or all of them"/></td>
+<td width="50%"><img src="docs/screenshots/desktop/23-delete-selection.png" alt="Several chapters selected for deletion"/></td>
+<td width="50%"><img src="docs/screenshots/desktop/24-delete-volume-menu.png" alt="A volume offering to delete read downloads or all"/></td>
 </tr>
 </table>
 
-### 📄 PDF and Word, not just EPUB
+---
+
+## 7 · It reads more than EPUB
 
 PDFs render through pdf.js with their own page controls — fit to width or page, scroll or
 paged flow, zoom, and a page tint that dims or inverts a harsh scan. Word documents are
@@ -195,63 +193,37 @@ converted on import, with a step to pick the cover and review images first.
 
 ---
 
-## Everything else
+## 8 · And it does the same on a phone
 
-| | |
-|---|---|
-| **Formats** | EPUB 2 / 3, PDF, `.docx` |
-| **Getting books in** | File picker, folder of EPUBs, drag and drop, or **Open with** from your file manager and Android's share sheet. Re-importing the same file reuses the existing book instead of duplicating it. |
-| **Reader** | Two-page / single-page / scrolling layouts, tap-to-turn with adjustable zones, chapter progress bar, page-turn animation, keep-screen-awake |
-| **Navigation** | Contents with per-volume grouping, chapter search, a *Now* marker and jump-to-current; a progress scrubber across the whole book |
-| **Library** | Continue-reading hero, shelves, status filters, right-click menu, editable title / author / description / cover |
-| **Extensions** | Every source installs at runtime from a repository — install, update, remove, or add a repository of your own. An unreachable one falls back to the copy on your device. |
-| **Settings** | A full settings page with its own search — appearance, reading, behaviour, downloads, data. Export, import, or reset every preference. |
-| **Platforms** | Windows, macOS, Linux, Android — one codebase, layout-aware shells (bottom nav on phones, sidebar on desktop) |
-| **Privacy** | No account, no sync, no telemetry. State is plain JSON on your disk. The only network traffic is the Store, when you use it. |
-
----
-
-## Screenshots
-
-### Desktop
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/desktop/02-reader.png" alt="Reader"/><br/><b>Reader</b> — two-page RTL spread</td>
-    <td width="50%"><img src="docs/screenshots/desktop/08-contents.png" alt="Contents"/><br/><b>Contents</b> — searchable, with a <i>Now</i> marker</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/desktop/09-progress.png" alt="Progress"/><br/><b>Progress</b> — scrub the whole book</td>
-    <td width="50%"><img src="docs/screenshots/desktop/17-settings.png" alt="Settings"/><br/><b>Settings</b> — sectioned, searchable</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/desktop/10-store-sources.png" alt="Sources"/><br/><b>Sources</b> — the sites Riwaq can browse</td>
-    <td width="50%"><img src="docs/screenshots/desktop/21-search-jump.png" alt="Jump to"/><br/><b>Jump to</b> — reach any view from the palette</td>
-  </tr>
-</table>
-
-### Android
+One codebase, two shells: bottom navigation and sheets on a phone, a sidebar and panels on
+a desktop. Not a responsive compromise — each is laid out for the device it's on.
 
 <table>
   <tr>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/01-library.png" alt="Library"/><br/><b>Library</b></td>
-    <td align="center" width="25%"><img src="docs/screenshots/mobile/02-reader.png" alt="Reader"/><br/><b>Reader</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/03-reading-sheet.png" alt="Reading sheet"/><br/><b>Reading sheet</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/05-toc.png" alt="Contents"/><br/><b>Contents</b></td>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/07-store.png" alt="Store"/><br/><b>Store</b></td>
   </tr>
   <tr>
-    <td align="center" width="25%"><img src="docs/screenshots/mobile/07-store.png" alt="Store"/><br/><b>Store</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/04-novel-detail.png" alt="Novel"/><br/><b>Novel</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/06-pdf.png" alt="PDF"/><br/><b>PDF</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/08-settings.png" alt="Settings"/><br/><b>Settings</b></td>
-  </tr>
-  <tr>
-    <td align="center" width="25%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode"/><br/><b>Focus</b> — entering</td>
-    <td align="center" width="25%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus mode at rest"/><br/><b>Focus</b> — at rest</td>
-    <td align="center" width="25%"></td>
-    <td align="center" width="25%"></td>
+    <td align="center" width="25%"><img src="docs/screenshots/desktop/17-settings.png" alt="Desktop settings"/><br/><b>…and on desktop</b></td>
   </tr>
 </table>
+
+---
+
+## Everything else, briefly
+
+| | |
+|---|---|
+| **Formats** | EPUB 2 / 3, PDF, `.docx` |
+| **Reader** | Two-page / single-page / scrolling, tap-to-turn with adjustable zones, page-turn animation, keep-screen-awake |
+| **Settings** | A full settings page with its own search. Export, import, or reset every preference. |
+| **Privacy** | No account, no sync, no telemetry. State is plain JSON on your disk. The only network traffic is the Store, when you use it. |
+| **Licence** | [MIT](LICENSE). Every bundled font ships with its own licence text. |
 
 ---
 
