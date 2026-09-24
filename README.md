@@ -7,7 +7,7 @@
 EPUB · PDF · Word — on Windows, macOS, Linux and Android.
 No accounts, no sync, no analytics. Your books stay on your device.
 
-[Download](#download) · [Features](#what-makes-it-good) · [Screenshots](#screenshots) · [Development](#development)
+[Download](#download) · [Features](#what-makes-it-good) · [Sources](#sources) · [Screenshots](#screenshots) · [Development](#development)
 
 </div>
 
@@ -59,17 +59,35 @@ beside them. Install, update — one at a time or **Update all** — or remove, 
 Removing a *repository* leaves its extensions installed and working; they simply stop being
 offered updates.
 
+![The extensions manager — installed, available, and where they come from](docs/screenshots/desktop/25-extensions.png)
+
 An extension runs inside the app, with the app's reach, so adding a repository asks you to
 confirm you trust whoever publishes it. One built for a newer Riwaq than you are running
 says so up front instead of failing later, and a repository that can't be reached falls back
 to the copy saved on your device rather than emptying the list.
 
+![Repositories, with Riwaq's own and a field to add another](docs/screenshots/desktop/26-extension-repos.png)
+
 ### 🌙 Focus mode
 
-One click and everything but the page disappears. No toolbar, no progress bar, no chrome.
-Move the pointer to the top or bottom edge and the controls come back.
+One click and everything but the page disappears. No toolbar, no progress bar, no chrome —
+on the phone, not even the Android system bars.
 
 ![Focus mode](docs/screenshots/desktop/03-focus-mode.png)
+
+On desktop the controls come back when the pointer nears the top or bottom edge. The phone
+has no pointer, so it says what it is instead: entering names the mode and the way out, and
+a small lock stays in the corner afterwards so a reader who looks away and back can still
+tell. Leaving takes a deliberate **double-tap** — or a tap on that lock, which is a real
+button, because a mode whose only exit is a gesture is a mode someone can get stuck in.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/screenshots/mobile/02-reader.png" alt="The phone reader, with focus mode in the header's corner"/><br/><b>Enter</b> — from the header</td>
+<td width="33%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode names it and the exit gesture"/><br/><b>Arrive</b> — it says what it is</td>
+<td width="33%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus mode at rest, with only a small lock in the corner"/><br/><b>Stay</b> — just the page, and a lock</td>
+</tr>
+</table>
 
 ### ✍️ Typography you can actually tune
 
@@ -137,6 +155,12 @@ into a standalone EPUB — one file, or one per volume — that lands in your li
 everything else.
 
 ![Download queue](docs/screenshots/desktop/13-downloads.png)
+
+Baking a novel into an EPUB asks how you want it: one file, or one per volume — which for a
+fourteen-volume novel is the difference between a book you can finish and a book you can
+only scroll.
+
+![Saving a novel as a standalone EPUB](docs/screenshots/desktop/27-save-as-epub.png)
 
 ### 🗑️ …and downloads you can take back
 
@@ -220,6 +244,12 @@ converted on import, with a step to pick the cover and review images first.
     <td align="center" width="25%"><img src="docs/screenshots/mobile/04-novel-detail.png" alt="Novel"/><br/><b>Novel</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/06-pdf.png" alt="PDF"/><br/><b>PDF</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/08-settings.png" alt="Settings"/><br/><b>Settings</b></td>
+  </tr>
+  <tr>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode"/><br/><b>Focus</b> — entering</td>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus mode at rest"/><br/><b>Focus</b> — at rest</td>
+    <td align="center" width="25%"></td>
+    <td align="center" width="25%"></td>
   </tr>
 </table>
 
