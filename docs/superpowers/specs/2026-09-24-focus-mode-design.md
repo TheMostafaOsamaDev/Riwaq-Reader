@@ -25,6 +25,8 @@ where they are.
   driven (`useFocusChrome`), a different interaction with different
   constraints; this document does not touch it.
 - A focus-mode settings surface. There is nothing here to configure.
+- `ReaderTabBar`. An earlier draft put entry in a sixth tab; the control
+  moved to the header, so that row is unchanged.
 - Changing what focus mode *hides*. The bars and the Android system bars
   still go, exactly as now.
 
@@ -57,25 +59,40 @@ all, and a reader who forgets the gesture has no way to look it up.
 
 ## Design
 
-### Entry — a sixth tab
+### Entry — the header's empty trailing slot
 
-A `focus` tab joins `ReaderTabBar`, after settings. Tapping it enters
-focus mode and closes any open sheet, the way the desktop's toggle already
-closes its panels.
+The focus control goes in the **top bar, at its trailing edge** — the
+corner opposite the home button.
 
-Six 44×44 targets across a 390px phone leaves ~14px between them, clear of
-the 8px minimum. The `focus` glyph already exists in `Icon.tsx`.
+That corner is currently dead space. The header is a flex row: the home
+button leads it, the title block takes the middle, and the row closes on a
+36×36 `aria-hidden` spacer whose only job is to keep the title centred on
+the bar rather than on the space left beside the button. Putting the
+control there costs no layout: the spacer is replaced by a button of the
+same size, and the title stays centred for the same reason it is centred
+now.
 
-**The tab is optional, because `ReaderTabBar` is shared.** The fixed-page
-reader (PDF / DOCX) renders the same row, and it already has its own focus
-control in its top bar, driven by `useFocusChrome`. So the prop is
-`onFocus?: () => void` and the tab renders only when it is passed — the
-EPUB reader passes it, the fixed-page reader does not, and that reader is
-untouched, as the non-goals require.
+"Trailing" and not "right": the bar mirrors with the UI language, so the
+control sits opposite the home button in both directions — physically
+right in the English UI, physically left in Arabic, the way every other
+mirrored control in the app behaves.
 
-This is a tool row rather than primary navigation, so the "five items"
-bottom-nav convention does not bind — but six is the ceiling. A seventh
-would need an overflow menu instead.
+**This supersedes the sixth tab.** `ReaderTabBar` is not touched at all,
+which also means the fixed-page reader — which shares that row and already
+has its own focus control — needs no optional prop and no guard. The tab
+row stays at five.
+
+**It pairs with the lock by occupying the same corner.** The button sits
+at top-trailing while the chrome is up; enter focus mode and the chrome
+slides away and the lock appears in that same corner. The control hands
+off to the indicator in place, and tapping the lock hands it back. One
+corner means one idea, and the reader's eye does not have to go looking.
+
+**Hit area.** The home button is 36×36, which is under the 44pt platform
+minimum; the new control matches it visually but takes a 44×44 hit area
+(padding out, negative margin back) so the target is legal without the ink
+growing. Widening the home button to match is a one-line follow-on and is
+left out of scope here.
 
 ### Exit — double-tap
 
@@ -166,8 +183,8 @@ decisions so the spec is unambiguous; each is cheap to reverse.
 
 1. `focusGesture.ts` — the double-tap discriminator, pure and unit-tested.
 2. `Icon.tsx` — add `lock`.
-3. `ReaderTabBar` — the sixth tab behind an optional `onFocus` prop, which
-   only the EPUB reader passes.
+3. `MobileReader`'s top bar — the trailing spacer becomes the focus button.
+   `ReaderTabBar` is untouched, so the fixed-page reader is too.
 4. `MobileReader` — `showChrome` → the `focusMode` tweak; double-tap exit;
    retire tap-to-toggle; back handling.
 5. `FocusPill` / `FocusLock` — the two indicators, in `reader/chrome/`,
@@ -197,5 +214,6 @@ Items 1–2 are independent of the rest and can land first.
 - **The retired toggle is muscle memory.** Readers who tap to hide the
   chrome will find the tap does nothing and, on the first try, may not
   find the new tab. The pill mitigates the reverse direction only.
-- **Six tabs is the ceiling.** The next reader control needs an overflow
-  menu, not a seventh tab.
+- **The header gains its first trailing control.** Nothing else has ever
+  lived in that corner, so a second one later would need a real decision
+  about precedence rather than just another slot.
