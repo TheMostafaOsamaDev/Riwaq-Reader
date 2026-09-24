@@ -1,213 +1,151 @@
 <div align="center">
 
+<img src="public/brand/mark-ink.webp" width="88" alt="Riwaq"/>
+
 # رواق · Riwaq
 
-**A calm, offline-first e-book reader.**
+**A calm, offline-first e-book reader.** EPUB, PDF and Word files, on Windows,
+macOS, Linux and Android. No accounts, no sync, no analytics.
 
-EPUB · PDF · Word — on Windows, macOS, Linux and Android.
-No accounts, no sync, no analytics. Your books stay on your device.
+<p align="center">
+<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest"><img height="58" alt="Get it on GitHub" src="https://raw.githubusercontent.com/Kunzisoft/Github-badge/main/get-it-on-github.png"/></a>
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.riwaq.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img height="58" alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"/></a>
+<a href="https://f-droid.org/packages/com.riwaq.reader"><img height="58" alt="Get it on F-Droid" src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"/></a>
+<a href="https://flathub.org/apps/io.github.themostafaosamadev.Riwaq"><img height="58" alt="Get it on Flathub" src="https://flathub.org/api/badge?svg&locale=en"/></a>
+<a href="https://github.com/RookieEnough/Orion-Store"><img height="58" alt="Get it on Orion Store" src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png"/></a>
+</p>
 
-[Download](#download) · [Features](#what-makes-it-good) · [Screenshots](#screenshots) · [Development](#development)
+<sub>GitHub and Obtainium work today. F-Droid, Flathub and Orion are still in review.</sub>
 
 </div>
 
 ![The Riwaq library on desktop](docs/screenshots/desktop/01-library.png)
 
----
+Riwaq (رواق) reads the books you already own: EPUBs, scanned PDFs, `.docx` drafts,
+translated web novels, whatever language they happen to be written in. Arabic gets the same
+care as English rather than a mirrored stylesheet and a shrug. Six of the sixteen bundled
+faces are Naskh or Kufi, diacritics render properly, and switching the interface to العربية
+moves the sidebar, flips the icons and translates every label.
 
-## What is Riwaq?
+## In one table
 
-Riwaq (رواق) reads the books you already have — EPUBs, scanned PDFs, `.docx` drafts,
-translated web novels — in whatever language they're written in. The interface comes in
-English and Arabic, and it goes out of its way on the things long reading sessions depend
-on: typography you can actually tune, layouts that hold still, and text that stays
-readable for hours.
+| | |
+|---|---|
+| Read | EPUB 2/3, PDF, `.docx`. Two pages, one page, or a continuous scroll. Tap to turn, with zones you can resize. |
+| Type | 16 bundled faces across Naskh, modern sans, Kufi and display. Size, line height, letter spacing, paragraph spacing, width, alignment, hyphenation. |
+| Themes | Light, Sepia, Dark, and a true black for OLED. Or follow the system. |
+| Focus mode | Everything but the page goes, including Android's system bars. Double tap, or tap the lock, to come back. |
+| Highlight | Four colours, notes, and a sidebar that collects every one with the chapter it came from. |
+| Store | Browse Arabic web novel sites inside the app. Read online, add to the library, download a range of chapters, or bake the lot into one EPUB. |
+| Extensions | Sources install at runtime from a repository. Add your own. Nothing is compiled in. |
+| Languages | English and العربية, mirrored all the way down. |
+| Privacy | No account, no sync, no telemetry. Plain JSON on your disk. |
 
-Right-to-left gets first-class treatment rather than an afterthought — mirrored interface,
-diacritics, Naskh and Kufi faces — which is unusual enough to be worth saying out loud.
+## Three things it does differently
 
-It is one app on every platform: a Tauri 2 shell around a React 19 front end, desktop and
-phone from the same codebase. Everything is a file on your disk — no database, no cloud,
-nothing to sign into.
+### Sources are extensions
 
----
+No website is compiled into Riwaq. Each source installs from a repository and updates on
+its own schedule, so when a site changes its markup it can be fixed without shipping a new
+version of the app. Riwaq's own repository is set up out of the box, and you can add
+others. If a repository cannot be reached, the list falls back to the copy already on your
+device instead of emptying itself.
 
-## What makes it good
+![The extensions manager](docs/screenshots/desktop/25-extensions.png)
 
-### 📚 A Store that reads the web for you
+An extension runs inside the app with the app's reach, so adding a repository asks you to
+confirm that you trust whoever publishes it.
 
-Browse Arabic web-novel sites from inside the app. Riwaq renders each site's own home page
-as native carousels and searches it without opening a browser. Pick a novel and you can
-**stream it chapter by chapter**, **add it to your library**, or **download a range of
-chapters** for offline reading.
+### Focus mode knows it is a mode
 
-![Browsing a source in the Store](docs/screenshots/desktop/11-store-browse.png)
-
-Every novel gets a real detail page — synopsis, genres, volumes, full chapter list — with
-one-tap download per chapter or per volume.
-
-![A novel detail page](docs/screenshots/desktop/12-store-novel.png)
-
-### 🧩 Sources are extensions, not a fixed list
-
-No website is compiled into Riwaq. Every source is an **extension**, installed from a
-repository and updated on its own schedule — so a site that changes its markup can be fixed
-without waiting for a new version of the app.
-
-Riwaq's own repository is configured out of the box; add another and its extensions appear
-beside them. Install, update — one at a time or **Update all** — or remove, from one screen.
-Removing a *repository* leaves its extensions installed and working; they simply stop being
-offered updates.
-
-An extension runs inside the app, with the app's reach, so adding a repository asks you to
-confirm you trust whoever publishes it. One built for a newer Riwaq than you are running
-says so up front instead of failing later, and a repository that can't be reached falls back
-to the copy saved on your device rather than emptying the list.
-
-### 🌙 Focus mode
-
-One click and everything but the page disappears. No toolbar, no progress bar, no chrome.
-Move the pointer to the top or bottom edge and the controls come back.
-
-![Focus mode](docs/screenshots/desktop/03-focus-mode.png)
-
-### ✍️ Typography you can actually tune
-
-**16 reading faces** in four groups — Naskh book faces, modern sans, Kufi, and display.
-One picker drives both scripts: every row previews Arabic and Latin side by side, and a
-family that only carries one of them shows the fallback rather than hiding it. You pick by
-eye, not by name.
+On desktop the toolbar comes back when the pointer nears an edge. A phone has no pointer,
+so it tells you instead: entering names the mode and the gesture that leaves it, and a
+small lock stays in the corner afterwards. The lock is also a button. If you never saw the
+message, or a double tap does not register for you, there is still something on screen you
+can press.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/desktop/05-fonts.png" alt="Font picker showing each family in its own face"/></td>
+<td width="33%"><img src="docs/screenshots/mobile/02-reader.png" alt="Focus mode lives in the header's corner"/></td>
+<td width="33%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering names the mode and the exit"/></td>
+<td width="33%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="At rest: the page, and a lock"/></td>
+</tr>
+</table>
+
+### The size slider means one thing
+
+Set the same pixel size in Lateef and in Readex Pro and you get noticeably different text,
+because the faces carry different amounts of ink. Riwaq measures each one and corrects for
+it, so 17px reads as 17px whichever of the sixteen you pick. Chapter titles follow the face
+you chose too, at a fixed ratio to the body.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/desktop/05-fonts.png" alt="Font picker previewing both scripts"/></td>
 <td width="50%"><img src="docs/screenshots/desktop/04-typography.png" alt="Typography controls"/></td>
 </tr>
 </table>
 
-Then tune it: size, line height, letter spacing, paragraph spacing, content width,
-alignment, hyphenation. Read as **two pages**, a **single page**, or a **continuous scroll**.
-
-### 🎨 Four themes, light to OLED
-
-Light, Sepia, Dark, and a true-black OLED — or follow your system.
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/desktop/19-dark-reader.png" alt="Reader in dark theme"/></td>
-<td width="50%"><img src="docs/screenshots/desktop/20-dark-library.png" alt="Library in dark theme"/></td>
-</tr>
-</table>
-
-### 🖍️ Highlights you can actually find again
-
-Select any passage, pick one of four colours, and attach a note about why it mattered.
-The sidebar collects every highlight in the book with its chapter, so you can walk back
-through them later.
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/desktop/07-highlight-colors.png" alt="Highlight colour picker on a selection"/></td>
-<td width="50%"><img src="docs/screenshots/desktop/06-highlights.png" alt="Highlights and notes sidebar"/></td>
-</tr>
-</table>
-
-### 🌐 Two interface languages, mirrored properly
-
-English and العربية, and the translation goes all the way down — not just the book text.
-Switch to Arabic and the sidebar moves to the right, icons flip, and every label follows.
-
-![The interface in Arabic, fully right-to-left](docs/screenshots/desktop/18-arabic-rtl.png)
-
-### 🗂️ A library that stays tidy
-
-Reading progress on every cover, format badges for PDF and Word, source badges for novels,
-status filters (Reading / Finished / Wishlist), and your own shelves for anything else.
-
-`⌘K` opens a command palette over the whole app — search books and authors as you type, or
-jump straight to any view.
-
-![Searching the library from the command palette](docs/screenshots/desktop/16-search.png)
-
-### ⬇️ Downloads that survive a restart
-
-A real queue: per-chapter and per-volume downloads, concurrency limits, Wi-Fi-only mode,
-retry for interrupted jobs, and system notifications while it works. Or bake a whole novel
-into a standalone EPUB — one file, or one per volume — that lands in your library next to
-everything else.
-
-![Download queue](docs/screenshots/desktop/13-downloads.png)
-
-### 🗑️ …and downloads you can take back
-
-Reclaim the disk without losing your place. Hover a downloaded chapter and its marker turns
-into a delete button — one click, and a toast offers the download straight back. For a
-bigger clear-out a volume will drop just the chapters you have already read, or all of them;
-or long-press (right-click on desktop) any chapter to start selecting a run of them and
-delete the lot in one go. Deleting only ever removes the file: the chapter stays in the list,
-still readable online, and your reading progress is left alone.
-
-![Deleting one chapter's download from its row](docs/screenshots/desktop/22-delete-row.png)
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/desktop/23-delete-selection.png" alt="Several chapters selected for deletion at once"/></td>
-<td width="50%"><img src="docs/screenshots/desktop/24-delete-volume-menu.png" alt="A volume offering to delete read downloads or all of them"/></td>
-</tr>
-</table>
-
-### 📄 PDF and Word, not just EPUB
-
-PDFs render through pdf.js with their own page controls — fit to width or page, scroll or
-paged flow, zoom, and a page tint that dims or inverts a harsh scan. Word documents are
-converted on import, with a step to pick the cover and review images first.
-
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/desktop/14-pdf.png" alt="Reading an Arabic PDF"/></td>
-<td width="50%"><img src="docs/screenshots/desktop/15-pdf-controls.png" alt="PDF page controls"/></td>
-</tr>
-</table>
-
----
-
-## Everything else
-
-| | |
-|---|---|
-| **Formats** | EPUB 2 / 3, PDF, `.docx` |
-| **Getting books in** | File picker, folder of EPUBs, drag and drop, or **Open with** from your file manager and Android's share sheet. Re-importing the same file reuses the existing book instead of duplicating it. |
-| **Reader** | Two-page / single-page / scrolling layouts, tap-to-turn with adjustable zones, chapter progress bar, page-turn animation, keep-screen-awake |
-| **Navigation** | Contents with per-volume grouping, chapter search, a *Now* marker and jump-to-current; a progress scrubber across the whole book |
-| **Library** | Continue-reading hero, shelves, status filters, right-click menu, editable title / author / description / cover |
-| **Extensions** | Every source installs at runtime from a repository — install, update, remove, or add a repository of your own. An unreachable one falls back to the copy on your device. |
-| **Settings** | A full settings page with its own search — appearance, reading, behaviour, downloads, data. Export, import, or reset every preference. |
-| **Platforms** | Windows, macOS, Linux, Android — one codebase, layout-aware shells (bottom nav on phones, sidebar on desktop) |
-| **Privacy** | No account, no sync, no telemetry. State is plain JSON on your disk. The only network traffic is the Store, when you use it. |
-
----
-
 ## Screenshots
 
-### Desktop
-
+<details>
+<summary><b>Desktop</b>: reader, contents, progress, settings, store, palette</summary>
+<br/>
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/desktop/02-reader.png" alt="Reader"/><br/><b>Reader</b> — two-page RTL spread</td>
-    <td width="50%"><img src="docs/screenshots/desktop/08-contents.png" alt="Contents"/><br/><b>Contents</b> — searchable, with a <i>Now</i> marker</td>
+    <td width="50%"><img src="docs/screenshots/desktop/02-reader.png" alt="Reader"/><br/><b>Reader</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/08-contents.png" alt="Contents"/><br/><b>Contents</b></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/desktop/09-progress.png" alt="Progress"/><br/><b>Progress</b> — scrub the whole book</td>
-    <td width="50%"><img src="docs/screenshots/desktop/17-settings.png" alt="Settings"/><br/><b>Settings</b> — sectioned, searchable</td>
+    <td width="50%"><img src="docs/screenshots/desktop/03-focus-mode.png" alt="Focus mode"/><br/><b>Focus mode</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/09-progress.png" alt="Progress"/><br/><b>Progress</b></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/desktop/10-store-sources.png" alt="Sources"/><br/><b>Sources</b> — the sites Riwaq can browse</td>
-    <td width="50%"><img src="docs/screenshots/desktop/21-search-jump.png" alt="Jump to"/><br/><b>Jump to</b> — reach any view from the palette</td>
+    <td width="50%"><img src="docs/screenshots/desktop/19-dark-reader.png" alt="Dark reader"/><br/><b>Dark</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/18-arabic-rtl.png" alt="Arabic RTL"/><br/><b>Arabic, mirrored</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/06-highlights.png" alt="Highlights"/><br/><b>Highlights</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/07-highlight-colors.png" alt="Highlight colours"/><br/><b>Colours &amp; notes</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/10-store-sources.png" alt="Sources"/><br/><b>Sources</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/12-store-novel.png" alt="Novel"/><br/><b>Novel detail</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/11-store-browse.png" alt="Browsing a source"/><br/><b>Browsing a source</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/26-extension-repos.png" alt="Repositories"/><br/><b>Repositories</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/13-downloads.png" alt="Downloads"/><br/><b>Download queue</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/27-save-as-epub.png" alt="Save as EPUB"/><br/><b>Save as one EPUB</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/22-delete-row.png" alt="Delete a download"/><br/><b>Take a download back</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/23-delete-selection.png" alt="Select a run of chapters"/><br/><b>…or a run of them</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/24-delete-volume-menu.png" alt="Volume delete menu"/><br/><b>Or a whole volume</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/14-pdf.png" alt="PDF"/><br/><b>PDF</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/15-pdf-controls.png" alt="PDF controls"/><br/><b>PDF controls</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/17-settings.png" alt="Settings"/><br/><b>Settings</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/16-search.png" alt="Command palette"/><br/><b>⌘K palette</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/21-search-jump.png" alt="Jump to"/><br/><b>Jump to any view</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop/20-dark-library.png" alt="Dark library"/><br/><b>Dark library</b></td>
+    <td width="50%"><img src="docs/screenshots/desktop/25-extensions.png" alt="Extensions"/><br/><b>Extensions</b></td>
   </tr>
 </table>
+</details>
 
-### Android
-
+<details>
+<summary><b>Android</b>: library, reader, sheets, store, focus mode</summary>
+<br/>
 <table>
   <tr>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/01-library.png" alt="Library"/><br/><b>Library</b></td>
@@ -221,7 +159,14 @@ converted on import, with a step to pick the cover and review images first.
     <td align="center" width="25%"><img src="docs/screenshots/mobile/06-pdf.png" alt="PDF"/><br/><b>PDF</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/08-settings.png" alt="Settings"/><br/><b>Settings</b></td>
   </tr>
+  <tr>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode"/><br/><b>Focus, entering</b></td>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus at rest"/><br/><b>Focus, at rest</b></td>
+    <td align="center" width="25%"></td>
+    <td align="center" width="25%"></td>
+  </tr>
 </table>
+</details>
 
 ---
 
@@ -235,27 +180,27 @@ Pick the file for your platform:
 | **Windows** (most PCs) | `Riwaq_<ver>_x64-setup.exe` |
 | **Windows on ARM** | `Riwaq_<ver>_arm64-setup.exe` |
 | **macOS** (Intel **and** Apple Silicon) | `Riwaq_<ver>_universal.dmg` |
-| **Linux** — Debian / Ubuntu | `Riwaq_<ver>_amd64.deb` · `_arm64.deb` |
-| **Linux** — Fedora / RHEL | `Riwaq-<ver>-1.x86_64.rpm` · `.aarch64.rpm` |
-| **Linux** — portable | `Riwaq_<ver>_amd64.AppImage` · `_aarch64.AppImage` |
+| **Linux**, Debian / Ubuntu | `Riwaq_<ver>_amd64.deb` · `_arm64.deb` |
+| **Linux**, Fedora / RHEL | `Riwaq-<ver>-1.x86_64.rpm` · `.aarch64.rpm` |
+| **Linux**, portable | `Riwaq_<ver>_amd64.AppImage` · `_aarch64.AppImage` |
 | **Android** | `app-universal-release.apk` |
 
 Windows ships the NSIS installer only. The `.msi` was dropped in v0.2.0 so there
-is one install path and one upgrade path — if you installed v0.1.0 from the
+is one install path and one upgrade path. If you installed v0.1.0 from the
 `.msi`, uninstall it before installing a newer version.
 
 ### Android: get updates automatically
 
 Riwaq can tell you when a new version exists, but on Android it cannot install
-one — that is how sideloaded APKs work, so you would be tapping through a
+one. That is how sideloaded APKs work, so you would be tapping through a
 download every time. [Obtainium](https://github.com/ImranR98/Obtainium) removes
 that: it watches this repository and installs each release for you, the way an
 app store would, with no account and nothing else in the middle.
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.riwaq.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img height="54" alt="Get Riwaq on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"></a>
 
-Open that on the phone itself. It hands Obtainium the whole app definition —
-id, repository, name — so there is nothing to type. Without Obtainium
+Open that on the phone itself. It hands Obtainium the whole app definition
+(id, repository, name), so there is nothing to type. Without Obtainium
 installed, the link explains where to get it rather than failing silently.
 
 Prefer to do it by hand? Add `https://github.com/TheMostafaOsamaDev/Riwaq-Reader`
@@ -297,7 +242,7 @@ chmod +x Riwaq_*.AppImage && ./Riwaq_*.AppImage
 <details>
 <summary><b>Android</b></summary>
 
-Sideload the APK — your browser or file manager will ask you to allow *"install from
+Sideload the APK. Your browser or file manager will ask you to allow *"install from
 unknown sources"*. Play Store distribution isn't planned; F-Droid is a possible future
 channel.
 </details>
@@ -316,15 +261,15 @@ Every release ships a `SHA256SUMS` manifest. Put it next to your download and ch
 Riwaq asks GitHub, at most once a day, whether a newer version exists. That is
 the only network request the app makes on its own behalf, and it is a single
 unauthenticated GET for one static file. **Nothing about you or your books is
-sent** — no identifiers, no library contents, no reading data — and nothing is
+sent**: no identifiers, no library contents, no reading data. Nothing is
 downloaded until you tap Update.
 
 Turn it off in **Settings → About → Check for updates**, and the app stays
 fully functional with it off.
 
 Where a new version can be installed from inside the app, it is: Windows, macOS,
-and Linux via the AppImage. The other three — Android, and Linux `.deb`/`.rpm`
-— can't be updated in place, so Riwaq shows the same notice and takes you to the
+and Linux via the AppImage. The other three (Android, and Linux `.deb`/`.rpm`)
+can't be updated in place, so Riwaq shows the same notice and takes you to the
 download instead. That is a limitation of how those packages install, not a
 choice about who gets updates.
 
@@ -333,7 +278,7 @@ choice about who gets updates.
 ## Sources
 
 Sources are extensions, published from
-[Riwaq-Extensions](https://github.com/TheMostafaOsamaDev/Riwaq-Extensions) — the repository
+[Riwaq-Extensions](https://github.com/TheMostafaOsamaDev/Riwaq-Extensions), the repository
 Riwaq is configured with out of the box. The roster changes there rather than here, so
 **Store → Extensions** in the app is always the current list. At the time of writing it
 offers:
@@ -357,12 +302,12 @@ pnpm install
 pnpm tauri dev          # desktop, with Vite HMR
 pnpm android:dev        # Android, on a device or emulator
 pnpm test               # unit tests (Vitest)
-pnpm check              # format, lint, typecheck, build, test — what CI runs
+pnpm check              # format, lint, typecheck, build, test (what CI runs)
 pnpm tauri build        # production bundles for the current OS
 ```
 
 Vite serves on port **1420** (HMR on 1421) and a single dev server backs both the desktop
-window and Android at once. For Android, the device must reach the host over your LAN — or
+window and Android at once. For Android, the device must reach the host over your LAN, or
 use `adb reverse tcp:1420 tcp:1420` on an emulator.
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the conventions worth knowing before the first
@@ -374,16 +319,16 @@ bundling, [`architecture.md`](docs/architecture.md) for module boundaries and da
 
 ### Stack
 
-- **[Tauri 2](https://tauri.app)** — desktop + mobile shell (Rust)
+- **[Tauri 2](https://tauri.app)**: desktop and mobile shell (Rust)
 - **[React 19](https://react.dev)** + **TypeScript** + **[Vite](https://vite.dev)**
 - **[pdf.js](https://mozilla.github.io/pdf.js/)** for PDFs, **[JSZip](https://stuk.github.io/jszip/)** for EPUB, **[Mammoth](https://github.com/mwilliamson/mammoth.js)** for `.docx`
-- State persists as JSON through Tauri's filesystem plugin — no SQLite, no IndexedDB, no server
+- State persists as JSON through Tauri's filesystem plugin. No SQLite, no IndexedDB, no server
 
 ---
 
 ## Fonts
 
-Every face ships inside the app and is served locally — Riwaq makes no font requests at
+Every face ships inside the app and is served locally, so Riwaq makes no font requests at
 runtime.
 
 Bundled under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL), each with its
