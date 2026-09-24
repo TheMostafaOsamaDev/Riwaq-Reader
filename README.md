@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="public/brand/mark-ink.webp" width="96" alt="Riwaq"/>
+
 # رواق · Riwaq
 
 **A calm, offline-first e-book reader.**
@@ -7,7 +9,14 @@
 EPUB · PDF · Word — on Windows, macOS, Linux and Android.
 No accounts, no sync, no analytics. Your books stay on your device.
 
-[Download](#download) · [Features](#what-makes-it-good) · [Sources](#sources) · [Screenshots](#screenshots) · [Development](#development)
+<a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest"><img height="64" alt="Download from GitHub Releases" src="https://img.shields.io/badge/Download-GitHub%20Releases-3a2f1f?style=for-the-badge&logo=github"/></a>
+<a href="https://f-droid.org/packages/com.riwaq.reader"><img height="64" alt="Get it on F-Droid" src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"/></a>
+<a href="https://flathub.org/apps/io.github.themostafaosamadev.Riwaq"><img height="64" alt="Get it on Flathub" src="https://flathub.org/api/badge?svg&locale=en"/></a>
+<a href="https://github.com/RookieEnough/Orion-Store"><img height="64" alt="Get it on Orion Store" src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png"/></a>
+
+<sub>F-Droid, Flathub and Orion listings are in review — GitHub Releases works today.</sub>
+
+[Features](#what-makes-it-good) · [Sources](#sources) · [Screenshots](#screenshots) · [Download](#download) · [Development](#development)
 
 </div>
 
@@ -34,32 +43,18 @@ nothing to sign into.
 
 ## What makes it good
 
-### 📚 A Store that reads the web for you
-
-Browse Arabic web-novel sites from inside the app. Riwaq renders each site's own home page
-as native carousels and searches it without opening a browser. Pick a novel and you can
-**stream it chapter by chapter**, **add it to your library**, or **download a range of
-chapters** for offline reading.
-
-![Browsing a source in the Store](docs/screenshots/desktop/11-store-browse.png)
-
-Every novel gets a real detail page — synopsis, genres, volumes, full chapter list — with
-one-tap download per chapter or per volume.
-
-![A novel detail page](docs/screenshots/desktop/12-store-novel.png)
-
 ### 🧩 Sources are extensions, not a fixed list
 
 No website is compiled into Riwaq. Every source is an **extension**, installed from a
 repository and updated on its own schedule — so a site that changes its markup can be fixed
 without waiting for a new version of the app.
 
+![The extensions manager](docs/screenshots/desktop/25-extensions.png)
+
 Riwaq's own repository is configured out of the box; add another and its extensions appear
 beside them. Install, update — one at a time or **Update all** — or remove, from one screen.
 Removing a *repository* leaves its extensions installed and working; they simply stop being
 offered updates.
-
-![The extensions manager — installed, available, and where they come from](docs/screenshots/desktop/25-extensions.png)
 
 An extension runs inside the app, with the app's reach, so adding a repository asks you to
 confirm you trust whoever publishes it. One built for a newer Riwaq than you are running
@@ -67,6 +62,19 @@ says so up front instead of failing later, and a repository that can't be reache
 to the copy saved on your device rather than emptying the list.
 
 ![Repositories, with Riwaq's own and a field to add another](docs/screenshots/desktop/26-extension-repos.png)
+
+### 📚 A Store that reads the web for you
+
+Browse Arabic web-novel sites from inside the app. Riwaq renders each site's own home page
+as native carousels and searches it without opening a browser.
+
+![Browsing a source in the Store](docs/screenshots/desktop/11-store-browse.png)
+
+Every novel gets a real detail page — synopsis, genres, volumes, full chapter list — and
+from it you can **stream it chapter by chapter**, **add it to your library**, **download a
+range of chapters**, or bake the whole thing into a standalone EPUB.
+
+![A novel detail page](docs/screenshots/desktop/12-store-novel.png)
 
 ### 🌙 Focus mode
 
@@ -150,9 +158,7 @@ jump straight to any view.
 ### ⬇️ Downloads that survive a restart
 
 A real queue: per-chapter and per-volume downloads, concurrency limits, Wi-Fi-only mode,
-retry for interrupted jobs, and system notifications while it works. Or bake a whole novel
-into a standalone EPUB — one file, or one per volume — that lands in your library next to
-everything else.
+retry for interrupted jobs, and system notifications while it works.
 
 ![Download queue](docs/screenshots/desktop/13-downloads.png)
 
