@@ -270,6 +270,32 @@ function mobileTab(theme: Theme): CSSProperties {
  *  inside the text. */
 const MOBILE_READING_INSETS = { top: 44, bottom: 44 };
 
+/**
+ * The top bar's vertical geometry, as numbers that have to move together.
+ *
+ * The bar overlays the scroller rather than displacing it, so the scroller's
+ * top inset is the ONLY thing holding the first line out from under the bar
+ * — and it has to be a constant rather than a padding that appears with the
+ * bar, for the reflow reason on the scroller below. Two independent magic
+ * numbers is precisely how that drifts: grow the bar, forget the inset, and
+ * the previous-chapter link goes back under the glass. So the inset is
+ * derived here instead of written down twice.
+ *
+ * All of these sit ON TOP of `env(safe-area-inset-top)`, which is the status
+ * bar's own claim and is added at both call sites.
+ */
+/** Air between the status bar and the bar's first row of controls. */
+export const CHROME_AIR_TOP = 8;
+/** The bar's content box under that air — the control row, the title block,
+ *  and the 10px that closes the bar off. Measured, not derived: the chrome
+ *  font is fixed, so it does not move. */
+export const CHROME_CONTENT_H = 86;
+/** Gap between the underside of the bar and the first line of the page. */
+export const CHROME_CLEARANCE = 8;
+/** What the scroller reserves at the top, over the safe-area inset. */
+export const READING_INSET_TOP =
+  CHROME_AIR_TOP + CHROME_CONTENT_H + CHROME_CLEARANCE;
+
 /** A control standing on the reading surface, as opposed to the surface
  *  itself. Tapping one is a request to use it, never to toggle the chrome —
  *  see the reading surface's `onClick`. */
@@ -1001,7 +1027,7 @@ export function MobileReader({
           left: 0,
           right: 0,
           zIndex: Z.readerChrome,
-          padding: "env(safe-area-inset-top, 12px) 14px 10px",
+          padding: `calc(env(safe-area-inset-top, 12px) + ${CHROME_AIR_TOP}px) 14px 10px`,
           display: "flex",
           alignItems: "center",
           gap: 8,
@@ -1131,11 +1157,12 @@ export function MobileReader({
           // It has to be a constant, not a padding that appears with the bar,
           // for the reflow reason above.
           //
-          // 94 + env() tracks the bar exactly: the chrome's own padding is
-          // `env(safe-area-inset-top, 12px)` over 86px of content, so this
-          // stays 8px clear of it on a notched phone and on the emulator
-          // alike. A flat number would be right on one and wrong on the other.
-          padding: `calc(env(safe-area-inset-top, 12px) + 94px) ${readingGutter(
+          // READING_INSET_TOP + env() tracks the bar exactly, because it is
+          // built from the bar's own parts — see the note there. Both sides
+          // carry the same env(), so this stays CHROME_CLEARANCE clear of the
+          // bar on a notched phone and on the emulator alike; a flat number
+          // would be right on one and wrong on the other.
+          padding: `calc(env(safe-area-inset-top, 12px) + ${READING_INSET_TOP}px) ${readingGutter(
             t.contentWidth,
             8,
             28,
