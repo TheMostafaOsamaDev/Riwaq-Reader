@@ -8,9 +8,12 @@
 # builder, and a Tauri app needs both a Rust toolchain and a Node build
 # in one go, which is the part that usually needs iteration.
 
+# Checked against config/categories.yml in fdroiddata (116 categories, not
+# the classic 17). "Ebook Reader" is a real one and exactly right; "Internet"
+# was a guess and is dropped.
 Categories:
+  - Ebook Reader
   - Reading
-  - Internet
 License: MIT
 AuthorName: Mostafa Osama
 SourceCode: https://github.com/TheMostafaOsamaDev/Riwaq-Reader
@@ -42,11 +45,20 @@ Builds:
     gradle:
       - universal
 
-# Riwaq downloads source "extensions" at runtime from a repository the user
-# chooses. F-Droid's inclusion policy permits this ("must not download
-# additional executable binary files ... without explicit user consent") and
-# the app asks for that consent before adding a repository, but it should be
-# declared rather than left for a reviewer to discover.
+# PROPOSED, for a reviewer to confirm or drop. Checked against
+# config/antiFeatures.yml: NonFreeNet is a valid key and reads "depends
+# entirely on a non-free network service".
+#
+# The argument for it: the Store browses third-party novel sites, which are
+# non-free network services.
+#
+# The argument against: Riwaq does not depend on them *entirely*. It is a
+# working EPUB, PDF and .docx reader with no network at all, and the Store is
+# one optional feature. Over-declaring costs real adoption, because F-Droid
+# shows AntiFeatures as a warning and users filter on them.
+#
+# Declared here because under-declaring is the worse error in review. If the
+# reviewer agrees the offline core makes it inapplicable, drop this block.
 AntiFeatures:
   - NonFreeNet
 
