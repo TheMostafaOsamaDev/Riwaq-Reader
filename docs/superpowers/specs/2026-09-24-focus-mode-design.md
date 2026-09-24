@@ -63,8 +63,15 @@ A `focus` tab joins `ReaderTabBar`, after settings. Tapping it enters
 focus mode and closes any open sheet, the way the desktop's toggle already
 closes its panels.
 
-Six 44×44 targets across a 390px phone leaves ~17px between them, clear of
+Six 44×44 targets across a 390px phone leaves ~14px between them, clear of
 the 8px minimum. The `focus` glyph already exists in `Icon.tsx`.
+
+**The tab is optional, because `ReaderTabBar` is shared.** The fixed-page
+reader (PDF / DOCX) renders the same row, and it already has its own focus
+control in its top bar, driven by `useFocusChrome`. So the prop is
+`onFocus?: () => void` and the tab renders only when it is passed — the
+EPUB reader passes it, the fixed-page reader does not, and that reader is
+untouched, as the non-goals require.
 
 This is a tool row rather than primary navigation, so the "five items"
 bottom-nav convention does not bind — but six is the ceiling. A seventh
@@ -88,8 +95,10 @@ Three interactions it must not break, all already in `MobileReader`:
   A double-tap is two short taps, so the two cannot be confused — but the
   discriminator must key off tap *count and timing*, never off hold.
 - **Double-tap to zoom.** Suppressed already: `BookBody` sets
-  `touch-action: pan-y`, which removes the browser's double-tap zoom on
-  that element. Worth an on-device check rather than trust.
+  `touchAction: "pan-y"` whenever it is not selectable, which is always on
+  the phone, and any `touch-action` other than `auto`/`manipulation`
+  removes the browser's double-tap zoom on that element. Worth an
+  on-device check rather than trust.
 
 ### Telling the reader — the pill, then the lock
 
@@ -157,7 +166,8 @@ decisions so the spec is unambiguous; each is cheap to reverse.
 
 1. `focusGesture.ts` — the double-tap discriminator, pure and unit-tested.
 2. `Icon.tsx` — add `lock`.
-3. `ReaderTabBar` — the sixth tab and its `onFocus` prop; both readers pass it.
+3. `ReaderTabBar` — the sixth tab behind an optional `onFocus` prop, which
+   only the EPUB reader passes.
 4. `MobileReader` — `showChrome` → the `focusMode` tweak; double-tap exit;
    retire tap-to-toggle; back handling.
 5. `FocusPill` / `FocusLock` — the two indicators, in `reader/chrome/`,
