@@ -67,7 +67,7 @@ jobs:
             librsvg2-dev \
             libssl-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.1
 
       - uses: swatinem/rust-cache@v2
         with:

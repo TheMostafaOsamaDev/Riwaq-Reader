@@ -1,0 +1,19 @@
+# The Rust version every build of Riwaq uses, pinned.
+#
+# This exists for reproducibility, not tidiness. F-Droid ships the
+# developer-signed APK only if its own build comes out byte-identical to the
+# one published here, and it cannot do that against a compiler described as
+# "whatever stable was current the day the tag was pushed". rustup reads this
+# file, so F-Droid's builder lands on the same toolchain without the recipe
+# having to name a version of its own.
+#
+# The GitHub workflows pin the same version in their `dtolnay/rust-toolchain@`
+# ref, because that action selects by its own git ref and does not read this
+# file. scripts/verify-release-config.sh fails the release preflight if the
+# two ever disagree, so the duplication cannot rot.
+#
+# No `targets` here on purpose: each workflow job adds only the targets it
+# builds, and listing all of them would make every job install Windows, macOS
+# and Android std for no reason.
+[toolchain]
+channel = "1.97.1"
