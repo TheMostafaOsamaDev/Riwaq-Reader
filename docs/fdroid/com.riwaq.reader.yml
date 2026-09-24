@@ -1,0 +1,83 @@
+# DRAFT recipe for fdroiddata. Not used by this repository.
+#
+# Copy to metadata/com.riwaq.reader.yml in a fork of
+# https://gitlab.com/fdroid/fdroiddata and open a merge request there.
+#
+# UNTESTED against F-Droid's build server. The build block below is the
+# starting point, not a finished recipe: nobody here can run fdroid's
+# builder, and a Tauri app needs both a Rust toolchain and a Node build
+# in one go, which is the part that usually needs iteration.
+
+# Checked against config/categories.yml in fdroiddata (116 categories, not
+# the classic 17). "Ebook Reader" is a real one and exactly right; "Internet"
+# was a guess and is dropped.
+Categories:
+  - Ebook Reader
+  - Reading
+License: MIT
+AuthorName: Mostafa Osama
+SourceCode: https://github.com/TheMostafaOsamaDev/Riwaq-Reader
+IssueTracker: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/issues
+Changelog: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases
+
+RepoType: git
+Repo: https://github.com/TheMostafaOsamaDev/Riwaq-Reader.git
+
+Builds:
+  - versionName: 0.5.1
+    versionCode: 5001
+    commit: v0.5.1
+    # The Gradle project is committed (src-tauri/gen/android), so there is
+    # no `tauri android init` step and no codegen during the build.
+    subdir: src-tauri/gen/android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y curl
+      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      - apt-get install -y nodejs
+      - npm install -g pnpm@10
+    init:
+      - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+    prebuild:
+      - cd $$SRC$$ && pnpm install --frozen-lockfile
+      - cd $$SRC$$ && pnpm build
+    # MUST match what actually built the published APK, or the output can
+    # never be byte-identical. release.yml installs ndk;26.1.10909125.
+    ndk: 26.1.10909125
+    gradle:
+      - universal
+
+# PROPOSED, for a reviewer to confirm or drop. Checked against
+# config/antiFeatures.yml: NonFreeNet is a valid key and reads "depends
+# entirely on a non-free network service".
+#
+# The argument for it: the Store browses third-party novel sites, which are
+# non-free network services.
+#
+# The argument against: Riwaq does not depend on them *entirely*. It is a
+# working EPUB, PDF and .docx reader with no network at all, and the Store is
+# one optional feature. Over-declaring costs real adoption, because F-Droid
+# shows AntiFeatures as a warning and users filter on them.
+#
+# Declared here because under-declaring is the worse error in review. If the
+# reviewer agrees the offline core makes it inapplicable, drop this block.
+AntiFeatures:
+  - NonFreeNet
+
+# Reproducible build: F-Droid builds Riwaq, downloads the APK published
+# below, and if they match byte for byte it ships OUR signed binary instead
+# of re-signing with F-Droid's key. That keeps GitHub, Obtainium and F-Droid
+# on one signing lineage, so a reader can move between them without
+# uninstalling and losing their library.
+#
+# The fingerprint is the release certificate's SHA-256, read out of
+# v0.5.1's app-universal-release.apk with `apksigner verify --print-certs`
+# (DN: CN=Riwaq, O=Riwaq, C=EG). It is public: every copy of the APK
+# carries it. It is NOT the signing key.
+Binaries: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v%v/app-universal-release.apk
+AllowedAPKSigningKeys: 83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d10291e2
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.5.1
+CurrentVersionCode: 5001
