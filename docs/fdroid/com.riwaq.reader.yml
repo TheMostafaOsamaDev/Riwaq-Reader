@@ -1,0 +1,56 @@
+# DRAFT recipe for fdroiddata. Not used by this repository.
+#
+# Copy to metadata/com.riwaq.reader.yml in a fork of
+# https://gitlab.com/fdroid/fdroiddata and open a merge request there.
+#
+# UNTESTED against F-Droid's build server. The build block below is the
+# starting point, not a finished recipe: nobody here can run fdroid's
+# builder, and a Tauri app needs both a Rust toolchain and a Node build
+# in one go, which is the part that usually needs iteration.
+
+Categories:
+  - Reading
+  - Internet
+License: MIT
+AuthorName: Mostafa Osama
+SourceCode: https://github.com/TheMostafaOsamaDev/Riwaq-Reader
+IssueTracker: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/issues
+Changelog: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases
+
+RepoType: git
+Repo: https://github.com/TheMostafaOsamaDev/Riwaq-Reader.git
+
+Builds:
+  - versionName: 0.5.1
+    versionCode: 5001
+    commit: v0.5.1
+    # The Gradle project is committed (src-tauri/gen/android), so there is
+    # no `tauri android init` step and no codegen during the build.
+    subdir: src-tauri/gen/android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y curl
+      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      - apt-get install -y nodejs
+      - npm install -g pnpm@10
+    init:
+      - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+    prebuild:
+      - cd $$SRC$$ && pnpm install --frozen-lockfile
+      - cd $$SRC$$ && pnpm build
+    ndk: 27.0.12077973
+    gradle:
+      - universal
+
+# Riwaq downloads source "extensions" at runtime from a repository the user
+# chooses. F-Droid's inclusion policy permits this ("must not download
+# additional executable binary files ... without explicit user consent") and
+# the app asks for that consent before adding a repository, but it should be
+# declared rather than left for a reviewer to discover.
+AntiFeatures:
+  - NonFreeNet
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.5.1
+CurrentVersionCode: 5001

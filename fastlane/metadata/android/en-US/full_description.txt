@@ -1,0 +1,32 @@
+Riwaq reads the books you already own: EPUBs, scanned PDFs, .docx drafts, translated web novels, whatever language they happen to be written in.
+
+Arabic gets the same care as English rather than a mirrored stylesheet and a shrug. Six of the sixteen bundled reading faces are Naskh or Kufi, diacritics render properly, and switching the interface to Arabic moves the sidebar, flips the icons and translates every label.
+
+Nothing leaves your device. There is no account to make, nothing to sync, and no telemetry of any kind. Your library is plain files on your own storage.
+
+READING
+
+* EPUB 2 and 3, PDF, and .docx
+* Two pages, one page, or a continuous scroll
+* Tap to turn, with zones you can resize
+* 16 bundled faces across Naskh, modern sans, Kufi and display, each corrected so the size slider means the same thing whichever you pick
+* Size, line height, letter spacing, paragraph spacing, width, alignment and hyphenation
+* Light, Sepia, Dark and a true black for OLED, or follow the system
+* Focus mode, which takes the toolbars and the system bars away and tells you how to come back
+
+FINDING YOUR PLACE
+
+* Contents grouped by volume, with chapter search
+* A marker for where you are, and a jump back to it
+* A scrubber across the whole book
+* Highlights in four colours, with notes, collected in one place with the chapter each came from
+
+THE STORE
+
+Riwaq can browse Arabic web novel sites from inside the app, read them online, or download chapters for later. Sources are installable extensions rather than a fixed list, so a site can be added, updated or removed without waiting for a new version of the app, and you can point Riwaq at your own repository. Installing an extension asks for confirmation first, because it runs with the app's reach.
+
+A downloaded novel can be baked into a standalone EPUB, either as one file or one per volume, and it lands in your library beside everything else.
+
+Riwaq hosts and redistributes nothing. The Store reads publicly available pages so you can read them offline. Please support the translators and the official releases where they exist.
+
+Riwaq is free software under the MIT licence. Every bundled font ships with its own licence text.
