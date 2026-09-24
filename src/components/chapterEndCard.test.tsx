@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { ChapterEndCard } from "./ChapterEnd";
 import { I18nProvider } from "../i18n/I18nProvider";
 import { makeTr, type Locale } from "../i18n";
-import { FONT_CHAPTER_DISPLAY, THEMES } from "../styles/tokens";
+import { FONT_CHAPTER_DISPLAY, FONT_STACKS, THEMES } from "../styles/tokens";
 
 const NEXT = "أساطير رين زو - الجزء 2";
 
@@ -26,6 +26,8 @@ function render(props: Partial<Props> = {}, locale: Locale = "ar") {
         nextNumber={3}
         total={2372}
         availability="device"
+        fontFamily={FONT_STACKS.readex}
+        script="arabic"
         onNext={() => {}}
         onOpenToc={() => {}}
         onTopOfChapter={() => {}}
@@ -48,8 +50,13 @@ describe("ChapterEndCard — marginal pair", () => {
 
   it("sets the next chapter's name in the face a chapter OPENS in", () => {
     // Same face as ChapterOpener's title: the name a reader sees here is the
-    // name they see at the top of the next screen.
-    expect(render()).toContain(FONT_CHAPTER_DISPLAY.replace(/"/g, "&quot;"));
+    // name they see at the top of the next screen. That face is now the
+    // reader's own, so this card has to follow the font picker too — left
+    // behind, it would name the next chapter in a face that chapter will not
+    // be set in.
+    const html = render({ fontFamily: FONT_STACKS.lateef });
+    expect(html).toContain(FONT_STACKS.lateef.replace(/"/g, "&quot;"));
+    expect(html).not.toContain(FONT_CHAPTER_DISPLAY.replace(/"/g, "&quot;"));
   });
 
   it("carries the two marginal moves, and never inside the turn", () => {
