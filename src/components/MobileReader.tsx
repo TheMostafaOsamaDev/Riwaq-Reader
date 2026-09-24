@@ -38,6 +38,7 @@ import {
   type ThemeKey,
   readingSurfaces,
   Z,
+  readingStack,
 } from "../styles/tokens";
 import {
   anchorFromRange,
@@ -1221,6 +1222,8 @@ export function MobileReader({
           nextNumber={currentChapter + 2}
           total={chapterCount}
           availability={nextChapterAvailability}
+          fontFamily={readingStack(t.fontFamily)}
+          script={rtl ? "arabic" : "latin"}
           onNext={nextChapter}
           onOpenToc={() => setSheet("toc")}
           onTopOfChapter={toTopOfChapter}

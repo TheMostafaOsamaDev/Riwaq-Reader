@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
 import {
-  FONT_CHAPTER_DISPLAY,
   FONT_READING_SANS,
   FONT_STACKS,
   inkAlpha,
@@ -10,6 +9,18 @@ import {
 import { formatNum } from "../i18n";
 import type { Tr } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
+import { useFontScale } from "../hooks/useFontScale";
+import type { MetricScript } from "../styles/fontMetrics";
+
+/** The next chapter's name, in APPARENT px — i.e. before the chosen face's
+ *  correction. It used to be a flat 23/24px set in one display face, which
+ *  only read correctly in that face: through a naskh face needing a 1.39
+ *  correction the same number lands ~28% small. Stated apparent and corrected
+ *  at the call, it reads the same size whichever face the reader picked.
+ *
+ *  17.4 is what the old 23px measured through Markazi (23 / 1.32), so the
+ *  card keeps the size it was designed at. Do not "tidy" it to 18. */
+const NEXT_TITLE_APPARENT = { phone: 17.4, desktop: 18.2 };
 
 /**
  * The end of a chapter, and the way out of it.
@@ -65,6 +76,13 @@ interface EndProps {
   /** Whether the next chapter is already on the device. Omitted when unknown —
    *  better to say nothing than to guess, since it predicts a wait. */
   availability?: "device" | "online";
+  /** The face the reader chose. The card names a chapter, and that name has
+   *  to be set in the face the chapter itself will open in — see the note on
+   *  the title below. */
+  fontFamily: string;
+  /** Script the BOOK is set in, for the face's correction. Book content, so
+   *  it follows the book's direction rather than the UI language. */
+  script: MetricScript;
   onNext: () => void;
   /** The two marginal moves. Both stay available at the end of the BOOK, where
    *  there is no turn left to take but every reason to want the contents. */
@@ -133,12 +151,18 @@ export function ChapterEndCard({
   nextNumber,
   total,
   availability,
+  fontFamily,
+  script,
   onNext,
   onOpenToc,
   onTopOfChapter,
 }: EndProps) {
   const [pressed, press] = usePressed();
   const { locale } = useI18n();
+  // Measured here rather than threaded in: this card's three parents render it
+  // directly and none of them has the scale, where BookBody (which owns the
+  // opener) already computes it for the body.
+  const faceScale = useFontScale(fontFamily, script);
   const arabic = locale === "ar";
   const gutter = compact ? 20 : 40;
 
@@ -243,16 +267,16 @@ export function ChapterEndCard({
             <span
               style={{
                 display: "block",
-                // The SAME face a chapter opens in, not the body face. This
-                // control names a chapter, and the name a reader sees here is
-                // the name they will see at the top of the next screen — the
-                // two should be set alike.
-                //
-                // 23px and not 18: Markazi's ink is ~76% of the reading sans'
-                // at the same px, so this lands at ~17.5px apparent, which is
-                // where the old body-face title sat. Do not "tidy" it down.
-                fontFamily: FONT_CHAPTER_DISPLAY,
-                fontSize: compact ? 23 : 24,
+                // The SAME face a chapter opens in. This control names a
+                // chapter, and the name a reader sees here is the name they
+                // will see at the top of the next screen — the two have to be
+                // set alike, which now means following the font picker rather
+                // than sharing one fixed display face with it.
+                fontFamily,
+                fontSize:
+                  (compact
+                    ? NEXT_TITLE_APPARENT.phone
+                    : NEXT_TITLE_APPARENT.desktop) * faceScale,
                 lineHeight: 1.25,
               }}
             >
