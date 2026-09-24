@@ -1,0 +1,5 @@
+Fixes
+
+* Tapping the previous or next chapter control on the phone no longer brings the toolbars back and drops you out of focus mode.
+* Desktop scrolling is handed back to the browser, so the wheel and the trackpad feel native again.
+* The SHA256SUMS file published with each release now verifies. Every earlier release listed a scratch file that was never uploaded, so checking a download always failed on the first line.

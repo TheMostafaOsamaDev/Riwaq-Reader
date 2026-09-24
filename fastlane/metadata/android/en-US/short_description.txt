@@ -1,0 +1,1 @@
+A calm, offline-first reader for EPUB, PDF and Word, with real Arabic support

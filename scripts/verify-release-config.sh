@@ -85,6 +85,33 @@ check_config() {
     fi
   fi
 
+
+  # The Rust toolchain must be pinned, and pinned to ONE version.
+  #
+  # F-Droid ships our signed APK only if its build comes out byte-identical to
+  # the published one, which it cannot do against "whatever stable was current
+  # that day". rustup reads rust-toolchain.toml; the workflows cannot, because
+  # dtolnay/rust-toolchain selects by its own git ref. So the version is
+  # written twice and this check is what stops the two rotting apart — a drift
+  # here means the APK users get and the APK F-Droid builds differ for a
+  # reason nothing else in the pipeline would report.
+  local wfdir="$root/.github/workflows" tc="$root/rust-toolchain.toml"
+  if [ -d "$wfdir" ]; then
+    local channel refs bad
+    channel="$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' "$tc" 2>/dev/null | head -n1)"
+    if [ -z "$channel" ]; then
+      echo "rust-toolchain.toml has no [toolchain] channel — the Rust version is unpinned, so no release built from it can ever be reproduced"
+      problems=$((problems + 1))
+    else
+      refs="$(grep -ho 'dtolnay/rust-toolchain@[^[:space:]]*' "$wfdir"/*.yml 2>/dev/null | sed 's|.*@||' | sort -u)"
+      bad="$(printf '%s\n' "$refs" | grep -v "^$channel$" || true)"
+      if [ -n "$bad" ]; then
+        echo "workflows pin dtolnay/rust-toolchain@$(printf '%s' "$bad" | tr '\n' ' ' | sed 's/ $//') but rust-toolchain.toml says $channel"
+        problems=$((problems + 1))
+      fi
+    fi
+  fi
+
   [ "$problems" -eq 0 ]
 }
 
@@ -117,6 +144,19 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 1 "package.json out of step is caught"       "$d"                            v0.2.0
   d2="$(mk lock 0.2.0 KEY true)"; printf 'name = "riwaq"\nversion = "0.1.0"\n' > "$d2/src-tauri/Cargo.lock"
   expect 1 "a stale Cargo.lock is caught"             "$d2"                           v0.2.0
+
+  # toolchain pinning
+  mktc() { # dir channel workflow-ref
+    local d; d="$(mk "$1" 0.2.0 KEY true)"; mkdir -p "$d/.github/workflows"
+    [ -n "$2" ] && printf '[toolchain]\nchannel = "%s"\n' "$2" > "$d/rust-toolchain.toml"
+    printf 'jobs:\n  b:\n    steps:\n      - uses: dtolnay/rust-toolchain@%s\n' "$3" \
+      > "$d/.github/workflows/ci.yml"
+    echo "$d"
+  }
+  expect 0 "a pinned toolchain matching the workflows"  "$(mktc tcok 1.97.1 1.97.1)"  v0.2.0
+  expect 1 "a workflow pinned to a different version"   "$(mktc tcdrift 1.97.1 1.96.0)" v0.2.0
+  expect 1 "a workflow still floating on @stable"       "$(mktc tcfloat 1.97.1 stable)" v0.2.0
+  expect 1 "no rust-toolchain.toml at all"              "$(mktc tcnone "" 1.97.1)"    v0.2.0
   [ "$fails" -eq 0 ] || die "$fails self-test failure(s) — the guard itself is broken"
   echo "verify-release-config: self-test passed"
   exit 0
