@@ -324,12 +324,10 @@ export const en = {
   "toc.noMatches": "No chapters match “{term}”.",
   "toc.now": "Now",
   "reader.focusMode": "Focus mode",
+  "reader.focusExitHint": "Double-tap to exit",
   "reader.exitFocusMode": "Exit focus mode",
   "reader.focusHintBody":
     "Move the pointer to the top or bottom edge to bring the controls back.",
-  // The phone has no pointer, and the gesture back is the one that got you
-  // here — so it says something different from the desktop line above.
-  "reader.mobileFocusHintBody": "Tap anywhere to bring the controls back.",
   "toc.collapseAll": "Collapse all volumes",
   "toc.expandAll": "Expand all volumes",
   "toc.goToCurrent": "Go to current chapter",
