@@ -51,3 +51,31 @@ F-Droid's own guidance is that this is worth doing for a *new* app precisely
 because it cannot be adopted retroactively. Riwaq is new to F-Droid, so the
 choice is still open. It costs a `AllowedAPKSigningKeys` line plus making the
 build actually byte-reproducible, which for a Rust and Node build is real work.
+
+## Reproducible builds: what still blocks it
+
+The recipe now asks F-Droid to verify its build against the published APK and
+ship ours (`Binaries:` plus `AllowedAPKSigningKeys:`). Two things in this
+repository stop that working today, both found by reading the release
+pipeline rather than by guessing.
+
+**1. The Rust toolchain is not pinned.** `.github/workflows/release.yml` uses
+`dtolnay/rust-toolchain@stable`, so every release is built with whatever
+stable happened to be current that day. F-Droid cannot reproduce a build
+whose compiler is "whatever was newest in September". A `rust-toolchain.toml`
+pinning an exact version is a prerequisite, and it changes what CI installs,
+so it wants its own change rather than riding along with documentation.
+
+**2. The NDK version has to stay in step.** `release.yml` installs
+`ndk;26.1.10909125`. The recipe now pins the same string. If one moves and
+the other does not, the builds differ and verification fails with no obvious
+cause. Worth a comment in both files, or a check in `verify-release-config.sh`.
+
+Beyond those, reproducibility usually turns on build paths, timestamps and
+archive ordering leaking into the APK. None of that has been tested here,
+because testing it means running F-Droid's builder.
+
+**Do not submit until the toolchain is pinned.** Submitting with `@stable`
+means the first verification attempt fails, and the usual outcome is falling
+back to F-Droid signing, which is the thing reproducible builds exist to
+avoid and cannot be undone afterwards.
