@@ -17,13 +17,7 @@
 // symmetric and the text centres itself.
 
 import type { CSSProperties, ReactNode } from "react";
-import type { MetricScript } from "../styles/fontMetrics";
-import {
-  FONT_CHAPTER_DISPLAY,
-  FONT_READING_SANS,
-  inkAlpha,
-  type Theme,
-} from "../styles/tokens";
+import { FONT_READING_SANS, inkAlpha, type Theme } from "../styles/tokens";
 import {
   chapterTitleApparent,
   chapterTitleSize,
@@ -37,20 +31,26 @@ interface Props {
   /** 0-based position in the spine. */
   order: number;
   title: string;
-  /** The body's size AFTER the per-face correction. The title is derived from
-   *  it — see chapterTitleSize — and every other dimension here is derived
-   *  from the TITLE, so the whole block keeps its proportions across the
-   *  reader's 14–42px range and plateaus where the title does. */
-  bodySize: number;
+  /** The body's APPARENT size — the reader's slider value, BEFORE the
+   *  per-face correction. The title is derived from it (see chapterTitleSize)
+   *  and every other dimension here is derived from the TITLE, so the whole
+   *  block keeps its proportions across the reader's 14–42px range and
+   *  plateaus where the title does.
+   *
+   *  Apparent and not the corrected px: the correction is applied once, at
+   *  the end, by `faceScale`. Handing the corrected px in applies it twice. */
+  bodyApparent: number;
   /** Phone: a gentler growth rate and a lower plateau. Threaded from the
    *  reader that mounted BookBody, the same way ChapterEnd's is. */
   compact?: boolean;
-  /** Script the BOOK is set in — the title is book content, so this follows
-   *  the book's direction and not the UI language. The title face needs a
-   *  different correction per script; without one the title is sized in the
-   *  BODY face's terms while rendering in Markazi, which is ~24% smaller at
-   *  the same px, so "a little bigger than the body" came out smaller. */
-  script: MetricScript;
+  /** The chosen face's apparent-size correction — the same number the body is
+   *  scaled by, measured against the script the BOOK is set in. Both sides
+   *  carrying it is what holds the title/body ratio still across the faces. */
+  faceScale: number;
+  /** The face the reader chose, which the title is set in. The title used to
+   *  be locked to one display face, so picking a font changed every word on
+   *  the page except the chapter's own name. */
+  fontFamily: string;
   tr: Tr;
   locale: Locale;
 }
@@ -147,16 +147,17 @@ export function ChapterOpener({
   theme,
   order,
   title,
-  bodySize,
+  bodyApparent,
   compact = false,
-  script,
+  faceScale,
+  fontFamily,
   tr,
   locale,
 }: Props) {
-  const titleSize = chapterTitleSize(bodySize, compact, script);
+  const titleSize = chapterTitleSize(bodyApparent, compact, faceScale);
   // The rules and gaps key off the APPARENT title, not the px one, so a block
   // set in Arabic and one set in Latin close on the same rules.
-  const apparentTitle = chapterTitleApparent(bodySize, compact);
+  const apparentTitle = chapterTitleApparent(bodyApparent, compact);
   const px = (n: number) => u(apparentTitle, n);
   // Tracking and casing are Latin-only: Arabic is cursive, so letter-spacing
   // prises the joins apart, and there is no case to upper. The size bump
@@ -202,11 +203,12 @@ export function ChapterOpener({
       <div
         style={{
           marginTop: px(15),
-          // The editorial display face, carrying both scripts. The chapter's
-          // name is the one place in the reading surface that should NOT be
-          // the body face — that is what makes an opening read as an opening
-          // rather than as a large paragraph.
-          fontFamily: FONT_CHAPTER_DISPLAY,
+          // The reader's own face. This was a fixed editorial display face,
+          // on the argument that a chapter's name should not be the body face
+          // — but it meant the font picker moved every word on the page
+          // except the one the reader had just opened. An opening now reads
+          // as an opening through size and the marks above and below it.
+          fontFamily,
           // Answers the reader's size choice, but plateaus — an unbounded
           // 1.8× put a 75px title on a phone at the top of the slider. See
           // chapterTitleSize for the three regimes, and for why the number is

@@ -501,6 +501,18 @@ export const FONT_SERIF_DISPLAY = FONT_READING_SANS;
  *  This was Thmanyah Serif Display until that family was dropped for shipping
  *  without a license file (see LEGACY_FONT_FAMILY). Markazi is also reachable
  *  as a user-selectable READING font; nothing else resolves through here. */
+/** The stack a reading-font key resolves to.
+ *
+ *  "sans" is the one key that does NOT take `FONT_STACKS.sans` — that is the
+ *  app-chrome stack, and book content asking for "Sans" must not ride on the
+ *  chrome font (see the note on FONT_READING_SANS). Lives here because three
+ *  call sites need the same answer: the body, the chapter opening's title and
+ *  the end-of-chapter card's, which are all set in the reader's chosen face
+ *  and would drift apart if each resolved it for itself. */
+export function readingStack(key: FontFamilyKey): string {
+  return key === "sans" ? FONT_READING_SANS : FONT_STACKS[key];
+}
+
 export const FONT_CHAPTER_DISPLAY = FONT_STACKS.markazi;
 
 // Match anything in the Arabic Unicode blocks (base, supplement, extended-A,

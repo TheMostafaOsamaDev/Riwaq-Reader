@@ -78,6 +78,7 @@ import {
   titleFontFor,
   type Theme,
   type ThemeKey,
+  readingStack,
 } from "../styles/tokens";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
@@ -1243,6 +1244,8 @@ export function DesktopReader({
                   nextNumber={currentChapter + 2}
                   total={chapterCount}
                   availability={nextChapterAvailability}
+                  fontFamily={readingStack(t.fontFamily)}
+                  script={rtl ? "arabic" : "latin"}
                   onNext={nextChapter}
                   onOpenToc={() => setActivePanel("toc")}
                   onTopOfChapter={toTopOfChapter}

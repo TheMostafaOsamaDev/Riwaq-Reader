@@ -12,8 +12,7 @@ import { chapterImageSrcFor, type Highlight } from "../store/library";
 import { ensureEpubImages } from "../store/epubImages";
 import { open as openLightbox } from "../store/lightbox";
 import {
-  FONT_READING_SANS,
-  FONT_STACKS,
+  readingStack,
   hlBg,
   type FontFamilyKey,
   type Theme,
@@ -155,8 +154,7 @@ export function BookBody({
   // Latin-first stacks; Cairo/Lateef/Tajawal are Arabic-primary), so the
   // old `FONT_ARABIC` force-override is no longer needed and was silently
   // ignoring the user's selection in RTL mode.
-  const bodyFont =
-    fontFamily === "sans" ? FONT_READING_SANS : FONT_STACKS[fontFamily];
+  const bodyFont = readingStack(fontFamily);
 
   // Normalize apparent size across the reading fonts, measured off the face
   // that actually resolved. Without it the same slider value reads ~28%
@@ -250,9 +248,10 @@ export function BookBody({
         theme={theme}
         order={chapter.order}
         title={chapter.title}
-        bodySize={scaledFontSize}
+        bodyApparent={fontSize}
         compact={compact}
-        script={script}
+        faceScale={fontScale}
+        fontFamily={bodyFont}
         tr={tr}
         locale={locale}
       />

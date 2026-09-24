@@ -3,14 +3,17 @@
 // the slider instead of eyeballed at one size in the middle of it.
 //
 // Everything here is stated in APPARENT size — the size the eye reads, not the
-// `font-size` the title is set at. The two are not the same: the title renders
-// in Markazi Text (FONT_CHAPTER_DISPLAY) while `bodySize` has already been
-// corrected to read like Readex Pro, and Markazi's ink is ~76% of Readex's at
-// the same px. Reasoning in px hid that: a cap that looked like a comfortable
-// 30px title measured 0.95× the body it opened — an opening set SMALLER than
-// its own chapter, which is the one thing this must never do.
-
-import type { MetricScript } from "../styles/fontMetrics";
+// `font-size` it is set at. The two are not the same: the same px renders ~28%
+// smaller in Lateef than in Readex Pro, which is why the reader's own faces
+// each carry a measured correction (see styles/fontMetrics.ts). Reasoning in
+// px hid that: a cap that looked like a comfortable 30px title measured 0.95×
+// the body it opened — an opening set SMALLER than its own chapter, which is
+// the one thing this must never do.
+//
+// The title is set in the READER'S chosen face, not a fixed display one, so
+// its correction is that face's own — the very same number the body is already
+// scaled by. That is what makes the ratio between the two hold still while the
+// face changes: both sides are multiplied by it, so it cancels.
 
 /** The reader's size slider runs 14–42 (see SettingsSection), and the opener
  *  used to set its title at a flat 1.8 × bodySize in px — 1.36× apparent — with
@@ -50,31 +53,6 @@ const DESKTOP: Scale = { ratio: 1.36, cap: 44 };
 const FLOOR_RATIO = 1.1;
 
 /**
- * Apparent-size correction for the TITLE face — what `measureFontScale` would
- * return for FONT_CHAPTER_DISPLAY.
- *
- * Tabulated rather than measured, which is the opposite of what the reading
- * fonts do, and deliberately so. fontMetrics.ts measures because two of the
- * reading stacks ("Serif", "Dyslexic") name families that are NOT self-hosted
- * and land on a different face per OS, so no constant could be right
- * everywhere. FONT_CHAPTER_DISPLAY has no such problem: it is one bundled
- * file, shipped in the app, identical on every platform — so its metric is a
- * constant of the build, and measuring it at runtime buys nothing while
- * costing the one thing that matters here. A measurement is only available
- * AFTER the face loads; before that the canvas reports the fallback's metrics
- * and scores Markazi as needing no correction at all, which would open every
- * cold-start chapter with a title 32% too small and then visibly pop it.
- *
- * Measured off public/fonts/reading/MarkaziText-VariableFont_wght.woff2 with
- * the same ink-height method fontMetrics.ts uses, against the same samples:
- * Arabic "أبجد هوز حطي" 147.3 / 111.62, Latin "Handgloves" 97.0 / 71.58.
- */
-const DISPLAY_FACE_SCALE: Record<MetricScript, number> = {
-  arabic: 1.32,
-  latin: 1.355,
-};
-
-/**
  * Title size for a chapter opening, in APPARENT px.
  *
  * Three regimes, in order:
@@ -95,17 +73,23 @@ export function chapterTitleApparent(
 
 /**
  * The `font-size` to actually set the title at: the apparent size above,
- * converted into the display face's own terms.
+ * converted into the chosen face's own terms.
  *
- * @param script The script the BOOK is set in — the title is book content, so
- *   this follows the book's direction, not the UI language.
+ * @param bodyApparent The body's APPARENT size — the reader's slider value,
+ *   NOT the corrected px the body is set at. Passing the corrected px is the
+ *   bug this signature exists to make hard: it multiplies the title by the
+ *   face's correction a second time, so a reader on Lateef got a title 1.89×
+ *   their body where every other face gave 1.36×.
+ * @param faceScale The chosen face's correction, from `measureFontScale` —
+ *   the same number the body is scaled by. Because both sides carry it, the
+ *   title/body ratio is identical on all sixteen faces.
  */
 export function chapterTitleSize(
-  bodySize: number,
+  bodyApparent: number,
   compact: boolean,
-  script: MetricScript,
+  faceScale: number,
 ): number {
-  return chapterTitleApparent(bodySize, compact) * DISPLAY_FACE_SCALE[script];
+  return chapterTitleApparent(bodyApparent, compact) * faceScale;
 }
 
 /** The apparent title size the opener's other dimensions were drawn against:
