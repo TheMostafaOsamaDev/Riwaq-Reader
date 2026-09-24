@@ -14,6 +14,9 @@ export interface IconProps {
 export const ICONS = {
   menu: "M3 6h18M3 12h18M3 18h18",
   list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  // A padlock, shackle up. Drawn as paths rather than a <rect> so it goes in
+  // the same single-`d` table as everything else in this set.
+  lock: "M6.5 10.5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 10.5V7.5a4 4 0 0 1 8 0v3",
   // Text-alignment icons. Physical (left = lines flush left), so they read
   // correctly in both LTR and RTL — do NOT add `rtl-flip-x` to these.
   alignLeft: "M21 6H3M15 12H3M17 18H3",

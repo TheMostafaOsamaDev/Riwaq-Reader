@@ -271,10 +271,10 @@ export const ar: Messages = {
   "toc.noMatches": "لا فصول تطابق “{term}”.",
   "toc.now": "الآن",
   "reader.focusMode": "وضع التركيز",
+  "reader.focusExitHint": "انقر مرتين للخروج",
   "reader.exitFocusMode": "إنهاء وضع التركيز",
   "reader.focusHintBody":
     "حرِّك المؤشر إلى الحد العلوي أو السفلي لإظهار الأدوات.",
-  "reader.mobileFocusHintBody": "انقر في أي مكان لإظهار الأدوات.",
   "toc.collapseAll": "طيّ كل المجلدات",
   "toc.expandAll": "توسيع كل المجلدات",
   "toc.goToCurrent": "الانتقال إلى الفصل الحالي",

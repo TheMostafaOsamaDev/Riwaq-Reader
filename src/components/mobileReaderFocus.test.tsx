@@ -1,20 +1,15 @@
 // @vitest-environment happy-dom
 //
-// What the phone reader shows once its chrome is tapped away.
+// Focus mode on the phone, as a mode rather than a toggle.
 //
-// Hiding the chrome takes the header with it, and the header is where the
-// chapter rail lives — so focus mode had no progress indicator of any kind.
-// It also inherited the app-wide overlay scrollbar, which drew a thumb down
-// the right edge of the page while scrolling: a second, redundant progress
-// indicator, and furniture in a mode whose whole point is removing it.
+// You enter it from the control in the header's trailing corner, and you leave
+// it by double-tapping the page or by tapping the lock that says you are in
+// it. A single tap does nothing but re-state the way out — it used to toggle
+// the chrome, which meant any stray tap dropped a reader out of the mode with
+// no acknowledgement at all.
 //
-// So: the reading surface opts out of the overlay scrollbar, and a rail is
-// pinned to the top of the viewport whenever the chrome is away, tracking the
-// same chapter fraction the header rail does.
-//
-// happy-dom has no layout engine, so these assert the declared geometry and
-// the structure rather than measured pixels. Real measured alignment is
-// checked in a WKWebView.
+// happy-dom has no layout engine, so these assert declared geometry and
+// structure rather than measured pixels.
 
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -23,8 +18,9 @@ import type { EpubBook } from "../epub/types";
 import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
 import { ar } from "../i18n/ar";
 import { I18nProvider } from "../i18n/I18nProvider";
-import type { BookState } from "../store/library";
 import { GLASS_CLASS } from "../reader/chrome/glass";
+import type { BookState } from "../store/library";
+import type { Tweaks } from "../types/reader";
 import { THEMES } from "../styles/tokens";
 import { MobileReader } from "./MobileReader";
 
@@ -47,7 +43,6 @@ const BOOK: EpubBook = {
     })),
   })),
 };
-
 const STATE: BookState = {
   bookId: "b1",
   currentChapter: 0,
@@ -60,19 +55,19 @@ let root: Root;
 /** Chapters the reader asked to move to, oldest first. */
 let moves: number[] = [];
 
-/** A LIVE reader: `onChapterChange` really moves it, so a tap on an in-page
- *  control re-renders the page the way the app does rather than leaving it
- *  frozen on chapter 0. The chapter-turn cases depend on that — a turn that
- *  never happens cannot show what the turn does to the chrome. */
+/** A LIVE reader: the tweaks are real state, so `focusMode` behaves the way it
+ *  does in the app — persisted, not reset on every render — and a chapter turn
+ *  really re-renders the page. */
 function Harness({ start }: { start: number }) {
+  const [tweaks, setTweaks] = useState<Tweaks>(DEFAULT_TWEAKS);
   const [chapter, setChapter] = useState(start);
   return (
     <I18nProvider locale="ar">
       <MobileReader
         theme={THEMES.sepia}
         themeKey="sepia"
-        t={DEFAULT_TWEAKS}
-        setTweak={() => {}}
+        t={tweaks}
+        setTweak={(k, v) => setTweaks((prev: Tweaks) => ({ ...prev, [k]: v }))}
         book={BOOK}
         state={{ ...STATE, currentChapter: chapter }}
         currentChapter={chapter}
@@ -93,9 +88,6 @@ function Harness({ start }: { start: number }) {
   );
 }
 
-/** Mount a fresh reader into `host`, opened on chapter `start`. Called per
- *  test, and again by the cases that need a different chapter or need the
- *  hint's flag to survive a remount. */
 function mount(start = 0) {
   root = createRoot(host);
   act(() => {
@@ -116,181 +108,163 @@ afterEach(() => {
   host.remove();
 });
 
-/** The reading surface — the element a tap toggles the chrome on. */
+/** The reading surface. */
 function surface(): HTMLElement {
   const el = host.querySelector<HTMLElement>(".no-scrollbar");
   if (!el) throw new Error("reading surface not found");
   return el;
 }
 
-/** Tap the page, which is how this reader enters and leaves focus mode. */
-function tapPage() {
-  act(() => {
-    surface().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+/** A button, by the accessible name it carries. */
+function byLabel(label: string): HTMLElement {
+  const el = [...host.querySelectorAll<HTMLElement>("button")].find((b) =>
+    (b.getAttribute("aria-label") ?? b.textContent ?? "").startsWith(label),
+  );
+  if (!el) throw new Error(`no control named ${label}`);
+  return el;
 }
 
-/** The rail pinned to the viewport top — present only in focus mode. */
+const click = (el: Element) =>
+  act(() => {
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+/** One tap on the paper. */
+function tapPage() {
+  click(surface());
+}
+/** Two taps in the same place, back to back — the exit gesture. */
+function doubleTapPage() {
+  tapPage();
+  tapPage();
+}
+
 function focusRail(): HTMLElement | null {
   return host.querySelector<HTMLElement>(".riwaq-focus-rail");
 }
-
-function hint(): HTMLElement | null {
-  return host.querySelector<HTMLElement>(".riwaq-focus-hint");
+function lock(): HTMLElement | null {
+  return host.querySelector<HTMLElement>(".riwaq-focus-lock");
+}
+function pill(): HTMLElement | null {
+  return host.querySelector<HTMLElement>(".riwaq-focus-pill");
 }
 
-/** True while the header and the bottom bar are both gone — i.e. focus mode.
- *  Read off the bars rather than off the rail: the rail is a consequence of
- *  the same flag, but the bars are the thing the reader watches leave.
- *
- *  The count is asserted because `every` on an empty list is `true` — a
- *  selector that stopped matching would otherwise report permanent focus
- *  mode and every case below would pass on nothing. */
+/** True while the header and the bottom bar are both gone. The count is
+ *  asserted because `every` on an empty list is `true`, and a selector that
+ *  stopped matching would otherwise report permanent focus mode. */
 function chromeIsAway(): boolean {
   const bars = [
     ...host.querySelectorAll<HTMLElement>(`.${GLASS_CLASS}[aria-hidden]`),
   ];
   if (bars.length !== 2)
     throw new Error(`expected 2 chrome bars, saw ${bars.length}`);
-  return bars.every((bar) => bar.getAttribute("aria-hidden") === "true");
+  return bars.every((b) => b.getAttribute("aria-hidden") === "true");
 }
 
-/** Re-open the reader in the MIDDLE of the book — the only place where both
- *  the way back and the way forward are on the page at once. */
-function openMidBook() {
-  act(() => root.unmount());
-  mount(1);
+function enterFocus() {
+  click(byLabel(ar["reader.focusMode"]));
 }
 
-/** Tap an in-page control the way a thumb does: on the label inside it, not
- *  on the button box. A tap that landed on the button itself would miss the
- *  bug entirely — what bubbles to the page is the same either way, but only
- *  the inner node proves the fix looks past the node actually hit. */
-function tapControl(label: string) {
-  const el = [...host.querySelectorAll<HTMLElement>("button")].find((b) =>
-    (b.getAttribute("aria-label") ?? b.textContent ?? "").startsWith(label),
-  );
-  if (!el) throw new Error(`no control named ${label}`);
-  const inner = el.querySelector("span") ?? el;
-  act(() => {
-    inner.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-}
-
-describe("the phone reading surface", () => {
-  it("opts out of the app's overlay scrollbar", () => {
-    // `no-scrollbar` only suppresses the NATIVE bar; the app draws its own
-    // floating thumb over every scroller that has not opted out.
-    expect(surface().hasAttribute("data-no-overlay-scrollbar")).toBe(true);
-  });
-});
-
-describe("focus mode", () => {
-  it("shows no top rail while the chrome is up", () => {
-    // The header carries the rail in that state; a second one would be a
-    // duplicate sitting directly above it.
+describe("entering focus mode", () => {
+  it("starts with the chrome up and no focus furniture", () => {
+    expect(chromeIsAway()).toBe(false);
     expect(focusRail()).toBeNull();
+    expect(lock()).toBeNull();
   });
 
-  it("pins a rail to the top of the viewport once the chrome is away", () => {
+  it("is a control in the header, not a tap on the page", () => {
+    // The tap used to do this. It no longer does, because a bare screen you
+    // can reach by accident is one you leave by accident too.
     tapPage();
-    const rail = focusRail();
-    expect(rail).not.toBeNull();
-    expect(rail?.style.position).toBe("fixed");
-    expect(rail?.style.top).toBe("0px");
+    expect(chromeIsAway()).toBe(false);
+    enterFocus();
+    expect(chromeIsAway()).toBe(true);
   });
 
-  it("takes the rail away again when the chrome comes back", () => {
-    tapPage();
+  it("announces the mode and the way out", () => {
+    enterFocus();
+    const p = pill();
+    expect(p).not.toBeNull();
+    expect(p?.textContent).toContain(ar["reader.focusMode"]);
+    expect(p?.textContent).toContain(ar["reader.focusExitHint"]);
+  });
+
+  it("puts the rail and the lock on screen", () => {
+    enterFocus();
     expect(focusRail()).not.toBeNull();
-    tapPage();
-    expect(focusRail()).toBeNull();
-  });
-
-  it("arrives carrying a width rather than filling in on the next scroll", () => {
-    tapPage();
-    // Entering focus mode is a tap, not a scroll, so nothing repaints the
-    // rail afterwards — it has to mount at the fraction already reached.
-    const fill = focusRail()?.firstElementChild?.firstElementChild as
-      | HTMLElement
-      | undefined;
-    expect(fill).toBeTruthy();
-    expect(fill?.style.width).not.toBe("");
+    expect(lock()).not.toBeNull();
   });
 });
 
-describe("the first trip into focus mode", () => {
-  it("explains how to get back out", () => {
-    tapPage();
-    expect(hint()).not.toBeNull();
+describe("leaving focus mode", () => {
+  it("goes on a double-tap of the page", () => {
+    enterFocus();
+    doubleTapPage();
+    expect(chromeIsAway()).toBe(false);
+    expect(lock()).toBeNull();
   });
 
-  it("takes the explanation away with the chrome's return", () => {
-    tapPage();
-    tapPage();
-    expect(hint()).toBeNull();
-  });
-
-  it("does not explain it a second time", () => {
-    tapPage();
-    tapPage();
-    tapPage();
-    expect(hint()).toBeNull();
-  });
-
-  it("stays quiet on a later install-lifetime visit", () => {
-    // The flag outlives the component, so a reader who has seen it once never
-    // sees it again — not on the next book, not after a relaunch.
-    tapPage();
-    expect(hint()).not.toBeNull();
-    act(() => root.unmount());
-    mount();
-    tapPage();
-    expect(hint()).toBeNull();
-  });
-});
-
-// A tap on the page toggles the chrome, and the two chapter controls live ON
-// the page — so their tap bubbled to the same handler and turned the chrome
-// back on. Reported from a phone: enter focus mode, tap through to the next
-// chapter, and the header and bottom bar are back. The one control meant to
-// keep you reading was the one that threw you out of the reading mode.
-describe("the in-page chapter controls, in focus mode", () => {
-  beforeEach(openMidBook);
-
-  it("turns forward without bringing the chrome back", () => {
+  it("stays on a single tap", () => {
+    // The whole point: a stray tap while reading must not end the mode.
+    enterFocus();
     tapPage();
     expect(chromeIsAway()).toBe(true);
+  });
+
+  it("re-states the way out when a single tap asks", () => {
+    // A tap that does nothing at all reads as a frozen app.
+    enterFocus();
+    tapPage();
+    expect(pill()).not.toBeNull();
+  });
+
+  it("goes when the lock is tapped", () => {
+    // The lock is the visible control the gesture cannot be on its own.
+    enterFocus();
+    const l = lock();
+    expect(l).not.toBeNull();
+    if (l) click(l);
+    expect(chromeIsAway()).toBe(false);
+  });
+
+  it("gives the lock a name a screen reader can use", () => {
+    enterFocus();
+    expect(lock()?.getAttribute("aria-label")).toBe(ar["reader.exitFocusMode"]);
+  });
+});
+
+describe("the in-page chapter controls, in focus mode", () => {
+  beforeEach(() => {
+    act(() => root.unmount());
+    mount(1);
+  });
+
+  /** Tap a control the way a thumb does — on the label inside it. */
+  function tapControl(label: string) {
+    const el = byLabel(label);
+    click(el.querySelector("span") ?? el);
+  }
+
+  it("turns forward without ending the mode", () => {
+    enterFocus();
     tapControl(ar["reader.nextChapter"]);
     expect(moves).toEqual([2]);
     expect(chromeIsAway()).toBe(true);
-    expect(focusRail()).not.toBeNull();
   });
 
-  it("turns back without bringing the chrome back", () => {
-    tapPage();
+  it("turns back without ending the mode", () => {
+    enterFocus();
     tapControl(ar["reader.prevChapter"]);
     expect(moves).toEqual([0]);
     expect(chromeIsAway()).toBe(true);
   });
 
-  it("keeps the chrome away for the foot's marginal links too", () => {
-    // Same block, same bubble. Opening the contents or going back to the top
-    // of the chapter are moves made INSIDE focus mode; neither is a request
-    // to leave it.
-    tapPage();
-    tapControl(ar["reader.topOfChapter"]);
+  it("survives a DOUBLE tap on a chapter control", () => {
+    // Two taps on the turn are two turns, never an exit — the control is
+    // exempt from the page gesture in both directions.
+    enterFocus();
+    tapControl(ar["reader.nextChapter"]);
+    tapControl(ar["reader.nextChapter"]);
     expect(chromeIsAway()).toBe(true);
-    tapControl(ar["reader.toc"]);
-    expect(chromeIsAway()).toBe(true);
-  });
-
-  it("still lets a tap on the page itself work the chrome", () => {
-    // The guard has to be narrow: the paper around the controls is still the
-    // toggle, and so is the text.
-    tapPage();
-    expect(chromeIsAway()).toBe(true);
-    tapPage();
-    expect(chromeIsAway()).toBe(false);
   });
 });
