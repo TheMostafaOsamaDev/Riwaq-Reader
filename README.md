@@ -10,12 +10,12 @@ macOS, Linux and Android. No accounts, no sync, no analytics.
 <p align="center">
 <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest"><img height="58" alt="Get it on GitHub" src="https://raw.githubusercontent.com/Kunzisoft/Github-badge/main/get-it-on-github.png"/></a>
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.riwaq.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img height="58" alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"/></a>
-<a href="https://f-droid.org/packages/com.riwaq.reader"><img height="58" alt="Get it on F-Droid" src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"/></a>
-<a href="https://flathub.org/apps/io.github.themostafaosamadev.Riwaq"><img height="58" alt="Get it on Flathub" src="https://flathub.org/api/badge?svg&locale=en"/></a>
 <a href="https://github.com/RookieEnough/Orion-Store"><img height="58" alt="Get it on Orion Store" src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png"/></a>
 </p>
 
-<sub>GitHub and Obtainium work today. F-Droid, Flathub and Orion are still in review.</sub>
+<sub>GitHub and Obtainium work today. Orion Store is submitted and waiting on
+review; F-Droid and Flathub are not submitted yet. Badges go up as each
+store goes live.</sub>
 
 </div>
 
