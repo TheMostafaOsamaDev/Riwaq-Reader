@@ -741,6 +741,7 @@ export const en = {
   // resolve it from the UI locale. Scraped chapter content, and the novel's
   // own title, are NOT here — they render as raw data.
   "stream.loadingNovel": "Loading novel…",
+  "stream.loadingVolumes": "Loading the chapter list… {done} / {total} volumes",
   "stream.noChapters": "This novel has no chapters.",
   "stream.loadErrorTitle": "Couldn't load this novel",
   "stream.loadingChapter": "Loading chapter…",
