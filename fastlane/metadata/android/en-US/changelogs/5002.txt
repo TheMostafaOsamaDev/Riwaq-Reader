@@ -1,0 +1,9 @@
+New
+
+* Focus mode on the phone is now something you turn on from the header. It stays on until you double-tap the page or tap the lock.
+* Chapter titles follow the font you picked for the page.
+
+Fixes
+
+* Reading a novel from فضاء الروايات no longer fails with "This novel has no chapters". The reader loads every volume first and shows its progress.
+* The phone's top bar no longer sits directly on the status bar.
