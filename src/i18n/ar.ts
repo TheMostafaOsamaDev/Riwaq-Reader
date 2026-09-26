@@ -619,6 +619,7 @@ export const ar: Messages = {
     "لا فصل منزَّل — القراءة تحتاج إضافة “{source}”.",
 
   "stream.loadingNovel": "جارٍ تحميل الرواية…",
+  "stream.loadingVolumes": "جارٍ تحميل قائمة الفصول… المجلدات {done} / {total}",
   "stream.noChapters": "هذه الرواية لا تحتوي على فصول.",
   "stream.loadErrorTitle": "تعذّر تحميل هذه الرواية",
   "stream.loadingChapter": "جارٍ تحميل الفصل…",
