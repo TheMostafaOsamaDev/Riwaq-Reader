@@ -5,6 +5,8 @@
 //
 // How it works:
 //   1. On mount, fetch novel metadata + chapter list via source.getNovel.
+//      A lazy-volume source (cenele) returns volumes with no chapters, so
+//      every such volume is filled through getVolumeChapters first.
 //   2. Construct a "virtual" EpubBook — every chapter starts with
 //      paragraphs:[] (no content yet). Title/href are populated so the
 //      TOC + chapter labels work immediately.
@@ -32,6 +34,7 @@ import type { ChapterItem, EpubBook, EpubChapter } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
 import { useLoadedExtensions } from "../sources/useExtensions";
+import { loadMissingVolumes } from "../sources/lazyVolumes";
 import { findSourceEntry, updateSourceReadingPosition } from "../store/library";
 import {
   chapterImageSrc,
@@ -39,9 +42,15 @@ import {
   chapterIsDownloaded,
   readChapterContent,
   readSnapshot,
+  setVolumeChapters,
   snapshotToSourceNovel,
 } from "../store/sourceLibrary";
-import type { Source, SourceLine, SourceNovel } from "../sources/types";
+import type {
+  Source,
+  SourceChapter,
+  SourceLine,
+  SourceNovel,
+} from "../sources/types";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
@@ -114,6 +123,11 @@ export function SourceStreamReader({
   const [book, setBook] = useState<EpubBook | null>(null);
   const [flat, setFlat] = useState<ChapterStub[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Set while a lazy source's missing volumes load. */
+  const [volumeProgress, setVolumeProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
 
   // Per-chapter content cache. Populated as chapters are fetched. Keyed
   // by the spine index (0..N-1) — same key the reader passes around.
@@ -185,10 +199,7 @@ export function SourceStreamReader({
   // behaves identically to the pre-library streaming mode (network
   // fetches, localStorage state).
   //
-  // `undefined` means "not looked up yet", which only the no-source path
-  // below distinguishes from `null`: with no extension the snapshot is the
-  // ONLY way to build a book, so answering before the lookup lands would
-  // report "not installed" for a novel that is in fact fully downloaded.
+  // `undefined` means "not looked up yet"; the load below waits for it.
   const [libraryEntryId, setLibraryEntryId] = useState<
     string | null | undefined
   >(undefined);
@@ -213,10 +224,25 @@ export function SourceStreamReader({
 
   // ── load novel + chapter stubs ──────────────────────────────────────────
   useEffect(() => {
-    // With no source there is nothing to fall back on, so wait for the
-    // library lookup rather than declaring failure early.
-    if (!source && libraryEntryId === undefined) return;
+    // Wait for the library lookup: it decides between the snapshot and the
+    // site. With no extension the snapshot is the only way to build a book,
+    // and with a lazy one the site can mean a request per 50 chapters that
+    // the snapshot may already hold. The lookup is a local index read.
+    if (libraryEntryId === undefined) return;
     let cancelled = false;
+    // A library novel keeps each volume it fetches, so the next open reads
+    // it from disk. Not awaited, and a failure only costs the next open a
+    // refetch — this one already has the chapters.
+    const saveVolume = libraryEntryId
+      ? (volumeId: number, chapters: SourceChapter[]) => {
+          setVolumeChapters(libraryEntryId, volumeId, chapters).catch((e) =>
+            devLog("volumes:saveError", {
+              volumeId,
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+        }
+      : undefined;
     (async () => {
       try {
         // Library-backed novels read from the persisted snapshot
@@ -228,6 +254,7 @@ export function SourceStreamReader({
           const snap = await readSnapshot(libraryEntryId);
           if (snap) fetchedNovel = snapshotToSourceNovel(snap);
         }
+        const fromSite = !fetchedNovel && !!source;
         if (!fetchedNovel && source) {
           fetchedNovel = await source.getNovel(novelUrl);
         }
@@ -237,6 +264,24 @@ export function SourceStreamReader({
           // thing, and there is nothing here to read.
           setLoadError(tr("store.notInstalled", { sourceId }));
           return;
+        }
+        // A lazy source leaves volumes empty until asked; the reader needs
+        // every one (see sources/lazyVolumes.ts).
+        if (source) {
+          fetchedNovel = await loadMissingVolumes(
+            source,
+            novelUrl,
+            fetchedNovel,
+            {
+              warm: fromSite,
+              isCancelled: () => cancelled,
+              onProgress: (done, total) => {
+                if (!cancelled) setVolumeProgress({ done, total });
+              },
+              onVolume: saveVolume,
+            },
+          );
+          if (cancelled) return;
         }
         const flatList: ChapterStub[] = fetchedNovel.volumes.flatMap((v) =>
           v.chapters.map((c) => ({
@@ -587,7 +632,16 @@ export function SourceStreamReader({
     );
   }
   if (!book || !novel) {
-    return <FullPaneLoading theme={theme} label={tr("stream.loadingNovel")} />;
+    // A single volume says nothing a count would add; several can take
+    // seconds, and a moving count shows the wait is going somewhere.
+    const label =
+      volumeProgress && volumeProgress.total > 1
+        ? tr("stream.loadingVolumes", {
+            done: volumeProgress.done,
+            total: volumeProgress.total,
+          })
+        : tr("stream.loadingNovel");
+    return <FullPaneLoading theme={theme} label={label} />;
   }
 
   const state: BookState = {
@@ -878,6 +932,7 @@ function FullPaneLoading({ theme, label }: { theme: Theme; label: string }) {
   return (
     <div
       dir={dir}
+      role="status"
       style={{
         position: "fixed",
         inset: 0,
@@ -889,6 +944,9 @@ function FullPaneLoading({ theme, label }: { theme: Theme; label: string }) {
         justifyContent: "center",
         fontFamily: FONT_SERIF_DISPLAY,
         fontSize: 20,
+        // The volume count ticks while the label is on screen; equal-width
+        // digits keep the line from shuffling sideways as it does.
+        fontVariantNumeric: "tabular-nums",
       }}
     >
       {label}
