@@ -280,8 +280,6 @@ targets + softprops/action-gh-release@v2 for the APK upload).
 No code signing yet — README documents the SmartScreen / Gatekeeper
 workarounds for unsigned binaries. Adding signing later is an
 incremental change to this workflow.
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
