@@ -217,8 +217,6 @@ preload pass is gated on hasLazyVolumes).
 
 Progress: preload uses 0.01-0.05 of the bar with phase labels like
 "Loading volume 3 / 12: Volume Title".
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -439,8 +437,6 @@ silently in the tray with no re-render flicker.
 Channel is registered lazily after permission grants (Android-only;
 createChannel is a no-op on other platforms and we catch the throw).
 Every sendNotification call now carries channelId.
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -588,8 +584,6 @@ it's long).
 
 Bar helper is a small local utility — 10 cells, full block + light
 shade chars, clamps and rounds out-of-range values to "".
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -829,8 +823,6 @@ mount a tiny BackHeader instead — 34px back-arrow circle + "Store"
 label, matching NovelDetailView's header treatment. The bottom nav
 stays visible so the user can hop between Library / Store /
 Downloads / Settings without backing out first.
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```

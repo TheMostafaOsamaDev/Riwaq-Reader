@@ -277,8 +277,6 @@ match the new shorter view-enter duration. Mobile sheet and desktop
 side-panel keep their slide motion.
 
 Spec: docs/superpowers/specs/2026-05-25-simplify-page-transitions-design.md
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
