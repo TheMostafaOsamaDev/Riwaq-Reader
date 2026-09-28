@@ -23,6 +23,7 @@ import { FocusRail } from "../reader/chrome/FocusRail";
 import { FocusLock, FocusPill } from "../reader/chrome/FocusSigns";
 import { isDoubleTap, type Tap } from "../reader/chrome/focusGesture";
 import { glassBar } from "../reader/chrome/glass";
+import { attachTouchPanFallback } from "../reader/scroll/touchPanFallback";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { SelectionHandle } from "./SelectionHandle";
@@ -383,6 +384,10 @@ export function MobileReader({
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** A long-press selection owns the pointer. Set by the selection effect,
+   *  read by the pan fallback, which must not scroll under a selection. */
+  const selectingRef = useRef(false);
   /** The last page tap, for the double-tap test. */
   const lastTapRef = useRef<Tap | null>(null);
   const startEndpointRef = useRef<RangeEndpoint | null>(null);
@@ -643,10 +648,11 @@ export function MobileReader({
   // selection so the OS toolbar (which we can't suppress on Samsung
   // One UI) never has a live window selection to anchor to.
   //
-  // BookBody uses touch-action: pan-y so the browser handles vertical
-  // scroll natively with momentum. We only call preventDefault on
-  // pointermove during active selection drag — that suppresses scroll
-  // for the in-flight selection without affecting normal swipes.
+  // The reading surface is touch-action: pan-y (`data-pan-scroller`), so
+  // the browser handles vertical scroll natively with momentum. The
+  // preventDefault on pointermove below cannot stop that — a pointer event
+  // does not cancel a scroll. A drag that goes vertical after the long-press
+  // is taken by the browser (pointercancel), which ends the selection drag.
   useEffect(() => {
     const bodyEl = document.querySelector<HTMLElement>("[data-book-body]");
     if (!bodyEl) return;
@@ -655,7 +661,6 @@ export function MobileReader({
     let startX = 0;
     let startY = 0;
     let longPressTimer: number | null = null;
-    let isSelecting = false;
     // Saved word boundaries from the long-press. Form a "minimum
     // range" — pointer movement inside this range leaves the
     // selection alone; movement past either side extends in that
@@ -709,7 +714,7 @@ export function MobileReader({
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
-      isSelecting = false;
+      selectingRef.current = false;
       cancelLongPressTimer();
       longPressTimer = window.setTimeout(() => {
         longPressTimer = null;
@@ -720,14 +725,14 @@ export function MobileReader({
           return;
         }
         if (startSelection(startX, startY)) {
-          isSelecting = true;
+          selectingRef.current = true;
         }
       }, LONG_PRESS_MS);
     };
 
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return;
-      if (!isSelecting) {
+      if (!selectingRef.current) {
         // Before long-press fires, we let the browser scroll natively.
         // If movement exceeds the tap tolerance, cancel the long-press
         // timer — the user's gesture is a scroll, not a hold.
@@ -775,7 +780,7 @@ export function MobileReader({
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return;
       cancelLongPressTimer();
-      if (isSelecting) {
+      if (selectingRef.current) {
         try {
           bodyEl.releasePointerCapture(e.pointerId);
         } catch {
@@ -787,7 +792,7 @@ export function MobileReader({
         ignoreNextClickRef.current = true;
       }
       pointerId = null;
-      isSelecting = false;
+      selectingRef.current = false;
       wordStart = null;
       wordEnd = null;
     };
@@ -803,6 +808,21 @@ export function MobileReader({
       bodyEl.removeEventListener("pointerup", onPointerUp);
       bodyEl.removeEventListener("pointercancel", onPointerUp);
     };
+  }, []);
+
+  // The swipes the browser will not scroll — see reader/scroll/touchPan.ts.
+  // A swipe whose first few pixels lean sideways (pan-y drops it), and one
+  // that starts on the floating bars, which are not inside the scroller. Both
+  // used to move the page 0px for the whole gesture: measured on the emulator,
+  // a 46-degree start, and ANY swipe starting in the top 106px or bottom 124px
+  // of a 915px screen. Every other swipe stays native. The scroller and the
+  // bars say which is which in the markup (`data-pan-scroller`,
+  // `data-pan-zone`).
+  useEffect(() => {
+    const root = rootRef.current;
+    const scroller = scrollRef.current;
+    if (!root || !scroller) return;
+    return attachTouchPanFallback(root, scroller, () => selectingRef.current);
   }, []);
 
   // Handle-drag effect: tracks pointer movement after the user grabs
@@ -876,8 +896,8 @@ export function MobileReader({
   }, [handlesUp]);
 
   // Keep the custom selection's paint glued to the text while the
-  // reader scrolls with a selection live. BookBody uses touch-action:
-  // pan-y, so a one-finger scroll during selection is normal — and
+  // reader scrolls with a selection live. The reading surface is
+  // touch-action: pan-y, so a one-finger scroll during selection is normal — and
   // every rect here was snapshotted in viewport coords at gesture
   // time, which left the boxes, the handles and the toolbar sitting
   // over whatever text scrolled under them.
@@ -1008,6 +1028,7 @@ export function MobileReader({
 
   return (
     <div
+      ref={rootRef}
       // Reader CHROME follows the UI language (toolbars, sheet all mirror
       // under Arabic). Book CONTENT direction is independent — BookBody
       // sets its own `dir` from the book's language on its own element
@@ -1033,6 +1054,9 @@ export function MobileReader({
         ref={chromeRef}
         className={glassTop.className}
         aria-hidden={chromeHidden}
+        // A swipe that starts on the bar scrolls the page, although the bar is
+        // not inside the scroller — see reader/scroll/touchPanFallback.ts.
+        data-pan-zone
         style={{
           position: "absolute",
           top: 0,
@@ -1142,6 +1166,10 @@ export function MobileReader({
 
       <div
         ref={scrollRef}
+        // touch-action: pan-y, for the whole page rather than just the text,
+        // so a swipe that leans sideways is declined the same way wherever it
+        // starts and the pan fallback scrolls it (global.css).
+        data-pan-scroller
         // A tap anywhere on the page toggles the chrome — including on a
         // highlight, which also opens its action popover through the
         // document-level click handler. The reading surface is scroll-only:
@@ -1277,6 +1305,8 @@ export function MobileReader({
       <div
         className={glassBottom.className}
         aria-hidden={chromeHidden}
+        // Right where a thumb starts an upward flick — see the top bar.
+        data-pan-zone
         style={{
           position: "absolute",
           bottom: 0,
