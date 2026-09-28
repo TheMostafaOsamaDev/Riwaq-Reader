@@ -947,3 +947,23 @@ input:focus-visible,
     background: var(--riwaq-chrome-opaque, transparent) !important;
   }
 }
+
+/* The phone reader's pan fallback (reader/scroll/touchPanFallback.ts) works
+   only with these two together, so they live side by side.
+
+   The scroller is pan-y: the browser scrolls every gesture that starts
+   vertical, natively, and cleanly DECLINES one that leans more than 45 degrees
+   sideways — no pointercancel, so the fallback keeps the pointer stream and
+   scrolls it instead. (`auto` would not do: Chromium then rails a steep start
+   to the horizontal axis, finds nothing to scroll and cancels the pointer, and
+   the swipe is lost to everyone.)
+
+   A zone is outside the scroller — the floating bars — so the browser has
+   nothing to scroll there anyway; `none` stops it trying, and the fallback
+   moves the page. Taps are unaffected. */
+[data-pan-scroller] {
+  touch-action: pan-y;
+}
+[data-pan-zone] {
+  touch-action: none;
+}

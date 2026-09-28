@@ -231,12 +231,10 @@ export function BookBody({
         // native selection is unaffected.
         userSelect: selectable ? undefined : "none",
         WebkitUserSelect: selectable ? undefined : "none",
-        // touch-action: pan-y so the browser handles vertical scroll
-        // natively with momentum (the compositor-driven smooth scroll
-        // we lost when we briefly used touch-action: none). MobileReader's
-        // gesture effect calls preventDefault on pointermove during
-        // active selection drag to suppress scroll only when needed.
-        touchAction: selectable ? undefined : "pan-y",
+        // No touch-action here: the phone reader sets pan-y on its whole
+        // scroller (`data-pan-scroller`), which covers this and everything
+        // around it. Never `none` — that loses the compositor-driven native
+        // scroll, and its momentum, for every swipe.
       }}
     >
       {/* The chapter's opening block. Marked (inside ChapterOpener) so focus
