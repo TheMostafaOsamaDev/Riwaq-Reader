@@ -164,13 +164,23 @@ export function MobileSheet({
   // to scroll. preventDefault on touchmove does that, but only if the
   // listener is attached with passive:false — which React's synthetic
   // onTouchMove doesn't expose. Hence the explicit document listener.
+  //
+  // Only while the sheet is up. A non-passive touchmove listener on the
+  // document makes the browser hold every touch scroll on the page until the
+  // main thread has run it, and the phone reader keeps its sheet mounted —
+  // closed — for the whole reading session. Registered unconditionally, it
+  // taxed every swipe in the book; a swipe that landed while the main thread
+  // was busy did not move until it came free. A closed sheet has no gesture
+  // to claim, so it has no reason to be asked.
+  const mounted = phase !== null;
   useEffect(() => {
+    if (!mounted) return;
     const handler = (e: TouchEvent) => {
       if (startRef.current?.claimed) e.preventDefault();
     };
     document.addEventListener("touchmove", handler, { passive: false });
     return () => document.removeEventListener("touchmove", handler);
-  }, []);
+  }, [mounted]);
 
   // Measure dims once on mount and on every resize/orientation change.
   // The default-snap height is derived from the `height` prop string.
