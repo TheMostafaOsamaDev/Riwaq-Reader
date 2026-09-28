@@ -19,6 +19,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { ACCENT, type Theme, Z_LOCAL } from "../../styles/tokens";
+import { gestureAxis } from "../gestureAxis";
 import { ReaderIconButton } from "./ReaderIconButton";
 
 /** Centre an element on a logical position.
@@ -241,6 +242,9 @@ export function ReaderProgressBar({
 }: ReaderProgressBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const active = useRef(false);
+  /** Where a TOUCH gesture started, until it has picked an axis. A mouse
+   *  scrubs in any direction, so it never sets this. */
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   // Where the finger is, while the parent's `fraction` may still be behind —
   // callers without `onScrub` deliberately don't move until release.
   const [preview, setPreview] = useState<number | null>(null);
@@ -260,13 +264,36 @@ export function ReaderProgressBar({
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     active.current = true;
+    touchStart.current =
+      e.pointerType === "touch" ? { x: e.clientX, y: e.clientY } : null;
     const f = ratioFrom(e.clientX);
     if (f === null) return;
     setPreview(f);
     onScrub?.(f);
   };
+  /** End the drag and hand the pointer back. */
+  const letGo = (e: ReactPointerEvent<HTMLDivElement>) => {
+    active.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!active.current) return;
+    // The bar sits where a thumb starts an upward flick. A touch that goes
+    // vertical before it goes sideways was never a scrub: let go without
+    // seeking, and leave the gesture to the page. Seeking on its release used
+    // to jump a long serial several chapters per pixel.
+    const start = touchStart.current;
+    if (start) {
+      const axis = gestureAxis(e.clientX - start.x, e.clientY - start.y);
+      if (axis === "y") {
+        letGo(e);
+        setPreview(null);
+        return;
+      }
+      if (axis === "x") touchStart.current = null; // a scrub from here on
+    }
     const f = ratioFrom(e.clientX);
     if (f === null) return;
     setPreview(f);
@@ -274,10 +301,7 @@ export function ReaderProgressBar({
   };
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!active.current) return;
-    active.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
+    letGo(e);
     setPreview((f) => {
       if (f !== null) onSeek(f);
       return null;
@@ -330,6 +354,10 @@ export function ReaderProgressBar({
       </span>
       <div
         role="slider"
+        // It owns sideways drags. A reader that scrolls the page from gestures
+        // the browser declines (the phone reader's pan fallback) must leave a
+        // sideways one that starts here alone.
+        data-pan-axis="x"
         aria-label={ariaLabel}
         aria-valuemin={valueMin}
         aria-valuemax={valueMax}
