@@ -967,3 +967,22 @@ input:focus-visible,
 [data-pan-zone] {
   touch-action: none;
 }
+
+/* The phone novel page's actions (NovelHero, mobile layout): Read across the
+   full width, then the rest as a two-column grid of equal pills. A lone last
+   pill (`[data-hero-span]`, set in NovelHero) takes the full row. They used to
+   share one wrapping row of content-sized pills, and on a phone every pill
+   wrapped onto its own line at its own width. Desktop keeps that row. */
+.riwaq-hero-actions {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.riwaq-hero-actions [data-hero-action] {
+  display: flex;
+}
+.riwaq-hero-actions [data-hero-action="read"],
+.riwaq-hero-actions [data-hero-span] {
+  grid-column: 1 / -1;
+}
