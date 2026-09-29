@@ -673,6 +673,11 @@ export const en = {
   "novel.noDataReturned": "no data returned",
   "novel.noCover": "No cover",
   "novel.shelves": "Shelves",
+  // Short names for the phone novel page's action pills, two to a row. The
+  // full names are their tooltips.
+  "novel.action.download": "Download",
+  "novel.action.saveOffline": "Save offline",
+  "novel.action.remove": "Remove",
   "novel.descMore": "more",
   "novel.descLess": "less",
   "novel.fromSource": "From {source}",
