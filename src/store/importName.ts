@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 /** Pull a reasonable display title out of a file path: drop the directory
  *  portion and the .docx extension, then collapse underscores/dashes to
- *  spaces. Used when the doc has no leading heading we can borrow. Empty
+ *  spaces. This is the primary source for an imported book's title — see
+ *  `preferredTitle`, which weighs it against the document's own. Empty
  *  (not "Untitled") when the stem strips to nothing — a blank title
  *  persists as "" so the display-time fallback (`common.untitled`)
  *  localizes it wherever the book is rendered, instead of freezing an
