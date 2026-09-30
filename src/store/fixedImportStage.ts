@@ -10,7 +10,7 @@ import { deleteStaged } from "./nativeStaging";
 import { detectBookFormat } from "./bookFormat";
 import { commitDocxBook, commitPdfBook, type ChosenCover } from "./fixedImport";
 import type { BookIndexEntry } from "./library";
-import { filenameTitle } from "./importName";
+import { filenameTitle, preferredTitle } from "./importName";
 
 /** What the user chose in the dialog; resolved to bytes at commit time. */
 export type CoverChoice =
@@ -147,7 +147,7 @@ async function stagePdf(
     id: newDraftId(),
     kind: "pdf",
     filename,
-    title: doc.meta.title || fallback,
+    title: preferredTitle(fallback, doc.meta.title),
     author: doc.meta.author || "",
     pageCount: doc.pageCount,
     candidates,
@@ -165,7 +165,7 @@ async function stagePdf(
         ...(staged
           ? { stagedPath: staged.stagedPath }
           : { bytes: fallbackBytes as Uint8Array }),
-        title: title.trim() || doc.meta.title || fallback,
+        title: title.trim() || preferredTitle(fallback, doc.meta.title),
         author: doc.meta.author || "",
         pageCount: doc.pageCount,
         outline: doc.outline,
@@ -194,10 +194,11 @@ async function stageDocx(
 ): Promise<FixedImportDraft> {
   // Lazy — pulls in mammoth/jszip only when a DOCX is actually staged.
   const { docxToFixedDoc } = await import("../docx/toFixedDoc");
-  const fixed = await docxToFixedDoc(
-    bytes,
-    fallbackTitle || filenameTitle(filename),
-  );
+  const fallback = fallbackTitle || filenameTitle(filename);
+  // toFixedDoc still receives the fallback: it is the document's OWN title
+  // resolution (first heading, else this), which stays a property of the
+  // document. Only the dialog's prefill precedence changes, below.
+  const fixed = await docxToFixedDoc(bytes, fallback);
   const urls: string[] = [];
   let disposed = false;
 
@@ -228,7 +229,7 @@ async function stageDocx(
     id: newDraftId(),
     kind: "docx",
     filename,
-    title: fixed.title,
+    title: preferredTitle(fallback, fixed.title),
     author: fixed.author,
     candidates,
     defaultCoverId: candidates[0]?.id ?? null,
@@ -238,7 +239,7 @@ async function stageDocx(
         html: fixed.html,
         images: fixed.images,
         dir: fixed.dir,
-        title: title.trim() || fixed.title,
+        title: title.trim() || preferredTitle(fallback, fixed.title),
         author: fixed.author,
         outline: fixed.outline,
         cover: chosen,

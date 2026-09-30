@@ -104,6 +104,13 @@ describe("preferredTitle", () => {
     expect(preferredTitle("  ", "The Long War")).toBe("The Long War");
   });
 
+  // PdfMeta.title is optional (pdfjs.ts:33) — a PDF need not carry one at
+  // all, which is different from carrying an empty one.
+  it("accepts an absent document title", () => {
+    expect(preferredTitle("Ahmed Metwally", undefined)).toBe("Ahmed Metwally");
+    expect(preferredTitle("", undefined)).toBe("");
+  });
+
   // "" and not "Untitled": a blank title persists as empty so the
   // display-time common.untitled fallback localizes it per-locale, rather
   // than freezing an English literal into the stored book.

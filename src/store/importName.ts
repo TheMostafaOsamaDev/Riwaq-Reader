@@ -96,7 +96,14 @@ export async function importName(path: string): Promise<string> {
  *
  * Empty (not "Untitled") when neither has anything, so the display-time
  * `common.untitled` fallback localizes it wherever the book is rendered.
+ *
+ * `fromDocument` is optional because a PDF need not carry a title at all —
+ * `PdfMeta.title` is `title?: string` — and "absent" has to behave the same
+ * as "empty" here rather than throwing on the `.trim()`.
  */
-export function preferredTitle(fromFile: string, fromDocument: string): string {
-  return fromFile.trim() || fromDocument.trim();
+export function preferredTitle(
+  fromFile: string,
+  fromDocument: string | undefined,
+): string {
+  return fromFile.trim() || (fromDocument ?? "").trim();
 }
