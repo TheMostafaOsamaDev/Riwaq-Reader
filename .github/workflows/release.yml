@@ -67,7 +67,10 @@ jobs:
           bash scripts/verify-update-manifest.sh --self-test
           bash scripts/verify-apk-signing.sh --self-test
       - name: Verify the release config
-        run: bash scripts/verify-release-config.sh "${{ github.ref_name }}"
+        # The tag only on a tag push. A manual smoke run has a branch name
+        # there, which no version matches, so it used to fail here every time;
+        # with no tag the script still checks every other invariant.
+        run: bash scripts/verify-release-config.sh "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}"
 
   # ──────────────────────────────────────────────────────────────────
   # Linux x86_64 — .deb, .AppImage, .rpm
