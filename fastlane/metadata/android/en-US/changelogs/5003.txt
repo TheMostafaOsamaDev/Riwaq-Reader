@@ -1,0 +1,5 @@
+Fixes
+
+* Scrolling on the phone no longer ignores swipes. A swipe that starts with a sideways lean, or on the top or bottom bar, now moves the page, and swipes start faster.
+* A flick that starts on the chapter slider scrolls the page instead of jumping chapters.
+* On a novel's page, the phone's buttons now sit in a tidy grid under a full-width Read button.
