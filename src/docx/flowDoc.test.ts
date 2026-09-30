@@ -94,6 +94,58 @@ describe("docxHtmlToFlowDoc", () => {
     expect(typeof c.href).toBe("string");
   });
 
+  // The commonest Word book layout: document title as Heading 1, chapters as
+  // Heading 2. Breaking at the shallowest level present made the WHOLE BOOK
+  // one chapter with no navigation at all.
+  it("breaks at the shallowest level that actually divides the document", () => {
+    const html =
+      '<h1 id="docx-h-0">The Book</h1><p>by someone</p>' +
+      '<h2 id="docx-h-1">Ch 1</h2><p>a</p>' +
+      '<h2 id="docx-h-2">Ch 2</h2><p>b</p>';
+    const doc = docxHtmlToFlowDoc(
+      html,
+      outline(
+        ["The Book", 0, "docx-h-0"],
+        ["Ch 1", 1, "docx-h-1"],
+        ["Ch 2", 1, "docx-h-2"],
+      ),
+    );
+    expect(doc.chapters.map((c) => c.title)).toEqual([
+      "Chapter 1",
+      "Ch 1",
+      "Ch 2",
+    ]);
+  });
+
+  // Word puts headings inside layout tables (title pages especially), and
+  // mammoth emits them nested. DocxPageSource finds those anchors; flowDoc
+  // must too, or the two modes disagree about where a chapter starts.
+  it("breaks on a heading nested inside a top-level block", () => {
+    const html =
+      '<p>a</p><table><tr><td><h1 id="docx-h-0">Nested</h1><p>cell</p></td></tr></table><p>z</p>';
+    const doc = docxHtmlToFlowDoc(html, outline(["Nested", 0, "docx-h-0"]));
+    expect(doc.chapters.map((c) => c.title)).toEqual(["Chapter 1", "Nested"]);
+  });
+
+  it("names a chapter that has no heading of its own", () => {
+    const doc = docxHtmlToFlowDoc(
+      '<p>preface</p><h1 id="docx-h-0">One</h1><p>a</p>',
+      outline(["One", 0, "docx-h-0"]),
+      { chapterFallback: (n) => `Fasl ${n}` },
+    );
+    expect(doc.chapters.map((c) => c.title)).toEqual(["Fasl 1", "One"]);
+  });
+
+  // BookBody drops a chapter's first paragraph only when it matches the
+  // title exactly; an uncollapsed title means the heading renders twice.
+  it("collapses whitespace in a chapter title", () => {
+    const doc = docxHtmlToFlowDoc(
+      '<h1 id="docx-h-0">One   Two</h1><p>a</p>',
+      outline(["One   Two", 0, "docx-h-0"]),
+    );
+    expect(doc.chapters[0].title).toBe("One Two");
+  });
+
   it("keeps blockMap aligned with paragraphs in every chapter", () => {
     const doc = docxHtmlToFlowDoc(
       '<p>pre</p><h1 id="docx-h-0">One</h1><ul><li>x</li><li>y</li></ul><h1 id="docx-h-1">Two</h1><p>   </p><p>z</p>',

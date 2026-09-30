@@ -25,7 +25,12 @@ export interface LocatedInstruction {
   node: Element;
 }
 
-export function collectInstructions(container: Element): LocatedInstruction[] {
+export function collectInstructions(
+  container: Element | null | undefined,
+): LocatedInstruction[] {
+  // Guard carried over from parser.ts: a spine item with no body must skip,
+  // not throw out of the whole import.
+  if (!container) return [];
   const nodes = container.querySelectorAll(ITEM_SELECTOR);
   const seen = new Set<Element>();
   const out: LocatedInstruction[] = [];

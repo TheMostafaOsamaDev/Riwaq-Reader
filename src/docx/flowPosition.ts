@@ -39,6 +39,8 @@ export function flowPositionForBlock(
       // Document order is monotonic, so anything at or before the target is
       // a candidate and the last such candidate is the nearest preceding.
       if (b < blockIndex) best = { chapter, paragraphIndex: i };
+      // Past the target: monotonic order means nothing better follows.
+      else if (b > blockIndex) return best ?? ORIGIN;
     }
   }
 

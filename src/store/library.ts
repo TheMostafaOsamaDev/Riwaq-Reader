@@ -147,6 +147,11 @@ export interface BookState {
   /** DOCX only — a reflow-stable content anchor (nearest block id + intra-block
       fraction) so resume survives re-pagination when the page box changes. */
   fixedAnchor?: { blockId: string; frac: number };
+  /** DOCX only — how this book is rendered. Absent means "pages", so every
+      DOCX imported before reading modes existed keeps its behaviour with no
+      migration pass. A user preference about reading, which is why it lives
+      in state rather than in book.json's document description. */
+  readingMode?: "pages" | "flow";
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];

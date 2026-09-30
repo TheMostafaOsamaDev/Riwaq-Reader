@@ -7,6 +7,13 @@
 // (see epub/types.ts) and the reflow reader never opens an archive at read
 // time, so a reflowable DOCX needs no EPUB and no second copy of any image.
 //
+// Chapters break at the shallowest heading level that actually divides the
+// document. Flow mode's table of contents is therefore FLATTER than fixed
+// mode's: EpubChapter[] is a flat list, while DocxPageSource's outline keeps
+// every h1/h2/h3 level. The two agree on where chapters start, not on how
+// many levels they show — an earlier draft of the spec claimed both modes
+// show an identical TOC, and that is not achievable with a flat chapter list.
+//
 // The other half of this module's job is `blockMap`. Both modes index
 // block-level content in document order, but not one-for-one: one <ul> is a
 // single block to the paginator and one item per <li> here, and an empty
@@ -22,23 +29,37 @@ import {
 import type { ChapterItem, EpubChapter } from "../epub/types";
 import type { DocxOutlineEntry } from "./toFixedDoc";
 
+export interface FlowDocOptions {
+  /** Name for a chapter with no heading of its own. The app passes a
+   *  localized formatter (`reader.chapterNumber`); the English default is a
+   *  last-resort net for callers that have no translator, never what ships. */
+  chapterFallback?: (oneBasedIndex: number) => string;
+}
+
 export interface FlowDoc {
   chapters: EpubChapter[];
   /** blockMap[chapterIndex][itemIndex] = index of the top-level block in
    *  content.html that produced that item. Recorded during the walk, never
-   *  inferred — the mapping is not 1:1. */
+   *  inferred — the mapping is not 1:1.
+   *
+   *  Block-level only, deliberately. When one block produced several items
+   *  (a list), every one of them maps back to that single block, so this is
+   *  enough to carry a reading POSITION but not enough to place a highlight
+   *  that sits on the third <li> of a list: converting it back would land on
+   *  the first. Cross-mode highlight placement needs each item's character
+   *  offset within its block, which is not recoverable from this map — see
+   *  blockParity.test.ts for what this coordinate does guarantee. */
   blockMap: number[][];
 }
 
-/** Title for a chapter that has no heading of its own. Empty, not a literal:
- *  a DOCX preface genuinely has no name in the file, and the reader's own
- *  display fallback localizes a blank chapter title. */
-const LEADING_CHAPTER_TITLE = "";
+const DEFAULT_FALLBACK = (n: number) => `Chapter ${n}`;
 
 export function docxHtmlToFlowDoc(
   html: string,
   outline: DocxOutlineEntry[],
+  options: FlowDocOptions = {},
 ): FlowDoc {
+  const chapterFallback = options.chapterFallback ?? DEFAULT_FALLBACK;
   const doc = new DOMParser().parseFromString(
     `<!DOCTYPE html><html><body>${html}</body></html>`,
     "text/html",
@@ -52,16 +73,44 @@ export function docxHtmlToFlowDoc(
   const blockIndexOf = new Map<Element, number>();
   blocks.forEach((b, i) => blockIndexOf.set(b, i));
 
-  // Which anchors start a chapter: the shallowest level present wins, so an
-  // h2-only document chapters cleanly and a mixed h1/h2 document breaks at
-  // h1 with the h2s living inside as subheads.
-  const breakLevel = outline.length
-    ? Math.min(...outline.map((o) => o.level))
-    : null;
+  // Which anchors start a chapter: the shallowest level that actually
+  // DIVIDES the document — the shallowest with more than one heading.
+  //
+  // Taking the shallowest level present instead is what the old DOCX->EPUB
+  // splitter did, and it collapses the commonest Word book layout — document
+  // title as Heading 1, chapters as Heading 2 — into a single chapter with no
+  // navigation at all. A lone top-level heading is a title, not a division.
+  const levels = new Map<number, number>();
+  for (const o of outline) levels.set(o.level, (levels.get(o.level) ?? 0) + 1);
+  const ascending = [...levels.keys()].sort((a, b) => a - b);
+  const breakLevel =
+    ascending.find((l) => (levels.get(l) ?? 0) > 1) ?? ascending[0] ?? null;
   const breakTitleByAnchor = new Map<string, string>();
   for (const o of outline) {
-    if (o.level === breakLevel) breakTitleByAnchor.set(o.anchorId, o.title);
+    if (o.level === breakLevel) {
+      // Collapsed: BookBody drops a chapter's first paragraph only when it
+      // matches the title exactly, and item text is already collapsed. An
+      // uncollapsed title means the heading renders twice.
+      breakTitleByAnchor.set(o.anchorId, o.title.replace(/\s+/g, " ").trim());
+    }
   }
+
+  /** The break title a top-level block opens, if any. Checks the block's own
+   *  id AND ids nested inside it — Word puts headings in layout tables, and
+   *  DocxPageSource maps those nested anchors too (DocxPageSource.ts:111-114).
+   *  Reading only the block's own id would let the two modes disagree about
+   *  where a chapter starts. */
+  const breakTitleOf = (block: Element | undefined): string | undefined => {
+    if (!block) return undefined;
+    if (block.id && breakTitleByAnchor.has(block.id)) {
+      return breakTitleByAnchor.get(block.id);
+    }
+    for (const el of block.querySelectorAll("[id^='docx-h-']")) {
+      const t = breakTitleByAnchor.get(el.id);
+      if (t !== undefined) return t;
+    }
+    return undefined;
+  };
 
   /** The top-level block an instruction belongs to. The collector reports
    *  the element that produced it, which may be nested (an <li> inside a
@@ -79,6 +128,7 @@ export function docxHtmlToFlowDoc(
   let items: ChapterItem[] = [];
   let map: number[] = [];
   let title: string | null = null;
+  let lastBreakBlock = -1;
 
   const flush = () => {
     // A chapter with no items and no title never existed — a document
@@ -89,7 +139,10 @@ export function docxHtmlToFlowDoc(
     chapters.push({
       id: `docx-ch-${order}`,
       href: `docx-ch-${order}`,
-      title: title ?? LEADING_CHAPTER_TITLE,
+      // A chapter with no heading still needs a name: the TOC row, the top
+      // bar and the chapter scrubber's screen-reader label all render this
+      // string raw, so "" leaves them blank rather than falling back.
+      title: title || chapterFallback(order + 1),
       paragraphs: items,
       order,
     });
@@ -100,13 +153,18 @@ export function docxHtmlToFlowDoc(
 
   for (const located of collectInstructions(body)) {
     const blockIdx = topLevelIndex(located.node);
-    const anchorId = blocks[blockIdx]?.id;
 
     // A break heading closes the previous chapter and opens the next. The
     // heading itself leads the new chapter, exactly as it reads on the page.
-    if (anchorId && breakTitleByAnchor.has(anchorId)) {
-      flush();
-      title = breakTitleByAnchor.get(anchorId) ?? "";
+    // Guarded on the block CHANGING, so a table holding both a heading and
+    // its following paragraphs breaks once, not once per item.
+    if (blockIdx !== lastBreakBlock) {
+      const breakTitle = breakTitleOf(blocks[blockIdx]);
+      if (breakTitle !== undefined) {
+        flush();
+        title = breakTitle;
+        lastBreakBlock = blockIdx;
+      }
     }
 
     items.push(toItem(located.inst));
@@ -120,7 +178,7 @@ export function docxHtmlToFlowDoc(
     chapters.push({
       id: "docx-ch-0",
       href: "docx-ch-0",
-      title: LEADING_CHAPTER_TITLE,
+      title: chapterFallback(1),
       paragraphs: [],
       order: 0,
     });
