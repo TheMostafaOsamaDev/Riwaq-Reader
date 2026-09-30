@@ -440,7 +440,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          # 21, not 17: F-Droid's builder (Debian trixie) compiles with 21,
+          # and its build of this commit has to come out byte-identical to
+          # ours for it to ship this APK. See docs/fdroid/README.md.
+          java-version: 21
 
       - uses: android-actions/setup-android@v3
         with:
@@ -534,7 +537,11 @@ jobs:
         # above. Multi-target syntax is space-separated values after a
         # single `--target` flag; comma-separated is rejected. WITHOUT
         # --split-per-abi, both ABIs are packed into ONE universal APK.
-        run: pnpm tauri android build --apk --target aarch64 armv7
+        #
+        # RUSTFLAGS comes from scripts/android-rustflags.sh, which F-Droid's
+        # recipe runs too: it keeps this machine's cargo paths out of the
+        # native library, so the two builds can match byte for byte.
+        run: RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build --apk --target aarch64 armv7
 
       - name: Check the signing guard itself
         # The guard is a text parser over apksigner output. If its parsing
