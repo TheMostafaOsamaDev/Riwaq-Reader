@@ -1,0 +1,100 @@
+# Would F-Droid ship our signed APK for this commit?
+#
+# F-Droid builds Riwaq from source with docs/fdroid/com.riwaq.reader.yml and
+# ships the APK published on GitHub, signed with our key, only if its build
+# comes out byte-identical. Otherwise that version is not published there.
+# This workflow asks the question before a release goes to F-Droid rather
+# than after: it builds the commit in F-Droid's own build image, the way
+# fdroiddata's CI does (scripts/fdroid-verify-in-container.sh), and compares
+# the result with the APK the Release workflow built from the same commit.
+#
+# It runs by itself after every Release run (a tag push, or a manual smoke
+# run), against that run's APK. To check a run by hand:
+#
+#   gh workflow run fdroid-verify.yml -f release_run=<run id>
+name: F-Droid verify
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_run:
+        description: Id of the Release run to compare against (default - the latest on this commit)
+        required: false
+  # TEMPORARY, for the first test before this workflow is on main: waits for
+  # a Release run on the pushed commit. Removed before merge.
+  push:
+    branches: [build/fdroid-reproducible]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    # After a Release run, only when it built something to compare.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      # F-Droid's build image is several GB, and the build needs room too.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Find the Release run for this commit
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIVEN: ${{ github.event.workflow_run.id || inputs.release_run }}
+        run: |
+          id="$GIVEN"
+          if [ -z "$id" ]; then
+            sha="$(git rev-parse HEAD)"
+            # A manual or push run: wait for a Release run of this commit.
+            for _ in $(seq 1 60); do
+              id="$(gh run list -R "$GITHUB_REPOSITORY" --workflow release.yml --commit "$sha" \
+                    --json databaseId -q '.[0].databaseId')"
+              [ -n "$id" ] && break
+              sleep 30
+            done
+            test -n "$id" || { echo "::error::no Release run for $sha"; exit 1; }
+            gh run watch "$id" -R "$GITHUB_REPOSITORY" --exit-status >/dev/null
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch the release APK to compare against
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          gh run download "${{ steps.run.outputs.id }}" -n android-apk -D out/artifact
+          apk="$(find out/artifact -name '*.apk' | head -n1)"
+          test -n "$apk"
+          cp "$apk" out/release.apk
+          # Same commit, or the comparison means nothing.
+          run_sha="$(gh run view "${{ steps.run.outputs.id }}" --json headSha -q .headSha)"
+          test "$run_sha" = "$(git rev-parse HEAD)" \
+            || { echo "::error::release run $run_sha is not this commit $(git rev-parse HEAD)"; exit 1; }
+
+      - name: Build with F-Droid's builder and compare
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -v "$PWD/out:/out" \
+            registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie \
+            bash /src/scripts/fdroid-verify-in-container.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fdroid-verify
+          path: out/*
+          if-no-files-found: ignore
