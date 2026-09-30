@@ -256,6 +256,11 @@ export const ar: Messages = {
   "reader.settings": "الإعدادات",
   "reader.chapterOfTotal": "الفصل {n} من {total}",
   "reader.chapterNumber": "الفصل {n}",
+  "settings.docxLayout": "التخطيط",
+  "settings.docxLayout.pages": "صفحات",
+  "settings.docxLayout.flow": "نص متدفّق",
+  "settings.docxLayout.hint":
+    "الصفحات تُبقي المستند كما كُتب تمامًا. النص المتدفّق يعيد تنسيقه حسب حجم الخط.",
   "reader.chapterDash": "الفصل {n} — {title}",
   "reader.keepScrollingNext": "استمر بالتمرير للفصل التالي",
   "reader.keepScrollingPrev": "استمر بالتمرير للفصل السابق",

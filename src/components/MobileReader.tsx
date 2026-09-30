@@ -247,6 +247,10 @@ interface Props {
   nextChapterAvailability?: "device" | "online";
   /** Navigate to the top-level Settings page (from the quick-panel link). */
   onOpenFullSettings?: () => void;
+  /** DOCX only — the reading-mode toggle, forwarded to the shared settings
+   *  panel. Absent for PDF and EPUB, which have no second mode. */
+  docxMode?: "pages" | "flow";
+  onDocxModeChange?: (mode: "pages" | "flow") => void;
   onBack: () => void;
 }
 
@@ -322,6 +326,8 @@ export function MobileReader({
   tocVolumes,
   nextChapterAvailability,
   onOpenFullSettings,
+  docxMode,
+  onDocxModeChange,
   onBack,
 }: Props) {
   const { tr, dir, locale } = useI18n();
@@ -1404,6 +1410,8 @@ export function MobileReader({
           )}
           {sheet === "settings" && (
             <SettingsPanel
+              docxMode={docxMode}
+              onDocxModeChange={onDocxModeChange}
               theme={theme}
               themeKey={themeKey}
               t={t}

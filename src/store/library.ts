@@ -633,6 +633,83 @@ export async function loadFixedBook(
   return { book, state };
 }
 
+/** A DOCX loaded for the reflowable reader.
+ *
+ *  The same `content.html` the fixed reader paginates, turned into chapters.
+ *  Nothing is converted on disk and no image is copied: the reflow reader
+ *  consumes inline chapters and resolves `images/img-NNN.ext` through
+ *  `chapterImageSrcFor`, which is exactly where the DOCX importer already
+ *  put them. */
+export interface DocxFlowBook {
+  book: EpubBook;
+  state: BookState;
+  /** Item -> top-level block, for carrying a position across a mode switch. */
+  blockMap: number[][];
+  dir: "ltr" | "rtl";
+}
+
+/**
+ * Load a stored DOCX as reflowing chapters.
+ *
+ * `chapterFallback` names a chapter that has no heading of its own. It is
+ * passed in rather than defaulted here because only the caller has the
+ * translator — a name baked in at this layer would be frozen in whatever
+ * locale happened to be active.
+ */
+export async function loadDocxFlowBook(
+  id: string,
+  chapterFallback: (n: number) => string,
+): Promise<DocxFlowBook> {
+  const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
+  const docx = JSON.parse(raw) as DocxBook;
+  const html = await readTextFile(`${bookDir(id)}/content.html`, {
+    baseDir: BASE,
+  });
+  const { docxHtmlToFlowDoc } = await import("../docx/flowDoc");
+  const { chapters, blockMap } = docxHtmlToFlowDoc(html, docx.outline, {
+    chapterFallback,
+  });
+  const state = await readState(id);
+  return {
+    book: {
+      id,
+      title: docx.title,
+      author: docx.author,
+      // The reader auto-enables RTL from the language tag; the DOCX importer
+      // already detected direction, so map it back rather than re-sniffing.
+      language: docx.dir === "rtl" ? "ar" : "",
+      chapters,
+    },
+    state,
+    blockMap,
+    dir: docx.dir,
+  };
+}
+
+/**
+ * Switch a DOCX between fixed pages and reflowing text, carrying the reading
+ * position across.
+ *
+ * Writes only the fields the destination mode reads, so the other mode's
+ * saved position survives untouched — switch away and back without reading
+ * anything in between and you land exactly where you were.
+ */
+export async function setDocxReadingMode(
+  id: string,
+  to: "pages" | "flow",
+  blockMap: number[][],
+): Promise<void> {
+  const { positionForMode } = await import("../docx/modeSwitch");
+  const state = await readState(id);
+  const patch = positionForMode(to, blockMap, {
+    currentChapter: state.currentChapter,
+    paragraphIndex: state.paragraphIndex,
+    paragraphOffset: state.paragraphOffset,
+    fixedAnchor: state.fixedAnchor,
+  });
+  await writeState({ ...state, ...patch, readingMode: to });
+}
+
 /**
  * Parse an EPUB that already sits at `books/<id>/book.epub` and commit it to
  * the library.

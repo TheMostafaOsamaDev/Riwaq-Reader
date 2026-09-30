@@ -105,6 +105,10 @@ export interface FixedPageReaderProps {
     pageCount: number,
   ) => void;
   onOpenFullSettings?: () => void;
+  /** DOCX only — the reading-mode toggle, forwarded to the shared settings
+   *  panel. Absent for PDF and EPUB, which have no second mode. */
+  docxMode?: "pages" | "flow";
+  onDocxModeChange?: (mode: "pages" | "flow") => void;
   onBack: () => void;
 }
 
@@ -125,6 +129,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     createSource,
     onLocationChange,
     onOpenFullSettings,
+    docxMode,
+    onDocxModeChange,
     onBack,
   } = props;
   const { tr, locale } = useI18n();
@@ -374,6 +380,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             zoom={zoom}
             onZoomChange={setZoom}
             onOpenFullSettings={onOpenFullSettings}
+            docxMode={docxMode}
+            onDocxModeChange={onDocxModeChange}
           />
         );
       default:
