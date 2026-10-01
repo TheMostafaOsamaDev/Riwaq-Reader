@@ -191,6 +191,8 @@ export async function createDocxPageSourceFromParts(
         `width:${PAGE_W}px; height:${PAGE_H}px; box-sizing:border-box; padding:${MARGIN}px; ` +
         `background:var(--reading-paper, #ffffff); color:var(--reading-ink, #1b1b1b); overflow:hidden; ` +
         `font-family:${FONT}; font-size:${FONT_SIZE}px; line-height:${LINE_HEIGHT}; ` +
+        // The app shell is unselectable (global.css); the page's text opts in.
+        `-webkit-user-select:text; user-select:text; ` +
         `transform: scale(${scale}); transform-origin: top ${originX};`;
       for (const n of pages[i] || []) card.appendChild(n.cloneNode(true));
       card.querySelectorAll("img").forEach(IMG_CONSTRAIN);

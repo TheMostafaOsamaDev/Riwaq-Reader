@@ -283,6 +283,23 @@ body {
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  /* The app is not a web page: nothing is selectable unless it opts in.
+     Leaving selection on by default and switching it off per component let
+     every component that forgot (sidebar rows, labels, headings) highlight
+     on a stray drag or double-click, and on Android raise the OS selection
+     toolbar on a long-press. The reading surfaces opt back in — BookBody,
+     the DOCX page card, the PDF text layer — and text fields need nothing:
+     an editable element is selectable whatever its ancestors say (measured
+     in WebKit and Chromium). Select-all is blocked separately, in
+     lib/selectAllGuard.ts. WebKit still needs the prefix. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Covers, the brand mark and icons are not drag sources; without this a
+   drag that starts on one lifts a ghost image of it out of the window. */
+img {
+  -webkit-user-drag: none;
 }
 
 button {
