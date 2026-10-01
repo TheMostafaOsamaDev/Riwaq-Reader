@@ -102,8 +102,18 @@ let saveSkipped: (v: string | undefined) => void = () => {};
 let skipBeforeUndo: string | undefined;
 let notesFor: string | null = null;
 let channelLoaded = false;
-let timer: ReturnType<typeof setInterval> | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
 let listening = false;
+/** Bumped by every user action and every new offer. A status read begun
+ *  under an older generation is dropped: a poll that left before Cancel must
+ *  not land after it and bring "downloading" back. */
+let generation = 0;
+/** A startDownload is between its first await and android_update_start. */
+let starting = false;
+
+function bump() {
+  generation++;
+}
 
 function setState(patch: Partial<AndroidUpdateState>) {
   // A fresh object every time: useSyncExternalStore compares by identity.
@@ -202,10 +212,13 @@ function isStale(native: NativeStatus): boolean {
 /** Read the native status into the store. A superseded file found here is
  *  cancelled at once (deleting it), then read again. */
 export async function refresh(): Promise<void> {
+  const gen = generation;
   let native = await readStatus();
+  if (gen !== generation) return;
   if (isStale(native)) {
     await call("android_update_cancel");
     native = await readStatus();
+    if (gen !== generation) return;
   }
   setState({ native });
   syncPolling();
@@ -219,12 +232,19 @@ function visible(): boolean {
   );
 }
 
+/** One poll at a time: the next is scheduled only once the previous read
+ *  has settled (refresh() ends by calling this again), so a slow status
+ *  call never stacks reads behind it. */
 function syncPolling() {
   const want = ACTIVE.has(state.native.state) && visible();
   if (want && !timer) {
-    timer = setInterval(() => void refresh(), POLL_MS);
+    timer = setTimeout(() => {
+      timer = null;
+      // A read dropped as stale does not reschedule; keep the chain alive.
+      void refresh().finally(syncPolling);
+    }, POLL_MS);
   } else if (!want && timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
   }
 }
@@ -287,6 +307,7 @@ export async function offer(info: { version: string } | null): Promise<void> {
   if (!info) return;
   listen();
   if (state.offer?.version !== info.version) {
+    bump();
     setState({ offer: { version: info.version }, apk: null, fetchError: null });
   }
   reconcileSkip();
@@ -357,6 +378,7 @@ export function later(): void {
 }
 
 export async function skip(version: string): Promise<void> {
+  bump();
   skipBeforeUndo = state.skipped;
   setState({ skipped: version, sheet: "closed", toast: "skipped" });
   saveSkipped(version);
@@ -367,6 +389,7 @@ export async function skip(version: string): Promise<void> {
 
 /** Puts the offer back. Nothing is downloaded again until the user asks. */
 export function undoSkip(): void {
+  bump();
   const prev = skipBeforeUndo;
   skipBeforeUndo = undefined;
   setState({ skipped: prev, toast: null });
@@ -374,7 +397,8 @@ export function undoSkip(): void {
 }
 
 /** The primary button. `allowMetered` is "Update anyway"; `waitForWifi` is
- *  the mobile sheet's "Wait for Wi-Fi". */
+ *  the mobile sheet's "Wait for Wi-Fi". A second tap while one is pending
+ *  does nothing. */
 export async function startDownload(
   opts: { allowMetered?: boolean; waitForWifi?: boolean } = {},
 ): Promise<void> {
@@ -384,12 +408,31 @@ export async function startDownload(
     await openStoreApp();
     return;
   }
-  if (state.channel.kind !== "in-app") return;
+  if (state.channel.kind !== "in-app" || starting) return;
+  starting = true;
+  try {
+    await start(version, opts);
+  } finally {
+    starting = false;
+  }
+}
 
+/** After every await: has the user since skipped this version, or has a
+ *  newer offer replaced it? Then the start they asked for no longer stands. */
+function stillWanted(version: string): boolean {
+  return state.offer?.version === version && state.skipped !== version;
+}
+
+async function start(
+  version: string,
+  opts: { allowMetered?: boolean; waitForWifi?: boolean },
+): Promise<void> {
+  bump();
   let waitForUnmetered = opts.waitForWifi === true;
   if (!opts.allowMetered && !waitForUnmetered) {
     // Unknown counts as metered: the cost of a wrong guess is one tap.
     const metered = await ask("android_network_metered", true);
+    if (!stillWanted(version)) return;
     const d = decideStart({ metered, pref: state.pref });
     if (d === "ask") {
       setState({ sheet: "mobile" });
@@ -398,12 +441,23 @@ export async function startDownload(
     waitForUnmetered = d === "wait";
   }
 
-  const apk = (await loadApk(version)) ?? null;
+  const apk = await loadApk(version);
+  if (!stillWanted(version)) return;
   if (!apk) {
     setState({ fetchError: "offline", sheet: "failed" });
     return;
   }
   setState({ fetchError: null, sheet: "closed" });
+  // A job for another version — even one still downloading, which the
+  // automatic cleanup leaves alone — would make native ignore this start
+  // and keep growing the old file. The user asked for this version: cancel
+  // the other one (deleting it) first.
+  const now = await readStatus();
+  if (!stillWanted(version)) return;
+  if (now.version !== undefined && now.version !== version) {
+    await call("android_update_cancel");
+    if (!stillWanted(version)) return;
+  }
   await call("android_update_start", {
     version,
     url: apk.url,
@@ -416,6 +470,7 @@ export async function startDownload(
 }
 
 export async function cancel(): Promise<void> {
+  bump();
   setState({ sheet: "closed" });
   await call("android_update_cancel");
   await refresh();
@@ -424,6 +479,7 @@ export async function cancel(): Promise<void> {
 /** "Install now". Also callable while installing: a re-tap recovers a
  *  system dialog that never appeared. */
 export async function install(): Promise<void> {
+  bump();
   if (!(await ask("android_update_can_install", false))) {
     setState({ sheet: "permission" });
     return;
@@ -458,7 +514,7 @@ export async function openStoreApp(): Promise<void> {
 
 /** Test-only: back to a fresh module. */
 export function __resetForTests(): void {
-  if (timer) clearInterval(timer);
+  if (timer) clearTimeout(timer);
   timer = null;
   if (listening && typeof document !== "undefined") {
     document.removeEventListener("visibilitychange", onVisibility);
@@ -470,4 +526,6 @@ export function __resetForTests(): void {
   skipBeforeUndo = undefined;
   notesFor = null;
   channelLoaded = false;
+  generation = 0;
+  starting = false;
 }

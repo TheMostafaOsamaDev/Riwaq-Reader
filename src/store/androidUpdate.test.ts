@@ -32,6 +32,8 @@ function fakeNative(over: Partial<Fake> = {}) {
     canInstall: true,
     startedState: "downloading",
     ignoreStart: false,
+    apkGate: undefined,
+    holdStatus: undefined,
     ...over,
   };
   h.invoke.mockImplementation((cmd, args) => {
@@ -46,22 +48,41 @@ function fakeNative(over: Partial<Fake> = {}) {
             storeInstalled: f.storeInstalled,
           })
         );
-      case "android_update_status":
-        return JSON.stringify({ bytes: 0, total: 0, error: null, ...f.status });
+      case "android_update_status": {
+        const json = JSON.stringify({
+          bytes: 0,
+          total: 0,
+          error: null,
+          ...f.status,
+        });
+        // A slow status read: answers what was true when it was asked.
+        const hold = f.holdStatus;
+        f.holdStatus = undefined;
+        return hold ? hold.then(() => json) : json;
+      }
       case "fetch_release_notes":
         return { notes: null };
-      case "fetch_apk_details":
-        return {
+      case "fetch_apk_details": {
+        const details = {
           url: "https://x/app.apk",
           sha256: "ab".repeat(32),
           size: 19e6,
         };
+        return f.apkGate ? f.apkGate.then(() => details) : details;
+      }
       case "android_network_metered":
         return f.metered;
       case "android_update_can_install":
         return f.canInstall;
       case "android_update_start":
-        if (f.ignoreStart) return null;
+        // AppUpdater.start is ignored while a worker is busy.
+        if (
+          f.ignoreStart ||
+          f.status.state === "downloading" ||
+          f.status.state === "verifying"
+        ) {
+          return null;
+        }
         f.status = {
           state:
             args?.waitForUnmetered && f.metered ? "waiting" : f.startedState,
@@ -89,6 +110,18 @@ interface Fake {
   canInstall: boolean;
   startedState: string;
   ignoreStart: boolean;
+  /** While set, fetch_apk_details waits for it (a slow network round trip). */
+  apkGate: Promise<void> | undefined;
+  /** The NEXT status read waits for this, then answers what it saw. */
+  holdStatus: Promise<void> | undefined;
+}
+
+function gate() {
+  let open!: () => void;
+  const p = new Promise<void>((r) => {
+    open = r;
+  });
+  return { p, open };
 }
 
 const calls = (cmd: string) =>
@@ -448,5 +481,113 @@ describe("androidUpdate store", () => {
       highlightImage: undefined,
     });
     off();
+  });
+
+  it("a Skip during the APK lookup wins: the declined version never starts", async () => {
+    const f = fakeNative();
+    configure({ pref: "always" });
+    await store.offer({ version: "0.6.0" });
+    const g = gate();
+    f.apkGate = g.p;
+    const pending = store.startDownload({ allowMetered: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await store.skip("0.6.0");
+    g.open();
+    await pending;
+    expect(calls("android_update_start")).toHaveLength(0);
+    expect(store.getState().native.state).toBe("idle");
+  });
+
+  it("a newer offer during the APK lookup abandons the old start", async () => {
+    const f = fakeNative();
+    configure({ pref: "always" });
+    await store.offer({ version: "0.6.0" });
+    const g = gate();
+    f.apkGate = g.p;
+    const pending = store.startDownload({ allowMetered: true });
+    await vi.advanceTimersByTimeAsync(0);
+    f.apkGate = undefined;
+    await store.offer({ version: "0.6.1" });
+    g.open();
+    await pending;
+    expect(calls("android_update_start")).toHaveLength(0);
+  });
+
+  it("a second tap while a start is pending does nothing", async () => {
+    const f = fakeNative();
+    configure();
+    await store.offer({ version: "0.6.0" });
+    const g = gate();
+    f.apkGate = g.p;
+    const a = store.startDownload({ allowMetered: true });
+    const b = store.startDownload({ allowMetered: true });
+    g.open();
+    await Promise.all([a, b]);
+    expect(calls("android_update_start")).toHaveLength(1);
+    expect(calls("fetch_apk_details").length).toBeLessThanOrEqual(2);
+  });
+
+  it("Update on a new offer cancels a superseded download still running, then starts", async () => {
+    // 0.6.0 is mid-download; 0.6.1 is offered and the user taps Update.
+    // Without the cancel, native ignores the start and the old file grows.
+    fakeNative({
+      status: { state: "downloading", version: "0.6.0", bytes: 5, total: 9 },
+    });
+    configure();
+    await store.offer({ version: "0.6.1" });
+    expect(calls("android_update_cancel")).toHaveLength(0); // not on its own
+    await store.startDownload({ allowMetered: true });
+    expect(calls("android_update_cancel")).toHaveLength(1);
+    const o = order();
+    expect(o.lastIndexOf("android_update_cancel")).toBeLessThan(
+      o.lastIndexOf("android_update_start"),
+    );
+    expect(calls("android_update_start")[0]?.version).toBe("0.6.1");
+    expect(store.getState().native).toMatchObject({
+      state: "downloading",
+      version: "0.6.1",
+    });
+  });
+
+  it("does not cancel the offered version's own running download on a re-tap", async () => {
+    fakeNative({
+      status: { state: "downloading", version: "0.6.0", bytes: 5, total: 9 },
+    });
+    configure();
+    await store.offer({ version: "0.6.0" });
+    await store.startDownload({ allowMetered: true });
+    expect(calls("android_update_cancel")).toHaveLength(0);
+  });
+
+  it("drops a poll result that started before Cancel: no resurrected download", async () => {
+    const f = fakeNative();
+    configure();
+    await store.offer({ version: "0.6.0" });
+    await store.startDownload({ allowMetered: true });
+    expect(store.getState().native.state).toBe("downloading");
+    // The next poll's status read is slow; it saw "downloading".
+    const g = gate();
+    f.holdStatus = g.p;
+    await vi.advanceTimersByTimeAsync(500);
+    await store.cancel();
+    expect(store.getState().native.state).toBe("idle");
+    g.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().native.state).toBe("idle");
+  });
+
+  it("never stacks polls behind a slow status read", async () => {
+    const f = fakeNative();
+    configure();
+    await store.offer({ version: "0.6.0" });
+    await store.startDownload({ allowMetered: true });
+    const n = calls("android_update_status").length;
+    const g = gate();
+    f.holdStatus = g.p;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(calls("android_update_status").length).toBe(n + 1);
+    g.open();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(calls("android_update_status").length).toBe(n + 2);
   });
 });
