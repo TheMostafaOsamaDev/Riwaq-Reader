@@ -7,10 +7,17 @@
 // with a live badge + in-place progress. Settings and a primary Import
 // split-button are pinned to the bottom. Mobile keeps its bottom nav.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "./Icon";
 import { Spinner } from "./Spinner";
+import { SIDEBAR_ROW_INSET, sidebarFrame } from "./sidebarFrame";
 import type { IconProps } from "./Icon";
 import {
   FONT_SERIF_DISPLAY,
@@ -116,8 +123,10 @@ export function LibrarySidebar({
   // click during a run re-opens the stepper instead of the file picker.
   const ind = useImportIndicator(importing);
 
-  const [openLib, setOpenLib] = useState(true);
-  const [openShelves, setOpenShelves] = useState(true);
+  const [openLib, setOpenLib] = useStoredOpen("riwaq:sidebar-open:library");
+  const [openShelves, setOpenShelves] = useStoredOpen(
+    "riwaq:sidebar-open:shelves",
+  );
 
   // Index of each tree's current destination, -1 when it has none. Rows
   // before it are on the lit path from the parent. The parent stays solid
@@ -143,21 +152,7 @@ export function LibrarySidebar({
   }, [menuOpen]);
 
   return (
-    <aside
-      style={{
-        width: 252,
-        flexShrink: 0,
-        background: theme.chrome,
-        border: `1.5px solid ${theme.rule}`,
-        borderRadius: 16,
-        margin: 12,
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: FONT_STACKS.sans,
-        padding: "16px 12px 14px",
-        boxSizing: "border-box",
-      }}
-    >
+    <aside style={{ ...sidebarFrame(theme), fontFamily: FONT_STACKS.sans }}>
       {/* Head — brand mark + wordmark, with the history back/forward pair
           pinned to the inline-end (the desktop equivalent of the Android
           hardware back). */}
@@ -199,7 +194,7 @@ export function LibrarySidebar({
           alignItems: "center",
           gap: 9,
           width: "calc(100% - 8px)",
-          margin: "0 4px 12px",
+          margin: `0 ${SIDEBAR_ROW_INSET}px 12px`,
           background: theme.bg,
           border: `1px solid ${theme.rule}`,
           borderRadius: 11,
@@ -260,7 +255,7 @@ export function LibrarySidebar({
             display: "flex",
             flexDirection: "column",
             gap: 5,
-            padding: "0 4px",
+            padding: `0 ${SIDEBAR_ROW_INSET}px`,
           }}
         >
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}
@@ -445,7 +440,7 @@ export function LibrarySidebar({
       </div>
 
       {/* Bottom: primary Import */}
-      <div style={{ padding: "10px 4px 0" }}>
+      <div style={{ padding: `10px ${SIDEBAR_ROW_INSET}px 0` }}>
         <div ref={importRef} style={{ position: "relative" }}>
           <div style={{ display: "flex" }}>
             <button
@@ -574,22 +569,90 @@ export function LibrarySidebar({
   );
 }
 
-/** Smoothly expand/collapse a group by animating its measured height. */
-function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [h, setH] = useState(0);
-  useLayoutEffect(() => {
-    if (ref.current) setH(ref.current.scrollHeight);
+const COLLAPSE_MS = 220;
+
+/** A tree's open/closed state, kept in localStorage. The sidebar unmounts
+ *  whenever Settings or the reader is open, so component state alone
+ *  reopened every collapsed tree on the way back. Blocked storage (private
+ *  mode, a locked-down webview) just means the tree starts open and the
+ *  choice lasts for this mount. */
+export function useStoredOpen(key: string): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== "0";
+    } catch {
+      return true;
+    }
   });
+  const set = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      try {
+        localStorage.setItem(key, next ? "1" : "0");
+      } catch {
+        // Not persisted; the in-memory state above still applies.
+      }
+    },
+    [key],
+  );
+  return [open, set];
+}
+
+/** Smoothly expand/collapse a group by animating its measured height. */
+export function Collapse({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // null until measured; an open tree renders unclamped ("none") until then.
+  const [h, setH] = useState<number | null>(null);
+  // Measure once before first paint, then only when the content resizes (a
+  // shelf added or renamed, the UI language switched). Reading scrollHeight
+  // after every render forced a synchronous layout each time — and the
+  // sidebar re-renders on every download-progress tick.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setH(el.scrollHeight);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setH(el.scrollHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Animate only a toggle. Everything else that changes the height — the
+  // first measurement, or shelves arriving from disk a moment after the
+  // sidebar mounts — lands at once: animating those replayed the open
+  // animation on every launch and every return from Settings. The flag is
+  // raised in the same render as the new `open`, so the transition is in
+  // place for the commit that changes max-height, and it stays up until the
+  // animation has had time to finish.
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [toggling, setToggling] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    setToggling(true);
+  }
+  useEffect(() => {
+    if (!toggling) return;
+    const t = window.setTimeout(() => setToggling(false), COLLAPSE_MS + 40);
+    return () => window.clearTimeout(t);
+  }, [toggling, open]);
+
   return (
     <div
       style={{
         flexShrink: 0,
         minHeight: 0,
         overflow: "hidden",
-        maxHeight: open ? h : 0,
+        maxHeight: open ? (h ?? "none") : 0,
         opacity: open ? 1 : 0,
-        transition: "max-height 220ms ease, opacity 180ms ease",
+        transition: toggling
+          ? `max-height ${COLLAPSE_MS}ms ease, opacity 180ms ease`
+          : "none",
       }}
     >
       {/* flow-root: without it a child's top margin (the Tree's) collapses

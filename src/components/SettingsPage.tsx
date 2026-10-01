@@ -11,7 +11,14 @@
 // Controls are the exact same components the reader quick-panel renders
 // (SettingsSection), so nothing drifts and everything edits one Tweaks source.
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Icon, type IconProps } from "./Icon";
 import { BrandMark } from "./BrandMark";
 import { Toast, type ToastMessage } from "./Toast";
@@ -45,6 +52,7 @@ import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
+import { SIDEBAR_ROW_PAD_INLINE, sidebarFrame } from "./sidebarFrame";
 
 const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 const LICENSE_URL =
@@ -646,6 +654,15 @@ export function SettingsPage({
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
+
+  // Each category (and the search results) starts at its top. The scroller
+  // outlives the keyed content inside it, so without this a click on About
+  // while scrolled down Reading landed About part-way down, or clamped.
+  // Layout effect: reset before the new content's first paint, not after.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [activeCategory, searching]);
   const results = searching
     ? CATEGORY_ORDER.map((c) => ({
         cat: c,
@@ -754,7 +771,10 @@ export function SettingsPage({
           }
           onBack={inCategory ? () => setActiveCategory(null) : onClose}
         />
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        <div
+          ref={scrollRef}
+          style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+        >
           <div style={{ padding: "16px 14px 48px" }}>
             {inCategory ? (
               <div
@@ -793,20 +813,16 @@ export function SettingsPage({
   const displayCategory: CategoryKey = activeCategory ?? "appearance";
   return (
     <Shell theme={theme} isAr={isAr}>
-      <div
-        style={{ display: "flex", flex: 1, minHeight: 0, padding: 16, gap: 16 }}
-      >
-        {/* rail — matches the app sidebar's chrome; items slide in on open */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {/* rail — the library sidebar's own frame (sidebarFrame), so the
+            Library ↔ Settings crossfade reads as one panel whose contents
+            change. Its rows hold still: the page fade is the only motion. A staggered per-row slide here used
+            to show each row at rest during its delay, blank it, and slide it
+            back — the rows flickered and shook one after another. */}
         <aside
           style={{
-            width: 252,
-            flexShrink: 0,
-            background: theme.chrome,
-            border: `1.5px solid ${theme.rule}`,
-            borderRadius: 16,
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
+            ...sidebarFrame(theme),
+            paddingInline: SIDEBAR_ROW_PAD_INLINE,
             gap: 10,
             overflowY: "auto",
           }}
@@ -835,7 +851,7 @@ export function SettingsPage({
           </button>
           {searchBox}
           <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {CATEGORY_ORDER.map((c, i) => (
+            {CATEGORY_ORDER.map((c) => (
               <button
                 key={c}
                 onClick={() => {
@@ -843,11 +859,7 @@ export function SettingsPage({
                   setQuery("");
                 }}
                 aria-pressed={!searching && c === displayCategory}
-                className={reduced ? undefined : "riwaq-settings-slide-in"}
                 style={{
-                  ...(reduced
-                    ? null
-                    : { ...slideStyle, animationDelay: `${i * 28}ms` }),
                   display: "flex",
                   alignItems: "center",
                   gap: 11,
@@ -886,32 +898,52 @@ export function SettingsPage({
           </nav>
         </aside>
 
-        {/* content */}
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {/* content — inset so it sits where it did when the page carried a
+            16px padding; the scroller inside keeps its own edge. */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            paddingBlock: 16,
+            paddingInlineStart: 8,
+            paddingInlineEnd: 16,
+          }}
+        >
           <div
-            style={{ maxWidth: 640, margin: "0 auto", padding: "6px 8px 60px" }}
+            ref={scrollRef}
+            style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
           >
-            {searching ? (
-              searchResults
-            ) : (
-              <div
-                key={displayCategory}
-                className={reduced ? undefined : "riwaq-settings-slide-in"}
-                style={slideStyle}
-              >
-                <SectionHeader
-                  theme={theme}
-                  label={tr(CATEGORY_META[displayCategory].labelKey)}
-                  icon={
-                    <Icon
-                      name={CATEGORY_META[displayCategory].icon}
-                      size={13}
-                    />
-                  }
-                />
-                {card(renderEntries(entriesByCat[displayCategory]))}
-              </div>
-            )}
+            <div
+              style={{
+                maxWidth: 640,
+                margin: "0 auto",
+                padding: "6px 8px 60px",
+              }}
+            >
+              {searching ? (
+                searchResults
+              ) : (
+                <div
+                  key={displayCategory}
+                  className={reduced ? undefined : "riwaq-settings-slide-in"}
+                  style={slideStyle}
+                >
+                  <SectionHeader
+                    theme={theme}
+                    label={tr(CATEGORY_META[displayCategory].labelKey)}
+                    icon={
+                      <Icon
+                        name={CATEGORY_META[displayCategory].icon}
+                        size={13}
+                      />
+                    }
+                  />
+                  {card(renderEntries(entriesByCat[displayCategory]))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
