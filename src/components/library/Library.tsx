@@ -27,11 +27,19 @@ import { AddToShelfMenu } from "../AddToShelfMenu";
 import { AddToShelfDialog } from "../AddToShelfDialog";
 import { AnimatedDialog } from "../AnimatedDialog";
 import { AnimatedFullScreen } from "../AnimatedFullScreen";
-import { openIntentFor } from "../importOpenTarget";
 import {
+  onEditBook,
   onOpenDownloadQueue,
   onOpenExtensionsManager,
+  takePendingEditBook,
 } from "../../store/uiIntents";
+import { onLibraryChanged } from "../../store/backgroundImport";
+import {
+  acquireImportLock,
+  isImportBusy,
+  setMinimized,
+} from "../../store/importProgress";
+import { draftDefaultCover } from "../../store/draftDefaults";
 import {
   useNav,
   goLibrary,
@@ -51,7 +59,6 @@ import {
 } from "../../store/importReporter";
 import {
   coverSrcFor,
-  importPaths,
   listBooks,
   pickBooksForImport,
   pickFolderForImport,
@@ -68,11 +75,6 @@ import {
   type ImportReporter,
   type StagedPick,
 } from "../../store/library";
-import {
-  hasIncoming,
-  onIncoming,
-  takeIncoming,
-} from "../../store/incomingFiles";
 import {
   listShelves,
   createShelf as createShelfStore,
@@ -93,12 +95,6 @@ import { DesktopLibrary } from "./DesktopLibrary";
 import { MobileLibrary } from "./MobileLibrary";
 import type { LibraryTab } from "./tabs";
 import type { HeroStyle } from "../../types/reader";
-
-function draftDefaultCover(d: FixedImportDraft): CoverChoice {
-  return d.defaultCoverId
-    ? { kind: "candidate", id: d.defaultCoverId }
-    : { kind: "none" };
-}
 
 interface Props {
   theme: Theme;
@@ -223,16 +219,8 @@ export function Library({
     before: Set<string>;
     reusedIds: string[];
   } | null>(null);
-  // Set by beginImport when a file opened from outside (Open with,
-  // Android share, drag-drop) resolved to exactly one PDF/DOCX draft — the
-  // EPUB case opens immediately, but a fixed-layout book still needs the
-  // title/cover dialog before there's a book to open. onQConfirm/onQSkip/
-  // onQSkipRest read this once their (necessarily single) draft commits,
-  // and open the reader instead of returning to the library summary.
-  // Reset to false at the very top of every beginImport call and cleared
-  // again the moment the queue resolves, so a stale true can never hijack
-  // an unrelated later import into the reader.
-  const openAfterQueueRef = useRef(false);
+  // The import lock, while the details dialog holds it (see runImport).
+  const dialogLockRef = useRef<(() => void) | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastIdRef = useRef(0);
   // Declared this early (rather than alongside the other toast-firing
@@ -546,56 +534,33 @@ export function Library({
     void finishPendingShelfImport();
   };
 
-  const advanceQueue = async (
-    draft: FixedImportDraft,
-    didImport: boolean,
-    committedId?: string,
-  ) => {
+  const advanceQueue = async (draft: FixedImportDraft, didImport: boolean) => {
     if (didImport) importStats.current.imported += 1;
     draft.dispose();
     const next = qIndex + 1;
     if (next >= importQueue.length) {
       await refresh();
-      // A single PDF/DOCX opened from outside: land in the reader now that
-      // the draft has resolved into a real book, mirroring the immediate
-      // EPUB path in beginImport. A cancelled draft never commits, so
-      // committedId is undefined here and this falls through to the normal
-      // summary — nothing opens.
-      const openId = openAfterQueueRef.current ? committedId : undefined;
-      openAfterQueueRef.current = false;
-      if (openId) {
-        setImportQueue([]);
-        setQIndex(0);
-        onOpen(openId);
-        return;
-      }
       summarizeImport();
     } else {
       setQIndex(next);
     }
   };
 
-  const beginImport = async (
-    res: StagedPick | null,
-    opts?: { openWhenSingle?: boolean },
-  ) => {
-    // Reset first, unconditionally. Every return path below — including
-    // "nothing picked" and "single result, opened immediately" — must leave
-    // this false, or a stale true would hijack a later, unrelated import's
-    // draft queue straight into the reader.
-    openAfterQueueRef.current = false;
+  /** Resolves true when it handed drafts to the details dialog — the import
+   *  is then still "ours" until that queue drains. */
+  const beginImport = async (res: StagedPick | null): Promise<boolean> => {
     if (!res) {
       // Nothing was picked (dialog cancelled) — nothing will ever call
       // summarizeImport for this attempt, so drop any pending shelf
       // assignment now instead of letting it leak onto a later, unrelated
       // import.
       pendingShelfImportRef.current = null;
-      return;
+      return false;
     }
     if (res.empty) {
       showToast("warn", tr("status.emptyFolderImport"));
       pendingShelfImportRef.current = null;
-      return;
+      return false;
     }
     const reused = res.reused ?? [];
     // A pending shelf assignment needs the reused ids too — see the
@@ -622,44 +587,13 @@ export function Library({
     // own toast whenever the same batch also had something to say about it
     // (see summarizeImport).
     if (reused.length > 0) await refresh();
-    // A file opened from outside meant "read this", so a pick holding exactly
-    // one book skips the library and lands there. Everything else — a
-    // multi-file drop, or anything that failed on the way in — stays put and
-    // reports through the usual import summary. openIntentFor owns that whole
-    // rule, including why an error disqualifies a pick from counting as
-    // single: both branches below reach the reader by returning early, and
-    // summarizeImport is the only place res.errors is ever reported.
-    const intent = openIntentFor(res, opts?.openWhenSingle ?? false);
-    if (intent.kind === "now") {
-      // A duplicate opened from outside still deserves the "already in
-      // your library" note before landing in the reader. Safe to fire
-      // directly here, unlike the batch case above: this is provably the
-      // only showToast call this run makes before returning, so there's no
-      // second call in the same tick to race with (summarizeImport, where
-      // that race lives, is never reached on this path).
-      if (reused.length === 1) {
-        showToast("info", tr("status.alreadyInLibraryOne", { n: 1 }));
-      }
-      onOpen(intent.target.id);
-      return;
-    }
-    // A single PDF/DOCX opened from outside still needs the title/cover
-    // dialog before there's anything to open — the design calls for the
-    // reader to open "on confirm", not immediately like EPUB. Stash the
-    // intent; onQConfirm/onQSkip/onQSkipRest capture the committed book's
-    // id once the (necessarily single, per this condition) draft resolves,
-    // and open the reader instead of returning to the library summary. A
-    // cancelled dialog never commits, so nothing opens and the ref just
-    // gets cleared (see advanceQueue / onQSkipRest).
-    if (intent.kind === "afterDraft") {
-      openAfterQueueRef.current = true;
-    }
     if (res.drafts.length > 0) {
       setQIndex(0);
       setImportQueue(res.drafts);
-    } else {
-      summarizeImport();
+      return true;
     }
+    summarizeImport();
+    return false;
   };
 
   /**
@@ -684,23 +618,38 @@ export function Library({
         progress: (p) => reporter?.progress(p),
       } satisfies ImportReporter,
       finish: () => reporter && finishImportRun(null),
-      fail: (message: string) => reporter && failImportRun(message),
+      fail: (message: string) => {
+        if (!reporter) return;
+        failImportRun(message);
+        // Device imports start minimized; open the stepper so the failure
+        // is seen.
+        setMinimized(false);
+      },
     };
   };
 
-  /** Run one import. `source` supplies the paths — a picker prompt, or a
-   *  list that arrived from outside the app. */
+  /** Run one import. `source` supplies the paths — a picker prompt. Files
+   *  that arrive from outside import in the background instead (see
+   *  store/backgroundImport.ts).
+   *
+   *  Holds the import lock (store/importProgress.ts) from before the picker
+   *  opens — the progress store is still idle then, and a background run
+   *  could otherwise start under the dialog — until the run is over. When
+   *  the run hands drafts to the details dialog, the dialog keeps it: a
+   *  background run that opened its book now would swap the library, and
+   *  the dialog with it, for the reader. */
   const runImport = async (
     source: (report: ImportReporter) => Promise<StagedPick | null>,
-    opts?: { openWhenSingle?: boolean },
   ) => {
-    if (importing || importQueue.length > 0) return;
+    const release = acquireImportLock();
+    if (!release) return;
     setImporting(true);
     setError(null);
     const run = importRunner();
+    let heldByDialog = false;
     try {
       const res = await source(run.reporter);
-      await beginImport(res, opts);
+      heldByDialog = await beginImport(res);
       run.finish();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -711,6 +660,8 @@ export function Library({
       pendingShelfImportRef.current = null;
     } finally {
       setImporting(false);
+      if (heldByDialog) dialogLockRef.current = release;
+      else release();
     }
   };
 
@@ -724,7 +675,7 @@ export function Library({
   // onImport guards itself, so a tap while an import is already underway
   // is a no-op rather than a second concurrent pick.
   const startImportToShelf = async (shelfId: string) => {
-    if (importing || importQueue.length > 0) return;
+    if (isImportBusy()) return;
     pendingShelfImportRef.current = {
       shelfId,
       before: new Set(books.map((b) => b.id)),
@@ -733,30 +684,15 @@ export function Library({
     await onImport();
   };
 
-  const onImportFolder = async () => {
-    if (importing || importQueue.length > 0) return;
-    setImporting(true);
-    setError(null);
-    const run = importRunner();
-    try {
-      await beginImport(await pickFolderForImport(run.reporter));
-      run.finish();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      run.fail(message);
-      setError(errorLabel(message, tr));
-    } finally {
-      setImporting(false);
-    }
-  };
+  const onImportFolder = () => runImport(pickFolderForImport);
 
   const onQConfirm = async (title: string, cover: CoverChoice) => {
     const d = importQueue[qIndex];
     if (!d || qBusy) return;
     setQBusy(true);
     try {
-      const entry = await d.commit({ title, cover });
-      await advanceQueue(d, true, entry.id);
+      await d.commit({ title, cover });
+      await advanceQueue(d, true);
     } catch (e) {
       importStats.current.errors.push(
         e instanceof Error ? e.message : String(e),
@@ -772,11 +708,11 @@ export function Library({
     if (!d || qBusy) return;
     setQBusy(true);
     try {
-      const entry = await d.commit({
+      await d.commit({
         title: d.title,
         cover: draftDefaultCover(d),
       });
-      await advanceQueue(d, true, entry.id);
+      await advanceQueue(d, true);
     } catch (e) {
       importStats.current.errors.push(
         e instanceof Error ? e.message : String(e),
@@ -791,20 +727,14 @@ export function Library({
     if (qBusy) return;
     setQBusy(true);
     try {
-      // Tracks the last successfully committed draft's id. Only read below
-      // when openAfterQueueRef is set, and that's only ever true for a
-      // single-draft queue (see beginImport) — so this loop runs once and
-      // lastCommittedId is that one draft's id, or undefined if it failed.
-      let lastCommittedId: string | undefined;
       for (let i = qIndex; i < importQueue.length; i++) {
         const d = importQueue[i];
         try {
-          const entry = await d.commit({
+          await d.commit({
             title: d.title,
             cover: draftDefaultCover(d),
           });
           importStats.current.imported += 1;
-          lastCommittedId = entry.id;
         } catch (e) {
           importStats.current.errors.push(
             e instanceof Error ? e.message : String(e),
@@ -813,15 +743,6 @@ export function Library({
         d.dispose();
       }
       await refresh();
-      // Mirrors advanceQueue's single-draft "opened from outside" landing.
-      const openId = openAfterQueueRef.current ? lastCommittedId : undefined;
-      openAfterQueueRef.current = false;
-      if (openId) {
-        setImportQueue([]);
-        setQIndex(0);
-        onOpen(openId);
-        return;
-      }
       summarizeImport();
     } finally {
       setQBusy(false);
@@ -988,29 +909,34 @@ export function Library({
     [],
   );
 
-  // Files handed to us from outside (Open with, Android share, drag-drop).
-  // They queue in the store because this component unmounts behind the
-  // reader — draining on mount is what makes a drop mid-chapter survive.
-  //
-  // Genuinely queue, silently, while an import is already running — no
-  // toast. The drop/arrival was already acknowledged by the overlay (see
-  // store/dropOverlay.ts), so there is nothing left to say here; leave the
-  // paths in the incoming-files store rather than taking them. This effect
-  // resubscribes whenever `importing` or `importQueue.length` changes, so
-  // the retry happens automatically the moment the current run finishes —
-  // no need to schedule anything ourselves.
+  // Files handed to us from outside (Open with, Android share, drag-drop)
+  // import in the background (store/backgroundImport.ts), not here — this
+  // component unmounts behind the reader, which is exactly when they arrive.
+  // Our side of it: give back the import lock the details dialog held once
+  // its queue drains (or we unmount with it open), and re-read the shelf
+  // when a background run lands while we are on screen.
   useEffect(() => {
-    const drain = () => {
-      if (!hasIncoming()) return;
-      if (importing || importQueue.length > 0) return;
-      const paths = takeIncoming();
-      void runImport((report) => importPaths(paths, report), {
-        openWhenSingle: true,
-      });
-    };
-    drain();
-    return onIncoming(drain);
-  }, [importing, importQueue.length]);
+    if (importQueue.length > 0) return;
+    dialogLockRef.current?.();
+    dialogLockRef.current = null;
+  }, [importQueue.length]);
+  useEffect(
+    () => () => {
+      dialogLockRef.current?.();
+      dialogLockRef.current = null;
+    },
+    [],
+  );
+  useEffect(() => onLibraryChanged(() => void refresh()), [refresh]);
+
+  // "Edit details" from the background import's toast. Asked for from
+  // anywhere, often while we were unmounted, so take any pending request on
+  // mount as well as listening.
+  useEffect(() => {
+    const pending = takePendingEditBook();
+    if (pending) setEditingId(pending);
+    return onEditBook((id) => setEditingId(id));
+  }, []);
 
   // When a "Save as offline book" conversion finishes, one or more
   // brand-new library entries have just landed via importEpubBytes —

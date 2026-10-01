@@ -32,7 +32,7 @@ import {
   finishImport,
   setStepLabel,
   startImport,
-  getState as getImportProgressState,
+  isImportBusy,
 } from "../store/importProgress";
 import { createHost } from "./host";
 import { getSourceMeta } from "./registry";
@@ -95,10 +95,10 @@ export async function importFromSource(
 
   // Refuse to start a second import while one is already running — the
   // progress store is module-scoped (singleton), and stomping on it would
-  // break the in-flight UI. Matches the guard pickAndImportDocx already
-  // uses.
-  const current = getImportProgressState();
-  if (current.active && current.finishedAt === null) {
+  // break the in-flight UI. `isImportBusy` also covers a library or
+  // background import that has begun but not yet reached the store; no await
+  // between here and startImport, so nothing can slip in after the check.
+  if (isImportBusy()) {
     throw new Error("Another import is already running");
   }
 

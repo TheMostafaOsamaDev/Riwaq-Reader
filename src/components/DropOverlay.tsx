@@ -3,18 +3,13 @@
 // Three states, not two. Refusing has to be VISIBLE — an overlay that
 // simply never appears for an unsupported file reads as a broken app —
 // and it names the formats, because an error should say how to fix
-// itself. "Received" exists because the library's import toast is
-// unreachable while the reader is on screen, which is exactly when a drop
-// most needs acknowledging. A mixed drop (some supported, some not) also
-// reports what got skipped here, for the same reason: the toast that would
-// normally say so lives in Library, and Library may not be mounted when
-// the drop lands.
+// itself. "Received" closes the gesture: the drop landed, and a mixed drop
+// (some supported, some not) says here what got skipped — the import that
+// follows only ever sees the books. The import's own progress and result are
+// the background-import toast's to report.
 //
 // Purely presentational: it takes state and renders. The drag plumbing
-// lives in hooks/useFileDrop.ts; the "received" state can also arrive from
-// hooks/useIncomingFiles.ts (an Open-with/share arrival), which is why the
-// state itself is a shared store (store/dropOverlay.ts) rather than local
-// to the drag hook.
+// lives in hooks/useFileDrop.ts, and the state in store/dropOverlay.ts.
 
 import { useEffect, useRef, useState } from "react";
 import type { DropState } from "../store/dropOverlay";

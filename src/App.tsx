@@ -19,11 +19,13 @@ import {
 } from "./lib/diagnostics/store";
 import { useLaunchIntent } from "./hooks/useLaunchIntent";
 import { useIncomingFiles } from "./hooks/useIncomingFiles";
+import { useBackgroundImportHost } from "./hooks/useBackgroundImportHost";
 import { useFileDrop } from "./hooks/useFileDrop";
 import { useDropOverlayState } from "./store/dropOverlay";
 import { DesktopReader } from "./components/DesktopReader";
 import { DropOverlay } from "./components/DropOverlay";
 import { ImportProgress } from "./components/ImportProgress";
+import { BackgroundImportToast } from "./components/BackgroundImportToast";
 import { Library } from "./components/library/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
@@ -159,9 +161,8 @@ function App() {
   // any emitted intents reach the Library's subscriber.
   useLaunchIntent();
   // Files handed to us from outside — Open with, the Android share sheet,
-  // a drag-and-drop. Lives above the Library for the same reason
-  // useLaunchIntent does: the Library subscribes, and it isn't always
-  // mounted.
+  // a drag-and-drop — into the incoming-files buffer, which the background
+  // importer (useBackgroundImportHost, below) drains.
   useIncomingFiles();
   const [t, setTweak, applyTweaks] = useTweaks();
 
@@ -622,6 +623,9 @@ function App() {
     [reduced],
   );
   openBookRef.current = openBook;
+  // Books opened from outside import here, whichever screen is up — see
+  // store/backgroundImport.ts.
+  useBackgroundImportHost(openBookRef, tr);
 
   // Reader data is keyed to the nav location. The common path (openBook) loads
   // first, then navigates — so this effect no-ops there. It's the safety net
@@ -1224,6 +1228,13 @@ function App() {
             Library → Reader transition (e.g. user clicks "Continue in
             background" then opens an existing book while the import finishes). */}
         <ImportProgress theme={theme} />
+        {/* Status for a book opened from outside (Open with, share, drop),
+            on whatever screen is up — the import runs in the background. */}
+        <BackgroundImportToast
+          theme={theme}
+          layout={isMobile ? "mobile" : "desktop"}
+          onOpenBook={(id) => void openBook(id)}
+        />
         {/* Image lightbox — opens when a chapter image is tapped, anywhere. */}
         <Lightbox
           src={lightbox.src}

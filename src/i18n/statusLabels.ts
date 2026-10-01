@@ -110,6 +110,13 @@ export function phaseLabel(raw: string, tr: Tr): string {
  *  `.message` payload" this i18n pass treats as data, not UI copy, because
  *  we can't enumerate every message an external call might produce. */
 export function errorLabel(raw: string, tr: Tr): string {
+  return knownErrorLabel(raw, tr) ?? raw;
+}
+
+/** errorLabel for a message we wrote, or null for anything else. For a caller
+ *  that words unknown failures its own way: comparing errorLabel's output to
+ *  its input can't tell, because English copy often IS the raw message. */
+export function knownErrorLabel(raw: string, tr: Tr): string | null {
   switch (raw) {
     case "Another import is already running":
       return tr("error.anotherImportRunning");
@@ -134,5 +141,5 @@ export function errorLabel(raw: string, tr: Tr): string {
   ) {
     return tr("error.sourceNotInstalledDownload", { sourceId: m[1] });
   }
-  return raw;
+  return null;
 }

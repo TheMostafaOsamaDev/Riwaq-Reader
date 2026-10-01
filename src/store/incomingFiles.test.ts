@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  hasIncoming,
-  onIncoming,
-  pushIncoming,
-  takeIncoming,
-} from "./incomingFiles";
+import { onIncoming, pushIncoming, takeIncoming } from "./incomingFiles";
 
 describe("incomingFiles", () => {
   beforeEach(() => {
@@ -17,7 +12,6 @@ describe("incomingFiles", () => {
     // The whole point: a file double-clicked at cold start arrives before
     // the Library has mounted. Losing it would lose the feature.
     pushIncoming(["/a.epub"]);
-    expect(hasIncoming()).toBe(true);
     expect(takeIncoming()).toEqual(["/a.epub"]);
   });
 
@@ -25,7 +19,6 @@ describe("incomingFiles", () => {
     pushIncoming(["/a.epub"]);
     expect(takeIncoming()).toEqual(["/a.epub"]);
     expect(takeIncoming()).toEqual([]);
-    expect(hasIncoming()).toBe(false);
   });
 
   it("accumulates across pushes until drained", () => {
@@ -51,7 +44,7 @@ describe("incomingFiles", () => {
     const off = onIncoming(fn);
     pushIncoming([]);
     expect(fn).not.toHaveBeenCalled();
-    expect(hasIncoming()).toBe(false);
+    expect(takeIncoming()).toEqual([]);
     off();
   });
 

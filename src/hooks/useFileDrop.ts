@@ -7,10 +7,8 @@
 // paths. Tauri's `over` event carries no paths, so this costs one IPC per
 // drag rather than one per mousemove.
 //
-// The overlay's state itself lives in store/dropOverlay.ts, not here —
-// useIncomingFiles also needs to drive it (an Open-with/share arrival gets
-// the same "received" confirmation), so this hook only writes into the
-// shared store rather than owning its own React state.
+// The overlay's state itself lives in store/dropOverlay.ts, not here, so
+// the overlay mounted at the app root can read it.
 
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -78,9 +76,8 @@ export function useFileDrop(enabled: boolean): void {
             return;
           }
           pushIncoming(books);
-          // Acknowledge the drop itself. The library's import summary
-          // confirms completion later — but it is unreachable while the
-          // reader is on screen, which is exactly when this matters.
+          // Acknowledge the drop itself, including anything skipped; the
+          // background-import toast reports the import that follows.
           showReceived(books.length, skipped);
         }
       })

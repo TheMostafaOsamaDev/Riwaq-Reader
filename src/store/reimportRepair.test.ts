@@ -353,3 +353,29 @@ describe("re-importing a book the index already claims to hold", () => {
     expect(result.drafts).toEqual([]);
   });
 });
+
+// Whether a failed file is worth retrying is decided where the failure is
+// known, so the background importer's toast never has to guess from copy.
+describe("a failed file says whether retrying can help", () => {
+  it("is not retryable when the file is not a book", async () => {
+    seed([]);
+    staged = { size: 10, format: "unknown", hash: "c".repeat(64) };
+
+    const result = await importPaths(["/picked/notes.txt"]);
+
+    expect(result.errors).toEqual([
+      expect.objectContaining({ path: "/picked/notes.txt", retryable: false }),
+    ]);
+  });
+
+  it("is retryable when a real book failed to read", async () => {
+    seed([]);
+    parseFails = true;
+
+    const result = await importPaths(["/picked/book.epub"]);
+
+    expect(result.errors).toEqual([
+      expect.objectContaining({ path: "/picked/book.epub", retryable: true }),
+    ]);
+  });
+});
