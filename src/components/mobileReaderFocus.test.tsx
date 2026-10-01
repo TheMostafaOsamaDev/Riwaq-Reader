@@ -169,14 +169,10 @@ const MIDDLE: Spot = { x: 180, y: 400 };
  *  afterwards whichever of the three gestures it turned out to be. */
 function gesture(
   el: Element,
-  {
-    from = MIDDLE,
-    to = from,
-    heldMs = 60,
-  }: Partial<{ from: Spot; to: Spot; heldMs: number }> = {},
+  { to = MIDDLE, heldMs = 60 }: Partial<{ to: Spot; heldMs: number }> = {},
 ) {
   act(() => {
-    el.dispatchEvent(stamped("pointerdown", from.x, from.y));
+    el.dispatchEvent(stamped("pointerdown", MIDDLE.x, MIDDLE.y));
     now += heldMs;
     el.dispatchEvent(stamped("click", to.x, to.y));
     now += 1;
@@ -184,8 +180,8 @@ function gesture(
 }
 
 /** One tap on the paper. */
-function tapPage(spot: Spot = MIDDLE) {
-  gesture(surface(), { from: spot });
+function tapPage() {
+  gesture(surface());
 }
 /** Two taps in the same place, back to back — the exit gesture. */
 function doubleTapPage() {
@@ -198,13 +194,20 @@ function holdPage() {
 }
 /** A finger that landed and travelled: a scroll, which also ends in a click. */
 function dragPage() {
-  gesture(surface(), { from: MIDDLE, to: { x: MIDDLE.x, y: MIDDLE.y - 140 } });
+  gesture(surface(), { to: { x: MIDDLE.x, y: MIDDLE.y - 140 } });
 }
-/** The page moving under a finger. */
-function scrollPage() {
+/** The page moving under a finger, starting on `el` — the paper by default,
+ *  or one of the floating bars, which scroll it too. */
+function scrollPage(el: Element = surface()) {
   act(() => {
-    surface().dispatchEvent(new Event("touchmove", { bubbles: true }));
+    el.dispatchEvent(new Event("touchmove", { bubbles: true }));
   });
+}
+/** One of the two chrome bars. */
+function bar(): HTMLElement {
+  const el = host.querySelector<HTMLElement>(`.${GLASS_CLASS}[aria-hidden]`);
+  if (!el) throw new Error("no chrome bar");
+  return el;
 }
 
 function focusRail(): HTMLElement | null {
@@ -333,23 +336,38 @@ describe("leaving focus mode", () => {
 
 describe("the bars, outside focus mode", () => {
   it("go on a tap and come back on the next one", () => {
-    tapPage();
-    expect(chromeIsAway()).toBe(true);
-    tapPage();
-    expect(chromeIsAway()).toBe(false);
-  });
-
-  it("needs only ONE tap, unlike focus mode", () => {
-    // The whole difference between the two modes. A single tap here does what
-    // it takes a double-tap to do in focus mode.
+    // The whole difference between the two modes: a single tap here does what
+    // it takes a double-tap to do in focus mode, and nothing is locked.
     tapPage();
     expect(chromeIsAway()).toBe(true);
     expect(lock()).toBeNull();
+    tapPage();
+    expect(chromeIsAway()).toBe(false);
   });
 
   it("go when the reader scrolls", () => {
     scrollPage();
     expect(chromeIsAway()).toBe(true);
+  });
+
+  it("go when the scroll starts ON a bar", () => {
+    // The bars sit OUTSIDE the scroller and the pan fallback scrolls the page
+    // for a swipe that begins on one. Watching only the scroller left them up
+    // for exactly the swipe that started on them.
+    scrollPage(bar());
+    expect(chromeIsAway()).toBe(true);
+  });
+
+  it("stay when the scroll is inside an open sheet", () => {
+    // A sheet floats OVER the reader: scrolling a chapter list does not move
+    // the page, and clearing the chrome underneath would hand the reader a
+    // bare screen the moment they closed it. Same question the pan fallback
+    // asks about which swipes are the page's — asked once, in one place.
+    click(byLabel(ar["reader.toc"]));
+    const sheet = host.querySelector<HTMLElement>('[role="dialog"]');
+    expect(sheet).not.toBeNull();
+    if (sheet) scrollPage(sheet);
+    expect(chromeIsAway()).toBe(false);
   });
 
   it("stay away across a chapter turn", () => {

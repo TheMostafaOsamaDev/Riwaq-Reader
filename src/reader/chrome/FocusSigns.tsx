@@ -81,8 +81,13 @@ export function FocusPill({
           color: theme.ink,
           border: `0.5px solid ${theme.rule}`,
           boxShadow: "0 6px 20px rgba(0,0,0,0.16)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
+          // No `backdrop-filter` here, deliberately. The wrapper animates its
+          // opacity for the toast's whole life, and an ancestor with opacity
+          // < 1 is a backdrop root — the blur would have nothing left to
+          // sample, cutting out for the length of the animation and popping
+          // back at the end. The same trap the focus bars hit; see the note on
+          // `slide` in focusChrome.tsx. `theme.chrome` and the hairline carry
+          // the material on their own.
           fontFamily: FONT_STACKS.sans,
           fontSize: 12,
           fontWeight: 600,

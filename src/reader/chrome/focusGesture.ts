@@ -5,6 +5,8 @@
 // about thumbs, and a judgement call that cannot be tested at its edges is one
 // nobody will dare change later.
 
+import { stayedPut } from "../gestureAxis";
+
 /** A tap, as the reading surface's click handler sees it. */
 export interface Tap {
   /** `event.timeStamp`, in ms. */
@@ -29,7 +31,5 @@ export const DOUBLE_TAP_SLOP = 24;
 export function isDoubleTap(prev: Tap | null, next: Tap): boolean {
   if (!prev) return false;
   if (next.t - prev.t > DOUBLE_TAP_MS) return false;
-  // Euclidean, not per-axis: slop on both axes at once is 1.41× slop away,
-  // and a per-axis test would wave that through as "close enough".
-  return Math.hypot(next.x - prev.x, next.y - prev.y) <= DOUBLE_TAP_SLOP;
+  return stayedPut(next.x - prev.x, next.y - prev.y, DOUBLE_TAP_SLOP);
 }

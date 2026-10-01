@@ -14,16 +14,10 @@ describe("isPageTap", () => {
     expect(isPageTap(null, { t: 1080, x: 200, y: 400 })).toBe(false);
   });
 
-  it("rejects a press held long enough to start a selection", () => {
-    // This is the hold-to-highlight gesture. It used to land as a tap too,
-    // so reaching for a highlight also took the chrome away.
-    expect(
-      isPageTap(down, { t: 1000 + LONG_PRESS_MS + 1, x: 200, y: 400 }),
-    ).toBe(false);
-  });
-
   it("rejects a press at exactly the long-press threshold", () => {
-    // The selection timer has already fired at this instant.
+    // This is the hold-to-highlight gesture: at this instant the selection
+    // timer has already fired. It used to land as a tap too, so reaching for
+    // a highlight also took the chrome away.
     expect(isPageTap(down, { t: 1000 + LONG_PRESS_MS, x: 200, y: 400 })).toBe(
       false,
     );
