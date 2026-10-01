@@ -8,6 +8,14 @@ export interface TextItem {
   /** Plain text, with inline HTML already stripped and whitespace
    *  collapsed by the parser. */
   text: string;
+  /** Heading level 1-6 when this block was a heading, absent for body text.
+   *
+   *  Without it a chapter's internal structure is flattened: a section title
+   *  renders identically to the prose under it, which is what made a DOCX
+   *  read as "a document that happens to reflow" rather than as a book.
+   *  Optional and absent on every chapter saved before this existed, so no
+   *  migration is needed — those keep rendering as paragraphs. */
+  level?: number;
 }
 
 export interface ImageItem {

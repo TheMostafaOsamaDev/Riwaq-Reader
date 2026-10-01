@@ -9,6 +9,10 @@ import type {
   ImageItem,
   ParsedEpub,
 } from "./types";
+import {
+  collectInstructions,
+  type ChapterInstruction,
+} from "./chapterInstructions";
 
 // EPUB 3 / EPUB 2 parser.
 //
@@ -126,7 +130,11 @@ export async function parseEpubFromSource(
       firstHeadingText(root) ??
       `Chapter ${order + 1}`;
 
-    const instructions = collectChapterInstructions(root);
+    // `.inst` — the EPUB path does not need to know which element produced
+    // each item; the DOCX flow adapter does.
+    const instructions = collectInstructions(
+      root.body ?? root.documentElement,
+    ).map((l) => l.inst);
     const items = resolveChapterItems(
       instructions,
       src,
@@ -533,74 +541,6 @@ function parseNcx(
   return out;
 }
 
-const BLOCK_SELECTOR =
-  "p, blockquote, h1, h2, h3, h4, h5, h6, li, figcaption, div.para";
-const ITEM_SELECTOR = `${BLOCK_SELECTOR}, img`;
-
-/** What `collectChapterInstructions` emits — a flat document-order list of
- *  text spans + image references. The image step is deferred so the
- *  zip-read can run async without scattering awaits inside the DOM walk. */
-type ChapterInstruction =
-  | { kind: "text"; text: string }
-  | { kind: "image"; src: string; alt?: string };
-
-function collectChapterInstructions(doc: Document): ChapterInstruction[] {
-  const body = doc.body ?? doc.documentElement;
-  if (!body) return [];
-  const nodes = body.querySelectorAll(ITEM_SELECTOR);
-  const seen = new Set<Element>();
-  const out: ChapterInstruction[] = [];
-
-  nodes.forEach((node) => {
-    const isImg = node.tagName.toLowerCase() === "img";
-
-    // Skip elements nested inside another matching block. Exception: a bare
-    // `<p><img/></p>` wrapper passes the img through, since EPUB content
-    // routinely wraps images in single-purpose paragraphs.
-    let anc = node.parentElement;
-    while (anc && anc !== body) {
-      if (anc.matches(BLOCK_SELECTOR)) {
-        const ancText = (anc.textContent ?? "").replace(/\s+/g, " ").trim();
-        if (!isImg || ancText.length > 0) return;
-      }
-      anc = anc.parentElement;
-    }
-    if (seen.has(node)) return;
-    seen.add(node);
-
-    if (isImg) {
-      const src = node.getAttribute("src");
-      if (!src) return;
-      const alt = node.getAttribute("alt") || undefined;
-      out.push({ kind: "image", src, alt });
-      return;
-    }
-
-    // Block element. If its only meaningful content is an inner <img> with
-    // no surrounding text, emit that image directly so we don't drop it on
-    // the (text.length > 0) check below.
-    const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
-    if (text.length === 0) {
-      const innerImg = node.querySelector("img");
-      if (innerImg) {
-        const src = innerImg.getAttribute("src");
-        if (src) {
-          seen.add(innerImg);
-          out.push({
-            kind: "image",
-            src,
-            alt: innerImg.getAttribute("alt") || undefined,
-          });
-        }
-      }
-      return;
-    }
-    out.push({ kind: "text", text });
-  });
-
-  return out;
-}
-
 /** Take the document-order instructions and turn them into ChapterItems,
  *  routing image references through the shared collector so the same source
  *  path used by multiple chapters only gets stored once. No bytes are read
@@ -615,7 +555,11 @@ function resolveChapterItems(
   const out: ChapterItem[] = [];
   for (const inst of instructions) {
     if (inst.kind === "text") {
-      out.push({ text: inst.text });
+      out.push(
+        inst.level
+          ? { text: inst.text, level: inst.level }
+          : { text: inst.text },
+      );
       continue;
     }
     const zipPath = joinPath(chapterDir, decodeURI(inst.src.split("#")[0]));

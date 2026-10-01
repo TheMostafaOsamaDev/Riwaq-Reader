@@ -10,7 +10,7 @@ import { deleteStaged } from "./nativeStaging";
 import { detectBookFormat } from "./bookFormat";
 import { commitDocxBook, commitPdfBook, type ChosenCover } from "./fixedImport";
 import type { BookIndexEntry } from "./library";
-import { filenameTitle } from "./importName";
+import { filenameTitle, preferredTitle } from "./importName";
 
 /** What the user chose in the dialog; resolved to bytes at commit time. */
 export type CoverChoice =
@@ -81,32 +81,37 @@ export async function stageFixedImport(
   /** Format the caller already sniffed. When omitted, the bytes decide. */
   kind?: "pdf" | "docx",
   staged?: StagedSource,
-  /** Name to fall back on when the document carries no title of its own.
+  /** The picked file's own name, already resolved and sanitized.
    *
-   *  The caller resolves this (see `importName`) because on Android it can
+   *  This is the PRIMARY source for the dialog's title — it outranks the
+   *  document's embedded title (see `preferredTitle`), which is wrong far
+   *  more often than a filename is. It is still handed to `docxToFixedDoc`
+   *  as that function's fallback, where a first heading legitimately wins;
+   *  the two uses are different questions.
+   *
+   *  The caller resolves it (see `importName`) because on Android it can
    *  take a round trip to the content provider, and `filename` alone is not
    *  always enough to recover a name from — the picker's Recent list hands
-   *  back a bare row id. Falls back to parsing `filename` when omitted, which
-   *  is what every desktop path needs anyway. */
-  fallbackTitle?: string,
+   *  back a bare row id. Parsed from `filename` when omitted, which is what
+   *  every desktop path needs anyway. */
+  pickedName?: string,
 ): Promise<FixedImportDraft> {
   const format =
     kind ?? ("bytes" in source ? detectBookFormat(source.bytes) : "pdf");
-  if (format === "pdf")
-    return stagePdf(source, filename, staged, fallbackTitle);
+  if (format === "pdf") return stagePdf(source, filename, staged, pickedName);
   if (!("bytes" in source)) {
     throw new Error("DOCX staging needs the file's bytes");
   }
-  return stageDocx(source.bytes, filename, staged, fallbackTitle);
+  return stageDocx(source.bytes, filename, staged, pickedName);
 }
 
 async function stagePdf(
   source: FixedSource,
   filename: string,
   staged?: StagedSource,
-  fallbackTitle?: string,
+  pickedName?: string,
 ): Promise<FixedImportDraft> {
-  const fallback = fallbackTitle || filenameTitle(filename);
+  const fromFile = pickedName || filenameTitle(filename);
   const doc = await openPdfDocument("bytes" in source ? source.bytes : source);
   const urls: string[] = [];
   let disposed = false;
@@ -147,7 +152,7 @@ async function stagePdf(
     id: newDraftId(),
     kind: "pdf",
     filename,
-    title: doc.meta.title || fallback,
+    title: preferredTitle(fromFile, doc.meta.title),
     author: doc.meta.author || "",
     pageCount: doc.pageCount,
     candidates,
@@ -165,7 +170,7 @@ async function stagePdf(
         ...(staged
           ? { stagedPath: staged.stagedPath }
           : { bytes: fallbackBytes as Uint8Array }),
-        title: title.trim() || doc.meta.title || fallback,
+        title: title.trim() || preferredTitle(fromFile, doc.meta.title),
         author: doc.meta.author || "",
         pageCount: doc.pageCount,
         outline: doc.outline,
@@ -190,14 +195,15 @@ async function stageDocx(
   bytes: Uint8Array,
   filename: string,
   staged?: StagedSource,
-  fallbackTitle?: string,
+  pickedName?: string,
 ): Promise<FixedImportDraft> {
   // Lazy — pulls in mammoth/jszip only when a DOCX is actually staged.
   const { docxToFixedDoc } = await import("../docx/toFixedDoc");
-  const fixed = await docxToFixedDoc(
-    bytes,
-    fallbackTitle || filenameTitle(filename),
-  );
+  const fromFile = pickedName || filenameTitle(filename);
+  // toFixedDoc still receives the fallback: it is the document's OWN title
+  // resolution (first heading, else this), which stays a property of the
+  // document. Only the dialog's prefill precedence changes, below.
+  const fixed = await docxToFixedDoc(bytes, fromFile);
   const urls: string[] = [];
   let disposed = false;
 
@@ -228,7 +234,7 @@ async function stageDocx(
     id: newDraftId(),
     kind: "docx",
     filename,
-    title: fixed.title,
+    title: preferredTitle(fromFile, fixed.title),
     author: fixed.author,
     candidates,
     defaultCoverId: candidates[0]?.id ?? null,
@@ -238,7 +244,7 @@ async function stageDocx(
         html: fixed.html,
         images: fixed.images,
         dir: fixed.dir,
-        title: title.trim() || fixed.title,
+        title: title.trim() || preferredTitle(fromFile, fixed.title),
         author: fixed.author,
         outline: fixed.outline,
         cover: chosen,

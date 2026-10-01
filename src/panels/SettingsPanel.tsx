@@ -13,9 +13,11 @@
 import { Icon } from "../components/Icon";
 import {
   ActionRow,
+  Field,
   FixedPageControls,
   LanguageField,
   ReadingControls,
+  SegRow,
   ThemeField,
 } from "../components/SettingsSection";
 import type { Theme, ThemeKey } from "../styles/tokens";
@@ -27,6 +29,15 @@ import type { UiLangPref } from "../i18n";
 interface BaseProps {
   theme: Theme;
   themeKey: ThemeKey;
+  /** DOCX only — current reading mode, and the switch. Omitted for every
+   *  other format, which is what keeps the row off a PDF's panel.
+   *
+   *  This lives on the SHARED panel deliberately: both the fixed reader and
+   *  the reflow reader render this component, so one row gives both of them
+   *  the toggle. Putting it in the fixed reader alone would make flowing
+   *  text a one-way door with no way back. */
+  docxMode?: "pages" | "flow";
+  onDocxModeChange?: (mode: "pages" | "flow") => void;
   t: Tweaks;
   setTweak: <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
   onClose?: () => void;
@@ -61,6 +72,8 @@ export function SettingsPanel(props: Props) {
     side = "right",
     mobile,
     onOpenFullSettings,
+    docxMode,
+    onDocxModeChange,
   } = props;
   const { tr } = useI18n();
   // Narrow off `props` (not a destructured copy) so TypeScript carries the
@@ -86,8 +99,32 @@ export function SettingsPanel(props: Props) {
         pref={t.theme}
         onChange={(p) => setTweak("theme", p)}
       />
+      {docxMode && onDocxModeChange && (
+        <Field label={tr("settings.docxLayout")} theme={theme}>
+          <SegRow<"pages" | "flow">
+            theme={theme}
+            value={docxMode}
+            onChange={onDocxModeChange}
+            options={[
+              { value: "pages", label: tr("settings.docxLayout.pages") },
+              { value: "flow", label: tr("settings.docxLayout.flow") },
+            ]}
+          />
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              lineHeight: 1.5,
+              color: theme.muted,
+            }}
+          >
+            {tr("settings.docxLayout.hint")}
+          </div>
+        </Field>
+      )}
       {props.variant === "fixed" ? (
         <FixedPageControls
+          typography={docxMode != null}
           theme={theme}
           t={t}
           setTweak={setTweak}

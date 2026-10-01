@@ -288,6 +288,7 @@ export function BookBody({
             key={originalIndex}
             index={originalIndex}
             text={p.text}
+            level={p.level}
             highlights={
               highlightsByParagraph.get(originalIndex) ?? NO_HIGHLIGHTS
             }
@@ -313,6 +314,7 @@ export function BookBody({
 const TextParagraph = memo(function TextParagraph({
   index,
   text,
+  level,
   highlights,
   themeKey,
   spacing,
@@ -320,12 +322,14 @@ const TextParagraph = memo(function TextParagraph({
 }: {
   index: number;
   text: string;
+  /** 1-6 when this block was a heading in the source, absent for body text. */
+  level?: number;
   highlights: Highlight[];
   themeKey: ThemeKey;
   spacing: number;
   hyphenation: boolean;
 }) {
-  const ref = useRef<HTMLParagraphElement>(null);
+  const ref = useRef<HTMLElement>(null);
   // Most paragraphs have no highlights at all, so this bails before
   // allocating anything: it runs for every paragraph on every render.
   const noteIds = useMemo(
@@ -337,18 +341,43 @@ const TextParagraph = memo(function TextParagraph({
   );
   const spines = useNoteSpines(ref, noteIds, [text, spacing, hyphenation]);
 
+  // A heading renders as a heading. Without this a chapter's internal
+  // structure is flat — a section title sits in the text at the same size and
+  // weight as the prose under it, which is what makes a converted document
+  // read as a document rather than as a book.
+  //
+  // Hierarchy comes from size, weight and space, all in `em` so it follows
+  // the reader's own font-size setting. The family stays the body family on
+  // purpose: swapping in a display face means reasoning about ratios in
+  // APPARENT size rather than px, and a heading that is merely larger and
+  // heavier is unambiguous without that risk. Space goes above, not below,
+  // so the heading groups with the text it introduces.
+  const Tag = (level ? `h${Math.min(6, Math.max(1, level))}` : "p") as "p";
+  const headingStyle = level
+    ? {
+        fontSize: level <= 2 ? "1.35em" : level === 3 ? "1.15em" : "1.05em",
+        fontWeight: 650,
+        lineHeight: 1.35,
+        margin: `${spacing * 1.9}em 0 ${spacing * 0.7}em`,
+        // A hyphenated heading reads as a typo.
+        hyphens: "manual" as const,
+        WebkitHyphens: "manual" as const,
+      }
+    : null;
+
   return (
-    <p
-      ref={ref}
+    <Tag
+      ref={ref as React.Ref<HTMLParagraphElement>}
       data-p-index={index}
       style={{
         margin: `0 0 ${spacing}em`,
         // Containing block for the note bars. Costs nothing on its own
         // and does not affect the text.
         position: noteIds.length > 0 ? "relative" : undefined,
-        ...(hyphenation
+        ...(hyphenation && !level
           ? { hyphens: "auto", WebkitHyphens: "auto" as const }
           : null),
+        ...headingStyle,
       }}
     >
       {renderParagraph(text, highlights, themeKey)}
@@ -357,7 +386,7 @@ const TextParagraph = memo(function TextParagraph({
         colorOf={(id) => highlights.find((h) => h.id === id)?.color}
         themeKey={themeKey}
       />
-    </p>
+    </Tag>
   );
 });
 

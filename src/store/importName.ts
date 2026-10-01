@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 /** Pull a reasonable display title out of a file path: drop the directory
  *  portion and the .docx extension, then collapse underscores/dashes to
- *  spaces. Used when the doc has no leading heading we can borrow. Empty
+ *  spaces. This is the primary source for an imported book's title — see
+ *  `preferredTitle`, which weighs it against the document's own. Empty
  *  (not "Untitled") when the stem strips to nothing — a blank title
  *  persists as "" so the display-time fallback (`common.untitled`)
  *  localizes it wherever the book is rendered, instead of freezing an
@@ -78,4 +79,32 @@ export async function importName(path: string): Promise<string> {
     // Not Android, no such provider, permission revoked since the pick.
     return "";
   }
+}
+
+/**
+ * Which of two candidate titles to show for an imported file.
+ *
+ * The file's name wins. A document's embedded title is far more often
+ * wrong than the filename is: PDFs carry the LaTeX jobname, the Word
+ * template name ("Microsoft Word - Document1"), or the title of whatever
+ * document was copied to make this one. The filename is what the user
+ * themselves saw in the picker, so it is what they expect in the field.
+ *
+ * Both sides are trimmed before being weighed, which is the part a bare
+ * `fromFile || fromDocument` gets wrong: Word writes a lone space into
+ * `dc:title` routinely, and `" " || x` is `" "` — the dialog would show an
+ * apparently empty field and store a space as the book's title.
+ *
+ * Empty (not "Untitled") when neither has anything, so the display-time
+ * `common.untitled` fallback localizes it wherever the book is rendered.
+ *
+ * `fromDocument` is optional because a PDF need not carry a title at all —
+ * `PdfMeta.title` is `title?: string` — and "absent" has to behave the same
+ * as "empty" here rather than throwing on the `.trim()`.
+ */
+export function preferredTitle(
+  fromFile: string,
+  fromDocument: string | undefined,
+): string {
+  return fromFile.trim() || (fromDocument ?? "").trim();
 }

@@ -58,6 +58,9 @@ import {
   getEntry,
   listBooks,
   loadBook,
+  docxBlockMap,
+  loadDocxFlowBook,
+  setDocxReadingMode,
   loadFixedBook,
   markBookOpened,
   saveHighlight,
@@ -445,6 +448,13 @@ function App() {
   // Holds the deferred setLoading(false) so a rapid re-open of a different
   // book can clear it before it fires for the previous load.
   const loadingTimeoutRef = useRef<number | null>(null);
+  /** openBook is defined below switchDocxMode; a ref avoids reordering the
+   *  file just to satisfy declaration order. */
+  const openBookRef = useRef<((id: string) => Promise<void>) | null>(null);
+  /** Id of the DOCX currently open in flowing text, if any. The reflowable
+   *  readers serve EPUBs too, so they need this to know whether to offer the
+   *  layout toggle — and, crucially, the way back to pages. */
+  const [flowDocxId, setFlowDocxId] = useState<string | null>(null);
   useEffect(() => {
     return () => {
       if (loadingTimeoutRef.current !== null) {
@@ -452,6 +462,37 @@ function App() {
       }
     };
   }, []);
+
+  /**
+   * Switch a DOCX between fixed pages and flowing text.
+   *
+   * The blockMap comes from building the flow document either way — it is
+   * the only thing that knows which top-level block each paragraph came
+   * from, and that is what carries the reading position across. Re-opening
+   * the book is what swaps the reader; `setDocxReadingMode` has already
+   * rewritten the position by then, so it resumes in the new mode where the
+   * old one left off.
+   */
+  const switchDocxMode = useCallback(
+    async (id: string, to: "pages" | "flow", from: "pages" | "flow") => {
+      // SegRow fires for the already-selected option too. Re-running the
+      // switch would reparse the document twice and remount the reader for
+      // nothing, losing up to 600ms of debounced scroll position on the way.
+      if (to === from) return;
+      try {
+        const { blockMap } = await loadDocxFlowBook(id, (n) =>
+          tr("reader.chapterNumber", { n }),
+        );
+        await setDocxReadingMode(id, to, blockMap);
+        await openBookRef.current?.(id);
+      } catch (e) {
+        // A failed switch must not strand the reader on a blank view: the
+        // book is still open in the mode it was already in.
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [tr],
+  );
 
   const openBook = useCallback(
     async (id: string) => {
@@ -467,11 +508,83 @@ function App() {
         // the Library's "Continue reading" hero picks the just-opened book.
         const entry = await getEntry(id);
         await markBookOpened(id);
-        if (entry && (entry.kind === "pdf" || entry.kind === "docx")) {
-          const { book, state } = await loadFixedBook(id);
+        // A DOCX the reader has switched to flowing text goes down the
+        // reflowable path instead, built from the same content.html the
+        // fixed reader paginates. Absent readingMode means "pages", so
+        // every DOCX imported before this existed is unaffected.
+        const isFixed = entry?.kind === "pdf" || entry?.kind === "docx";
+        // Read once and keep it: the pages branch below needs the same two
+        // files this probe already opened.
+        const fixed = isFixed ? await loadFixedBook(id) : null;
+        // A flow DOCX is built from the same content.html the fixed reader
+        // paginates. If that build fails — the file is gone, book.json is
+        // malformed — fall back to pages rather than stranding the book: the
+        // toggle that would set the mode back lives inside the reader that
+        // could not open, so an unguarded throw here is unrecoverable without
+        // a re-import.
+        let flow: Awaited<ReturnType<typeof loadDocxFlowBook>> | null = null;
+        if (entry?.kind === "docx" && fixed?.state.readingMode === "flow") {
+          try {
+            flow = await loadDocxFlowBook(id, (n) =>
+              tr("reader.chapterNumber", { n }),
+            );
+          } catch (e) {
+            // Fall back to pages so the book still opens — but SAY SO. A
+            // silent fallback is indistinguishable from the toggle not
+            // working: the mode is set on disk, the reader shows pages, and
+            // nothing anywhere explains why.
+            flow = null;
+            // eslint-disable-next-line no-console
+            console.error("[docx] flow mode failed, falling back to pages:", e);
+            setError(e instanceof Error ? e.message : String(e));
+          }
+        }
+        // Pages mode: bridge the other way, so a highlight made in flowing
+        // text is visible here and the panel can jump to it. Costs one parse
+        // of content.html, on open of a DOCX that has highlights at all.
+        if (!flow && fixed && entry?.kind === "docx") {
+          const needsBridge = fixed.state.highlights.some(
+            (h) => !h.fixed && h.charEnd > h.charStart,
+          );
+          if (needsBridge) {
+            try {
+              const [{ bridgeDocxHighlights }, blockMap] = await Promise.all([
+                import("./docx/highlightBridge"),
+                docxBlockMap(id),
+              ]);
+              fixed.state = {
+                ...fixed.state,
+                highlights: bridgeDocxHighlights(
+                  fixed.state.highlights,
+                  blockMap,
+                ),
+              };
+            } catch (e) {
+              // Highlights are an enhancement; the book still opens without
+              // the bridge. Never let this path block reading.
+              // eslint-disable-next-line no-console
+              console.warn("[docx] could not bridge highlights:", e);
+            }
+          }
+        }
+        if (flow) {
+          setFlowDocxId(id);
+          const { book, state } = flow;
+          setLoadedFixed(null);
+          setLoaded({
+            book,
+            state,
+            currentChapter: state.currentChapter,
+            resumeParagraph: state.paragraphIndex,
+            resumeOffset: state.paragraphOffset ?? 0,
+            jumpNonce: 0,
+          });
+        } else if (fixed) {
+          setFlowDocxId(null);
           setLoaded(null);
-          setLoadedFixed({ book, state });
+          setLoadedFixed(fixed);
         } else {
+          setFlowDocxId(null);
           const { book, state } = await loadBook(id);
           setLoadedFixed(null);
           setLoaded({
@@ -508,6 +621,7 @@ function App() {
     },
     [reduced],
   );
+  openBookRef.current = openBook;
 
   // Reader data is keyed to the nav location. The common path (openBook) loads
   // first, then navigates — so this effect no-ops there. It's the safety net
@@ -619,11 +733,25 @@ function App() {
   // Debounced persistence of fixed-page (PDF/DOCX) reading position + progress.
   const pageSaveTimer = useRef<number | null>(null);
   const savePagePosition = useCallback(
-    (bookId: string, pageCount: number, page: number, pageOffset: number) => {
+    (
+      bookId: string,
+      pageCount: number,
+      page: number,
+      pageOffset: number,
+      blockId?: string,
+    ) => {
       if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
       pageSaveTimer.current = window.setTimeout(() => {
         pageSaveTimer.current = null;
-        void updatePagePosition(bookId, page, pageOffset);
+        void updatePagePosition(
+          bookId,
+          page,
+          pageOffset,
+          // The portable half of the position. Without it `fixedAnchor` is
+          // never written, and a switch to flowing text has nothing to
+          // translate — it would always land on the first paragraph.
+          blockId ? { blockId, frac: pageOffset } : undefined,
+        );
         void updatePageProgress(bookId, page, pageCount);
       }, 600);
     },
@@ -968,6 +1096,16 @@ function App() {
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
               <FixedPageReader
+                sourceKey={`${t.fontFamily}|${t.fontSize}`}
+                docxMode={
+                  loadedFixed.book.kind === "docx" ? "pages" : undefined
+                }
+                onDocxModeChange={
+                  loadedFixed.book.kind === "docx"
+                    ? (m) =>
+                        void switchDocxMode(loadedFixed.book.id, m, "pages")
+                    : undefined
+                }
                 theme={theme}
                 themeKey={themeKey}
                 t={t}
@@ -984,10 +1122,19 @@ function App() {
                   const b = loadedFixed.book;
                   return b.kind === "pdf"
                     ? createPdfPageSource(b)
-                    : createDocxPageSource(b);
+                    : createDocxPageSource(b, {
+                        fontFamily: t.fontFamily,
+                        fontSize: t.fontSize,
+                      });
                 }}
-                onLocationChange={(page, off, pageCount) =>
-                  savePagePosition(loadedFixed.book.id, pageCount, page, off)
+                onLocationChange={(page, off, pageCount, blockId) =>
+                  savePagePosition(
+                    loadedFixed.book.id,
+                    pageCount,
+                    page,
+                    off,
+                    blockId,
+                  )
                 }
                 onOpenFullSettings={openSettings}
                 onBack={closeBook}
@@ -997,6 +1144,12 @@ function App() {
             <ReaderErrorBoundary theme={theme} onBack={closeBook}>
               {isMobile ? (
                 <MobileReader
+                  docxMode={loaded.book.id === flowDocxId ? "flow" : undefined}
+                  onDocxModeChange={
+                    loaded.book.id === flowDocxId
+                      ? (m) => void switchDocxMode(loaded.book.id, m, "flow")
+                      : undefined
+                  }
                   theme={theme}
                   themeKey={themeKey}
                   t={t}
@@ -1019,6 +1172,12 @@ function App() {
                 />
               ) : (
                 <DesktopReader
+                  docxMode={loaded.book.id === flowDocxId ? "flow" : undefined}
+                  onDocxModeChange={
+                    loaded.book.id === flowDocxId
+                      ? (m) => void switchDocxMode(loaded.book.id, m, "flow")
+                      : undefined
+                  }
                   theme={theme}
                   themeKey={themeKey}
                   t={t}

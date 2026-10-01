@@ -147,6 +147,11 @@ export interface BookState {
   /** DOCX only — a reflow-stable content anchor (nearest block id + intra-block
       fraction) so resume survives re-pagination when the page box changes. */
   fixedAnchor?: { blockId: string; frac: number };
+  /** DOCX only — how this book is rendered. Absent means "pages", so every
+      DOCX imported before reading modes existed keeps its behaviour with no
+      migration pass. A user preference about reading, which is why it lives
+      in state rather than in book.json's document description. */
+  readingMode?: "pages" | "flow";
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -258,6 +263,16 @@ async function readBookJson(id: string): Promise<EpubBook> {
   return JSON.parse(raw);
 }
 
+/**
+ * Read a book's saved state.
+ *
+ * Every field is rebuilt and validated rather than trusting the parsed JSON,
+ * because state on disk can be older than this code. The cost of that choice:
+ * **a field added to `BookState` is silently dropped on read until it is also
+ * added here.** `readingMode` shipped that way — written on every switch,
+ * discarded on every read, so the reading-mode toggle appeared to do nothing
+ * at all. If you add a field to `BookState`, add it here too.
+ */
 async function readState(id: string): Promise<BookState> {
   const path = `${bookDir(id)}/state.json`;
   if (!(await exists(path, { baseDir: BASE }))) {
@@ -290,6 +305,13 @@ async function readState(id: string): Promise<BookState> {
               blockId: parsed.fixedAnchor.blockId,
               frac: Number(parsed.fixedAnchor.frac) || 0,
             }
+          : undefined,
+      // Validated rather than copied: anything else on disk (an older
+      // format, a hand-edited file) reads as "no preference", which is the
+      // pages default.
+      readingMode:
+        parsed.readingMode === "flow" || parsed.readingMode === "pages"
+          ? parsed.readingMode
           : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
@@ -626,6 +648,108 @@ export async function loadFixedBook(
   const book = JSON.parse(raw) as FixedBook;
   const state = await readState(id);
   return { book, state };
+}
+
+/** A DOCX loaded for the reflowable reader.
+ *
+ *  The same `content.html` the fixed reader paginates, turned into chapters.
+ *  Nothing is converted on disk and no image is copied: the reflow reader
+ *  consumes inline chapters and resolves `images/img-NNN.ext` through
+ *  `chapterImageSrcFor`, which is exactly where the DOCX importer already
+ *  put them. */
+export interface DocxFlowBook {
+  book: EpubBook;
+  state: BookState;
+  /** Item -> top-level block, for carrying a position across a mode switch. */
+  blockMap: number[][];
+  dir: "ltr" | "rtl";
+}
+
+/**
+ * Load a stored DOCX as reflowing chapters.
+ *
+ * `chapterFallback` names a chapter that has no heading of its own. It is
+ * passed in rather than defaulted here because only the caller has the
+ * translator — a name baked in at this layer would be frozen in whatever
+ * locale happened to be active.
+ */
+export async function loadDocxFlowBook(
+  id: string,
+  chapterFallback: (n: number) => string,
+): Promise<DocxFlowBook> {
+  const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
+  const docx = JSON.parse(raw) as DocxBook;
+  const html = await readTextFile(`${bookDir(id)}/content.html`, {
+    baseDir: BASE,
+  });
+  const { docxHtmlToFlowDoc } = await import("../docx/flowDoc");
+  const { chapters, blockMap } = docxHtmlToFlowDoc(html, docx.outline, {
+    chapterFallback,
+  });
+  const state = await readState(id);
+  const { bridgeDocxHighlights } = await import("../docx/highlightBridge");
+  return {
+    book: {
+      id,
+      title: docx.title,
+      author: docx.author,
+      // The reader auto-enables RTL from the language tag; the DOCX importer
+      // already detected direction, so map it back rather than re-sniffing.
+      language: docx.dir === "rtl" ? "ar" : "",
+      chapters,
+    },
+    // Highlights made in pages mode carry only a block anchor, which this
+    // reader cannot render or jump to. Bridging on load means a highlight is
+    // visible in whichever mode it is read in, not just the one it was made
+    // in.
+    state: {
+      ...state,
+      highlights: bridgeDocxHighlights(state.highlights, blockMap),
+    },
+    blockMap,
+    dir: docx.dir,
+  };
+}
+
+/**
+ * A DOCX's block map, without building the chapters.
+ *
+ * The pages reader needs it only to bridge highlights made in flowing text,
+ * so this exists to make that need explicit at the call site rather than
+ * looking like a stray flow-mode load.
+ */
+export async function docxBlockMap(id: string): Promise<number[][]> {
+  const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
+  const docx = JSON.parse(raw) as DocxBook;
+  const html = await readTextFile(`${bookDir(id)}/content.html`, {
+    baseDir: BASE,
+  });
+  const { docxHtmlToFlowDoc } = await import("../docx/flowDoc");
+  return docxHtmlToFlowDoc(html, docx.outline).blockMap;
+}
+
+/**
+ * Switch a DOCX between fixed pages and reflowing text, carrying the reading
+ * position across.
+ *
+ * Writes only the fields the destination mode reads, so the other mode's
+ * saved position survives untouched — switch away and back without reading
+ * anything in between and you land exactly where you were.
+ */
+export async function setDocxReadingMode(
+  id: string,
+  to: "pages" | "flow",
+  blockMap: number[][],
+): Promise<void> {
+  const { positionForMode } = await import("../docx/modeSwitch");
+  const state = await readState(id);
+  const patch = positionForMode(to, blockMap, {
+    currentChapter: state.currentChapter,
+    paragraphIndex: state.paragraphIndex,
+    paragraphOffset: state.paragraphOffset,
+    fixedAnchor: state.fixedAnchor,
+  });
+  await writeState({ ...state, ...patch, readingMode: to });
 }
 
 /**

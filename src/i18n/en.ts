@@ -306,6 +306,13 @@ export const en = {
   // `chapterOfTotal` above: over a chapter's own display title the total is
   // noise, and the scrubber and focus running head both still carry it.
   "reader.chapterNumber": "Chapter {n}",
+  // DOCX reading-mode toggle. "Layout" rather than "Mode": it names what
+  // changes on screen, not the machinery behind it.
+  "settings.docxLayout": "Layout",
+  "settings.docxLayout.pages": "Pages",
+  "settings.docxLayout.flow": "Flowing text (EPUB mode)",
+  "settings.docxLayout.hint":
+    "Pages keep the document exactly as written. Flowing text reflows it to your font size.",
   "reader.chapterDash": "Chapter {n} — {title}",
   "reader.keepScrollingNext": "Keep scrolling for next chapter",
   "reader.keepScrollingPrev": "Keep scrolling for previous chapter",
