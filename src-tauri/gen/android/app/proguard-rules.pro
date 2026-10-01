@@ -72,5 +72,9 @@
 # Rust -> Kotlin: AppUpdater's @JvmStatic members (install source, download,
 # install, cleanup), all reached only over JNI from src-tauri/src/android_update.rs.
 # Descriptors there: installSource `(Landroid/content/Context;)Ljava/lang/String;`,
-# openStore `(Landroid/app/Activity;Ljava/lang/String;)V`.
+# openStore `(Landroid/app/Activity;Ljava/lang/String;)V`, canInstall
+# `(Landroid/content/Context;)Z`, openInstallPermission and install
+# `(Landroid/app/Activity;)V`. InstallResultReceiver and PackageReplacedReceiver
+# need no rule: they are manifest <receiver>s, which R8 keeps by name, and
+# they reach AppUpdater through ordinary bytecode calls, not JNI.
 -keep class com.riwaq.reader.AppUpdater { *; }

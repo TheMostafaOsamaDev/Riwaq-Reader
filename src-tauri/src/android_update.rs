@@ -142,6 +142,45 @@ fn android_network_metered_impl() -> Result<bool, String> {
     })
 }
 
+#[cfg(target_os = "android")]
+fn android_update_can_install_impl() -> Result<bool, String> {
+    with_updater(|env, activity, class| {
+        let v = env.call_static_method(
+            class,
+            "canInstall",
+            "(Landroid/content/Context;)Z",
+            &[JValue::Object(activity)],
+        )?;
+        Ok(v.z()?)
+    })
+}
+
+#[cfg(target_os = "android")]
+fn android_update_open_permission_impl() -> Result<(), String> {
+    with_updater(|env, activity, class| {
+        env.call_static_method(
+            class,
+            "openInstallPermission",
+            "(Landroid/app/Activity;)V",
+            &[JValue::Object(activity)],
+        )?;
+        Ok(())
+    })
+}
+
+#[cfg(target_os = "android")]
+fn android_update_install_impl() -> Result<(), String> {
+    with_updater(|env, activity, class| {
+        env.call_static_method(
+            class,
+            "install",
+            "(Landroid/app/Activity;)V",
+            &[JValue::Object(activity)],
+        )?;
+        Ok(())
+    })
+}
+
 /// Who installed this copy of Riwaq, as JSON:
 /// `{"installer": "<pkg or empty>", "label": "<store label or empty>", "storeInstalled": bool}`.
 /// Desktop has no installer to report.
@@ -225,6 +264,49 @@ pub async fn android_network_metered() -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
         android_network_metered_impl()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("android only".into())
+    }
+}
+
+/// Whether Android lets Riwaq install packages ("Install unknown apps").
+/// Always true below Android 8, where the system dialog asks instead.
+#[tauri::command]
+pub async fn android_update_can_install() -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        android_update_can_install_impl()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("android only".into())
+    }
+}
+
+/// Open Android's "Install unknown apps" setting for Riwaq.
+#[tauri::command]
+pub async fn android_update_open_permission() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        android_update_open_permission_impl()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("android only".into())
+    }
+}
+
+/// Install the verified APK through a PackageInstaller session. Only acts
+/// from "ready" (or a stuck "installing"); the outcome shows up in
+/// android_update_status ("installing", then "ready"/"failed", or the app is
+/// replaced).
+#[tauri::command]
+pub async fn android_update_install() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        android_update_install_impl()
     }
     #[cfg(not(target_os = "android"))]
     {

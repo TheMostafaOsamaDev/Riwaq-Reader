@@ -22,6 +22,9 @@
     <!-- AppUpdater: isActiveNetworkMetered and the "wait for Wi-Fi" network
          callback both throw SecurityException without it. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- AppUpdater.install: hand a verified update APK to PackageInstaller.
+         The user grants it once ("Install unknown apps"). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -137,5 +140,23 @@
             android:name=".UpdateService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!-- AppUpdater.install's session callback, reached only through the
+             PendingIntent it hands PackageInstaller. -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
+
+        <!-- After Riwaq is replaced (by us or a store): free the update's
+             storage and post "installed · Open". MY_PACKAGE_REPLACED is
+             exempt from the implicit-broadcast limits and goes only to the
+             updated app itself, so exported="false" still receives it. -->
+        <receiver
+            android:name=".PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

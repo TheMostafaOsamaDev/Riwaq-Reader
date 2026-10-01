@@ -71,6 +71,9 @@ EXPECTED=(
   "com.riwaq.reader.AppUpdater java.lang.String status(android.content.Context)"
   "com.riwaq.reader.AppUpdater void cancel(android.content.Context)"
   "com.riwaq.reader.AppUpdater boolean isMetered(android.content.Context)"
+  "com.riwaq.reader.AppUpdater boolean canInstall(android.content.Context)"
+  "com.riwaq.reader.AppUpdater void openInstallPermission(android.app.Activity)"
+  "com.riwaq.reader.AppUpdater void install(android.app.Activity)"
 )
 
 FAILED=0

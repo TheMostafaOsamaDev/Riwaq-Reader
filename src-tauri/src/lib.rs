@@ -129,6 +129,9 @@ pub fn run() {
             android_update::android_update_status,
             android_update::android_update_cancel,
             android_update::android_network_metered,
+            android_update::android_update_can_install,
+            android_update::android_update_open_permission,
+            android_update::android_update_install,
         ])
         .setup(|app| {
             // Cold start on Windows / Linux: the file double-clicked in the

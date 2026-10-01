@@ -1,13 +1,18 @@
 package com.riwaq.reader
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -125,6 +130,14 @@ object AppUpdater {
     fun status(ctx: Context): String = synchronized(lock) {
         val app = ctx.applicationContext
         var o = read(app)
+        // "installing" with no session behind it: Android's answer never
+        // reached us (the process died while its dialog was up). The verified
+        // APK is still here, so offer Install again.
+        if (o.optString("state") == "installing" && !sessionAlive(app, o.optInt("session", -1))) {
+            o.remove("session")
+            o.put("state", "ready")
+            write(app, o)
+        }
         val state = o.optString("state")
         // The process died mid-download (or while parked for Wi-Fi): the file
         // still says "downloading" but nothing is. Report it as an
@@ -161,6 +174,8 @@ object AppUpdater {
         // A fresh request replaces a parked "wait for Wi-Fi" one (e.g. the
         // user chose to download on mobile data after all).
         unpark(app)
+        // A new download supersedes whatever was being installed.
+        abandonSessions(app, keep = -1)
         val job = JSONObject().put("version", version).put("url", url).put("sha256", sha256)
             .put("total", size).put("bytes", partFile(app, version).length())
             .put("error", JSONObject.NULL)
@@ -211,6 +226,7 @@ object AppUpdater {
             open = conn
             conn = null
             unpark(app)
+            abandonSessions(app, keep = -1)
             dir(app).listFiles()?.forEach { it.delete() }
             write(app, JSONObject().put("state", "idle"))
             UpdateService.stop(app)
@@ -420,7 +436,7 @@ object AppUpdater {
      *  adb) — every cached file goes. No cached version: keep.
      *  Off the main thread: never delay first paint. */
     @JvmStatic
-    fun cleanupAsync(ctx: Context) {
+    fun cleanupAsync(ctx: Context, onDone: (() -> Unit)? = null) {
         val app = ctx.applicationContext
         Thread({
             try {
@@ -438,6 +454,121 @@ object AppUpdater {
             } catch (_: Exception) {
                 // Housekeeping only; a failure here costs some cache space.
             }
+            try {
+                // Every session of ours but the one state.json says is being
+                // installed right now holds a staged APK copy in system
+                // storage that nothing will ever use. Read after the delete
+                // above: once the update landed, state is idle and all go.
+                synchronized(lock) {
+                    val st = read(app)
+                    val keep = if (st.optString("state") == "installing") st.optInt("session", -1) else -1
+                    abandonSessions(app, keep)
+                }
+            } catch (_: Exception) {
+                // As above.
+            }
+            onDone?.invoke()
         }, "riwaq-update-cleanup").start()
+    }
+
+    /** Abandon every PackageInstaller session this app owns except [keep]
+     *  (-1: all). Each one is a staged copy of an APK in system storage. */
+    private fun abandonSessions(ctx: Context, keep: Int) {
+        val pi = ctx.packageManager.packageInstaller
+        val mine = try { pi.mySessions } catch (_: Exception) { return }
+        for (s in mine) {
+            if (s.sessionId == keep) continue
+            try { pi.abandonSession(s.sessionId) } catch (_: Exception) { /* already gone */ }
+        }
+    }
+
+    private fun sessionAlive(ctx: Context, id: Int): Boolean =
+        id >= 0 && try { ctx.packageManager.packageInstaller.getSessionInfo(id) != null } catch (_: Exception) { false }
+
+    /** Whether Android will let us install packages. Below API 26 that is the
+     *  global "Unknown sources" switch, which the system dialog handles. */
+    @JvmStatic
+    fun canInstall(ctx: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ctx.packageManager.canRequestPackageInstalls()
+
+    /** The one-time "Install unknown apps" switch for Riwaq. */
+    @JvmStatic
+    fun openInstallPermission(activity: Activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        activity.startActivity(
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")),
+        )
+    }
+
+    /** Hand the verified APK to Android in a PackageInstaller session. Only
+     *  from "ready" — or "installing", so a second tap after the dialog was
+     *  dismissed without an answer starts over with a fresh session. Android
+     *  answers through [InstallResultReceiver]: confirm dialog, then success
+     *  (this process is killed and replaced) or failure/abort
+     *  ([onInstallResult]).
+     *
+     *  Storage: the session holds its own staged copy of the APK, so a
+     *  session that does not commit is abandoned before this returns, and
+     *  every older session of ours is abandoned before a new one is made.
+     *
+     *  All of it under [lock]: [cleanupAsync] must not abandon the session
+     *  between its creation and state.json naming it. Never throws: a
+     *  failure is recorded as `failed`/`install`, which the UI polls. */
+    @JvmStatic
+    fun install(activity: Activity): Unit = synchronized(lock) {
+        val app = activity.applicationContext
+        val st = read(app)
+        val state = st.optString("state")
+        val apk = apkFile(app, st.optString("version"))
+        if ((state != "ready" && state != "installing") || !apk.exists()) return
+        val pi = app.packageManager.packageInstaller
+        abandonSessions(app, keep = -1)
+        var id = -1
+        var committed = false
+        try {
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            params.setAppPackageName(app.packageName)
+            params.setSize(apk.length())
+            id = pi.createSession(params)
+            pi.openSession(id).use { s ->
+                s.openWrite("base.apk", 0, apk.length()).use { out ->
+                    apk.inputStream().use { it.copyTo(out, 64 * 1024) }
+                    s.fsync(out)
+                }
+                // Mutable: the system fills in the status extras. Explicit
+                // component, so API 34's ban on mutable implicit intents does
+                // not apply. The session id as request code: never collides.
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+                val cb = PendingIntent.getBroadcast(app, id, Intent(app, InstallResultReceiver::class.java), flags)
+                write(app, st.put("state", "installing").put("session", id).put("error", JSONObject.NULL))
+                s.commit(cb.intentSender)
+                committed = true
+            }
+        } catch (_: Exception) {
+            st.remove("session")
+            write(app, st.put("state", "failed").put("error", "install"))
+        } finally {
+            if (!committed && id >= 0) {
+                try { pi.abandonSession(id) } catch (_: Exception) { /* never opened */ }
+            }
+        }
+    }
+
+    /** Called by InstallResultReceiver with the session Android answered for.
+     *  A failed or aborted session is abandoned at once (its staged copy goes).
+     *  ABORTED = the user tapped Cancel on Android's dialog: back to "ready"
+     *  with the verified APK kept. A result for a session that is no longer
+     *  the current one (replaced by a second tap) changes no state. */
+    internal fun onInstallResult(ctx: Context, session: Int, ok: Boolean, aborted: Boolean): Unit = synchronized(lock) {
+        val app = ctx.applicationContext
+        if (ok) return // the process is about to be replaced
+        if (session >= 0) {
+            try { app.packageManager.packageInstaller.abandonSession(session) } catch (_: Exception) { /* gone */ }
+        }
+        val st = read(app)
+        if (st.optString("state") != "installing" || st.optInt("session", -1) != session) return
+        st.remove("session")
+        write(app, if (aborted) st.put("state", "ready").put("error", JSONObject.NULL) else st.put("state", "failed").put("error", "install"))
     }
 }

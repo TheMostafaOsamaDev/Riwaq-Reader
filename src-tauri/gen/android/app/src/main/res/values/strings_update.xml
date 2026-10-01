@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PackageReplacedReceiver: posted after Riwaq was updated. -->
+    <string name="update_installed_title">Riwaq %1$s is installed</string>
+    <string name="update_installed_body">Tap to open it.</string>
+</resources>

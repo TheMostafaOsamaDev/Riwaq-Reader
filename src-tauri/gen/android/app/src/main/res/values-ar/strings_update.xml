@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PackageReplacedReceiver: posted after Riwaq was updated. -->
+    <string name="update_installed_title">تم تثبيت رواق %1$s</string>
+    <string name="update_installed_body">اضغط لفتحه.</string>
+</resources>
