@@ -54,7 +54,18 @@ class MainActivity : TauriActivity() {
 
         // Cold launch: stash any intent extra so consume_launch_intent
         // can drain it on frontend mount.
-        intent?.let { rememberLaunchIntent(it) }
+        //
+        // Only when this onCreate is a NEW launch. A non-null
+        // savedInstanceState means Android is rebuilding an activity it
+        // tore down (process death while backgrounded), and it hands back
+        // the intent that first launched it — already handled in the
+        // previous process. Stashing it again is what re-ran the import of
+        // a book opened from the file manager every time Riwaq came back.
+        if (savedInstanceState == null) {
+            intent?.let { rememberLaunchIntent(it) }
+        } else {
+            Log.d("RiwaqIntent", "skip (restored) ${intent?.action}")
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -77,6 +88,16 @@ class MainActivity : TauriActivity() {
     }
 
     private fun rememberLaunchIntent(intent: Intent) {
+        // Reopened from Recents. A task started by a file manager's "Open
+        // with" keeps that VIEW intent as its base intent, and relaunching
+        // the task from Recents redelivers it with this flag set — the same
+        // file, already imported, not a new request. Same for a notification
+        // tap's "riwaq.open" extra: replaying it would reopen the queue.
+        if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) {
+            Log.d("RiwaqIntent", "skip (from history) ${intent.action} ${intent.data}")
+            return
+        }
+
         // A book handed to us by another app — "Open with" (VIEW), a single
         // share (SEND), or a multi-select share (SEND_MULTIPLE, e.g. a file
         // manager's "share 3 files"). Kept in its own field rather than
@@ -107,6 +128,7 @@ class MainActivity : TauriActivity() {
             else -> null
         }
         if (bookPayload != null) {
+            Log.d("RiwaqIntent", "stash ${intent.action} flags=0x${Integer.toHexString(intent.flags)}")
             pendingOpenUri = bookPayload
             return
         }
