@@ -130,14 +130,12 @@ object AppUpdater {
     fun status(ctx: Context): String = synchronized(lock) {
         val app = ctx.applicationContext
         var o = read(app)
-        // "installing" with no session behind it: Android's answer never
-        // reached us (the process died while its dialog was up). The verified
-        // APK is still here, so offer Install again.
-        if (o.optString("state") == "installing" && !sessionAlive(app, o.optInt("session", -1))) {
-            o.remove("session")
-            o.put("state", "ready")
-            write(app, o)
-        }
+        // "installing" is left alone, even with no session behind it: on a
+        // failure Android destroys the session BEFORE delivering the status
+        // broadcast, so "session gone" here may be a failure still in flight,
+        // and downgrading it would make onInstallResult drop the FAILURE.
+        // A dialog that never appeared is recovered by tapping Install again
+        // (install() accepts "installing").
         val state = o.optString("state")
         // The process died mid-download (or while parked for Wi-Fi): the file
         // still says "downloading" but nothing is. Report it as an
@@ -482,9 +480,6 @@ object AppUpdater {
         }
     }
 
-    private fun sessionAlive(ctx: Context, id: Int): Boolean =
-        id >= 0 && try { ctx.packageManager.packageInstaller.getSessionInfo(id) != null } catch (_: Exception) { false }
-
     /** Whether Android will let us install packages. Below API 26 that is the
      *  global "Unknown sources" switch, which the system dialog handles. */
     @JvmStatic
@@ -495,9 +490,16 @@ object AppUpdater {
     @JvmStatic
     fun openInstallPermission(activity: Activity) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        activity.startActivity(
-            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")),
-        )
+        val pkg = Uri.parse("package:${activity.packageName}")
+        try {
+            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkg))
+        } catch (_: Exception) {
+            // Some OEM and TV builds have no such screen
+            // (ActivityNotFoundException): Riwaq's app-info page instead.
+            try {
+                activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))
+            } catch (_: Exception) { /* no settings UI at all: nothing to open */ }
+        }
     }
 
     /** Hand the verified APK to Android in a PackageInstaller session. Only
@@ -546,8 +548,13 @@ object AppUpdater {
                 committed = true
             }
         } catch (_: Exception) {
-            st.remove("session")
-            write(app, st.put("state", "failed").put("error", "install"))
+            // After a successful commit Android owns the session and is
+            // installing; a throw from the session's close() then is not an
+            // install failure, and the receiver reports the real outcome.
+            if (!committed) {
+                st.remove("session")
+                write(app, st.put("state", "failed").put("error", "install"))
+            }
         } finally {
             if (!committed && id >= 0) {
                 try { pi.abandonSession(id) } catch (_: Exception) { /* never opened */ }
