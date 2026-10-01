@@ -39,6 +39,7 @@ function props(over: Partial<LayoutProps>): LayoutProps {
   return {
     theme: THEMES.dark,
     themeKey: "dark",
+    heroStyle: "ambient",
     books: [],
     covers: {},
     loading: false,

@@ -32,6 +32,7 @@ import {
   type CategoryKey,
   type SettingEntry,
 } from "./SettingsSection";
+import { HeroStyleField } from "./HeroStyleField";
 import { Spinner } from "./Spinner";
 import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
 import { copyText } from "../lib/clipboard";
@@ -247,6 +248,17 @@ export function SettingsPage({
             theme={theme}
             pref={t.theme}
             onChange={(p) => setTweak("theme", p)}
+          />
+        ),
+      },
+      {
+        id: "heroStyle",
+        label: tr("settings.heroStyle"),
+        node: (
+          <HeroStyleField
+            theme={theme}
+            value={t.heroStyle}
+            onChange={(v) => setTweak("heroStyle", v)}
           />
         ),
       },

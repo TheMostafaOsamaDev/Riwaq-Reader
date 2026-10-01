@@ -1,11 +1,14 @@
 import type { BookIndexEntry } from "../../store/library";
 import type { Shelf } from "../../store/shelves";
 import type { Theme, ThemeKey } from "../../styles/tokens";
+import type { HeroStyle } from "../../types/reader";
 import type { LibraryTab } from "./tabs";
 
 export interface LayoutProps {
   theme: Theme;
   themeKey: ThemeKey;
+  /** Style of the "continue reading" card (Settings ▸ Appearance). */
+  heroStyle: HeroStyle;
   books: BookIndexEntry[];
   covers: Record<string, string>;
   loading: boolean;

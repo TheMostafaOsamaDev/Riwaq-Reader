@@ -92,6 +92,7 @@ import { errorLabel } from "../../i18n/statusLabels";
 import { DesktopLibrary } from "./DesktopLibrary";
 import { MobileLibrary } from "./MobileLibrary";
 import type { LibraryTab } from "./tabs";
+import type { HeroStyle } from "../../types/reader";
 
 function draftDefaultCover(d: FixedImportDraft): CoverChoice {
   return d.defaultCoverId
@@ -125,6 +126,8 @@ interface Props {
   onOpenSettings: () => void;
   /** When off, deleting a book skips the confirm dialog and deletes at once. */
   confirmDelete: boolean;
+  /** Style of the "continue reading" card (Settings ▸ Appearance). */
+  heroStyle: HeroStyle;
 }
 
 function useBooks() {
@@ -176,6 +179,7 @@ export function Library({
   streamActive,
   onOpenSettings,
   confirmDelete,
+  heroStyle,
 }: Props) {
   const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
@@ -1083,6 +1087,7 @@ export function Library({
   const layoutCommonProps = {
     theme,
     themeKey,
+    heroStyle,
     books,
     covers,
     loading,

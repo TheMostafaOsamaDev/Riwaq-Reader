@@ -17,6 +17,10 @@ export type ActivePanel = null | "toc" | "highlights" | "settings" | "progress";
  */
 export type ReadingMode = "paginated-2" | "paginated-1" | "scroll";
 
+/** How the library's "continue reading" card is drawn. See
+ *  components/library/HeroContinueCard.tsx for what each one looks like. */
+export type HeroStyle = "ambient" | "refined" | "bookmark" | "stack";
+
 export interface Tweaks {
   /** UI-language preference for the app chrome (NOT book content). "system"
       resolves from the OS/browser locale; "en"/"ar" pin a language. Drives the
@@ -26,6 +30,8 @@ export interface Tweaks {
       four concrete values pin a specific theme. Resolved to a concrete
       ThemeKey at render time via resolveTheme(). */
   theme: ThemePref;
+  /** Style of the "continue reading" card at the top of the library. */
+  heroStyle: HeroStyle;
   /** Reuses the token union so the reading library has ONE source of truth —
    *  this was a duplicated inline literal and drifted the moment fonts were
    *  added. */

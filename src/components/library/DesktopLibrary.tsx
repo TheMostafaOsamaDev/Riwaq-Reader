@@ -53,9 +53,12 @@ export function DesktopLibrary({
   onAddToShelf,
   onOpenShelf,
   activeShelfId,
-  onDelete,
-  onEdit,
+  // Both live in the hero's "more" menu now, which is the shelf cards'
+  // context menu.
+  onDelete: _onDelete,
+  onEdit: _onEdit,
   onCardContextMenu,
+  heroStyle,
 }: LayoutProps) {
   const { tr } = useI18n();
   const [query, setQuery] = useState("");
@@ -377,11 +380,13 @@ export function DesktopLibrary({
                     {hero && (
                       <HeroContinueCard
                         theme={theme}
+                        layout="desktop"
+                        variant={heroStyle}
                         book={hero}
-                        coverSrc={covers[hero.id]}
-                        onOpen={() => onOpen(hero.id)}
-                        onDelete={() => onDelete(hero.id)}
-                        onEdit={() => onEdit(hero.id)}
+                        books={visible}
+                        covers={covers}
+                        onOpen={onOpen}
+                        onMenu={onCardContextMenu}
                       />
                     )}
 

@@ -1092,6 +1092,7 @@ function App() {
               streamActive={streaming !== null}
               onOpenSettings={openSettings}
               confirmDelete={t.confirmDelete}
+              heroStyle={t.heroStyle}
             />
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
