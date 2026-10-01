@@ -6,12 +6,14 @@ import {
   UI_FONT_STACKS,
 } from "../styles/tokens";
 import { migrateStorageKey } from "../lib/legacyStorage";
+import { isHeroStyle } from "../components/library/heroModel";
 
 const STORAGE_KEY = "riwaq:tweaks:v1";
 
 export const DEFAULT_TWEAKS: Tweaks = {
   uiLang: "system",
   theme: "sepia",
+  heroStyle: "ambient",
   fontFamily: "readex",
   fontSize: 17,
   lineHeight: 1.6,
@@ -91,6 +93,9 @@ function load(): Tweaks {
     // persisted value (or any unknown one) back to the default so the picker
     // and the chrome font stay valid.
     if (!(merged.uiFont in UI_FONT_STACKS)) merged.uiFont = "readex";
+    if (!isHeroStyle(merged.heroStyle)) {
+      merged.heroStyle = DEFAULT_TWEAKS.heroStyle;
+    }
     return merged;
   } catch {
     return DEFAULT_TWEAKS;
@@ -129,7 +134,10 @@ export function useTweaks() {
           k in DEFAULT_TWEAKS &&
           v !== undefined &&
           typeof v === typeof DEFAULT_TWEAKS[k] &&
-          !(typeof v === "number" && !Number.isFinite(v))
+          !(typeof v === "number" && !Number.isFinite(v)) &&
+          // A string of the right type can still name a style that does not
+          // exist (an export from a newer build, or a hand edit).
+          !(k === "heroStyle" && !isHeroStyle(v))
         ) {
           (next as unknown as Record<string, unknown>)[k] = v;
         }

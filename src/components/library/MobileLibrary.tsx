@@ -1,29 +1,21 @@
 import { Suspense } from "react";
 import { LazyViewFallback } from "../LazyViewFallback";
 import { NovelDetailView, Store } from "./lazyViews";
-import { useLongPress } from "../../hooks/useLongPress";
 import { Icon } from "../Icon";
-import { BookCover } from "../BookCover";
 import { Button } from "../Button";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
 import { AnimatedSwap } from "../AnimatedSwap";
 import { back } from "../../store/navigation";
 import { booksOnShelf } from "../../store/shelfLogic";
-import { paletteForId } from "../../store/palette";
-import {
-  FONT_SERIF_DISPLAY,
-  FONT_STACKS,
-  isArabicTitle,
-  titleFontFor,
-} from "../../styles/tokens";
+import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { BackHeader } from "./BackHeader";
 import { EmptyState, FilteredEmptyState } from "./EmptyState";
 import { ErrorBanner } from "./ErrorBanner";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { MobileShelfCard } from "./MobileShelfCard";
+import { HeroContinueCard } from "./HeroContinueCard";
 import { MobileTabRow } from "./MobileTabRow";
-import { relTime } from "./relTime";
 import { matchesTab } from "./tabs";
 import type { LayoutProps } from "./types";
 
@@ -67,6 +59,7 @@ export function MobileLibrary({
   onDelete: _onDelete,
   onEdit: _onEdit,
   onCardContextMenu,
+  heroStyle,
 }: LayoutProps) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
@@ -87,17 +80,6 @@ export function MobileLibrary({
   const hero =
     tab === "all" ? visible.find((b) => b.lastReadAt !== undefined) : undefined;
   const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
-  // Display-time fallback for a blank `Book.title` (see common.untitled) —
-  // computed once so the font-family/line-height pick and the rendered
-  // text agree on what's actually on screen.
-  const heroDisplayTitle = hero ? hero.title || tr("common.untitled") : "";
-
-  // Hero is at most one card per render — a single hook instance covers it.
-  // Shelf cards each need their own long-press state, so they live in a
-  // subcomponent (MobileShelfCard) that calls the hook itself.
-  const heroLongPress = useLongPress((x, y) => {
-    if (hero) onCardContextMenu(hero.id, x, y);
-  });
 
   return (
     <div
@@ -426,95 +408,16 @@ export function MobileLibrary({
               ) : (
                 <>
                   {hero && (
-                    <div
-                      onClick={() => {
-                        if (heroLongPress.consumeLongPress()) return;
-                        onOpen(hero.id);
-                      }}
-                      {...heroLongPress.bind}
-                      role="button"
-                      tabIndex={0}
-                      style={{
-                        padding: 16,
-                        borderRadius: 14,
-                        background: theme.chrome,
-                        display: "flex",
-                        gap: 14,
-                        marginBottom: 28,
-                        alignItems: "center",
-                        cursor: "pointer",
-                        // No long-press callout, so the menu opens cleanly.
-                        WebkitTouchCallout: "none",
-                      }}
-                    >
-                      <BookCover
-                        title={hero.title}
-                        author={hero.author}
-                        palette={paletteForId(hero.id)}
-                        size="sm"
-                        src={covers[hero.id]}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: 9.5,
-                            fontWeight: 600,
-                            color: theme.muted,
-                            letterSpacing: isAr ? "normal" : "0.1em",
-                            textTransform: isAr ? "none" : "uppercase",
-                            marginBottom: 4,
-                          }}
-                        >
-                          {hero.lastReadAt
-                            ? tr("library.continue")
-                            : tr("library.startReading")}
-                        </div>
-                        <div
-                          style={{
-                            fontFamily: titleFontFor(heroDisplayTitle),
-                            fontStyle: "normal",
-                            fontSize: 18,
-                            lineHeight: isArabicTitle(heroDisplayTitle)
-                              ? 1.4
-                              : 1.15,
-                            color: theme.ink,
-                            letterSpacing: "-0.01em",
-                            marginBottom: 4,
-                          }}
-                        >
-                          {heroDisplayTitle}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 10.5,
-                            color: theme.muted,
-                            marginBottom: 10,
-                          }}
-                        >
-                          {tr("library.chaptersAgo", {
-                            n: hero.chapterCount,
-                            rel: relTime(hero.lastReadAt ?? hero.addedAt, tr),
-                          })}
-                        </div>
-                        <div
-                          style={{
-                            height: 3,
-                            background: theme.rule,
-                            borderRadius: 2,
-                            marginBottom: 10,
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${Math.round(hero.progress * 100)}%`,
-                              height: "100%",
-                              background: theme.ink,
-                              borderRadius: 2,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    <HeroContinueCard
+                      theme={theme}
+                      layout="mobile"
+                      variant={heroStyle}
+                      book={hero}
+                      books={visible}
+                      covers={covers}
+                      onOpen={onOpen}
+                      onMenu={onCardContextMenu}
+                    />
                   )}
 
                   <div
