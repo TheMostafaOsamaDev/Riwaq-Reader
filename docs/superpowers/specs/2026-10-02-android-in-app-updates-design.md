@@ -283,6 +283,31 @@ New tweaks: `skippedUpdateVersion?: string`, `lastSeenWhatsNew?: string`,
 That is fine: the download restarts from zero, and the UI handles a missing
 file as "available" again.
 
+### Storage: updates never grow the app
+
+Decided with the user, 2026-10-02: after any number of updates, Riwaq's
+storage must be what it was before them. Every update resource is freed as
+soon as nothing needs it:
+
+- **One pending APK, ever** (about 19 MB). Starting a download for another
+  version deletes everything else in `cacheDir/updates/`.
+- **Deleted on the first launch of the new version** (`cleanupAsync` in
+  `MainActivity.onCreate`, and again from the `MY_PACKAGE_REPLACED`
+  receiver). This holds whoever did the update.
+- **Deleted at once** on Cancel, on **Skip this version**, and when a newer
+  release supersedes the pending one. It is not kept for "next launch".
+- **Install sessions are abandoned.** Android stages a copy of the APK for
+  every `PackageInstaller` session. Any session that fails or is cancelled
+  is abandoned immediately, and `cleanupAsync` abandons every stale session
+  of ours (`packageInstaller.mySessions`), so no staged copy lingers in
+  system storage.
+- **Notes never touch disk.** The next version's notes and highlight image
+  are held in memory only, as a `data:` URL; the bundled notes are part of
+  the APK and replaced with it.
+- **Proof:** the emulator end-to-end measures the app's storage (cache, data,
+  staged sessions) before the update and after relaunching on the new
+  version. The two must match, within noise.
+
 ## Error handling
 
 Every failure leaves the installed app untouched, and says so in words.
