@@ -2684,7 +2684,145 @@ git commit -m "feat(android): the update pill, What's new sheet, and Settings ca
 
 ---
 
+### Task 15: Desktop update leftovers (storage)
+
+*Added 2026-10-02 (user: "updates must never grow the app"). Run after Task 13.*
+
+**Files:**
+- Create: `src-tauri/src/update_leftovers.rs`
+- Modify: `src-tauri/src/lib.rs` (`mod update_leftovers;` + spawn at desktop setup)
+
+**Interfaces:**
+- Produces: `fn is_stale_leftover(name: &str, product: &str, running: &str) -> bool` (pure)
+  and `pub fn sweep(dir: &Path, product: &str, running: &str) -> usize` (count removed).
+
+Why: tauri-plugin-updater 2.11 on Windows writes the installer to
+`%TEMP%\<productName>-<ver>-updater-XXXX\…-installer.exe` via `tempdir().keep()`,
+then `std::process::exit(0)`, so it is never deleted (about 10 MB per update).
+
+- [ ] **Step 1: Failing tests** (in the new module):
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn matches_only_our_updater_dirs_at_or_below_the_running_version() {
+        assert!(is_stale_leftover("Riwaq-0.5.3-updater-a1B2c3", "Riwaq", "0.6.0"));
+        assert!(is_stale_leftover("Riwaq-0.6.0-updater-zz", "Riwaq", "0.6.0"));
+        // A NEWER version's folder may belong to an update in progress.
+        assert!(!is_stale_leftover("Riwaq-0.6.1-updater-zz", "Riwaq", "0.6.0"));
+        // Never touch anything that isn't ours by name.
+        assert!(!is_stale_leftover("Other-0.5.3-updater-zz", "Riwaq", "0.6.0"));
+        assert!(!is_stale_leftover("Riwaq-0.5.3-installer.exe", "Riwaq", "0.6.0"));
+        assert!(!is_stale_leftover("Riwaq-x.y-updater-zz", "Riwaq", "0.6.0"));
+    }
+    #[test]
+    fn sweep_removes_stale_dirs_and_keeps_the_rest() {
+        let base = std::env::temp_dir().join(format!("riwaq-sweep-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        for d in ["Riwaq-0.5.3-updater-aa", "Riwaq-0.7.0-updater-bb", "Unrelated"] {
+            std::fs::create_dir_all(base.join(d)).unwrap();
+            std::fs::write(base.join(d).join("f.exe"), b"x").unwrap();
+        }
+        assert_eq!(sweep(&base, "Riwaq", "0.6.0"), 1);
+        assert!(!base.join("Riwaq-0.5.3-updater-aa").exists());
+        assert!(base.join("Riwaq-0.7.0-updater-bb").exists());
+        assert!(base.join("Unrelated").exists());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+}
+```
+
+- [ ] **Step 2: Run it (`cargo test --lib update_leftovers`), FAIL.**
+- [ ] **Step 3: Implement.** Parse `<product>-<a>.<b>.<c>-updater-<rest>`. Compare
+  `a*1_000_000 + b*1_000 + c` against the running version. `sweep` only
+  touches **directories** directly in `dir` that match, uses `remove_dir_all`,
+  ignores errors per entry, and returns the count. In `lib.rs`'s desktop
+  `setup` (`#[cfg(desktop)]`), spawn it on a background thread:
+  `std::thread::spawn(move || update_leftovers::sweep(&std::env::temp_dir(),
+  &product_name, &version))`. Nothing is awaited and it never gates first
+  paint. Read `productName` from `app.config()` and the version from
+  `app.package_info()`.
+- [ ] **Step 4: PASS; tamper (make the comparison `<` instead of `<=`; the
+  0.6.0 case must fail); `cargo check --lib`; `pnpm check`.**
+- [ ] **Step 5: Commit** `fix(updater): clear the installer Windows leaves in %TEMP% after each update`.
+
+---
+
+### Task 16: Desktop update UI: the sidebar card
+
+*Added 2026-10-02. The user chose placement **A** from the desktop mockups.
+Spec section "Desktop: the same flow, in the sidebar". Run after Task 15.
+Invoke `ui-ux-pro-max` first.*
+
+**Files:**
+- Create: `src/store/desktopUpdate.ts` (+ test). This is the desktop store,
+  with the same shape as `androidUpdate.ts`: `subscribe`/`getState`/`useDesktopUpdate`.
+- Create: `src/components/update/SidebarUpdateCard.tsx` (+ test)
+- Modify: `src/components/update/DesktopNotesDialog.tsx`: add **Later**,
+  **Skip this version**, and **Download** on the manual channel.
+- Modify: `src/components/LibrarySidebar.tsx`: the card above Import, and
+  the dot on Settings.
+- Modify: `src/App.tsx`: desktop no longer renders `UpdateBanner`. It feeds
+  `offer(info)` and `configure(...)` into the desktop store.
+- Modify: `src/components/SettingsPage.tsx`: the About update card on desktop.
+- Modify: i18n en + ar.
+- Delete: `src/components/UpdateBanner.tsx` if nothing else uses it (grep first).
+
+**Behaviour** (verbatim from the spec table):
+
+- **States:** `available | downloading(bytes,total) | ready | failed(reason) |
+  later | skipped`, plus channel `auto | manual | none` from `resolveCheck`.
+- **Update** on the auto channel:
+  - `const u = await check()` from `@tauri-apps/plugin-updater`.
+  - `await u.download(ev => …)` tracks `Started.contentLength` and sums
+    `Progress.chunkLength`.
+  - The state becomes `ready`. **Restart now** calls `await u.install()`,
+    then `relaunch()` from `@tauri-apps/plugin-process`. On Windows,
+    `install()` exits the app itself.
+  - Keep the `Update` object in module scope between download and install.
+    If it is lost (the page reloaded), **Restart now** calls `check()`
+    again and does `downloadAndInstall`.
+- **Update** on the manual channel opens `RELEASES_PAGE_URL` through
+  `plugin-opener`.
+- **No Cancel on desktop.** The plugin cannot abort a download, so the
+  progress dialog offers **Hide** only.
+- **Failure** → `failed`, shown as a red card with **Try again**. The dialog
+  adds **Download from GitHub**.
+- **Later / Skip / Settings dot:** reuse `skippedUpdateVersion` and the
+  `clearSkip` rule, using `versionCode` from `updateFlow.ts`.
+- **The after-update screen** (Task 6) at desktop width uses a centred
+  dialog, not `MobileSheet`. This closes the deferred minor from Task 6. Big
+  releases keep `StoryPages`.
+- **Strings:** reuse the existing `update.*` and `whatsNew.*` keys where the
+  copy matches. New keys, en and ar exactly as in the approved mockup:
+  - `update.card.available`: "Riwaq {v} is available" / "الإصدار {v} من رواق متاح"
+  - `update.card.ready`: "Riwaq {v} is ready" / "رواق {v} جاهز"
+  - `update.restart`: "Restart now" / "أعد التشغيل الآن"
+  - `update.restartBody`: "Restart Riwaq to finish. Your books and progress stay exactly where they are." / "أعد تشغيل رواق لإكمال التحديث. تبقى كتبك وتقدّمك كما هي تمامًا."
+  - `update.failDesktop`: "Nothing was changed. Check your connection and try again, or download it from GitHub." / "لم يتغيّر شيء. تحقّق من اتصالك وحاول مجددًا، أو نزّله من GitHub."
+  - `update.manualBody`: "This install (.deb/.rpm) can't update itself. Download the new package and install it as usual." / "هذه النسخة (.deb/.rpm) لا تستطيع تحديث نفسها. نزّل الحزمة الجديدة وثبّتها كالمعتاد."
+  - `update.keepReading`: "Keep reading. Riwaq tells you when it's ready." / "تابع القراءة؛ سيخبرك رواق عندما يجهز."
+- **Tests** (happy-dom, mocked plugin modules):
+  - The download progress maths.
+  - `ready` only after `download` resolves.
+  - **Restart now** calls `install` and then `relaunch`.
+  - The manual channel never calls `check()`.
+  - Skip hides the card and sets the tweak.
+  - The dot shows after Later and not after Skip.
+  - A failure shows **Try again**.
+  - The Arabic strings render.
+  - Tamper-check each guard.
+- **Verify:** `pnpm check`, plus browser screenshots of every state (sepia,
+  dark, en, ar).
+- **Commit:** `feat(updater): the desktop update flow lives in the sidebar`.
+
+---
+
 ### Task 14: End-to-end on the emulator, release-build JNI proof, docs
+
+*Run LAST, after Tasks 15 and 16. Also prove the desktop flow once on macOS with the throwaway-key recipe from PR #166, and confirm no `Riwaq-*-updater-*` folders remain.*
 
 **Files:**
 - Modify: `docs/ANDROID.md`, `README.md` (Android: get updates), `docs/fdroid/README.md` (permission note), `docs/superpowers/specs/2026-10-02-android-in-app-updates-design.md` (results section)
