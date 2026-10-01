@@ -96,7 +96,14 @@ fn release_base(endpoint: &str, version: &str) -> Option<String> {
         return Some(format!("{repo}/releases/download/v{version}/"));
     }
     let cut = endpoint.rfind('/')?;
-    Some(endpoint[..=cut].to_string())
+    let base = endpoint[..=cut].to_string();
+    // Never an unversioned base: an odd GitHub URL must fail, not fall back.
+    (!base.contains("/releases/latest/")).then_some(base)
+}
+
+/// Whether appending `add` bytes to `have` stays within `cap`.
+fn within_cap(have: usize, add: usize, cap: usize) -> bool {
+    have + add <= cap
 }
 
 fn valid_version(v: &str) -> bool {
@@ -139,7 +146,7 @@ async fn get_capped(client: &reqwest::Client, url: &str, cap: usize) -> Result<V
     }
     let mut body = Vec::new();
     while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
-        if body.len() + chunk.len() > cap {
+        if !within_cap(body.len(), chunk.len(), cap) {
             return Err(format!("{url}: larger than {cap} bytes"));
         }
         body.extend_from_slice(&chunk);
@@ -212,6 +219,9 @@ async fn apk_details(
         .ok_or("SHA256SUMS has no line for the APK")?;
     let url = format!("{base}{APK_ASSET}");
     let head = c.head(&url).send().await.map_err(|e| e.to_string())?;
+    if !head.status().is_success() {
+        return Err(format!("{url}: HTTP {}", head.status()));
+    }
     // Read the header itself: reqwest's content_length() describes the body
     // it received, which for a HEAD is empty.
     let size = head
@@ -316,6 +326,24 @@ mod tests {
             release_base("http://127.0.0.1:8765/latest.json", "0.6.0").as_deref(),
             Some("http://127.0.0.1:8765/")
         );
+    }
+
+    #[test]
+    fn release_base_never_falls_back_to_latest() {
+        for ep in [
+            "https://github.com/o/r/releases/latest/download/latest.json?x=1",
+            "https://github.com/o/r/releases/latest/download/latest.json/",
+        ] {
+            assert_eq!(release_base(ep, "0.6.0"), None, "{ep}");
+        }
+    }
+
+    #[test]
+    fn size_cap_is_inclusive() {
+        assert!(within_cap(0, 10, 10));
+        assert!(within_cap(4, 6, 10));
+        assert!(!within_cap(4, 7, 10));
+        assert!(!within_cap(10, 1, 10));
     }
 
     #[test]
