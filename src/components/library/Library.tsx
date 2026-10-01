@@ -43,6 +43,7 @@ import {
   useNav,
   goLibrary,
   goShelf,
+  goStorePage,
   openOverlay,
   back,
   type LibraryView,
@@ -429,7 +430,7 @@ export function Library({
   const onSelectTab = useCallback(
     (next: LibraryTab) => {
       if (next === "store") {
-        goLibrary({ kind: "store" });
+        goStorePage();
         return;
       }
       setFilter(next);
