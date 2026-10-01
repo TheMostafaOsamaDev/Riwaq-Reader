@@ -1,6 +1,8 @@
 // The Store — top-level container for browsing source extensions.
 //
-// Owns the in-store navigation state:
+// Renders the in-store page named by nav history (`page`, from the
+// Library's `{ kind: "store", page }` view), so Back walks
+// novel → source → sources like any other destination:
 //
 //   sources    → cards for every installed extension
 //   extensions → the manager: install/update/remove, and repositories
@@ -8,13 +10,13 @@
 //   novel      → one novel's detail page (header, accordion, actions)
 //
 // Each sub-view receives a small set of callbacks (`onOpenSource`,
-// `onOpenNovel`, `onBack`) so navigation flows in one direction through
-// here. The Store is mounted inside the Library's body only while the
+// `onOpenNovel`, `onBack`); opening pushes a history entry and onBack is
+// plain back(). The Store is mounted inside the Library's body only while the
 // "Store" tab is active — AnimatedSwap actually unmounts it (after its
 // exit-fade) the moment the user switches away, and mounts a fresh
 // instance on return. That is deliberate and load-bearing for the effect
 // below, not just an implementation detail: switching tabs does NOT
-// preserve `view`/`rangeDialog` state.
+// preserve `rangeDialog` state (the page itself lives in history).
 //
 // initExtensions() is called from THIS component's own mount effect, not
 // from App.tsx's startup. It used to be App's — three separate,
@@ -54,12 +56,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExtensionsView } from "./ExtensionsView";
 import { SourcesListView } from "./SourcesListView";
-import {
-  onOpenExtensionsManager,
-  onOpenStoreSource,
-  takePendingExtensionsManager,
-  takePendingStoreSource,
-} from "../store/uiIntents";
+import { back, goStorePage, type StorePage } from "../store/navigation";
 import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
@@ -81,21 +78,20 @@ interface Props {
    *  refresh its shelf — the new book is already persisted by the
    *  importer; the parent just needs to re-list. */
   onImportComplete: () => void;
+  /** Which Store page is showing, from nav history. Absent = sources list. */
+  page?: StorePage;
 }
 
-type StoreView =
-  | { kind: "sources" }
-  | { kind: "extensions" }
-  | { kind: "source"; sourceId: string }
-  | { kind: "novel"; sourceId: string; novelUrl: string };
+type StoreView = { kind: "sources" } | StorePage;
 
 export function Store({
   theme,
   layout,
   onStreamRead,
   onImportComplete,
+  page,
 }: Props) {
-  const [view, setView] = useState<StoreView>({ kind: "sources" });
+  const view: StoreView = page ?? { kind: "sources" };
   const [rangeDialog, setRangeDialog] = useState<{
     sourceId: string;
     novelUrl: string;
@@ -130,53 +126,19 @@ export function Store({
   }, []);
 
   const openSource = useCallback((sourceId: string) => {
-    setView({ kind: "source", sourceId });
+    goStorePage({ kind: "source", sourceId });
   }, []);
 
   const openExtensions = useCallback(() => {
-    setView({ kind: "extensions" });
+    goStorePage({ kind: "extensions" });
   }, []);
 
   const openNovel = useCallback((sourceId: string, novelUrl: string) => {
-    setView({ kind: "novel", sourceId, novelUrl });
+    goStorePage({ kind: "novel", sourceId, novelUrl });
   }, []);
 
-  const backToSources = useCallback(() => {
-    setView({ kind: "sources" });
-  }, []);
-
-  const backToSource = useCallback(() => {
-    setView((prev) => {
-      if (prev.kind === "novel") {
-        return { kind: "source", sourceId: prev.sourceId };
-      }
-      return prev;
-    });
-  }, []);
-
-  // Open a source targeted from outside the Store (the main search's Websites
-  // results). A request that arrived before we mounted — e.g. the search
-  // jumped in from the shelf — is consumed on mount; later ones arrive live
-  // through the subscription.
-  useEffect(() => {
-    const pending = takePendingStoreSource();
-    if (pending) setView({ kind: "source", sourceId: pending });
-    return onOpenStoreSource((sourceId) =>
-      setView({ kind: "source", sourceId }),
-    );
-  }, []);
-
-  // "Open Extensions", asked for from anywhere — in practice the notice a
-  // saved novel shows when its extension is gone. Consumed on mount too:
-  // the request usually arrives from a library-backed novel page, i.e.
-  // while this component does not exist yet, and the Library answers it by
-  // switching to the Store — which is what mounts us.
-  useEffect(() => {
-    if (takePendingExtensionsManager()) setView({ kind: "extensions" });
-    return onOpenExtensionsManager(() => {
-      if (takePendingExtensionsManager()) setView({ kind: "extensions" });
-    });
-  }, []);
+  const backToSources = useCallback(() => back(), []);
+  const backToSource = useCallback(() => back(), []);
 
   return (
     <>

@@ -25,7 +25,7 @@ import { NovelCard } from "./NovelCard";
 import { appendPage, searchView, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
-import { openExtensionsManager } from "../store/uiIntents";
+import { goStorePage } from "../store/navigation";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
 
 interface Props {
@@ -89,8 +89,8 @@ export function SourceHomeView({
   const searchGeneration = useRef(0);
 
   // Load sections on mount, and again whenever sourceId changes — e.g.
-  // uiIntents.openStoreSource can swap sourceId in place without
-  // unmounting this component.
+  // the main search opening another source while this page is showing
+  // swaps sourceId in place without unmounting this component.
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
@@ -205,7 +205,7 @@ export function SourceHomeView({
         <Button
           theme={theme}
           variant="secondary"
-          onClick={openExtensionsManager}
+          onClick={() => goStorePage({ kind: "extensions" })}
           leadingIcon={<Icon name="layers" size={14} />}
           style={{ minHeight: 44 }}
         >

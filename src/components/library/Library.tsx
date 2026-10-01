@@ -30,7 +30,6 @@ import { AnimatedFullScreen } from "../AnimatedFullScreen";
 import {
   onEditBook,
   onOpenDownloadQueue,
-  onOpenExtensionsManager,
   takePendingEditBook,
 } from "../../store/uiIntents";
 import { onLibraryChanged } from "../../store/backgroundImport";
@@ -267,6 +266,7 @@ export function Library({
   // The shelf whose detail view is open, if any — drives the sidebar's
   // per-shelf active highlight (Task 9).
   const activeShelfId = view.kind === "shelfDetail" ? view.shelfId : undefined;
+  const storePage = view.kind === "store" ? view.page : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
 
@@ -913,17 +913,6 @@ export function Library({
     [],
   );
 
-  // "Open Extensions", asked for by the notice a saved novel shows when its
-  // source extension is gone. Our half is getting the user to the Store
-  // destination — which unmounts that novel page and mounts the Store, and
-  // the Store selects its extensions view from the same request. A no-op
-  // when the Store is already the destination (navigate() drops a move to
-  // the snapshot it is already on), which is exactly the Store-side case.
-  useEffect(
-    () => onOpenExtensionsManager(() => goLibrary({ kind: "store" })),
-    [],
-  );
-
   // Files handed to us from outside (Open with, Android share, drag-drop)
   // import in the background (store/backgroundImport.ts), not here — this
   // component unmounts behind the reader, which is exactly when they arrive.
@@ -1063,6 +1052,7 @@ export function Library({
     onAddToShelf,
     onOpenShelf: (id: string) => goShelf(id),
     activeShelfId,
+    storePage,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);

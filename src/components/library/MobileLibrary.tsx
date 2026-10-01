@@ -56,6 +56,7 @@ export function MobileLibrary({
   onAddToShelf,
   onOpenShelf,
   activeShelfId,
+  storePage,
   onDelete: _onDelete,
   onEdit: _onEdit,
   onCardContextMenu,
@@ -244,12 +245,13 @@ export function MobileLibrary({
               <BackHeader
                 theme={theme}
                 title={tr("sidebar.store")}
-                onBack={() => setTab("all")}
+                onBack={() => back()}
               />
               <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
                 <Store
                   theme={theme}
                   layout="mobile"
+                  page={storePage}
                   onStreamRead={onStreamRead}
                   onImportComplete={onSourceImportComplete}
                 />
