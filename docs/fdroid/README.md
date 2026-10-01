@@ -61,7 +61,9 @@ F-Droid requires it, none affecting the APK's contents:
   in the tree F-Droid's scanner checks.
 - fdroidserver deletes `gradle-wrapper.jar` by itself, so the recipe
   regenerates it in `build`, at the version the committed wrapper pins: the
-  Tauri CLI runs `./gradlew`. (Listing the jar under `scandelete` as well is
+  Tauri CLI runs `./gradlew`. It does so in an empty directory, because the
+  project's settings include `tauri.settings.gradle`, which only exists once
+  the Tauri CLI has started its build. (Listing the jar under `scandelete` as well is
   an error, "Unused scandelete path".)
 - The debug-signing fallback in `app/build.gradle.kts` is switched off in
   `prebuild`, so the build comes out unsigned for F-Droid to compare.

@@ -60,8 +60,10 @@ Builds:
       - source $HOME/.cargo/env
       - export NDK_HOME=$$NDK$$
       - pnpm install --frozen-lockfile
-      - gradle wrapper -p src-tauri/gen/android --gradle-version $(sed -n 's/.*gradle-\(.*\)-bin\.zip/\1/p'
-        src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties)
+      - wrapper=$PWD/src-tauri/gen/android/gradle/wrapper
+      - (cd "$(mktemp -d)" && touch settings.gradle && gradle wrapper --gradle-version "$(sed -n 's/.*gradle-\(.*\)-bin\.zip/\1/p'
+        "$wrapper/gradle-wrapper.properties")" && cp gradle/wrapper/gradle-wrapper.jar
+        "$wrapper/")
       - RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build
         --apk --target aarch64 armv7
     ndk: 26.1.10909125
