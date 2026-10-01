@@ -21,5 +21,5 @@ const section = (lang, idx) => {
   return out.join("\n");
 };
 process.stdout.write(
-  `${section("en", 0)}\n<div dir="rtl">\n\n${section("ar", 1)}\n</div>\n`,
+  `<!-- riwaq-notes -->\n${section("en", 0)}\n<div dir="rtl">\n\n${section("ar", 1)}\n</div>\n\n`,
 );

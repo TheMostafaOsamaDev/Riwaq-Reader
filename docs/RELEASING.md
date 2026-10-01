@@ -80,6 +80,8 @@ set after the first signed Android release:
    `preflight`** without this file. The pipeline uploads it as
    `whats-new.json` (with its images), writes the release body from it, and
    `SHA256SUMS` covers them.
+   A prerelease tag (one with a hyphen, like `v0.2.0-rc1`) needs no notes
+   file: preflight skips the requirement and the notes job exits early.
 2. Push a `v*` tag. `preflight` re-runs the config check in seconds, then the
    pipeline builds seven targets into a **draft** release. A tag containing a
    hyphen (`v0.2.0-rc1`) is published as a prerelease, so it is not served to
