@@ -39,9 +39,25 @@ describe("the focus-mode pill", () => {
     expect(pill()).toContain("pointer-events:none");
   });
 
-  it("drops its transition under reduced motion", () => {
-    expect(pill(true)).toContain("transition:none");
-    expect(pill(false)).not.toContain("transition:none");
+  it("sits along the bottom, clear of the gesture bar", () => {
+    // It used to be a plate in the middle of the page, over the text the
+    // reader had just been given. Down here it covers nothing anyone is
+    // reading, and it is out of the way of the double-tap it describes.
+    expect(pill()).toContain("bottom:calc(env(safe-area-inset-bottom");
+    expect(pill()).not.toContain("top:50%");
+  });
+
+  it("stays on one line", () => {
+    // Wrapping is what turned a message into a block of screen.
+    expect(pill()).toContain("white-space:nowrap");
+  });
+
+  it("does not animate under reduced motion", () => {
+    // The duration is what starts the keyframe; without one the element's own
+    // styles paint, and those ARE the arrived state. So the message still
+    // appears — only the movement goes.
+    expect(pill(true)).not.toContain("animation-duration");
+    expect(pill(false)).toContain("animation-duration");
   });
 });
 
