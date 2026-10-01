@@ -1077,6 +1077,8 @@ export const FixedPageViewer = forwardRef<
   useEffect(() => {
     if (flow !== "paged") return;
     const onKey = (e: KeyboardEvent) => {
+      // Alt/⌘/Ctrl+arrows are app back/forward (navInput.ts), not page turns.
+      if (e.altKey || e.metaKey || e.ctrlKey) return;
       if (e.key === "ArrowLeft") flip(dir === "rtl" ? +1 : -1);
       else if (e.key === "ArrowRight") flip(dir === "rtl" ? -1 : +1);
     };

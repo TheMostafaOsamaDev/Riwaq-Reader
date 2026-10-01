@@ -686,6 +686,8 @@ export function DesktopReader({
       )
         return;
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      // Alt/⌘/Ctrl+arrows are app back/forward (navInput.ts), not page turns.
+      if (e.altKey || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
       // In RTL, "forward in the book" is the LEFT arrow — the same arrow
       // that visually points the way pages flip in a RTL-bound book.
