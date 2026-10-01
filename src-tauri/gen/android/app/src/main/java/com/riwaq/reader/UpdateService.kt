@@ -25,6 +25,19 @@ import androidx.core.app.NotificationManagerCompat
  *
  * AppUpdater starts it when a download begins and stops it on every terminal
  * state (ready, failed, cancelled).
+ *
+ * Start/stop handshake. `startForegroundService` obliges the service to call
+ * `startForeground` within seconds, and that only happens later, in
+ * [onStartCommand] on the main thread. A `stopService` in between (a download
+ * that fails at once: offline, no space, a re-verified copy) destroys the
+ * service before it ever went foreground, and Android kills the app with
+ * "Context.startForegroundService() did not then call
+ * Service.startForeground()". So [stop] only calls `stopService` once the
+ * service has confirmed foreground ([Phase.FOREGROUND]); while it is still
+ * [Phase.STARTING] it records [stopRequested], and [onStartCommand] — which
+ * always calls `startForeground` first — then stops itself. [onStartCommand]
+ * also stops itself when AppUpdater has no live download, which covers a
+ * worker that finished before the service started. All of it under [lock].
  */
 class UpdateService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
@@ -33,12 +46,32 @@ class UpdateService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         DownloadNotifier.ensureChannelPublic(this)
+        // Always first, unconditionally: this is what the platform demands of
+        // every startForegroundService, even one we are about to stop.
         startInForeground(NOTIF_ID, build(this, "Downloading Riwaq update", 0, true))
-        acquireWakeLock()
+        val keep = synchronized(lock) {
+            if (stopRequested || !AppUpdater.isWorking()) {
+                stopRequested = false
+                phase = Phase.NONE
+                false
+            } else {
+                phase = Phase.FOREGROUND
+                true
+            }
+        }
+        if (keep) {
+            acquireWakeLock()
+        } else {
+            // startId, not stopSelf(): a start() that raced in after this
+            // decision has a newer id, and keeps the service alive.
+            stopSelf(startId)
+        }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        // Also covers the system tearing a running service down.
+        synchronized(lock) { if (phase == Phase.FOREGROUND) phase = Phase.NONE }
         releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
@@ -66,8 +99,14 @@ class UpdateService : Service() {
         wakeLock = null
     }
 
+    private enum class Phase { NONE, STARTING, FOREGROUND }
+
     companion object {
         const val NOTIF_ID = 1003
+
+        private val lock = Any()
+        @Volatile private var phase = Phase.NONE
+        @Volatile private var stopRequested = false
 
         private fun build(ctx: Context, title: String, pct: Int, indeterminate: Boolean): Notification =
             NotificationCompat.Builder(ctx, TaskService.CHANNEL_ID)
@@ -80,26 +119,50 @@ class UpdateService : Service() {
                 .build()
 
         @JvmStatic
-        fun start(ctx: Context) {
+        fun start(ctx: Context): Unit = synchronized(lock) {
+            stopRequested = false
+            // Already starting or running: that instance serves this download
+            // too (onStartCommand re-checks AppUpdater when it runs).
+            if (phase != Phase.NONE) return
             val intent = Intent(ctx, UpdateService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else {
-                ctx.startService(intent)
+            phase = Phase.STARTING
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(intent)
+                } else {
+                    ctx.startService(intent)
+                }
+            } catch (e: Exception) {
+                phase = Phase.NONE
+                throw e
             }
         }
 
-        /** Safe to call when not running. Never routed through
-         *  startForegroundService — see TaskService.stop. */
+        /** Safe to call in any phase, any number of times. Never routed
+         *  through startForegroundService — see TaskService.stop — and never
+         *  a stopService before the service went foreground (see the class
+         *  comment). */
         @JvmStatic
-        fun stop(ctx: Context) {
-            ctx.stopService(Intent(ctx, UpdateService::class.java))
+        fun stop(ctx: Context): Unit = synchronized(lock) {
+            when (phase) {
+                Phase.STARTING -> stopRequested = true
+                Phase.FOREGROUND -> {
+                    phase = Phase.NONE
+                    ctx.stopService(Intent(ctx, UpdateService::class.java))
+                }
+                Phase.NONE -> {}
+            }
+            // No progress is posted after this point (see progress), so
+            // nothing can bring the ongoing notification back.
             DownloadNotifier.cancel(ctx, NOTIF_ID)
         }
 
-        /** Determinate progress on the service's notification. */
+        /** Determinate progress on the service's notification — only while the
+         *  service is foreground. Under [lock], so it cannot land after a
+         *  [stop] cleared the notification and leave an ongoing one behind. */
         @JvmStatic
-        fun progress(ctx: Context, version: String, bytes: Long, total: Long) {
+        fun progress(ctx: Context, version: String, bytes: Long, total: Long): Unit = synchronized(lock) {
+            if (phase != Phase.FOREGROUND) return
             val pct = if (total > 0) ((bytes * 100) / total).toInt().coerceIn(0, 100) else 0
             DownloadNotifier.ensureChannelPublic(ctx)
             try {
