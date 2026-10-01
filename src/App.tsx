@@ -752,6 +752,27 @@ function App() {
     }, 600);
   }, []);
 
+  // Position reports are taken only from the reader of the CURRENT layout.
+  // A layout flip crossfades the two readers, and the outgoing one stays
+  // mounted for that fade at the new window size: its text reflows under an
+  // unchanged scrollTop, and its scroll listener reports whatever paragraph
+  // now sits at its top. Measured: reading at paragraph 35, a mobile -> desktop
+  // flip saved paragraph 115. Read through a ref, so a report that lands after
+  // the flip's render is judged by the layout it lands in.
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
+  const reportFrom = useMemo(
+    () => ({
+      mobile: (idx: number, offset?: number) => {
+        if (isMobileRef.current) onParagraphChange(idx, offset);
+      },
+      desktop: (idx: number, offset?: number) => {
+        if (!isMobileRef.current) onParagraphChange(idx, offset);
+      },
+    }),
+    [onParagraphChange],
+  );
+
   useEffect(() => {
     return () => {
       if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
@@ -1215,7 +1236,7 @@ function App() {
                   resumeOffset={loaded.resumeOffset}
                   jumpNonce={loaded.jumpNonce}
                   onChapterChange={changeChapter}
-                  onParagraphChange={onParagraphChange}
+                  onParagraphChange={reportFrom.mobile}
                   onCreateHighlight={createHighlight}
                   onDeleteHighlight={removeHighlight}
                   onUpdateHighlightNote={editHighlightNote}
@@ -1243,7 +1264,7 @@ function App() {
                   resumeOffset={loaded.resumeOffset}
                   jumpNonce={loaded.jumpNonce}
                   onChapterChange={changeChapter}
-                  onParagraphChange={onParagraphChange}
+                  onParagraphChange={reportFrom.desktop}
                   onCreateHighlight={createHighlight}
                   onDeleteHighlight={removeHighlight}
                   onUpdateHighlightNote={editHighlightNote}
