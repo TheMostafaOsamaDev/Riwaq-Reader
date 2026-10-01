@@ -71,11 +71,6 @@ export function DesktopLibrary({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const q = query.trim().toLowerCase();
-  // The shelf is the active destination only when we're not on the Store,
-  // the Shelves page, or an open novel detail. Gates the sidebar's Library
-  // row + status-filter highlight so a lingering filter doesn't stay lit
-  // after navigating to a sibling destination.
-  const shelfActive = tab !== "store" && !shelvesActive && !sourceDetailView;
   // The single-shelf detail page (Task 10): resolves the nav view's shelfId
   // (already threaded down as `activeShelfId`) against the live shelf list,
   // so a shelf deleted out from under an open detail view quietly falls
@@ -83,6 +78,15 @@ export function DesktopLibrary({
   const activeShelf = activeShelfId
     ? (shelves.find((s) => s.id === activeShelfId) ?? null)
     : null;
+  // The shelf is the active destination only when we're not on the Store,
+  // the Shelves page, a single shelf, or an open novel detail. Gates the
+  // sidebar's Library row + status-filter highlight so a lingering filter
+  // doesn't stay lit after navigating to a sibling destination — `tab` keeps
+  // its last value (e.g. "wishlist") while a shelf is open. Keyed on the
+  // resolved `activeShelf`, not the id: a deleted shelf's detail falls back
+  // to the library grid, and then the Library highlight is right again.
+  const shelfActive =
+    tab !== "store" && !shelvesActive && !activeShelf && !sourceDetailView;
   const shelfBooks = activeShelf ? booksOnShelf(books, activeShelf.id) : [];
   const visible = books
     .filter((b) => matchesTab(b, tab))

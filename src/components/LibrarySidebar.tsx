@@ -8,7 +8,7 @@
 // split-button are pinned to the bottom. Mobile keeps its bottom nav.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "./Icon";
 import { Spinner } from "./Spinner";
 import type { IconProps } from "./Icon";
@@ -17,6 +17,7 @@ import {
   FONT_STACKS,
   type Theme,
   type ThemeKey,
+  withAlpha,
   Z,
   Z_LOCAL,
 } from "../styles/tokens";
@@ -117,6 +118,18 @@ export function LibrarySidebar({
 
   const [openLib, setOpenLib] = useState(true);
   const [openShelves, setOpenShelves] = useState(true);
+
+  // Index of each tree's current destination, -1 when it has none. Rows
+  // before it are on the lit path from the parent. The parent stays solid
+  // while its tree holds the destination (the section you're in); the child
+  // is marked by its text alone, not a second solid pill — see TreeButton.
+  const libActiveIdx = shelfActive
+    ? TREE_KEYS.findIndex((t) => t.key === tab)
+    : -1;
+  const shelfActiveIdx =
+    activeShelfId === undefined
+      ? -1
+      : shelves.findIndex((s) => s.id === activeShelfId);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const importRef = useRef<HTMLDivElement>(null);
@@ -258,7 +271,7 @@ export function LibrarySidebar({
               dark={dark}
               icon="grid"
               label={tr("sidebar.library")}
-              active={shelfActive && tab === "all"}
+              active={shelfActive}
               open={openLib}
               onActivate={() => setTab("all")}
               setOpen={setOpenLib}
@@ -267,12 +280,13 @@ export function LibrarySidebar({
             />
             <Collapse open={openLib}>
               <Tree theme={theme}>
-                {TREE_KEYS.map((t) => (
+                {TREE_KEYS.map((t, i) => (
                   <TreeButton
                     key={t.key}
                     theme={theme}
                     label={tr(t.k)}
-                    active={shelfActive && tab === t.key}
+                    active={i === libActiveIdx}
+                    onPath={i < libActiveIdx}
                     onClick={() => setTab(t.key)}
                   />
                 ))}
@@ -287,7 +301,7 @@ export function LibrarySidebar({
               dark={dark}
               icon="layers"
               label={tr("sidebar.shelves")}
-              active={shelvesActive || activeShelfId !== undefined}
+              active={shelvesActive || shelfActiveIdx >= 0}
               open={openShelves}
               onActivate={onOpenShelves}
               setOpen={setOpenShelves}
@@ -296,43 +310,22 @@ export function LibrarySidebar({
             />
             <Collapse open={openShelves}>
               <Tree theme={theme}>
-                {shelves.map((s) => (
+                {shelves.map((s, i) => (
                   <TreeButton
                     key={s.id}
                     theme={theme}
                     label={s.name}
-                    active={activeShelfId === s.id}
+                    active={i === shelfActiveIdx}
+                    onPath={i < shelfActiveIdx}
                     onClick={() => onOpenShelf(s.id)}
                   />
                 ))}
-                <button
+                <TreeButton
+                  theme={theme}
+                  icon="plus"
+                  label={tr("sidebar.newShelf")}
                   onClick={onNewShelf}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    width: "100%",
-                    textAlign: "start",
-                    border: 0,
-                    background: "transparent",
-                    color: theme.muted,
-                    font: "inherit",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    padding: "8px 12px",
-                    borderRadius: 9,
-                    cursor: "pointer",
-                    transition: TRANSITION,
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = theme.hover)
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "transparent")
-                  }
-                >
-                  <Icon name="plus" size={14} /> {tr("sidebar.newShelf")}
-                </button>
+                />
               </Tree>
             </Collapse>
           </div>
@@ -600,31 +593,37 @@ function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
         transition: "max-height 220ms ease, opacity 180ms ease",
       }}
     >
-      <div ref={ref}>{children}</div>
+      {/* flow-root: without it a child's top margin (the Tree's) collapses
+          out through this div, scrollHeight comes up that many px short, and
+          the overflow above clips the bottom of the last row's hover fill. */}
+      <div ref={ref} style={{ display: "flow-root" }}>
+        {children}
+      </div>
     </div>
   );
 }
 
+/** Indented TreeButtons with a curved connector per row (see
+ *  `.riwaq-tree-item` in global.css): the rail runs down the inline-start
+ *  side and each row bends off it with a rounded elbow; the last row's elbow
+ *  ends the rail. The theme reaches that CSS as custom properties. */
 function Tree({ theme, children }: { theme: Theme; children: ReactNode }) {
   return (
     <div
-      style={{
-        position: "relative",
-        marginBlockStart: 4,
-        marginInlineStart: 22,
-        paddingInlineStart: 14,
-      }}
+      style={
+        {
+          marginBlockStart: 4,
+          marginInlineStart: 22,
+          paddingInlineStart: 14,
+          "--tree-hover-bg": theme.hover,
+          "--tree-rule": theme.rule,
+          // Hover path: half-strength muted, so it reads as a preview, a
+          // clear step below the current path's full ink.
+          "--tree-hover": withAlpha(theme.muted, 0.5),
+          "--tree-active": theme.ink,
+        } as CSSProperties
+      }
     >
-      <span
-        style={{
-          position: "absolute",
-          insetInlineStart: 0,
-          top: 2,
-          bottom: 14,
-          width: 1,
-          background: theme.rule,
-        }}
-      />
       {children}
     </div>
   );
@@ -632,26 +631,37 @@ function Tree({ theme, children }: { theme: Theme; children: ReactNode }) {
 
 function TreeButton({
   theme,
+  icon,
   label,
-  active,
+  active = false,
+  onPath = false,
   onClick,
 }: {
   theme: Theme;
+  icon?: IconProps["name"];
   label: string;
-  active: boolean;
+  active?: boolean;
+  /** Sits between the parent row and the active row: its stretch of rail
+   *  lights up, so the line runs unbroken from parent to destination. */
+  onPath?: boolean;
   onClick: () => void;
 }) {
+  // Selected is text only: full ink and bold against the idle rows' muted
+  // 500, with the lit branch + path (global.css) leading to it. No fill —
+  // the parent row already wears the solid pill while you're anywhere in
+  // its section. The hover tint is CSS too (`.riwaq-tree-item`), behind
+  // `(hover: hover)`, so a tap on a touch screen doesn't leave it stuck on.
   return (
     <button
       onClick={onClick}
       style={{
-        position: "relative",
-        display: "block",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
         width: "100%",
         textAlign: "start",
         border: 0,
-        background: active ? theme.ink : "transparent",
-        color: active ? theme.paper : theme.muted,
+        color: active ? theme.ink : theme.muted,
         fontWeight: active ? 600 : 500,
         fontSize: 13,
         fontFamily: "inherit",
@@ -660,23 +670,12 @@ function TreeButton({
         cursor: "pointer",
         transition: TRANSITION,
       }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = theme.hover;
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = "transparent";
-      }}
+      className="riwaq-tree-item"
+      data-active={active || undefined}
+      data-path={onPath || undefined}
+      aria-current={active ? "page" : undefined}
     >
-      <span
-        style={{
-          position: "absolute",
-          insetInlineStart: -14,
-          top: "50%",
-          width: 10,
-          height: 1,
-          background: theme.rule,
-        }}
-      />
+      {icon && <Icon name={icon} size={14} />}
       {label}
     </button>
   );

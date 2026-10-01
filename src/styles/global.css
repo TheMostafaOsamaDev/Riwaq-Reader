@@ -410,6 +410,131 @@ textarea::placeholder {
   height: 0;
 }
 
+/* Sidebar tree connectors (LibrarySidebar's `Tree`). Each row draws its own
+   piece, so the rail always ends exactly at the last row's elbow, whatever
+   the row count or row height:
+     ::after  — the straight rail: the row's full height (plus its lead, see
+                --tree-lead), or on the last row only down to where its
+                branch starts curving;
+     ::before — the branch: a quarter-circle elbow (the box is exactly one
+                radius tall, so its inline-start border is all curve) leaving
+                the rail tangentially and landing level with the row's middle.
+                border-end-start-radius is bottom-left in LTR, bottom-right in
+                RTL.
+   Rail and branch only touch at the elbow's tangent point — no stretch of
+   line is drawn twice, which the translucent `rule` colour would show as a
+   darker segment. The pseudo-elements sit in the Tree's 14px inline-start
+   padding, outside the row's box, so the row's hover/active fill never
+   covers them. Colours arrive as custom properties from `Tree`, per theme. */
+
+/* The rail's two colours, above and below the row's elbow. Registered so
+   the gradient they feed can transition (unregistered custom properties
+   swap at once); WebKit before 16.4 just snaps. */
+@property --rail-upper {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+@property --rail-lower {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+.riwaq-tree-item {
+  --tree-radius: 8px;
+  /* How far the rail reaches above the row: 0, except the first row's runs
+     up through the Tree's 4px top margin to meet the parent row. */
+  --tree-lead: 0px;
+  /* Where the elbow starts along the rail. The rail is the row plus its
+     lead, so the row's middle sits at 50% + lead/2 of it; the elbow starts
+     one radius above that. Left as a percentage: it resolves inside the
+     gradient below, against the rail's own height. */
+  --tree-elbow: calc(50% + var(--tree-lead) / 2 - var(--tree-radius) + 1px);
+  position: relative;
+  background: transparent;
+}
+.riwaq-tree-item:first-child {
+  --tree-lead: 4px;
+}
+/* The last row's rail stops at its elbow: all of it is "above". */
+.riwaq-tree-item:last-child {
+  --tree-elbow: 100%;
+}
+.riwaq-tree-item::before,
+.riwaq-tree-item::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: -14px;
+  pointer-events: none;
+}
+.riwaq-tree-item::before {
+  top: calc(50% - var(--tree-radius));
+  height: var(--tree-radius);
+  width: 10px;
+  border-inline-start: 1px solid var(--tree-rule);
+  border-block-end: 1px solid var(--tree-rule);
+  border-end-start-radius: var(--tree-radius);
+  transition: border-color 160ms ease;
+}
+.riwaq-tree-item::after {
+  --rail-upper: var(--tree-rule);
+  --rail-lower: var(--tree-rule);
+  top: calc(-1 * var(--tree-lead));
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    var(--rail-upper) var(--tree-elbow),
+    var(--rail-lower) 0
+  );
+  transition:
+    --rail-upper 160ms ease,
+    --rail-lower 160ms ease;
+}
+.riwaq-tree-item:last-child::after {
+  bottom: calc(50% + var(--tree-radius) - 1px);
+}
+
+/* Two paths run from the parent down the rail to a row's elbow and on
+   into its branch: the current row's (`--tree-active`) and the hovered
+   row's (`--tree-hover`). Where they share rail, the current path wins.
+
+   Hover: the hovered row's fill, its branch and its rail down to it, plus
+   the whole rail of every row above it (`:has(~ :hover)`). Wrapped in
+   :where() so these weigh no more than the base rules above, and the
+   [data-*] rules below override them by specificity, whatever order they
+   meet in. WebKit before 15.4 has no :has() and lights the hovered branch
+   alone. */
+@media (hover: hover) {
+  .riwaq-tree-item:where(:hover) {
+    background: var(--tree-hover-bg);
+  }
+  .riwaq-tree-item:where(:hover)::before {
+    border-color: var(--tree-hover);
+  }
+  .riwaq-tree-item:where(:hover)::after {
+    --rail-upper: var(--tree-hover);
+  }
+  .riwaq-tree-item:where(:has(~ .riwaq-tree-item:hover))::after {
+    --rail-upper: var(--tree-hover);
+    --rail-lower: var(--tree-hover);
+  }
+}
+/* Current: the active row's branch and rail down to it, plus the whole rail
+   of every row above it (`data-path`, set by LibrarySidebar). The active
+   row's rail below its elbow is left to the base or hover rule — so when
+   the hovered row is further down, the hover path carries on from here. */
+.riwaq-tree-item[data-active]::before {
+  border-color: var(--tree-active);
+}
+.riwaq-tree-item[data-active]::after {
+  --rail-upper: var(--tree-active);
+}
+.riwaq-tree-item[data-path]::after {
+  --rail-upper: var(--tree-active);
+  --rail-lower: var(--tree-active);
+}
+
 /* Range input — a 44px-tall hit area (Apple HIG / Material touch minimum)
    wrapped around a 4px rail. Was 20px tall with a 14px thumb, which missed
    that minimum on touch and gave no read on position: the rail was a flat
