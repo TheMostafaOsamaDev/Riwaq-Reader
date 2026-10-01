@@ -48,26 +48,17 @@ let host: HTMLDivElement;
 let root: Root;
 let pointerdownTargets: EventTarget[];
 
-/** The prototype that owns addEventListener for happy-dom's elements. NOT the
- *  global `EventTarget` — that one is Node's, and a spy on it sees nothing. */
-function elementEventTarget(): EventTarget {
-  let o: object | null = document.createElement("div");
-  while (o && !Object.getOwnPropertyDescriptor(o, "addEventListener")) {
-    o = Object.getPrototypeOf(o);
-  }
-  if (!o) throw new Error("no addEventListener on the element chain");
-  return o as EventTarget;
-}
-
 beforeEach(() => {
   pointerdownTargets = [];
-  const proto = elementEventTarget();
+  // On HTMLElement, not the global EventTarget: under happy-dom that one is
+  // Node's, and a spy on it sees nothing. The spy shadows the inherited method.
+  const proto = window.HTMLElement.prototype;
   const realAdd = proto.addEventListener;
   vi.spyOn(proto, "addEventListener").mockImplementation(function (
-    this: EventTarget,
-    type,
-    listener,
-    options,
+    this: HTMLElement,
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
   ) {
     if (type === "pointerdown") pointerdownTargets.push(this);
     return realAdd.call(this, type, listener, options);

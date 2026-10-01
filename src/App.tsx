@@ -567,8 +567,6 @@ function App() {
             }
           }
         }
-        livePara.current = null;
-        livePage.current = null;
         if (flow) {
           setFlowDocxId(id);
           const { book, state } = flow;
@@ -697,7 +695,6 @@ function App() {
         clearTimeout(paragraphSaveTimer.current);
         paragraphSaveTimer.current = null;
       }
-      livePara.current = null;
       return {
         ...prev,
         currentChapter: clamped,
@@ -711,10 +708,30 @@ function App() {
   const paragraphSaveTimer = useRef<number | null>(null);
   // Where the reader is right now, ahead of the debounced save. A layout flip
   // mounts a fresh reader, and it has to start here — see the reseed below.
-  // null = nothing reported since the current resume hint was set.
-  const livePara = useRef<{ idx: number; off: number } | null>(null);
+  // Stamped with the book, chapter and jump it was reported under: opening a
+  // book, changing chapter or jumping to a highlight sets a new resume hint,
+  // and a position reported before that no longer applies. The stamp retires
+  // it without every one of those paths having to clear it by hand.
+  const livePara = useRef<{
+    bookId: string;
+    chapter: number;
+    jumpNonce: number;
+    idx: number;
+    off: number;
+  } | null>(null);
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
   const onParagraphChange = useCallback((idx: number, offset?: number) => {
-    livePara.current = { idx, off: offset ?? 0 };
+    const l = loadedRef.current;
+    if (l) {
+      livePara.current = {
+        bookId: l.book.id,
+        chapter: l.currentChapter,
+        jumpNonce: l.jumpNonce,
+        idx,
+        off: offset ?? 0,
+      };
+    }
     if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
     paragraphSaveTimer.current = window.setTimeout(() => {
       paragraphSaveTimer.current = null;
@@ -743,15 +760,6 @@ function App() {
 
   // Debounced persistence of fixed-page (PDF/DOCX) reading position + progress.
   const pageSaveTimer = useRef<number | null>(null);
-  // The fixed reader's live page, for the same reason as livePara. It never
-  // writes back into loadedFixed.state, which still holds the page the book
-  // was opened at.
-  const livePage = useRef<{
-    bookId: string;
-    page: number;
-    off: number;
-    blockId?: string;
-  } | null>(null);
   const savePagePosition = useCallback(
     (
       bookId: string,
@@ -760,7 +768,6 @@ function App() {
       pageOffset: number,
       blockId?: string,
     ) => {
-      livePage.current = { bookId, page, off: pageOffset, blockId };
       if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
       pageSaveTimer.current = window.setTimeout(() => {
         pageSaveTimer.current = null;
@@ -785,39 +792,21 @@ function App() {
   }, []);
 
   // A layout flip (rotation, fold/unfold, split-screen, a desktop window
-  // dragged across 720px) remounts the reader in its other slot, and a fresh
+  // dragged across 720px) swaps MobileReader for DesktopReader, and a fresh
   // reader starts at its resume hint — the place the book was OPENED at. Move
   // the hint to where the reader actually is first, or the flip throws them
   // back and the new reader saves that over their real position.
   useReseedOnChange(isMobile, () => {
     const para = livePara.current;
-    if (para) {
-      setLoaded((prev) =>
-        prev
-          ? { ...prev, resumeParagraph: para.idx, resumeOffset: para.off }
-          : prev,
-      );
-    }
-    const page = livePage.current;
-    if (page) {
-      setLoadedFixed((prev) =>
-        prev && prev.book.id === page.bookId
-          ? {
-              ...prev,
-              state: {
-                ...prev.state,
-                currentPage: page.page,
-                pageOffset: page.off,
-                // FixedPageReader prefers the anchor over the page number,
-                // so a stale one would win over the page we just set.
-                fixedAnchor: page.blockId
-                  ? { blockId: page.blockId, frac: page.off }
-                  : undefined,
-              },
-            }
-          : prev,
-      );
-    }
+    if (!para) return;
+    setLoaded((prev) =>
+      prev &&
+      para.bookId === prev.book.id &&
+      para.chapter === prev.currentChapter &&
+      para.jumpNonce === prev.jumpNonce
+        ? { ...prev, resumeParagraph: para.idx, resumeOffset: para.off }
+        : prev,
+    );
   });
 
   const createHighlight = useCallback(
@@ -1013,7 +1002,6 @@ function App() {
         clearTimeout(paragraphSaveTimer.current);
         paragraphSaveTimer.current = null;
       }
-      livePara.current = null;
       setLoaded((prev) =>
         prev
           ? {
@@ -1121,9 +1109,16 @@ function App() {
             base.screen === "settings"
               ? "settings"
               : base.screen === "reader"
-                ? isMobile
-                  ? "reader-mobile"
-                  : "reader-desktop"
+                ? // The fixed reader is one component for both layouts and
+                  // takes `layout` as a prop, so it keeps its key and is NOT
+                  // remounted by a flip — it keeps its page and its decoded
+                  // pages. The flowing readers are two components; their key
+                  // has to change, and useReseedOnChange carries the position.
+                  loadedFixed?.book.id === base.bookId
+                  ? "reader-fixed"
+                  : isMobile
+                    ? "reader-mobile"
+                    : "reader-desktop"
                 : "library"
           }
         >
