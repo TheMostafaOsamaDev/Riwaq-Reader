@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { paginatedFraction } from "./readerProgress";
 import { useReducedMotion } from "../styles/motion";
 
@@ -28,6 +29,13 @@ import { useReducedMotion } from "../styles/motion";
  * mode switch, or chapter remount, we land on whichever page contains
  * that paragraph, so the reader keeps its place no matter how the layout
  * reflows.
+ *
+ * Only a page turn the reader asked for moves the anchor or slides. A page
+ * change forced by layout (a resize, a panel docking) is the same place in
+ * the book laid out differently: it lands in one frame and leaves the anchor
+ * alone. Re-deriving the anchor from "first paragraph that starts on this
+ * page" after a resize walked the reader back a few paragraphs every time
+ * the window was maximized or restored.
  */
 export interface PaginatedAPI {
   nextPage(): boolean;
@@ -84,6 +92,12 @@ export function PaginatedView({
 
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [page, setPage] = useState(0);
+  // Whether the current page was reached by a reader-initiated turn — the
+  // only change that slides. Cleared the moment layout moves the page.
+  const [turnAnimated, setTurnAnimated] = useState(false);
+  // Set by nextPage/prevPage, consumed by the page-change effect below: it is
+  // what tells a turn (move the anchor) from a re-layout (keep it).
+  const userTurnRef = useRef(false);
   const [totalPages, setTotalPages] = useState(1);
 
   // The "anchor" is the paragraph we want to keep on screen across
@@ -106,12 +120,23 @@ export function PaginatedView({
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const apply = () => {
+    const read = () => {
       const r = el.getBoundingClientRect();
-      setSize({ w: r.width, h: r.height });
+      return { w: r.width, h: r.height };
     };
-    apply();
-    const ro = new ResizeObserver(apply);
+    setSize(read());
+    // ResizeObserver delivers after layout but before paint. A plain setState
+    // here renders on a later task, so WebKit paints a frame of the new width
+    // with the old column width and page offset, then snaps. Committing
+    // synchronously lets the re-anchor below land in that same frame.
+    const ro = new ResizeObserver(() => {
+      const next = read();
+      flushSync(() =>
+        setSize((prev) =>
+          prev.w === next.w && prev.h === next.h ? prev : next,
+        ),
+      );
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -140,6 +165,29 @@ export function PaginatedView({
       ? firstColOffsetLeft - paragraphOffsetLeft
       : paragraphOffsetLeft - firstColOffsetLeft;
   };
+
+  // Text can reflow while the box keeps its size — a web font swapping in
+  // after the first measure, a chapter image arriving — and ResizeObserver
+  // says nothing about either. Without this a book opened before its reading
+  // font had loaded landed a page or more away from the resume point.
+  const [reflowRev, setReflowRev] = useState(0);
+  useEffect(() => {
+    const inner = innerRef.current;
+    const fonts = document.fonts as FontFaceSet | undefined;
+    let live = true;
+    const bump = () => {
+      if (live) setReflowRev((r) => r + 1);
+    };
+    fonts?.addEventListener?.("loadingdone", bump);
+    fonts?.ready?.then(bump);
+    // `load` does not bubble, so catch it on the way down.
+    inner?.addEventListener("load", bump, true);
+    return () => {
+      live = false;
+      fonts?.removeEventListener?.("loadingdone", bump);
+      inner?.removeEventListener("load", bump, true);
+    };
+  }, []);
 
   // After every layout pass: recompute total pages and re-anchor the
   // viewport on the tracked paragraph. This effect handles mount, chapter
@@ -194,15 +242,29 @@ export function PaginatedView({
         )
       : 0;
     setPage((prev) => (prev === anchorPage ? prev : anchorPage));
+    // Even when the page index survives, its pixel offset just changed with
+    // the stride; neither may glide.
+    setTurnAnimated(false);
     // Deps deliberately include rtl/columnsPerPage/columnGap so a setting
     // change re-anchors. `children` is unstable across renders but that's
     // fine — it just triggers a remeasure when chapter content changes.
-  }, [size.w, size.h, children, columnsPerPage, columnGap, rtl, pageStride]);
+  }, [
+    size.w,
+    size.h,
+    children,
+    columnsPerPage,
+    columnGap,
+    rtl,
+    pageStride,
+    reflowRev,
+  ]);
 
-  // Whenever the visible page changes, find the first paragraph (in
-  // source order) that starts on this page and update the anchor +
-  // bubble up to the parent.
+  // When the reader turns the page, find the first paragraph (in source
+  // order) that starts on the new page and update the anchor + bubble up to
+  // the parent. Layout-driven page changes skip this — see the header.
   useLayoutEffect(() => {
+    if (!userTurnRef.current) return;
+    userTurnRef.current = false;
     const inner = innerRef.current;
     if (!inner || pageStride === 0) return;
     const ps = inner.querySelectorAll<HTMLElement>("[data-p-index]");
@@ -249,11 +311,15 @@ export function PaginatedView({
     onApi({
       nextPage: () => {
         if (page >= totalPages - 1) return false;
+        userTurnRef.current = true;
+        setTurnAnimated(true);
         setPage(page + 1);
         return true;
       },
       prevPage: () => {
         if (page <= 0) return false;
+        userTurnRef.current = true;
+        setTurnAnimated(true);
         setPage(page - 1);
         return true;
       },
@@ -294,7 +360,7 @@ export function PaginatedView({
           // the inner element rightward to reveal its leftmost (later)
           // columns; LTR is the mirror.
           transform: `translateX(${(rtl ? 1 : -1) * page * pageStride}px)`,
-          transition: animate ? "transform 220ms ease" : "none",
+          transition: animate && turnAnimated ? "transform 220ms ease" : "none",
           willChange: animate ? "transform" : "auto",
         }}
       >
