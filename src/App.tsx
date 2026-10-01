@@ -265,8 +265,13 @@ function App() {
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
   // device with a short viewport as mobile too.
+  //
+  // 719.98, not 720: the desktop window's minWidth is 720 (tauri.conf.json),
+  // and an inclusive 720 meant dragging the window to its narrowest flipped
+  // the whole app into the phone UI — bottom tab bar, remounted sidebar — and
+  // back again one pixel wider. A desktop window now never reaches it.
   const isMobile = useMediaQuery(
-    "(max-width: 720px), (pointer: coarse) and (max-height: 480px)",
+    "(max-width: 719.98px), (pointer: coarse) and (max-height: 480px)",
   );
   // Drag-and-drop is desktop-only: Android has no pointer drag onto the
   // window, and Tauri emits no drag events there. Gate on the actual OS via
