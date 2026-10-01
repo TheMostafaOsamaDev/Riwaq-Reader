@@ -263,6 +263,16 @@ async function readBookJson(id: string): Promise<EpubBook> {
   return JSON.parse(raw);
 }
 
+/**
+ * Read a book's saved state.
+ *
+ * Every field is rebuilt and validated rather than trusting the parsed JSON,
+ * because state on disk can be older than this code. The cost of that choice:
+ * **a field added to `BookState` is silently dropped on read until it is also
+ * added here.** `readingMode` shipped that way — written on every switch,
+ * discarded on every read, so the reading-mode toggle appeared to do nothing
+ * at all. If you add a field to `BookState`, add it here too.
+ */
 async function readState(id: string): Promise<BookState> {
   const path = `${bookDir(id)}/state.json`;
   if (!(await exists(path, { baseDir: BASE }))) {
@@ -295,6 +305,13 @@ async function readState(id: string): Promise<BookState> {
               blockId: parsed.fixedAnchor.blockId,
               frac: Number(parsed.fixedAnchor.frac) || 0,
             }
+          : undefined,
+      // Validated rather than copied: anything else on disk (an older
+      // format, a hand-edited file) reads as "no preference", which is the
+      // pages default.
+      readingMode:
+        parsed.readingMode === "flow" || parsed.readingMode === "pages"
+          ? parsed.readingMode
           : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
