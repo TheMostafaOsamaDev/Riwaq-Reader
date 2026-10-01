@@ -44,8 +44,16 @@ library's bottom bar; "sheet" means a bottom sheet over a scrim.
 
 Settings → About gains: an update card (version, one-line summary, **See
 what's new**, **Update**), and an **Over mobile data** row (*Ask first*
-(default) / *Always* / *Wait for Wi-Fi*). The existing on/off toggle and
-**Check now** stay.
+(default) / *Always* / *Wait for Wi-Fi*). **Check now** becomes a full-width
+button with its result line under it.
+
+**The "Check for updates" on/off toggle is removed** (decided with the user,
+2026-10-02). The daily check is always on. This reverses the 2026-09-10
+promise of "off in one tap", so the README's Updates section and the
+Settings hint must say plainly what still holds: one unauthenticated GET per
+day, no identifiers, nothing downloaded without a tap. A stored
+`autoCheckUpdates: false` from an older build is dropped on load, not
+honoured.
 
 **Desktop** gets the notes too, through the same React components, but keeps
 its own install path (the Tauri updater, PR #166). The banner gains a
@@ -156,9 +164,14 @@ installer_source() ◄────────────── invoke ─ inst
 The APK bytes never cross the JS↔Rust bridge (it is slow per byte and dies
 past ~128 MB). Download, verification and install all stay in Kotlin.
 
-1. **Download** into `cacheDir/updates/riwaq-<version>.apk.part`, inside
-   `TaskService` (already a `dataSync` foreground service), so leaving the app
-   does not kill it.
+1. **Download** into `cacheDir/updates/riwaq-<version>.apk.part`, inside a
+   new `UpdateService` (`dataSync` foreground service, notification id 1003).
+   *Changed during planning:* the existing `TaskService` was the first
+   choice, but JS stops it whenever the book-download queue empties, and its
+   notification id 1001 belongs to the download notifier. The APK download is
+   pure Kotlin and needs no WebView, so it gets its own service. That service
+   keeps running when the task is swiped away; the next launch finds the
+   file "ready".
    - Use `HttpURLConnection`, following GitHub's redirect.
    - Resume with `Range: bytes=<partSize>-`. The asset host answers `206`;
      verified 2026-10-02. Each resume re-requests the GitHub URL, because the
@@ -199,25 +212,57 @@ State lives in Kotlin and is polled by JS (`android_update_status`, every
 all), matching the existing `consume_*` pattern rather than adding a native
 callback.
 
-### Who gets which flow
+### Who gets which flow: installers and stores
 
-`resolveChannel` gains the install source. The decision is still an
-allow-list:
+Riwaq is distributed as the GitHub APK directly, through **Obtainium**
+(`dev.imranr.obtainium`, `dev.imranr.obtainium.fdroid`) and **Orion Store**
+(`com.orion.store`), and later through F-Droid (Android) and Flathub (Linux).
+Obtainium and Orion install **our own GitHub APK**. F-Droid's is
+byte-identical, because the build is reproducible (`docs/fdroid/`,
+`.github/workflows/fdroid-verify.yml`). So every Android build carries the
+same signing key, and any of them can update any other.
 
-| Install | Channel |
-|---|---|
-| Android, sideloaded (installer = package installer, Riwaq itself, or none/adb) | **in-app** (this design) |
-| Android, F-Droid (`org.fdroid.fdroid`, `org.fdroid.basic`, and known clients such as Droid-ify/Neo Store) | **managed**: no pill, no prompt; Settings says updates come from the store |
-| Android, any other store installer | **managed** |
-| Android, installer lookup throws | **manual** (the old link), never in-app |
-| Flatpak | managed (#154) |
-| desktop | unchanged (#166) |
+**Rule 1: correctness never depends on knowing the installer.** Obtainium
+and Orion can install through Shizuku, which records the installer as
+`com.android.shell`, so the installer can be wrong. Everything that matters
+is therefore keyed on the **running `versionCode`**:
 
-The F-Droid APK is byte-identical to ours (`docs/fdroid/`, `.github/workflows/fdroid-verify.yml`), so
-one manifest has to serve both. `REQUEST_INSTALL_PACKAGES` is therefore
-declared in the F-Droid build too, but never exercised there. Its metadata
-should state that. Review the anti-feature flags before the first F-Droid
-release that carries this.
+- On every launch, a cached APK whose version is ≤ the running one is
+  deleted, whoever did the update.
+- The pill, dot and offer exist only while `latest.json` is newer than the
+  running app. A store that updated first makes them vanish on the next
+  check.
+- "What's new" shows once per running version, so it appears after an
+  Orion, Obtainium or F-Droid update too, from the notes bundled in that
+  build.
+- `skippedUpdateVersion` is cleared once anything higher is offered or
+  running.
+- A store update that lands **during** an in-app download kills the process
+  mid-write. The next launch sees a running version ≥ the cached one and
+  deletes the `.part`.
+
+**Rule 2: the installer only picks which button the user sees.**
+
+| Installer of record (`getInstallSourceInfo().installingPackageName`, API 30+; `getInstallerPackageName` below) | Channel | What the user gets |
+|---|---|---|
+| `com.riwaq.reader` (us, after one in-app update), `com.google.android.packageinstaller`, `com.android.packageinstaller`, `com.android.shell`, none | **in-app** | the full flow |
+| `com.orion.store`, `dev.imranr.obtainium`, `dev.imranr.obtainium.fdroid` | **store-assisted** | the pill and the notes sheet as usual, but the primary button is **Update in Orion Store** / **Update in Obtainium**, which opens that app (`getLaunchIntentForPackage`). If that store app is no longer installed, the channel falls back to **in-app**. |
+| F-Droid clients: `org.fdroid.fdroid`, `org.fdroid.basic`, `com.looker.droidify`, `com.machiav3lli.fdroid`, `in.sunilpaulmathew.izzyondroid` | **managed** | no pill, no dot, no prompt. Settings → About says "Updates for this install come from F-Droid" with an **Open F-Droid** button. |
+| `com.android.vending`, `com.aurora.store`, and any other installer | **managed** | same, naming the store when its label can be read (`getApplicationLabel`), otherwise "your app store", plus a **Download from GitHub** link |
+| lookup throws | **manual** | the old behaviour: the release page link |
+| Flatpak (desktop) | managed (#154) | |
+| other desktop | unchanged (#166) | |
+
+Why store-assisted and not silent: Orion and Obtainium fetch from our GitHub
+release, so they are as current as we are. Telling the user, and handing them
+to the app that manages their install, avoids two installers fighting over
+one app. F-Droid is managed because its builds lag a day or two behind ours.
+F-Droid's policy also expects the app not to update itself.
+
+The F-Droid build declares `REQUEST_INSTALL_PACKAGES` too (one manifest has to
+serve both). It is never exercised there; its metadata should state that.
+Review the anti-feature flags before the first F-Droid release that carries
+this.
 
 ## Persisted state and cleanup
 
@@ -289,7 +334,11 @@ Each test gets tamper-checked: break the code on purpose and confirm the test fa
 - Plus:
   - a tampered APK is rejected;
   - an install whose installer is set to `org.fdroid.fdroid`
-    (`adb install -i`) never shows the pill.
+    (`adb install -i org.fdroid.fdroid`) never shows the pill;
+  - `-i com.orion.store` shows the pill with **Update in Orion Store**;
+  - a "store update" mid-download (`adb install -r` of 0.6.91 while the
+    in-app download runs) leaves the cache empty and no pill on the next
+    launch, and still shows What's new once.
 
 ## Out of scope
 
