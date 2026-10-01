@@ -68,3 +68,9 @@
     public static void start(android.content.Context);
     public static void stop(android.content.Context);
 }
+
+# Rust -> Kotlin: AppUpdater's @JvmStatic members (install source, download,
+# install, cleanup), all reached only over JNI from src-tauri/src/android_update.rs.
+# Descriptors there: installSource `(Landroid/content/Context;)Ljava/lang/String;`,
+# openStore `(Landroid/app/Activity;Ljava/lang/String;)V`.
+-keep class com.riwaq.reader.AppUpdater { *; }

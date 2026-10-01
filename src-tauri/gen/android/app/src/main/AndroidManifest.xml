@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 11+ package visibility: AppUpdater.installSource looks up the
+         store that installed us (label, launch intent) to hand updates back
+         to it. Unlisted stores still classify as "managed". -->
+    <queries>
+        <package android:name="com.orion.store" />
+        <package android:name="dev.imranr.obtainium" />
+        <package android:name="dev.imranr.obtainium.fdroid" />
+        <package android:name="org.fdroid.fdroid" />
+        <package android:name="org.fdroid.basic" />
+        <package android:name="com.looker.droidify" />
+        <package android:name="com.machiav3lli.fdroid" />
+        <package android:name="com.android.vending" />
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

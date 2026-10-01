@@ -1,3 +1,4 @@
+mod android_update;
 mod archive;
 mod display_name;
 mod legacy_identity;
@@ -122,6 +123,8 @@ pub fn run() {
             opened::take_pending_opens,
             opened::classify_drop,
             display_name::display_name,
+            android_update::install_source,
+            android_update::open_store,
         ])
         .setup(|app| {
             // Cold start on Windows / Linux: the file double-clicked in the
