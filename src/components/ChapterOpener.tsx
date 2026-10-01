@@ -162,7 +162,7 @@ export function ChapterOpener({
   // Tracking and casing are Latin-only: Arabic is cursive, so letter-spacing
   // prises the joins apart, and there is no case to upper. The size bump
   // compensates for the presence it loses without the tracking. Same split the
-  // focus running head and the first-run focus hint make.
+  // first-run focus hint makes.
   const arabic = locale === "ar";
   const meta: CSSProperties = {
     // Reading-surface meta label: the fixed reading sans, not the selectable
@@ -178,7 +178,6 @@ export function ChapterOpener({
 
   return (
     <div
-      data-chapter-head
       style={{
         textAlign: "center",
         marginBottom: "1.6em",
@@ -189,8 +188,7 @@ export function ChapterOpener({
     >
       <div style={meta}>
         {/* The number alone. Over a chapter's own title the total is noise,
-            and the bottom scrubber and focus mode's running head both still
-            carry it. */}
+            and the bottom scrubber still carries it. */}
         {tr("reader.chapterNumber", { n: formatNum(order + 1, locale) })}
       </div>
 

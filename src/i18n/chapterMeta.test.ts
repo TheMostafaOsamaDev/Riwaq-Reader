@@ -68,8 +68,7 @@ describe("chapter meta line", () => {
 
 describe("chapter opener line", () => {
   // The opener drops the total on purpose: over a chapter's own display title
-  // "of 24" is noise, and both the scrubber and focus mode's running head
-  // still carry it. Separate key rather than a variant of `chapterOfTotal`,
+  // "of 24" is noise, and the scrubber still carries it. Separate key rather than a variant of `chapterOfTotal`,
   // so neither can be changed on the other's behalf.
   it("carries the number and nothing else", () => {
     expect(openerLine("ar", 3)).toBe("الفصل ٣");

@@ -1,9 +1,11 @@
-// The phone's focus-mode progress rail.
+// Focus mode's progress rail, on the phone and the desktop alike.
 //
-// Tapping the page takes the chrome away, and with it the header that carries
-// the chapter rail — so focus mode had no progress indicator at all. This puts
-// the same rail at the very top of the screen instead. The system bars are
-// hidden in that mode too, so nothing sits above it.
+// Focus mode takes the chrome away, and with it the header that carries the
+// chapter rail — so it had no progress indicator at all. This puts the same
+// rail at the very top of the screen instead. On a phone the system bars are
+// hidden in that mode too, so nothing sits above it; on the desktop it sits
+// under the window's title bar, and a top bar revealed at the edge slides in
+// over it.
 //
 // It owns the placement (and the z-rung) rather than ChapterProgressBar taking
 // a flag for it: the rail itself is a shared presentational component whose

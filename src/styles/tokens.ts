@@ -685,7 +685,7 @@ export const Z_LOCAL = {
 } as const;
 
 export const Z = {
-  /** The phone's focus-mode progress rail. Over the page, under the bars, so
+  /** Focus mode's progress rail. Over the page, under the bars, so
    *  a bar sliding back in covers it rather than interleaving with it. */
   focusRail: 90,
   /** Reader bars pinned over the page. */
@@ -697,9 +697,7 @@ export const Z = {
   /** Floats over the page but under any overlay: side sheets, the font-select
    *  dropdown, the full-page cover shown while a book loads. */
   floating: 400,
-  /** The focus-mode chapter plate, deliberately UNDER the bars … */
-  focusPlate: 410,
-  /** … so a bar revealed at the edge covers the plate instead of interleaving. */
+  /** Focus mode's floating bars, revealed at the page edge. */
   focusBar: 420,
   /** Transient centred hints, and the app's inline error strip. */
   hint: 430,

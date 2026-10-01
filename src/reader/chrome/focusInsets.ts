@@ -6,7 +6,7 @@
 // the reflow reader pads a scroller, the fixed-page reader margins a fitted
 // sheet, and they were drifting apart on what "clear of the chrome" meant.
 
-/** Room the chapter plate needs above the first line in focus mode.
+/** Room the reading surface keeps at each edge in focus mode.
  *
  *  Focus mode used to keep the out-of-focus insets — bar height plus the
  *  reading margin — which is what left a blank band at each edge once the bars
@@ -16,42 +16,15 @@
  *  page is fitted to the padded box, so the band is blank paper on every page
  *  for the whole book.
  *
- *  So the top band stops being padding and starts being the header — see
- *  FocusChapterPlate. 82px is the plate (26px of air, a 16px line box, a 9px
- *  gap, its 1px rule) plus 30px under the rule before the first line. It is
- *  also the height of the fade the plate sits on, so a chapter's first line
- *  begins just clear of the fade rather than half dissolved into it. */
-export const FOCUS_INSET_TOP = 82;
-
-/** Room below the last line in focus mode.
+ *  So focus mode reclaims it, and keeps nothing at either edge but this
+ *  margin: no running head, no fade. Both readers share it — the reflow
+ *  reader pads its text by it, the fixed-page reader margins its sheet by it,
+ *  so the page never touches the window edge in either.
  *
- *  Equal to the bottom fade's height on purpose: the last line at rest then
- *  sits exactly at the point the fade has finished, so the end of a chapter is
- *  legible instead of dissolving. Anything smaller fades the text you are
- *  trying to finish. */
-export const FOCUS_INSET_BOTTOM = 56;
-
-/** Focus-mode inset for a surface with no plate over it.
- *
- *  The fixed-page reader. Its title is a document name, not a chapter — set
- *  over every page of a PDF it is noise, not orientation — and its page is a
- *  sheet on a gutter, so a page-coloured fade would veil the paper instead of
- *  dissolving text into it. It takes the reclaim without the header: enough
- *  margin that the sheet does not touch the window edge, and nothing else. */
-export const FOCUS_INSET_BARE = 24;
-
-/** Height of the fade under the plate. The text scrolls up into this and
- *  dissolves, which is what lets focus mode have a header with no bar in it —
- *  no fill, no hairline, nothing cutting the page in two. */
-export const FOCUS_FADE_TOP = FOCUS_INSET_TOP;
-
-/** Height of the fade above the bottom edge. */
-export const FOCUS_FADE_BOTTOM = FOCUS_INSET_BOTTOM;
-
-/** Fraction of each fade that is solid paper before the ramp begins. The
- *  plate's text sits inside the solid part, so the chapter name is never read
- *  over the body text passing beneath it. */
-export const FOCUS_FADE_SOLID = 0.56;
+ *  It used to be more on the reflow side: an 82px header band carrying the
+ *  chapter name over a page-to-transparent fade, and a 56px fade at the foot.
+ *  Both went: in focus mode nothing is meant to be on screen but the book. */
+export const FOCUS_INSET = 24;
 
 export interface Insets {
   top: number;
@@ -70,9 +43,7 @@ export interface Insets {
  *                  BETWEEN the bars and so wants the bar height exactly.
  */
 export function readingInsets(floating: boolean, pinned: Insets): Insets {
-  return floating
-    ? { top: FOCUS_INSET_TOP, bottom: FOCUS_INSET_BOTTOM }
-    : pinned;
+  return floating ? { top: FOCUS_INSET, bottom: FOCUS_INSET } : pinned;
 }
 
 /**

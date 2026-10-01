@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  FOCUS_INSET_BOTTOM,
-  FOCUS_INSET_TOP,
-  heldScrollTop,
-  readingInsets,
-} from "./focusInsets";
+import { FOCUS_INSET, heldScrollTop, readingInsets } from "./focusInsets";
 
 // What the reflow reader keeps when its bars are pinned: bar height plus the
 // reading margin under it.
@@ -15,10 +10,10 @@ describe("readingInsets", () => {
     expect(readingInsets(false, PINNED)).toEqual(PINNED);
   });
 
-  it("drops to the plate insets once the bars are gone", () => {
+  it("drops to the bare focus margin once the bars are gone", () => {
     expect(readingInsets(true, PINNED)).toEqual({
-      top: FOCUS_INSET_TOP,
-      bottom: FOCUS_INSET_BOTTOM,
+      top: FOCUS_INSET,
+      bottom: FOCUS_INSET,
     });
   });
 
@@ -31,10 +26,13 @@ describe("readingInsets", () => {
     expect(focus.bottom).toBeLessThan(PINNED.bottom);
   });
 
-  it("leaves the plate its room rather than reclaiming everything", () => {
-    // The top inset is not free space to take: the chapter name lives in it.
-    // A regression that zeroed it would put the first line under the plate.
-    expect(readingInsets(true, PINNED).top).toBeGreaterThan(60);
+  it("keeps a margin rather than reclaiming everything", () => {
+    // Nothing is drawn in it any more, but the text still must not touch the
+    // window edge. A regression that zeroed it would set the first line flush
+    // against the top of the window.
+    const focus = readingInsets(true, PINNED);
+    expect(focus.top).toBeGreaterThan(0);
+    expect(focus.bottom).toBeGreaterThan(0);
   });
 });
 
@@ -48,9 +46,10 @@ describe("heldScrollTop", () => {
   });
 
   it("gives back exactly what the inset took, at the end", () => {
-    // 126 → 82 is 44px of content gone from above the text, so the offset has
-    // to be 44px shallower for the same words to be under the same pixels.
-    expect(heldScrollTop(500, PINNED.top, FOCUS_INSET_TOP)).toBe(456);
+    // 126 → 24 is 102px of content gone from above the text, so the offset
+    // has to be 102px shallower for the same words to be under the same
+    // pixels.
+    expect(heldScrollTop(500, PINNED.top, FOCUS_INSET)).toBe(398);
   });
 
   it("tracks the inset part-way through the transition", () => {
@@ -59,8 +58,8 @@ describe("heldScrollTop", () => {
 
   it("pushes the offset back down when the inset grows again", () => {
     // Leaving focus mode: the band returns above the text, so the reader has
-    // to be 44px deeper into the chapter to be looking at the same line.
-    expect(heldScrollTop(456, FOCUS_INSET_TOP, PINNED.top)).toBe(500);
+    // to be 102px deeper into the chapter to be looking at the same line.
+    expect(heldScrollTop(398, FOCUS_INSET, PINNED.top)).toBe(500);
   });
 
   it("asks for a negative offset at the top of a chapter", () => {
@@ -68,12 +67,12 @@ describe("heldScrollTop", () => {
     // line genuinely rises — across the transition, not in a jump. The
     // function must not pre-clamp, or the caller could not tell the
     // difference between "held" and "clamped".
-    expect(heldScrollTop(0, PINNED.top, FOCUS_INSET_TOP)).toBe(-44);
-    expect(heldScrollTop(10, PINNED.top, FOCUS_INSET_TOP)).toBe(-34);
+    expect(heldScrollTop(0, PINNED.top, FOCUS_INSET)).toBe(-102);
+    expect(heldScrollTop(10, PINNED.top, FOCUS_INSET)).toBe(-92);
   });
 
   it("round-trips a toggle back to where it started", () => {
-    const there = heldScrollTop(1400, PINNED.top, FOCUS_INSET_TOP);
-    expect(heldScrollTop(there, FOCUS_INSET_TOP, PINNED.top)).toBe(1400);
+    const there = heldScrollTop(1400, PINNED.top, FOCUS_INSET);
+    expect(heldScrollTop(there, FOCUS_INSET, PINNED.top)).toBe(1400);
   });
 });

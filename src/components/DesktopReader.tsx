@@ -13,16 +13,13 @@ import {
   useFocusChrome,
 } from "../reader/chrome/focusChrome";
 import { readingInsets } from "../reader/chrome/focusInsets";
-import { useChapterHeadShown } from "../reader/chrome/useChapterHeadShown";
+import { FocusRail } from "../reader/chrome/FocusRail";
+import { useProgressRails } from "../reader/chrome/useProgressRails";
 import {
   INSET_VAR_BOTTOM,
   INSET_VAR_TOP,
   useInsetGlide,
 } from "../reader/chrome/useInsetGlide";
-import {
-  FocusBottomFade,
-  FocusChapterPlate,
-} from "../reader/chrome/FocusChapterPlate";
 import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
 import {
   MAX_TICKS,
@@ -36,7 +33,6 @@ import {
   chapterScrollFraction,
   paragraphScrollOffset,
   restoreScrollTop,
-  fractionToWidth,
   landingAppliesTo,
 } from "./readerProgress";
 import { ReaderDiagnostics } from "./ReaderDiagnostics";
@@ -174,9 +170,6 @@ export function DesktopReader({
 }: Props) {
   const { tr, dir, locale } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
-  // The reading column. Focus mode looks inside it for the chapter head — see
-  // useChapterHeadShown, which needs one root that holds it in every mode.
-  const columnRef = useRef<HTMLDivElement>(null);
   const mode = t.readingMode;
   const isPaginated = mode !== "scroll";
   const paginatedColumns: 1 | 2 = mode === "paginated-2" ? 2 : 1;
@@ -238,9 +231,8 @@ export function DesktopReader({
   // bar plus the margin the text has always had under it — 60px at the head,
   // 30px at the foot — with the text scrolling on UNDER the bar, which is
   // what the frost samples. In focus mode there is no bar to clear, so the
-  // insets come down to what the chapter plate needs and the page gets the
-  // rest; see reader/chrome/focusInsets.ts for why that band was worth
-  // reclaiming.
+  // insets come down to a plain margin and the page gets the rest; see
+  // reader/chrome/focusInsets.ts for why that band was worth reclaiming.
   const insets = readingInsets(focus.floating, {
     top: CHROME_INSET_TOP + 60,
     bottom: CHROME_INSET_BOTTOM + 30,
@@ -256,25 +248,6 @@ export function DesktopReader({
     bottom: insets.bottom,
     reducedMotion: reduced,
   });
-  // An OVERLAY panel dims the page behind a scrim, and the plate and the
-  // bottom fade are part of the page — they sit above that scrim (like the
-  // bars, so a revealed bar is never dimmed) and left showing they painted
-  // bright strips across the top and bottom of a modal, the top one over the
-  // panel's own header. A DOCKED panel raises no scrim and takes width
-  // instead, so there they stay up and simply re-centre on the narrower
-  // column — you are still reading.
-  const overlayPanel = panelOpen && !tocDocked;
-  const pageDressing = focus.floating && !overlayPanel;
-  // Whether the chapter's own display title is still on screen. The running
-  // head is the same name, so it waits for the title to go — and the space
-  // above a chapter's opening title then reads as a chapter drop, which is
-  // what that space is for.
-  const chapterHeadShown = useChapterHeadShown(columnRef);
-  // The running head stands in for the top bar's title, so it is held back
-  // wherever the name would otherwise be on screen twice: under a revealed
-  // bar, which carries the same title, or over the chapter's own opening
-  // title. The FADE it sits in is page furniture and stays up through both.
-  const runningHeadShown = pageDressing && !focus.showTop && !chapterHeadShown;
 
   // The live paragraph for the current chapter — updated by both the
   // scroll listener and PaginatedView. Used so that switching reading
@@ -285,8 +258,10 @@ export function DesktopReader({
   // Sub-paragraph scroll offset (0..1) to resume at, kept in sync with
   // livePara — re-seeded from resumeOffset on the same chapter/jump changes.
   const liveOffset = useRef(resumeOffset);
-  // Imperatively-updated fill for the header's within-chapter progress bar.
-  const progressFillRef = useRef<HTMLDivElement>(null);
+  // The within-chapter progress: the header's bar, and focus mode's rail at
+  // the top of the window while the header is away. See useProgressRails.
+  const { progressFillRef, focusFillRef, lastFractionRef, paintProgress } =
+    useProgressRails();
   const lastChapterRef = useRef(currentChapter);
   const lastJumpNonceRef = useRef(jumpNonce);
   if (lastChapterRef.current !== currentChapter) {
@@ -322,12 +297,6 @@ export function DesktopReader({
     },
     [onParagraphChange],
   );
-  // Stable so PaginatedView's progress effect only re-fires on page changes,
-  // not on every DesktopReader re-render. Writes the bar fill imperatively.
-  const onPaginatedProgress = useCallback((f: number) => {
-    if (progressFillRef.current)
-      progressFillRef.current.style.width = fractionToWidth(f);
-  }, []);
   // Same ref trick for the scroll listener — keeps the listener stable
   // while still calling the freshest handler.
   const onParagraphChangeRef = useRef(handleParagraphChange);
@@ -512,8 +481,7 @@ export function DesktopReader({
     let raf = 0;
     const paint = () => {
       raf = 0;
-      if (!progressFillRef.current) return;
-      progressFillRef.current.style.width = fractionToWidth(
+      paintProgress(
         chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
       );
     };
@@ -527,7 +495,7 @@ export function DesktopReader({
       el.removeEventListener("scroll", onScroll);
       if (raf) window.cancelAnimationFrame(raf);
     };
-  }, [mode, currentChapter, book.id]);
+  }, [mode, currentChapter, book.id, paintProgress]);
 
   // Imperative handle on the paginated view so the keyboard handler and
   // the bottom-bar arrow buttons can flip pages without rebuilding the
@@ -1113,7 +1081,6 @@ export function DesktopReader({
         </SideSheet>
 
         <div
-          ref={columnRef}
           style={{
             flex: 1,
             display: "flex",
@@ -1122,20 +1089,6 @@ export function DesktopReader({
             minWidth: 0,
           }}
         >
-          {/* Focus mode's header and footer. Rendered INSIDE the reading
-              column, so they span the text and not the window — a docked
-              Contents panel narrows this element and the chapter name stays
-              centred on what is left, with no inset arithmetic of its own.
-              Ahead of the surface in the DOM because the name is a heading
-              for the text that follows; it paints over it on z-index. */}
-          <FocusChapterPlate
-            theme={theme}
-            surface={surfaces.page}
-            title={chapter.title}
-            shown={pageDressing}
-            nameShown={runningHeadShown}
-            reducedMotion={reduced}
-          />
           {isPaginated ? (
             <div
               ref={paginatedWrapRef}
@@ -1146,7 +1099,7 @@ export function DesktopReader({
                 // in the flow — but the text now scrolls UNDER it rather than
                 // stopping at its edge, which is what the blur samples. In
                 // focus mode there is no bar to clear and the numbers drop to
-                // the plate's own; see `insets` above.
+                // a plain margin; see `insets` above.
                 padding: `calc(${insets.top}px + env(safe-area-inset-top, 0px)) ${readingGutter(t.contentWidth, 24, 80)}px ${insets.bottom}px`,
                 position: "relative",
                 minHeight: 0,
@@ -1160,7 +1113,9 @@ export function DesktopReader({
                 initialParagraph={livePara.current}
                 onParagraphChange={handleParagraphChange}
                 onApi={onPaginatedApi}
-                onChapterProgress={onPaginatedProgress}
+                // Stable, so PaginatedView's progress effect only re-fires
+                // on page changes, not on every re-render.
+                onChapterProgress={paintProgress}
                 pageTurnAnimation={t.pageTurnAnimation}
               >
                 <div key={chapter.id}>
@@ -1194,7 +1149,7 @@ export function DesktopReader({
                 // in the flow — but the text now scrolls UNDER it rather than
                 // stopping at its edge, which is what the blur samples. In
                 // focus mode there is no bar to clear and the numbers drop to
-                // the plate's own; see `insets` above.
+                // a plain margin; see `insets` above.
                 //
                 // Through a custom property, with the current inset as its
                 // fallback, so useInsetGlide can animate the value without
@@ -1210,6 +1165,12 @@ export function DesktopReader({
                 overscrollBehavior: "contain",
               }}
               className="no-scrollbar"
+              // `no-scrollbar` only suppresses the NATIVE bar; this opts out of
+              // the app's floating thumb too. Position is already shown by the
+              // header's progress bar, or by focus mode's rail while the
+              // header is away — a thumb down the page edge was a second
+              // indicator. Same call the phone reader makes.
+              data-no-overlay-scrollbar
             >
               <div key={chapter.id}>
                 {currentChapter > 0 ? (
@@ -1261,17 +1222,18 @@ export function DesktopReader({
               </div>
             </div>
           )}
-          {/* The foot of the same idea: the last lines dissolve into the page
-              rather than stopping dead at the window's edge, which is what
-              lets the bottom inset come down to the fade's own height. Unlike
-              the plate it stays up while the scrubber is revealed — it
-              duplicates nothing the bar carries, and it is what keeps the text
-              from appearing to run out from under the bar's hairline. */}
-          <FocusBottomFade
-            surface={surfaces.page}
-            shown={pageDressing}
-            reducedMotion={reduced}
-          />
+          {/* Focus mode's progress: the phone's rail, pinned to the top of
+              the window while the bars are lifted. A revealed top bar slides
+              in over it (Z.focusBar is above Z.focusRail) and carries its own
+              bar, so the two are never on screen together. */}
+          {focus.floating && (
+            <FocusRail
+              fillRef={focusFillRef}
+              theme={theme}
+              rtl={rtl}
+              initialFraction={lastFractionRef.current}
+            />
+          )}
           {/* Dev-only, and off unless asked for: a blank reading pane has
               several possible causes that look identical in a screenshot, so
               this measures rather than guesses. Switch it on for a session

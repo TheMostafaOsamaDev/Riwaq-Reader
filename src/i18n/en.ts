@@ -304,7 +304,7 @@ export const en = {
   "reader.chapterOfTotal": "Chapter {n} of {total}",
   // The chapter opener's meta line. Deliberately WITHOUT the total, unlike
   // `chapterOfTotal` above: over a chapter's own display title the total is
-  // noise, and the scrubber and focus running head both still carry it.
+  // noise, and the scrubber still carries it.
   "reader.chapterNumber": "Chapter {n}",
   // DOCX reading-mode toggle. "Layout" rather than "Mode": it names what
   // changes on screen, not the machinery behind it.

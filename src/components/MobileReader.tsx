@@ -15,7 +15,6 @@ import {
   landingAppliesTo,
   paragraphScrollOffset,
   restoreScrollTop,
-  fractionToWidth,
 } from "./readerProgress";
 import { MobileSheet } from "./MobileSheet";
 import {
@@ -24,6 +23,7 @@ import {
 } from "../reader/chrome/ReaderProgressBar";
 import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
 import { FocusRail } from "../reader/chrome/FocusRail";
+import { useProgressRails } from "../reader/chrome/useProgressRails";
 import {
   FOCUS_TOAST_MS,
   FocusLock,
@@ -514,16 +514,10 @@ export function MobileReader({
   // still fetching cannot be spent on whatever chapter the reader moves to
   // next — see landingAppliesTo.
   const landAtStartRef = useRef<number | null>(null);
-  const progressFillRef = useRef<HTMLDivElement>(null);
-  // The same rail, pinned to the top of the screen while the chrome is
-  // away. Its own ref rather than a relocated one: the header stays
-  // mounted and merely translates off-screen, so moving the ref between
-  // them would leave whichever bar lost it frozen at its last width.
-  const focusFillRef = useRef<HTMLDivElement>(null);
-  // The fraction the rails were last painted at. The pinned rail mounts on a
-  // tap, which is not a scroll — without this it would sit empty until the
-  // reader next moved.
-  const lastFractionRef = useRef(0);
+  // The header's chapter rail, and the same rail pinned to the top of the
+  // screen while the chrome is away. See useProgressRails.
+  const { progressFillRef, focusFillRef, lastFractionRef, paintProgress } =
+    useProgressRails();
   // Content direction — derived from the BOOK's own language, independent of
   // the UI locale above. BookBody sets its own `dir` from this on its own
   // element, so it never inherits from the chrome wrapper below.
@@ -650,18 +644,9 @@ export function MobileReader({
     let raf = 0;
     const paint = () => {
       raf = 0;
-      const fraction = chapterScrollFraction(
-        el.scrollTop,
-        el.scrollHeight,
-        el.clientHeight,
+      paintProgress(
+        chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
       );
-      lastFractionRef.current = fraction;
-      const w = fractionToWidth(fraction);
-      // Both rails. Only one is on screen at a time, but the header's stays
-      // mounted while hidden, so keeping both current costs one CSSOM write
-      // and means neither can be stale the instant it is revealed.
-      if (progressFillRef.current) progressFillRef.current.style.width = w;
-      if (focusFillRef.current) focusFillRef.current.style.width = w;
     };
     const onScroll = () => {
       if (raf) return;
@@ -1356,7 +1341,7 @@ export function MobileReader({
         // its own floating thumb over every scroller that has not opted out,
         // and on a phone that is a second progress indicator drawn down the
         // edge of the page — redundant beside the chapter rail, and furniture
-        // in a mode meant to have none. Desktop keeps its thumb.
+        // in a mode meant to have none. The desktop reader opts out too.
         data-no-overlay-scrollbar
       >
         {currentChapter > 0 ? (

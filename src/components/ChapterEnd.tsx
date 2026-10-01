@@ -497,8 +497,7 @@ export function ChapterStartLink({
             fontWeight: 600,
             // Latin-only tracking and casing: Arabic is cursive, so
             // letter-spacing prises the joins apart, and it has no case to
-            // upper. Same split the chapter opener and the focus running head
-            // make.
+            // upper. Same split the chapter opener makes.
             letterSpacing: arabic ? "normal" : "0.12em",
             textTransform: arabic ? "none" : "uppercase",
             lineHeight: 1.3,
