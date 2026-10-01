@@ -67,10 +67,8 @@ const DISPLAY_NAME_COLUMN: &str = "_display_name";
 
 #[cfg(target_os = "android")]
 fn android_display_name(path: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = crate::notify::main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     let res = query_display_name(&mut env, &activity, path);
 

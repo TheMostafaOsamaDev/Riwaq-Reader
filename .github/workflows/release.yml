@@ -26,7 +26,9 @@
 # debug key (see the android job and scripts/verify-apk-signing.sh).
 #
 # Out of scope (deferred): iOS builds, in-app auto-updater, DESKTOP code
-# signing (Windows cert, Apple Dev ID notarization), F-Droid metadata.
+# signing (Windows cert, Apple Dev ID notarization). F-Droid builds from
+# docs/fdroid/com.riwaq.reader.yml, and fdroid-verify.yml checks that its
+# build of each release matches the APK built here.
 # Because the desktop bundles are unsigned, the macOS .dmg trips
 # Gatekeeper and the Windows .exe trips SmartScreen on first launch —
 # see the README for the one-time "open anyway" steps users follow.
@@ -67,7 +69,10 @@ jobs:
           bash scripts/verify-update-manifest.sh --self-test
           bash scripts/verify-apk-signing.sh --self-test
       - name: Verify the release config
-        run: bash scripts/verify-release-config.sh "${{ github.ref_name }}"
+        # The tag only on a tag push. A manual smoke run has a branch name
+        # there, which no version matches, so it used to fail here every time;
+        # with no tag the script still checks every other invariant.
+        run: bash scripts/verify-release-config.sh "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}"
 
   # ──────────────────────────────────────────────────────────────────
   # Linux x86_64 — .deb, .AppImage, .rpm
@@ -440,17 +445,29 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          # 21, not 17: F-Droid's builder (Debian trixie) compiles with 21,
+          # and its build of this commit has to come out byte-identical to
+          # ours for it to ship this APK. See docs/fdroid/README.md.
+          java-version: 21
 
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-36 build-tools;36.0.0 platform-tools'
 
-      - name: Install Android NDK r26
+      - name: Install Android NDK r29, and only r29
+        # The Tauri CLI builds with the NEWEST NDK under $ANDROID_HOME/ndk and
+        # ignores NDK_HOME when that is older: this step used to install r26b,
+        # and every release was linked by the runner's r29 regardless ("Info
+        # Using installed NDK: .../29.0.14206865"). So the pinned NDK is made
+        # the only one there, and the check after the build proves it was used.
+        # F-Droid's recipe pins the same version: a different NDK there means
+        # a different native library, and F-Droid will not ship ours.
         run: |
-          sdkmanager "ndk;26.1.10909125"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          ndk=29.0.14206865
+          sudo rm -rf "$ANDROID_SDK_ROOT"/ndk/* "$ANDROID_SDK_ROOT"/ndk-bundle
+          sdkmanager "ndk;$ndk"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ndk" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ndk" >> $GITHUB_ENV
 
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
@@ -534,7 +551,37 @@ jobs:
         # above. Multi-target syntax is space-separated values after a
         # single `--target` flag; comma-separated is rejected. WITHOUT
         # --split-per-abi, both ABIs are packed into ONE universal APK.
-        run: pnpm tauri android build --apk --target aarch64 armv7
+        #
+        # RUSTFLAGS comes from scripts/android-rustflags.sh, which F-Droid's
+        # recipe runs too: it keeps this machine's cargo paths out of the
+        # native library, so the two builds can match byte for byte.
+        run: RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build --apk --target aarch64 armv7
+
+      - name: Check the native library was built with the pinned NDK
+        # Every compiler and linker stamps .comment with its build. If the
+        # Tauri CLI ever picks a different NDK again, this fails here rather
+        # than as an unexplained mismatch on F-Droid.
+        #
+        # The only other stamp allowed is one Rust's own prebuilt standard
+        # library carries (C builtins compiled by the NDK rust-lang uses),
+        # which is the same on every machine with this Rust.
+        run: |
+          bin="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          want="$("$bin/clang" --version | grep -o 'Android ([0-9]*' | head -n1)"
+          test -n "$want"
+          sysroot="$(rustc --print sysroot)"
+          for so in src-tauri/target/*-linux-android*/release/libriwaq_lib.so; do
+            target="$(basename "$(dirname "$(dirname "$so")")")"
+            allowed="$({ echo "$want"; strings -n 6 "$sysroot/lib/rustlib/$target/lib/"*.rlib \
+              | grep -o 'Android ([0-9]*'; } | sort -u)"
+            stamps="$("$bin/llvm-readelf" -p .comment "$so" | grep -o 'Android ([0-9]*' | sort -u)"
+            echo "$target: $(echo $stamps) (pinned NDK: $want; Rust std: $(echo $allowed))"
+            grep -qxF "$want" <<<"$stamps" \
+              || { echo "::error::$so was not linked by the NDK at $NDK_HOME"; exit 1; }
+            extra="$(comm -23 <(echo "$stamps") <(echo "$allowed"))"
+            test -z "$extra" \
+              || { echo "::error::$so carries code from another NDK: $extra"; exit 1; }
+          done
 
       - name: Check the signing guard itself
         # The guard is a text parser over apksigner output. If its parsing

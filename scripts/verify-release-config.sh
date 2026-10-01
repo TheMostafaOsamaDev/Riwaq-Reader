@@ -112,6 +112,37 @@ check_config() {
     fi
   fi
 
+  # The F-Droid recipe must build the way release.yml does.
+  #
+  # F-Droid builds our tag with docs/fdroid/com.riwaq.reader.yml and ships the
+  # published APK only if its build is byte-identical. A different NDK, a
+  # different Rust, or a build without the path-remapping RUSTFLAGS each make
+  # every build differ, and F-Droid then simply stops publishing Riwaq, with
+  # nothing in this repository failing.
+  local recipe="$root/docs/fdroid/com.riwaq.reader.yml" rel="$wfdir/release.yml"
+  if [ -f "$recipe" ] && [ -f "$rel" ]; then
+    local ndk_rel ndk_rec rust_rec
+    # `ndk=<version>` in the install step, or a literal `ndk;<version>`.
+    ndk_rel="$(grep -o -E '(^[[:space:]]*ndk=|ndk;)[0-9][0-9.]*' "$rel" | head -n1 | sed -E 's/.*(=|;)//')"
+    ndk_rec="$(sed -n 's/^[[:space:]]*ndk:[[:space:]]*\([0-9.]*\).*/\1/p' "$recipe" | head -n1)"
+    if [ "$ndk_rel" != "$ndk_rec" ]; then
+      echo "docs/fdroid recipe builds with NDK '${ndk_rec}' but release.yml installs '${ndk_rel}'"
+      problems=$((problems + 1))
+    fi
+    rust_rec="$(grep -o -- '--default-toolchain [0-9.]*' "$recipe" | head -n1 | sed 's/.* //')"
+    if [ -n "${channel:-}" ] && [ "$rust_rec" != "$channel" ]; then
+      echo "docs/fdroid recipe installs Rust '${rust_rec}' but rust-toolchain.toml says $channel"
+      problems=$((problems + 1))
+    fi
+    local f
+    for f in "$recipe" "$rel"; do
+      if ! grep -q 'scripts/android-rustflags.sh' "$f"; then
+        echo "${f#"$root"/} does not build with scripts/android-rustflags.sh, so its native library carries that machine's paths"
+        problems=$((problems + 1))
+      fi
+    done
+  fi
+
   [ "$problems" -eq 0 ]
 }
 
@@ -157,6 +188,27 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 1 "a workflow pinned to a different version"   "$(mktc tcdrift 1.97.1 1.96.0)" v0.2.0
   expect 1 "a workflow still floating on @stable"       "$(mktc tcfloat 1.97.1 stable)" v0.2.0
   expect 1 "no rust-toolchain.toml at all"              "$(mktc tcnone "" 1.97.1)"    v0.2.0
+
+  # F-Droid recipe in step with release.yml
+  mkfd() { # dir recipe-ndk recipe-rust recipe-flags release-ndk release-flags
+    local d; d="$(mktc "$1" 1.97.1 1.97.1)"; mkdir -p "$d/docs/fdroid"
+    printf '    build:\n      - x --default-toolchain %s\n      - %s\n    ndk: %s\n' \
+      "$3" "$4" "$2" > "$d/docs/fdroid/com.riwaq.reader.yml"
+    printf 'run: sdkmanager "ndk;%s"\nrun: %s\n' "$5" "$6" \
+      > "$d/.github/workflows/release.yml"
+    echo "$d"
+  }
+  ok='RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build'
+  expect 0 "a recipe in step with release.yml"    "$(mkfd fdok 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"      v0.2.0
+  expect 1 "a recipe on a different NDK"          "$(mkfd fdndk 27.0.1 1.97.1 "$ok" 26.1.1 "$ok")"     v0.2.0
+  expect 1 "a recipe on a different Rust"         "$(mkfd fdrust 26.1.1 1.96.0 "$ok" 26.1.1 "$ok")"    v0.2.0
+  expect 1 "a recipe without the RUSTFLAGS script" "$(mkfd fdflag 26.1.1 1.97.1 "pnpm tauri" 26.1.1 "$ok")" v0.2.0
+  expect 1 "release.yml without the RUSTFLAGS script" "$(mkfd fdrel 26.1.1 1.97.1 "$ok" 26.1.1 "pnpm tauri")" v0.2.0
+  d3="$(mkfd fdvar 29.0.1 1.97.1 "$ok" 0 "$ok")"
+  printf '        run: |\n          ndk=29.0.1\n          sdkmanager "ndk;$ndk"\nrun: %s\n' "$ok" > "$d3/.github/workflows/release.yml"
+  expect 0 "an NDK set through ndk= in release.yml"   "$d3"                                               v0.2.0
+  printf '        run: |\n          ndk=29.0.2\n          sdkmanager "ndk;$ndk"\nrun: %s\n' "$ok" > "$d3/.github/workflows/release.yml"
+  expect 1 "ndk= in release.yml that disagrees"       "$d3"                                               v0.2.0
   [ "$fails" -eq 0 ] || die "$fails self-test failure(s) — the guard itself is broken"
   echo "verify-release-config: self-test passed"
   exit 0
