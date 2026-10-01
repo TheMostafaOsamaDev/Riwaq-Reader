@@ -89,6 +89,8 @@ import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
+import type { Tap } from "../reader/chrome/focusGesture";
+import { pagedTouchTurn } from "../reader/pagedTouch";
 import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 import { isTextEntry } from "../lib/isTextEntry";
 
@@ -545,6 +547,56 @@ export function DesktopReader({
     return () => el.removeEventListener("wheel", onWheel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPaginated, currentChapter, chapterCount, onChapterChange]);
+
+  // Touch page turns in paginated modes: tap the outer edge of the page or
+  // swipe sideways (pagedTouch.ts). This reader is what an Android tablet gets
+  // in landscape, where the wheel and arrow keys above don't exist. Touch and
+  // pen only — a mouse has those, and a mouse press at the margin is where a
+  // text selection starts. At a chapter boundary it moves on to the next or
+  // previous chapter, the same as the arrow keys.
+  //
+  // The turn goes through a ref so the listeners are bound once per mode: this
+  // component re-renders while a finger is down (progress, the live paragraph)
+  // and re-binding then would drop the gesture's press.
+  const touchTurnRef = useRef<(turn: -1 | 1) => void>(() => {});
+  touchTurnRef.current = (turn) => {
+    const api = paginatedApiRef.current;
+    if (turn > 0) {
+      if (!api || !api.nextPage()) nextChapter();
+    } else if (!api || !api.prevPage()) prevChapter();
+  };
+  useEffect(() => {
+    if (!isPaginated) return;
+    const el = paginatedWrapRef.current;
+    if (!el) return;
+    let down: (Tap & { id: number }) | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" || !e.isPrimary) return;
+      down = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp };
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = down;
+      down = null;
+      if (!d || e.pointerId !== d.id) return;
+      // Lifting a finger after picking out text was a selection, not a turn.
+      if (!(window.getSelection()?.isCollapsed ?? true)) return;
+      const r = el.getBoundingClientRect();
+      const up = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+      const turn = pagedTouchTurn(d, up, r.left, r.width, rtl);
+      if (turn !== 0) touchTurnRef.current(turn);
+    };
+    const onCancel = () => {
+      down = null;
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onCancel);
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onCancel);
+    };
+  }, [isPaginated, rtl]);
 
   // Scrolling at a chapter edge does NOT turn the chapter. The card at the
   // chapter's end and the link at its top are the ways through, alongside the
@@ -1103,6 +1155,10 @@ export function DesktopReader({
                 minHeight: 0,
                 minWidth: 0,
                 background: surfaces.page,
+                // Nothing in here scrolls, so the browser has no pan to take,
+                // and a sideways swipe has to reach the page-turn listener
+                // above instead of being claimed as one. Pinch-zoom stays.
+                touchAction: "pinch-zoom",
               }}
             >
               <PaginatedView

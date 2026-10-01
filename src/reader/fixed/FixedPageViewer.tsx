@@ -41,6 +41,7 @@ import type {
   FixedPageTint,
   ReaderProgress,
 } from "../../types/reader";
+import { edgeSide, forwardFor, turnFromDrag } from "../pagedTouch";
 import type { FixedPageSource } from "./FixedPageSource";
 import { anchorAt, scrollTopForAnchor, type PageAnchor } from "./scrollAnchor";
 
@@ -1245,8 +1246,7 @@ export const FixedPageViewer = forwardRef<
       }
       if (turning.current || peekHold.current != null) return; // still settling
 
-      // Dragging left advances an LTR book; RTL mirrors it.
-      const d = ((dx < 0 ? 1 : -1) * (dir === "rtl" ? -1 : 1)) as 1 | -1;
+      const d = turnFromDrag(dx, dir === "rtl");
       if (peekDir.current === 0) {
         const dest = clampIdx(currentRef.current + d);
         if (dest === currentRef.current) return; // first / last page
@@ -1473,16 +1473,14 @@ export const FixedPageViewer = forwardRef<
     return cb;
   }, []);
 
-  // Paged mode: click the left / right edge (18%) to turn. Direction follows
-  // reading order and matches the arrow keys — RTL left edge is "next".
+  // Paged mode: click the left / right edge to turn. Direction follows
+  // reading order and matches the arrow keys — RTL left edge is "next". The
+  // rules are shared with the EPUB reader's paged modes (pagedTouch.ts).
   const edgeSideAt = useCallback((clientX: number): -1 | 0 | 1 => {
     const el = scrollRef.current;
     if (!el) return 0;
     const r = el.getBoundingClientRect();
-    const frac = (clientX - r.left) / r.width;
-    if (frac <= 0.18) return -1;
-    if (frac >= 0.82) return 1;
-    return 0;
+    return edgeSide(clientX, r.left, r.width);
   }, []);
   const onPagedClick = useCallback(
     (e: React.MouseEvent) => {
@@ -1492,7 +1490,7 @@ export const FixedPageViewer = forwardRef<
         return;
       }
       const edge = edgeSideAt(e.clientX);
-      if (edge !== 0) flip(edge * (dir === "rtl" ? -1 : 1));
+      if (edge !== 0) flip(forwardFor(edge, dir === "rtl"));
     },
     [edgeSideAt, flip, dir],
   );
