@@ -144,7 +144,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       minWidth: iconOnly ? TOUCH_TARGET_MIN : undefined,
       minHeight: iconOnly ? TOUCH_TARGET_MIN : undefined,
       flexShrink: iconOnly ? 0 : undefined,
-      userSelect: "none",
       // Buttons should never wrap their label across lines — they're sized
       // by content. If you need a multi-line button you're using the wrong
       // primitive.

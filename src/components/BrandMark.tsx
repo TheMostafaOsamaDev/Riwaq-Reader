@@ -27,7 +27,6 @@ export function BrandMark({
       alt="رواق"
       width={size}
       height={size}
-      draggable={false}
       style={{
         width: size,
         height: size,

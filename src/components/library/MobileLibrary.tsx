@@ -443,10 +443,7 @@ export function MobileLibrary({
                         marginBottom: 28,
                         alignItems: "center",
                         cursor: "pointer",
-                        // Suppress the default long-press text-selection / callout
-                        // so the menu opens cleanly without a stray selection box.
-                        WebkitUserSelect: "none",
-                        userSelect: "none",
+                        // No long-press callout, so the menu opens cleanly.
                         WebkitTouchCallout: "none",
                       }}
                     >

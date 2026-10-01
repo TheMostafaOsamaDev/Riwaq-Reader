@@ -1227,12 +1227,6 @@ export function MobileReader({
           opacity: chromeHidden ? 0 : 1,
           transition: chromeTransition,
           pointerEvents: chromeHidden ? "none" : "auto",
-          // Keep chrome out of text selection — without this, a long-
-          // press 'Select all' grabs the chapter title and progress
-          // text along with the body paragraphs, which then resolves
-          // to a nonsense highlight range.
-          userSelect: "none",
-          WebkitUserSelect: "none",
         }}
       >
         <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
@@ -1437,8 +1431,6 @@ export function MobileReader({
           opacity: chromeHidden ? 0 : 1,
           transition: chromeTransition,
           pointerEvents: chromeHidden ? "none" : "auto",
-          userSelect: "none",
-          WebkitUserSelect: "none",
         }}
       >
         {showProgress && (

@@ -954,8 +954,6 @@ export function ContextMenu({
         fontSize: 13,
         animation: mainAnim,
         pointerEvents: leaving ? "none" : "auto",
-        WebkitUserSelect: "none",
-        userSelect: "none",
         WebkitTouchCallout: "none",
         position: "fixed",
         left: pos.x,
@@ -996,8 +994,6 @@ function SheetCard({ theme, children }: { theme: Theme; children: ReactNode }) {
         boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
         fontFamily: FONT_STACKS.sans,
         overflow: "hidden",
-        WebkitUserSelect: "none",
-        userSelect: "none",
         WebkitTouchCallout: "none",
       }}
     >

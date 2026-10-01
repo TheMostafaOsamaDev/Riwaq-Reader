@@ -241,9 +241,6 @@ export function useFocusChrome({
     // Above `Z.floating`, which SideSheet's overlay sits on, so a revealed bar
     // is never dimmed by, or buried under, a panel's scrim; below `Z.hint`.
     zIndex: Z.focusBar,
-    // Chrome is never part of a text selection dragged across the page.
-    userSelect: "none",
-    WebkitUserSelect: "none",
   });
 
   // Focus mode OFF: the bar is simply pinned over the page. Deliberately NOT
