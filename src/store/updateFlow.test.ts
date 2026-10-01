@@ -42,6 +42,9 @@ describe("androidChannel", () => {
       expect(androidChannel(src(i)).kind).toBe("managed");
     }
   });
+  it("does not mistake an Object.prototype key for a known store", () => {
+    expect(androidChannel(src("constructor")).kind).toBe("managed");
+  });
   it("uses the old link when the lookup failed", () => {
     expect(androidChannel(null).kind).toBe("manual");
   });

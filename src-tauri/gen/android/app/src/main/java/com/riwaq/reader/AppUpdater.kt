@@ -15,13 +15,18 @@ object AppUpdater {
     @JvmStatic
     fun installSource(ctx: Context): String {
         val pm = ctx.packageManager
-        val installer = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                pm.getInstallSourceInfo(ctx.packageName).installingPackageName
-            } else {
-                @Suppress("DEPRECATION") pm.getInstallerPackageName(ctx.packageName)
-            }
-        } catch (_: Exception) { null } ?: ""
+        // Two different answers, kept apart on purpose:
+        //  - the lookup returns null: nobody recorded an installer (a tapped
+        //    APK on some ROMs, adb). That is a sideload, so "" -> in-app.
+        //  - the lookup THROWS: we do not know who installed us. Not caught
+        //    here: the exception crosses JNI, Rust drains it into an Err, and
+        //    JS treats a failed install_source as null -> the "manual" channel
+        //    (the release-page link). Guessing "in-app" could fight a store.
+        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            pm.getInstallSourceInfo(ctx.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION") pm.getInstallerPackageName(ctx.packageName)
+        } ?: ""
         var label = ""
         var installed = false
         if (installer.isNotEmpty()) {

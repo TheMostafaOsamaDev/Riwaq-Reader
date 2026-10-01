@@ -30,16 +30,18 @@ const SIDELOAD = new Set([
   "com.android.shell",
   "com.riwaq.reader",
 ]);
-const ASSISTED: Record<string, "orion" | "obtainium"> = {
-  "com.orion.store": "orion",
-  "dev.imranr.obtainium": "obtainium",
-  "dev.imranr.obtainium.fdroid": "obtainium",
-};
+/** A Map, not an object literal: an installer string is outside input, and an
+ *  object lookup would find "constructor" or "toString" on its prototype. */
+const ASSISTED = new Map<string, "orion" | "obtainium">([
+  ["com.orion.store", "orion"],
+  ["dev.imranr.obtainium", "obtainium"],
+  ["dev.imranr.obtainium.fdroid", "obtainium"],
+]);
 
 export function androidChannel(src: InstallSource | null): AndroidChannel {
   if (!src) return { kind: "manual" };
   if (SIDELOAD.has(src.installer)) return { kind: "in-app" };
-  const store = ASSISTED[src.installer];
+  const store = ASSISTED.get(src.installer);
   if (store) {
     return src.storeInstalled
       ? { kind: "store-assisted", store, pkg: src.installer, label: src.label }
