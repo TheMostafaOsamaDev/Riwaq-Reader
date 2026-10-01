@@ -286,11 +286,8 @@ fn android_call_update(
     ongoing: bool,
     taps_to_queue: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity =
-        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     let title_j = env.new_string(title)?;
     let body_j = env.new_string(body)?;
@@ -320,10 +317,8 @@ fn android_call_update(
 
 #[cfg(target_os = "android")]
 fn android_task_service(op: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity = unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     let method = if op == "stop" { "stop" } else { "start" };
     // The descriptor here, TaskService.kt's @JvmStatic companion methods, and
@@ -351,16 +346,12 @@ fn android_set_bar_appearance(
     dark_icons: bool,
     background: jint,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity =
-        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     // Kotlin's `lightIcons` flag means "light (white) icons for a dark
-    // background" — the inverse of our `dark_icons`. The Activity passed
-    // in IS the MainActivity instance (ndk_context's context()), so we
-    // hand it straight to the static method.
+    // background" — the inverse of our `dark_icons`. `main_activity()` IS
+    // the MainActivity instance, so we hand it straight to the static method.
     let light_icons = !dark_icons;
     // The descriptor here, the Kotlin signature, and the -keep rule in
     // gen/android/app/proguard-rules.pro have to agree. When they don't, R8
@@ -388,11 +379,8 @@ fn android_set_immersive_mode(
     _app: &AppHandle,
     immersive: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity =
-        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     // Same three-way agreement as android_set_bar_appearance: the descriptor
     // here, the Kotlin signature, and the -keep rule in
@@ -419,11 +407,8 @@ fn android_set_immersive_mode(
 
 #[cfg(target_os = "android")]
 fn android_consume_intent(_app: &AppHandle) -> Result<String, Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity =
-        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     let res = read_pending_intent(&mut env, &activity);
     // Same rule as everywhere else in this module: a field lookup that R8
@@ -464,11 +449,8 @@ fn read_pending_intent<'local>(
 fn android_consume_open_uri(
     _app: &AppHandle,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+    let (vm, activity) = main_activity()?;
     let mut env = vm.attach_current_thread()?;
-    let activity =
-        unsafe { JObject::from_raw(ctx.context() as jni::sys::jobject) };
 
     let res = read_pending_open_uri(&mut env, &activity);
     // Same rule as everywhere else in this module: a field lookup R8
@@ -505,48 +487,46 @@ fn read_pending_open_uri<'local>(
     Ok(rust_str)
 }
 
-/// Bridge the Android Activity into `ndk_context`'s global so the JNI helpers
-/// above can locate the JavaVM + Context.
+/// The MainActivity and the JavaVM it runs in, as `MainActivity.onCreate`
+/// registers them through [`Java_com_riwaq_reader_MainActivity_registerWithRust`].
+/// Every JNI helper in this crate starts from here.
 ///
-/// tao 0.34 (the version Tauri used before the 2.11 bump) called
-/// `ndk_context::initialize_android_context(...)` from its activity `create`.
-/// tao 0.35 — pulled in by Tauri 2.11 — dropped that, so the global is left
-/// uninitialized and the very first JNI call (`set_status_bar_style` /
-/// `consume_launch_intent` on frontend mount) hits
-/// `android_context().expect("android context was not initialized")`. With
-/// `panic = "abort"` that aborts the whole process on launch.
-///
-/// We restore the old behaviour ourselves: `MainActivity.onCreate` calls this
-/// once, before the WebView/frontend mounts. The `Once` guard makes a (rare,
-/// given the broad `configChanges`) activity re-create a no-op, because
-/// `initialize_android_context` asserts it is only ever set once.
+/// Kept here rather than in `ndk_context`'s global, which belongs to tao and
+/// has changed under us twice: tao 0.35 (Tauri 2.11) stopped setting it, so we
+/// set it ourselves, and tao 0.37 (Tauri 2.12) sets it again, which made our
+/// second `initialize_android_context` abort the app on launch. tao also sets
+/// it to the *Application* context, and `setBarAppearance` and
+/// `setImmersiveMode` need the Activity and its window.
+#[cfg(target_os = "android")]
+static MAIN_ACTIVITY: std::sync::OnceLock<(jni::JavaVM, jni::objects::GlobalRef)> =
+    std::sync::OnceLock::new();
+
+/// The JavaVM and MainActivity. An error, not a panic, before `onCreate` has
+/// registered them: with `panic = "abort"` a panic is a dead process.
+#[cfg(target_os = "android")]
+pub(crate) fn main_activity(
+) -> Result<(&'static jni::JavaVM, &'static JObject<'static>), Box<dyn std::error::Error>> {
+    let (vm, activity) = MAIN_ACTIVITY
+        .get()
+        .ok_or("MainActivity has not registered with Rust yet")?;
+    Ok((vm, activity.as_obj()))
+}
+
+/// Called from `MainActivity.onCreate`, before the WebView/frontend mounts and
+/// fires the first Android command. The global ref keeps the Activity alive
+/// for the whole process; the broad `configChanges` in AndroidManifest mean it
+/// is not recreated, and if it ever is, the first registration stands.
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_riwaq_reader_MainActivity_initRustNdkContext<'local>(
+pub extern "system" fn Java_com_riwaq_reader_MainActivity_registerWithRust<'local>(
     env: jni::JNIEnv<'local>,
     activity: JObject<'local>,
 ) {
-    use std::sync::Once;
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        let vm = match env.get_java_vm() {
-            Ok(vm) => vm,
-            Err(_) => return,
-        };
-        let global = match env.new_global_ref(&activity) {
-            Ok(global) => global,
-            Err(_) => return,
-        };
-        // SAFETY: `vm` and `activity` are valid for the duration of this JNI
-        // call; leaking the global ref keeps the Activity alive for the whole
-        // process, and the broad `configChanges` in AndroidManifest means the
-        // Activity is not recreated, so this context stays valid.
-        unsafe {
-            ndk_context::initialize_android_context(
-                vm.get_java_vm_pointer() as *mut _,
-                global.as_obj().as_raw() as *mut _,
-            );
-        }
-        std::mem::forget(global);
-    });
+    if MAIN_ACTIVITY.get().is_some() {
+        return;
+    }
+    let (Ok(vm), Ok(activity)) = (env.get_java_vm(), env.new_global_ref(&activity)) else {
+        return;
+    };
+    let _ = MAIN_ACTIVITY.set((vm, activity));
 }

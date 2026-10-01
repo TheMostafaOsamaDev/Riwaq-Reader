@@ -47,8 +47,9 @@
     static java.lang.String pendingOpenUri;
 }
 
-# Kotlin -> Rust: native method invoked from MainActivity.onCreate to bootstrap
-# ndk_context (also covered by the default native-methods rule; explicit here).
+# Kotlin -> Rust: native method invoked from MainActivity.onCreate to register
+# the Activity with Rust (also covered by the default native-methods rule;
+# explicit here).
 -keepclasseswithmembernames class com.riwaq.reader.MainActivity {
     native <methods>;
 }
