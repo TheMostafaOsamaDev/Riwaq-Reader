@@ -226,11 +226,30 @@ function reactOnClick(el: HTMLElement): (e: unknown) => unknown {
   return props.onClick as (e: unknown) => unknown;
 }
 
+/** By accessible name: the hero's secondary actions are icon-only, so for
+ *  those the name is an aria-label rather than the button's own text. */
 function buttonWithText(text: string): HTMLButtonElement {
   const buttons = [...host.querySelectorAll("button")] as HTMLButtonElement[];
-  const button = buttons.find((b) => (b.textContent ?? "").includes(text));
+  const button = buttons.find(
+    (b) =>
+      (b.textContent ?? "").includes(text) ||
+      b.getAttribute("aria-label") === text,
+  );
   if (!button) throw new Error(`no button labelled "${text}"`);
   return button;
+}
+
+/** Opens the hero's ⋮, where Save as offline book and Remove from library
+ *  now live. Returns the row with that label. */
+function menuRow(text: string): HTMLButtonElement {
+  act(() => buttonWithText("More actions").click());
+  // `document`, not `host`: the popover portals into the body to escape
+  // the hero's overflow and stacking context.
+  const row = [...document.querySelectorAll("[data-menu-action]")].find((r) =>
+    (r.textContent ?? "").includes(text),
+  ) as HTMLButtonElement | undefined;
+  if (!row) throw new Error(`no ⋮ row labelled "${text}"`);
+  return row;
 }
 
 beforeEach(() => {
@@ -292,7 +311,7 @@ describe("saved novel, source extension gone — what still works", () => {
 
   it("keeps Remove from library live", async () => {
     await mount();
-    expect(buttonWithText("Remove from library").disabled).toBe(false);
+    expect(menuRow("Remove from library").disabled).toBe(false);
   });
 
   it("points Read at the first downloaded chapter", async () => {
@@ -368,7 +387,7 @@ describe("saved novel, source extension gone — what is refused", () => {
 
   it("disables Save as offline book", async () => {
     await mount();
-    expect(buttonWithText("Save as offline book").disabled).toBe(true);
+    expect(menuRow("Save as offline book").disabled).toBe(true);
   });
 });
 

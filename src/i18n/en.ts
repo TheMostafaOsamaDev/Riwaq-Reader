@@ -680,18 +680,14 @@ export const en = {
   "novel.noDataReturned": "no data returned",
   "novel.noCover": "No cover",
   "novel.shelves": "Shelves",
+  "novel.moreActions": "More actions",
   // Short names for the phone novel page's action pills, two to a row. The
   // full names are their tooltips.
-  "novel.action.download": "Download",
-  "novel.action.saveOffline": "Save offline",
-  "novel.action.remove": "Remove",
   "novel.descMore": "more",
   "novel.descLess": "less",
   "novel.fromSource": "From {source}",
   "novel.read": "Read",
   "novel.addToLibrary": "Add to library",
-  "novel.adding": "Adding…",
-  "novel.removing": "Removing…",
   "novel.downloadRange": "Download range",
   "novel.removeConfirm":
     "Remove this novel from your library? Your downloaded chapter ranges (if any) are kept.",

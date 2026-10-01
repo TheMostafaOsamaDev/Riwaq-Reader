@@ -18,7 +18,7 @@ export type ButtonVariant =
 
 export type ButtonSize = "sm" | "md" | "lg";
 
-export interface ButtonProps
+interface ButtonBaseProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "ref"> {
   theme: Theme;
   variant?: ButtonVariant;
@@ -43,7 +43,26 @@ export interface ButtonProps
   /** 0..1 to make the spinner a determinate ring. Omit while the duration is
    *  still unknown. */
   loadingProgress?: number;
+  /** A button whose whole content is its icon, with no label beside it:
+   *  square padding and a 44x44 floor instead of the wide label padding,
+   *  which would otherwise stretch a lone glyph into an oval.
+   *
+   *  The label does not disappear, it moves: `aria-label` is required, and
+   *  callers should pass the same string as `title` so a pointer can find
+   *  it too. There is no tooltip on Android — see DisabledHint on why that
+   *  is acceptable here and never the only explanation. */
+  iconOnly?: boolean;
 }
+
+/** An icon-only button has no text to name it, so the compiler asks for the
+ *  `aria-label` that replaces it rather than trusting a reviewer to notice
+ *  it missing. */
+export type ButtonProps = ButtonBaseProps &
+  ({ iconOnly: true; "aria-label": string } | { iconOnly?: false });
+
+/** The platform touch-target minimum (Apple 44pt / Material 48dp), which a
+ *  lone icon is small enough to miss on its own. */
+const ICON_BUTTON_MIN = 44;
 
 // Press animation feels right for action buttons but not for chrome icon
 // buttons in the reader's header — those have their own toolbar feel. Keep
@@ -63,6 +82,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       surface = "default",
       loading = false,
       loadingProgress,
+      iconOnly = false,
       disabled,
       style,
       children,
@@ -79,8 +99,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const [pressed, setPressed] = useState(false);
     const busy = loading && !!disabled;
 
-    const padding =
-      size === "lg" ? "12px 24px" : size === "sm" ? "7px 12px" : "9px 18px";
+    const padding = iconOnly
+      ? // Square, so the glyph sits in the middle of a round pill rather
+        // than in the middle of an oval. The min below does the sizing.
+        size === "lg"
+        ? "12px"
+        : size === "sm"
+          ? "7px"
+          : "9px"
+      : size === "lg"
+        ? "12px 24px"
+        : size === "sm"
+          ? "7px 12px"
+          : "9px 18px";
     const fontSize = size === "lg" ? 14 : size === "sm" ? 12 : 13;
     const gap = size === "sm" ? 6 : 8;
 
@@ -122,6 +153,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         "transform 90ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease",
       transform: interactive && pressed ? "scale(0.97)" : "scale(1)",
       width: fullWidth ? "100%" : undefined,
+      ...(iconOnly
+        ? {
+            minWidth: ICON_BUTTON_MIN,
+            minHeight: ICON_BUTTON_MIN,
+            flexShrink: 0,
+          }
+        : null),
       userSelect: "none",
       // Buttons should never wrap their label across lines — they're sized
       // by content. If you need a multi-line button you're using the wrong
