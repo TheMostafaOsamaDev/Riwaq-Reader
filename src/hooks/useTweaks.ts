@@ -29,7 +29,6 @@ export const DEFAULT_TWEAKS: Tweaks = {
   keepScreenAwake: false,
   startupView: "library",
   confirmDelete: true,
-  autoCheckUpdates: true,
   reduceMotion: "auto",
   maxConcurrentDownloads: 2,
   wifiOnlyDownloads: false,
@@ -39,7 +38,7 @@ export const DEFAULT_TWEAKS: Tweaks = {
   fixedPageTint: "none",
 };
 
-function load(): Tweaks {
+export function loadTweaks(): Tweaks {
   if (typeof localStorage === "undefined") return DEFAULT_TWEAKS;
   try {
     migrateStorageKey(STORAGE_KEY);
@@ -57,6 +56,11 @@ function load(): Tweaks {
       if (parsed.columns === 2) parsed.readingMode = "paginated-2";
       else if (parsed.columns === 1) parsed.readingMode = "scroll";
       delete parsed.columns;
+    }
+    // The "Check for updates" toggle was removed (2026-10-02): the daily
+    // check is always on. Strip a stored `false` so it can't resurface.
+    if (parsed && typeof parsed === "object") {
+      delete parsed.autoCheckUpdates;
     }
     // The old manual `rtl` toggle is gone — direction is now derived from
     // the book's language tag at render time. Drop the field so the
@@ -103,7 +107,7 @@ function load(): Tweaks {
 }
 
 export function useTweaks() {
-  const [t, setT] = useState<Tweaks>(() => load());
+  const [t, setT] = useState<Tweaks>(() => loadTweaks());
 
   useEffect(() => {
     try {

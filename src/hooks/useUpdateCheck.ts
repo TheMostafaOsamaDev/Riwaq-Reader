@@ -74,7 +74,6 @@ export function useUpdateCheck(
       const tw = latest.current;
       if (
         !shouldCheck({
-          enabled: tw.autoCheckUpdates,
           lastCheck: tw.lastUpdateCheck,
           now: Date.now(),
           manual,

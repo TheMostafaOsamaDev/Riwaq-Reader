@@ -569,57 +569,39 @@ export function SettingsPage({
         label: tr("settings.updates"),
         node: (
           <Field label={tr("settings.updates")} theme={theme}>
-            <SegRow<"on" | "off">
+            <Button
               theme={theme}
-              value={t.autoCheckUpdates ? "on" : "off"}
-              onChange={(v) => setTweak("autoCheckUpdates", v === "on")}
-              options={[
-                { value: "on", label: tr("settings.on") },
-                { value: "off", label: tr("settings.off") },
-              ]}
-            />
-            <div
+              variant="secondary"
+              size="sm"
+              fullWidth
+              loading={updateChecking}
+              disabled={updateChecking}
+              onClick={onCheckUpdates}
+            >
+              {updateChecking
+                ? tr("settings.updates.checking")
+                : tr("settings.updates.checkNow")}
+            </Button>
+            {/* Always mounted so the live region exists before its text
+                changes — screen readers ignore a region that arrives filled.
+                minHeight reserves the line so a result doesn't push the
+                hint down. */}
+            <p
+              role="status"
+              aria-live="polite"
               style={{
-                marginTop: 10,
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "6px 10px",
+                margin: "8px 2px 0",
+                minHeight: 18,
+                fontSize: 12,
+                lineHeight: 1.45,
+                color:
+                  updateResult?.kind === "failed" ? theme.danger : theme.muted,
               }}
             >
-              <Button
-                theme={theme}
-                variant="secondary"
-                size="sm"
-                loading={updateChecking}
-                disabled={updateChecking}
-                onClick={onCheckUpdates}
-              >
-                {updateChecking
-                  ? tr("settings.updates.checking")
-                  : tr("settings.updates.checkNow")}
-              </Button>
-              {/* Beside the button, not under it, so a result appearing does
-                  not push the hint down. Always mounted so the live region
-                  exists before its text changes — screen readers ignore a
-                  region that arrives already filled. */}
-              <span
-                role="status"
-                aria-live="polite"
-                style={{
-                  fontSize: 12,
-                  lineHeight: 1.45,
-                  color:
-                    updateResult?.kind === "failed"
-                      ? theme.danger
-                      : theme.muted,
-                }}
-              >
-                {!updateChecking &&
-                  updateResult &&
-                  updateStatusText(updateResult, tr)}
-              </span>
-            </div>
+              {!updateChecking &&
+                updateResult &&
+                updateStatusText(updateResult, tr)}
+            </p>
             <p
               style={{
                 margin: "8px 2px 0",

@@ -950,7 +950,7 @@ export const en = {
   // hint says plainly what it contacts and what it does not send.
   "settings.updates": "Check for updates",
   "settings.updates.hint":
-    "Asks GitHub once a day whether a newer Riwaq exists. Nothing about you or your books is sent, and nothing downloads until you tap Update.",
+    "Riwaq asks GitHub once a day whether a newer version exists. Nothing about you or your books is sent, and nothing downloads until you tap Update.",
   "settings.updates.checkNow": "Check now",
   "settings.updates.checking": "Checking…",
   "settings.updates.upToDate": "You're on the latest version ({v}).",

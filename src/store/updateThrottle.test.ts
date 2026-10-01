@@ -7,7 +7,6 @@ describe("shouldCheck", () => {
   it("checks on a first launch that has never checked", () => {
     expect(
       shouldCheck({
-        enabled: true,
         lastCheck: undefined,
         now: 1_000,
         manual: false,
@@ -18,7 +17,6 @@ describe("shouldCheck", () => {
   it("does not check again within the interval", () => {
     expect(
       shouldCheck({
-        enabled: true,
         lastCheck: 1_000,
         now: 1_000 + DAY - 1,
         manual: false,
@@ -29,7 +27,6 @@ describe("shouldCheck", () => {
   it("checks once the interval has elapsed", () => {
     expect(
       shouldCheck({
-        enabled: true,
         lastCheck: 1_000,
         now: 1_000 + DAY,
         manual: false,
@@ -37,33 +34,9 @@ describe("shouldCheck", () => {
     ).toBe(true);
   });
 
-  it("never checks automatically when the setting is off", () => {
-    expect(
-      shouldCheck({
-        enabled: false,
-        lastCheck: undefined,
-        now: 1_000,
-        manual: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("honours an explicit Check now even when the setting is off", () => {
-    // The toggle governs BACKGROUND checks. Pressing the button is consent.
-    expect(
-      shouldCheck({
-        enabled: false,
-        lastCheck: 1_000,
-        now: 1_001,
-        manual: true,
-      }),
-    ).toBe(true);
-  });
-
   it("honours an explicit Check now inside the throttle window", () => {
     expect(
       shouldCheck({
-        enabled: true,
         lastCheck: 1_000,
         now: 1_001,
         manual: true,
@@ -76,7 +49,6 @@ describe("shouldCheck", () => {
     // forever. A future timestamp reads as "never checked".
     expect(
       shouldCheck({
-        enabled: true,
         lastCheck: 9_000_000,
         now: 1_000,
         manual: false,

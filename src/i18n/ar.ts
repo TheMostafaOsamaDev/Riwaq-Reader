@@ -778,7 +778,7 @@ export const ar: Messages = {
 
   "settings.updates": "التحقق من التحديثات",
   "settings.updates.hint":
-    "يسأل GitHub مرة واحدة يوميًا عمّا إذا كان هناك إصدار أحدث من رواق. لا يُرسَل أي شيء عنك أو عن كتبك، ولا يُنزَّل شيء حتى تضغط تحديث.",
+    "يسأل رواق GitHub مرة يوميًا عمّا إذا كان هناك إصدار أحدث. لا يُرسَل أي شيء عنك أو عن كتبك، ولا يُنزَّل شيء حتى تضغط تحديث.",
   "settings.updates.checkNow": "تحقق الآن",
   "settings.updates.checking": "جارٍ التحقق…",
   "settings.updates.upToDate": "لديك أحدث إصدار ({v}).",

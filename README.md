@@ -264,8 +264,9 @@ unauthenticated GET for one static file. **Nothing about you or your books is
 sent**: no identifiers, no library contents, no reading data. Nothing is
 downloaded until you tap Update.
 
-Turn it off in **Settings → About → Check for updates**, and the app stays
-fully functional with it off.
+The check is always on. It is how an installed copy hears about fixes, and it
+is the same single GET every day. If you would rather it never ran, block
+github.com for Riwaq in your firewall; the app is fully functional offline.
 
 Where a new version can be installed from inside the app, it is: Windows, macOS,
 and Linux via the AppImage. The other three (Android, and Linux `.deb`/`.rpm`)
