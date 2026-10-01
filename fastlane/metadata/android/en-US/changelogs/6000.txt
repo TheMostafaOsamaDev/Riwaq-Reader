@@ -1,0 +1,10 @@
+New
+
+* The book page has one main button, Read. Download range and Shelves are icons beside it, and a ⋮ menu holds Save as offline book and Remove from library.
+* On the phone, tap the page to hide the bars, tap again to bring them back. Scrolling hides them too.
+* The focus mode notice is now a thin bar, shown once on entry.
+
+Fixes
+
+* Flatpak installs no longer offer an update; Flathub handles them.
+* F-Droid can now offer the very APK we sign: the Android build is reproducible.
