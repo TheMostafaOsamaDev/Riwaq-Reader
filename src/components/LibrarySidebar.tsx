@@ -7,7 +7,13 @@
 // with a live badge + in-place progress. Settings and a primary Import
 // split-button are pinned to the bottom. Mobile keeps its bottom nav.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "./Icon";
 import { Spinner } from "./Spinner";
@@ -117,8 +123,10 @@ export function LibrarySidebar({
   // click during a run re-opens the stepper instead of the file picker.
   const ind = useImportIndicator(importing);
 
-  const [openLib, setOpenLib] = useState(true);
-  const [openShelves, setOpenShelves] = useState(true);
+  const [openLib, setOpenLib] = useStoredOpen("riwaq:sidebar-open:library");
+  const [openShelves, setOpenShelves] = useStoredOpen(
+    "riwaq:sidebar-open:shelves",
+  );
 
   // Index of each tree's current destination, -1 when it has none. Rows
   // before it are on the lit path from the parent. The parent stays solid
@@ -561,6 +569,35 @@ export function LibrarySidebar({
   );
 }
 
+const COLLAPSE_MS = 220;
+
+/** A tree's open/closed state, kept in localStorage. The sidebar unmounts
+ *  whenever Settings or the reader is open, so component state alone
+ *  reopened every collapsed tree on the way back. Blocked storage (private
+ *  mode, a locked-down webview) just means the tree starts open and the
+ *  choice lasts for this mount. */
+export function useStoredOpen(key: string): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const set = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      try {
+        localStorage.setItem(key, next ? "1" : "0");
+      } catch {
+        // Not persisted; the in-memory state above still applies.
+      }
+    },
+    [key],
+  );
+  return [open, set];
+}
+
 /** Smoothly expand/collapse a group by animating its measured height. */
 export function Collapse({
   open,
@@ -570,11 +607,7 @@ export function Collapse({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  // null until measured. An open tree then renders unclamped ("none"), so
-  // the first measured height replaces a value the transition cannot
-  // interpolate from: it lands without animating. Starting from 0 made every
-  // mount — each return from Settings — slide the trees open and push the
-  // rows below them down the panel.
+  // null until measured; an open tree renders unclamped ("none") until then.
   const [h, setH] = useState<number | null>(null);
   // Measure once before first paint, then only when the content resizes (a
   // shelf added or renamed, the UI language switched). Reading scrollHeight
@@ -589,6 +622,26 @@ export function Collapse({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Animate only a toggle. Everything else that changes the height — the
+  // first measurement, or shelves arriving from disk a moment after the
+  // sidebar mounts — lands at once: animating those replayed the open
+  // animation on every launch and every return from Settings. The flag is
+  // raised in the same render as the new `open`, so the transition is in
+  // place for the commit that changes max-height, and it stays up until the
+  // animation has had time to finish.
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [toggling, setToggling] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    setToggling(true);
+  }
+  useEffect(() => {
+    if (!toggling) return;
+    const t = window.setTimeout(() => setToggling(false), COLLAPSE_MS + 40);
+    return () => window.clearTimeout(t);
+  }, [toggling, open]);
+
   return (
     <div
       style={{
@@ -597,7 +650,9 @@ export function Collapse({
         overflow: "hidden",
         maxHeight: open ? (h ?? "none") : 0,
         opacity: open ? 1 : 0,
-        transition: "max-height 220ms ease, opacity 180ms ease",
+        transition: toggling
+          ? `max-height ${COLLAPSE_MS}ms ease, opacity 180ms ease`
+          : "none",
       }}
     >
       {/* flow-root: without it a child's top margin (the Tree's) collapses

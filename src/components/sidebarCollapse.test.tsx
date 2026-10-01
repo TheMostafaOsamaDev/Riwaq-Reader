@@ -16,11 +16,32 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Collapse } from "./LibrarySidebar";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Collapse, useStoredOpen } from "./LibrarySidebar";
 
 const CONTENT_HEIGHT = 120;
+let contentHeight = CONTENT_HEIGHT;
 let heightReads = 0;
+
+/** Stand-in ResizeObserver (happy-dom has none that fires): `resizeAll()`
+ *  plays the browser telling every observer its element changed size. */
+const observers = new Set<() => void>();
+class FakeResizeObserver {
+  private cb: () => void;
+  constructor(cb: () => void) {
+    this.cb = cb;
+  }
+  observe() {
+    observers.add(this.cb);
+  }
+  disconnect() {
+    observers.delete(this.cb);
+  }
+  unobserve() {}
+}
+function resizeAll() {
+  for (const cb of observers) cb();
+}
 
 let host: HTMLDivElement;
 let root: Root;
@@ -36,7 +57,7 @@ beforeEach(() => {
     configurable: true,
     get: () => {
       heightReads++;
-      return CONTENT_HEIGHT;
+      return contentHeight;
     },
   });
   restore = () => {
@@ -44,6 +65,10 @@ beforeEach(() => {
       Object.defineProperty(HTMLElement.prototype, "scrollHeight", desc);
   };
   heightReads = 0;
+  contentHeight = CONTENT_HEIGHT;
+  observers.clear();
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  localStorage.clear();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -53,6 +78,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   restore();
+  vi.unstubAllGlobals();
 });
 
 /** Every max-height React writes, in order, from the first commit on. React
@@ -132,5 +158,62 @@ describe("Collapse", () => {
       });
     }
     expect(heightReads).toBe(1);
+  });
+
+  // The Library page reloads shelves from disk each time it mounts, so the
+  // Shelves tree first renders with none and grows when they arrive. When
+  // that growth animated, every return from Settings (and every launch)
+  // replayed the open animation. Only a click should animate.
+  it("resizes without animating when its content changes on its own", async () => {
+    await act(async () => {
+      root.render(
+        <Collapse open>
+          <div>rows</div>
+        </Collapse>,
+      );
+    });
+    contentHeight = 200;
+    await act(async () => resizeAll());
+    const el = host.firstElementChild as HTMLElement;
+    expect(el.style.maxHeight).toBe("200px");
+    expect(el.style.transition).not.toContain("max-height");
+  });
+});
+
+describe("useStoredOpen", () => {
+  function Probe({
+    onState,
+  }: {
+    onState: (s: ReturnType<typeof useStoredOpen>) => void;
+  }) {
+    onState(useStoredOpen("riwaq:test-tree"));
+    return null;
+  }
+
+  it("keeps a tree's open state across remounts", async () => {
+    let state: ReturnType<typeof useStoredOpen> = [true, () => {}];
+    await act(async () => root.render(<Probe onState={(s) => (state = s)} />));
+    expect(state[0]).toBe(true);
+    await act(async () => state[1](false));
+    expect(state[0]).toBe(false);
+    act(() => root.unmount());
+    root = createRoot(host);
+    await act(async () => root.render(<Probe onState={(s) => (state = s)} />));
+    expect(state[0]).toBe(false);
+  });
+
+  it("falls back to open when storage is unavailable", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    let state: ReturnType<typeof useStoredOpen> = [false, () => {}];
+    await act(async () => root.render(<Probe onState={(s) => (state = s)} />));
+    expect(state[0]).toBe(true);
+    await act(async () => state[1](false));
+    expect(state[0]).toBe(false);
+    vi.restoreAllMocks();
   });
 });
