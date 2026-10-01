@@ -23,10 +23,6 @@ on:
       release_run:
         description: Id of the Release run to compare against (default - the latest on this commit)
         required: false
-  # TEMPORARY, for the first test before this workflow is on main: waits for
-  # a Release run on the pushed commit. Removed before merge.
-  push:
-    branches: [build/fdroid-reproducible]
 
 permissions:
   contents: read

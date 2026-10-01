@@ -26,7 +26,9 @@
 # debug key (see the android job and scripts/verify-apk-signing.sh).
 #
 # Out of scope (deferred): iOS builds, in-app auto-updater, DESKTOP code
-# signing (Windows cert, Apple Dev ID notarization), F-Droid metadata.
+# signing (Windows cert, Apple Dev ID notarization). F-Droid builds from
+# docs/fdroid/com.riwaq.reader.yml, and fdroid-verify.yml checks that its
+# build of each release matches the APK built here.
 # Because the desktop bundles are unsigned, the macOS .dmg trips
 # Gatekeeper and the Windows .exe trips SmartScreen on first launch —
 # see the README for the one-time "open anyway" steps users follow.
