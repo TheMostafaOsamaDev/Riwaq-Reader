@@ -238,11 +238,6 @@ export function BookBody({
         // scroll, and its momentum, for every swipe.
       }}
     >
-      {/* The chapter's opening block. Marked (inside ChapterOpener) so focus
-          mode can tell when it is on screen and hold its running head back —
-          the two are the same chapter name, and a printed book does not repeat
-          it on the page it opens on. See
-          reader/chrome/useChapterHeadShown.ts. */}
       <ChapterOpener
         theme={theme}
         order={chapter.order}
