@@ -4,6 +4,7 @@ mod legacy_identity;
 mod notify;
 mod opened;
 mod sources;
+mod updates;
 
 // Only needed to call `get_webview_window` from the desktop-only open-path
 // handlers below (single-instance callback, RunEvent::Opened) — gated so it
@@ -94,6 +95,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             is_appimage,
             is_flatpak,
+            updates::check_update_manifest,
             legacy_identity::migrate_legacy_identity,
             sources::source_fetch,
             sources::source_fetch_bytes,

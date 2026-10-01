@@ -45,6 +45,7 @@ import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
+import type { CheckResult } from "../store/updates";
 
 const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 const LICENSE_URL =
@@ -64,6 +65,8 @@ interface Props {
    *  running a second, independent one. */
   onCheckUpdates: () => void;
   updateChecking: boolean;
+  /** The last check's outcome this session, or null before one finishes. */
+  updateResult: CheckResult | null;
 }
 
 export function SettingsPage({
@@ -76,6 +79,7 @@ export function SettingsPage({
   onClose,
   onCheckUpdates,
   updateChecking,
+  updateResult,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -574,7 +578,15 @@ export function SettingsPage({
                 { value: "off", label: tr("settings.off") },
               ]}
             />
-            <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "6px 10px",
+              }}
+            >
               <Button
                 theme={theme}
                 variant="secondary"
@@ -587,6 +599,26 @@ export function SettingsPage({
                   ? tr("settings.updates.checking")
                   : tr("settings.updates.checkNow")}
               </Button>
+              {/* Beside the button, not under it, so a result appearing does
+                  not push the hint down. Always mounted so the live region
+                  exists before its text changes — screen readers ignore a
+                  region that arrives already filled. */}
+              <span
+                role="status"
+                aria-live="polite"
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  color:
+                    updateResult?.kind === "failed"
+                      ? theme.danger
+                      : theme.muted,
+                }}
+              >
+                {!updateChecking &&
+                  updateResult &&
+                  updateStatusText(updateResult, tr)}
+              </span>
             </div>
             <p
               style={{
@@ -1090,4 +1122,23 @@ function MobileCategoryRow({
       />
     </button>
   );
+}
+
+/** One line for the last check's outcome. Every kind gets words, not just a
+ *  colour: "failed" and "up to date" were indistinguishable once, and that is
+ *  how an update check that never worked shipped five times. */
+function updateStatusText(
+  r: CheckResult,
+  tr: ReturnType<typeof useI18n>["tr"],
+): string {
+  switch (r.kind) {
+    case "update":
+      return tr("update.available", { v: r.info.version });
+    case "upToDate":
+      return tr("settings.updates.upToDate", { v: r.current });
+    case "managed":
+      return tr("settings.updates.managed");
+    case "failed":
+      return tr("settings.updates.failed");
+  }
 }

@@ -1084,6 +1084,7 @@ function App() {
               onClose={closeSettings}
               onCheckUpdates={update.check}
               updateChecking={update.checking}
+              updateResult={update.result}
             />
           ) : base.screen === "library" ? (
             <Library

@@ -781,6 +781,10 @@ export const ar: Messages = {
     "يسأل GitHub مرة واحدة يوميًا عمّا إذا كان هناك إصدار أحدث من رواق. لا يُرسَل أي شيء عنك أو عن كتبك، ولا يُنزَّل شيء حتى تضغط تحديث.",
   "settings.updates.checkNow": "تحقق الآن",
   "settings.updates.checking": "جارٍ التحقق…",
+  "settings.updates.upToDate": "لديك أحدث إصدار ({v}).",
+  "settings.updates.failed":
+    "تعذّر الوصول إلى GitHub. تحقّق من اتصالك وحاول مجددًا.",
+  "settings.updates.managed": "تصل تحديثات هذه النسخة عبر متجر التطبيقات.",
   "update.available": "الإصدار {v} من رواق متاح",
   "update.action.install": "تحديث",
   "update.action.download": "تنزيل",

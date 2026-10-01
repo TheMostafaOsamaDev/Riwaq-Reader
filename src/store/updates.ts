@@ -15,10 +15,11 @@ import {
 
 const REPO = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 
-/** `/releases/latest/` always resolves to the newest PUBLISHED, non-prerelease
- *  release, so the pipeline's draft release changes nothing in the world until
- *  it is published by hand. That keeps the existing verify-then-publish gate. */
-export const MANIFEST_URL = `${REPO}/releases/latest/download/latest.json`;
+// The manifest itself is fetched from `plugins.updater.endpoints` in
+// tauri.conf.json — `/releases/latest/download/latest.json`. `/releases/latest/`
+// always resolves to the newest PUBLISHED, non-prerelease release, so the
+// pipeline's draft release changes nothing in the world until it is published
+// by hand. That keeps the existing verify-then-publish gate.
 
 /** Where the manual channel sends people. */
 export const RELEASES_PAGE_URL = `${REPO}/releases/latest`;
@@ -30,15 +31,21 @@ export interface UpdateInfo {
   channel: Exclude<UpdateChannel, "none">;
 }
 
-/** GET the manifest and read its version. Null on any failure — offline is the
- *  normal case here, not an exception worth reporting. */
+type Invoke = (command: string) => Promise<unknown>;
+
+/** Ask the Rust side for the manifest's version. Null on any failure.
+ *
+ *  This is deliberately NOT a `fetch()`. GitHub's release-asset download sends
+ *  no CORS headers, so a webview fetch of the manifest is blocked on every
+ *  platform — it was, in every build through 0.5.3, and because the failure
+ *  was swallowed as "no update" nobody was ever offered one. The request is
+ *  made in `src-tauri/src/updates.rs`, which reads the URL from the same
+ *  `plugins.updater.endpoints` the installer uses. */
 export async function fetchManifestVersion(
-  fetchImpl: typeof fetch,
+  invokeImpl: Invoke,
 ): Promise<{ version: string; notes?: string } | null> {
   try {
-    const res = await fetchImpl(MANIFEST_URL);
-    if (!res.ok) return null;
-    const body: unknown = await res.json();
+    const body: unknown = await invokeImpl("check_update_manifest");
     if (!body || typeof body !== "object") return null;
     const { version, notes } = body as { version?: unknown; notes?: unknown };
     if (typeof version !== "string" || version === "") return null;
@@ -46,6 +53,35 @@ export async function fetchManifestVersion(
   } catch {
     return null;
   }
+}
+
+/** What one check found. "failed" is kept apart from "upToDate" on purpose:
+ *  folding them together is how a check that could never succeed went
+ *  unnoticed for five releases. "managed" is an install a store updates
+ *  (Flatpak), where there is nothing for the app itself to offer. */
+export type CheckResult =
+  | { kind: "update"; info: UpdateInfo }
+  | { kind: "upToDate"; current: string }
+  | { kind: "managed" }
+  | { kind: "failed" };
+
+/** Classify a check. Only "update" ever shows the banner. */
+export function resolveCheck({
+  latest,
+  current,
+  env,
+}: {
+  latest: { version: string; notes?: string } | null;
+  current: string;
+  env: ChannelEnv;
+}): CheckResult {
+  if (!latest) return { kind: "failed" };
+  if (resolveChannel(env) === "none") return { kind: "managed" };
+  const info = evaluateUpdate({ latest, current, env });
+  if (info) return { kind: "update", info };
+  // An unknown running version is not "up to date" — it is a check that could
+  // not finish, and saying otherwise would be the same lie as before.
+  return current ? { kind: "upToDate", current } : { kind: "failed" };
 }
 
 /** Turn a fetched manifest into an offer, or nothing. */

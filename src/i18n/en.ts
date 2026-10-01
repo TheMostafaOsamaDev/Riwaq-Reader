@@ -953,6 +953,11 @@ export const en = {
     "Asks GitHub once a day whether a newer Riwaq exists. Nothing about you or your books is sent, and nothing downloads until you tap Update.",
   "settings.updates.checkNow": "Check now",
   "settings.updates.checking": "Checking…",
+  "settings.updates.upToDate": "You're on the latest version ({v}).",
+  "settings.updates.failed":
+    "Couldn't reach GitHub. Check your connection and try again.",
+  "settings.updates.managed":
+    "Updates for this install come from your software store.",
   "update.available": "Riwaq {v} is available",
   "update.action.install": "Update",
   "update.action.download": "Download",
