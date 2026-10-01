@@ -33,8 +33,9 @@ function mouse(
   button: number,
   target: EventTarget = document.body,
 ) {
-  // Mirrors wry's synthetic event on macOS/Linux: cancelable, NOT bubbling,
-  // dispatched on whatever element is under the pointer.
+  // Mirrors wry's synthetic event on macOS/Linux: cancelable, dispatched on
+  // whatever element is under the pointer. Built non-bubbling on purpose: a
+  // capture-phase window listener must see it even then.
   const e = new MouseEvent(type, { button, cancelable: true, bubbles: false });
   target.dispatchEvent(e);
   return e;
@@ -61,6 +62,38 @@ describe("keyboard", () => {
     key({ key: "د", code: "BracketRight", metaKey: true });
     expect(back).toHaveBeenCalledTimes(1);
     expect(forward).toHaveBeenCalledTimes(1);
+  });
+
+  it("only falls back to the physical key for non-Latin letters", () => {
+    // German: the [ key types ü, a Latin letter with its own ⌘ meaning; and
+    // a dead key reports "Dead". Neither is a non-Latin layout's [ key.
+    key({ key: "ü", code: "BracketLeft", metaKey: true });
+    key({ key: "Dead", code: "BracketLeft", metaKey: true });
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it("a handled key never reaches later listeners", () => {
+    // e.g. the context menu's own ←/→ handling: one press must not both go
+    // back and move the menu's focus.
+    const later = vi.fn();
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    el.addEventListener("keydown", later);
+    window.addEventListener("keydown", later);
+    key({ key: "ArrowLeft", altKey: true }, el);
+    key({ key: "[", metaKey: true }, el);
+    key({ key: "ArrowLeft", altKey: true, repeat: true }, el);
+    window.removeEventListener("keydown", later);
+    expect(back).toHaveBeenCalledTimes(2);
+    expect(later).not.toHaveBeenCalled();
+  });
+
+  it("an unhandled key still reaches later listeners", () => {
+    const later = vi.fn();
+    window.addEventListener("keydown", later);
+    key({ key: "ArrowLeft" });
+    window.removeEventListener("keydown", later);
+    expect(later).toHaveBeenCalledTimes(1);
   });
 
   it("ignores plain arrows and other modifier mixes", () => {

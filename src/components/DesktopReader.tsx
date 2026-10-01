@@ -90,6 +90,7 @@ import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
 import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
+import { isTextEntry } from "../lib/isTextEntry";
 
 interface Props {
   theme: Theme;
@@ -677,16 +678,11 @@ export function DesktopReader({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      )
-        return;
+      if (isTextEntry(e.target)) return;
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      // Alt/⌘/Ctrl+arrows are app back/forward (navInput.ts), not page turns.
+      // A chorded arrow is never a page turn: Alt+arrows are app back/forward
+      // (navInput.ts stops those before they get here), ⌘/Ctrl+arrows are
+      // system shortcuts.
       if (e.altKey || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
       // In RTL, "forward in the book" is the LEFT arrow — the same arrow

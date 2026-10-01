@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// Paged PDF/DOCX: ←/→ flip pages, but Alt/⌘/Ctrl+arrows are app
-// back/forward and must not also flip.
+// Paged PDF/DOCX: ←/→ flip pages, but a chorded arrow never does. Alt+←/→
+// is app back/forward; ⌘/Ctrl+←/→ are system shortcuts.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

@@ -10,31 +10,42 @@
 // pointer, and calls history.back()/forward() unless that mouseup was
 // defaultPrevented; WebView2 (Windows) navigates on mouseup natively. So we
 // cancel both halves and navigate ourselves, once, through the same back()/
-// forward() as every other input. The synthetic events don't bubble, which
-// is why every listener here is on the window in the capture phase.
+// forward() as every other input.
+//
+// Every listener is on the window in the capture phase, so it runs before
+// any handler in the page can stop the event, and a key handled here is
+// stopped so no later handler (a reader's arrow keys, a menu's) also acts on
+// the same press.
 //
 // Android is untouched: hardware Back arrives as `popstate` through the
 // webview's own history.
 
+import { isTextEntry } from "../lib/isTextEntry";
 import { back, forward } from "./navigation";
 
 type Direction = "back" | "forward";
 
 const SIDE_BUTTONS: Record<number, Direction> = { 3: "back", 4: "forward" };
 
+/** The [ / ] key on a layout that types a non-Latin letter there (Arabic,
+ *  for one), where `e.key` is that letter. A Latin letter (German ü) or a
+ *  dead key keeps its own meaning. */
+function nonLatinKeyAt(e: KeyboardEvent, code: string): boolean {
+  return (
+    e.code === code &&
+    [...e.key].length === 1 &&
+    !/[\x20-\x7e]|\p{Script=Latin}/u.test(e.key)
+  );
+}
+
 /** Which way a keydown navigates, or null if it isn't a navigation key. */
-export function navDirection(e: KeyboardEvent): Direction | null {
+function navDirection(e: KeyboardEvent): Direction | null {
   if (e.key === "BrowserBack") return "back";
   if (e.key === "BrowserForward") return "forward";
   if (e.shiftKey || e.ctrlKey) return null;
   if (e.metaKey && !e.altKey) {
-    // On a non-Latin layout (Arabic, for one) the [ key reports a letter, so
-    // fall back to the physical key, but only then: on AZERTY "BracketLeft"
-    // is a different printable key and its own character must win.
-    const latin = /^[\x20-\x7e]$/.test(e.key);
-    if (e.key === "[" || (!latin && e.code === "BracketLeft")) return "back";
-    if (e.key === "]" || (!latin && e.code === "BracketRight"))
-      return "forward";
+    if (e.key === "[" || nonLatinKeyAt(e, "BracketLeft")) return "back";
+    if (e.key === "]" || nonLatinKeyAt(e, "BracketRight")) return "forward";
     return null;
   }
   if (e.altKey && !e.metaKey) {
@@ -42,13 +53,6 @@ export function navDirection(e: KeyboardEvent): Direction | null {
     if (e.key === "ArrowRight") return "forward";
   }
   return null;
-}
-
-function isTextEntry(t: EventTarget | null): boolean {
-  if (!(t instanceof HTMLElement)) return false;
-  return (
-    t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
-  );
 }
 
 function go(dir: Direction): void {
@@ -63,6 +67,7 @@ function onKeyDown(e: KeyboardEvent): void {
   // field the user is typing in.
   if (e.altKey && isTextEntry(e.target)) return;
   e.preventDefault();
+  e.stopPropagation();
   if (e.repeat) return; // holding the key steps once, not to the root
   go(dir);
 }
@@ -79,13 +84,13 @@ function onMouseUp(e: MouseEvent): void {
 }
 
 /** Install the listeners; returns a function that removes them. */
-export function installNavInput(target: Window = window): () => void {
-  target.addEventListener("keydown", onKeyDown, true);
-  target.addEventListener("mousedown", onMouseDown, true);
-  target.addEventListener("mouseup", onMouseUp, true);
+export function installNavInput(): () => void {
+  window.addEventListener("keydown", onKeyDown, true);
+  window.addEventListener("mousedown", onMouseDown, true);
+  window.addEventListener("mouseup", onMouseUp, true);
   return () => {
-    target.removeEventListener("keydown", onKeyDown, true);
-    target.removeEventListener("mousedown", onMouseDown, true);
-    target.removeEventListener("mouseup", onMouseUp, true);
+    window.removeEventListener("keydown", onKeyDown, true);
+    window.removeEventListener("mousedown", onMouseDown, true);
+    window.removeEventListener("mouseup", onMouseUp, true);
   };
 }

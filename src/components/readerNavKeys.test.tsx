@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 //
-// Alt+←/→ (and ⌘/Ctrl+arrows) belong to app navigation. The reader's own
-// arrow handler must leave them alone, or one press both leaves the reader
-// and turns a chapter.
+// A chorded arrow is never a chapter turn. Alt+←/→ is app back/forward, and
+// one press must not both leave the reader and turn a chapter; ⌘/Ctrl+←/→
+// are system shortcuts.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
