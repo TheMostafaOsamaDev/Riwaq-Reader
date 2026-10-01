@@ -157,8 +157,6 @@ export const ar: Messages = {
   "sidebar.newShelf": "رف جديد",
   "sidebar.downloads": "التنزيلات",
   "sidebar.settings": "الإعدادات",
-  "nav.back": "رجوع",
-  "nav.forward": "للأمام",
   "sidebar.importBook": "استيراد كتاب",
   "sidebar.importing": "جارٍ الاستيراد…",
   "sidebar.moreImport": "خيارات استيراد أخرى",

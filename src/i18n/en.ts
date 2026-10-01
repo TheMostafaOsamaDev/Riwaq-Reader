@@ -198,8 +198,6 @@ export const en = {
   "sidebar.newShelf": "New shelf",
   "sidebar.downloads": "Downloads",
   "sidebar.settings": "Settings",
-  "nav.back": "Back",
-  "nav.forward": "Forward",
   "sidebar.importBook": "Import book",
   "sidebar.importing": "Importing…",
   "sidebar.moreImport": "More import options",

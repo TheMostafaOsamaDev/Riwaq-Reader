@@ -63,12 +63,6 @@ export interface NavSnapshot {
 
 export interface NavState {
   snapshot: NavSnapshot;
-  /** True when there is an earlier entry to pop to (drives the desktop Back
-   *  button's enabled state; on Android the OS supplies the affordance). */
-  canBack: boolean;
-  /** True when a forward entry exists (i.e. the user has gone back and not
-   *  yet pushed a new destination over the top). */
-  canForward: boolean;
 }
 
 const ROOT: NavSnapshot = {
@@ -77,10 +71,10 @@ const ROOT: NavSnapshot = {
 };
 
 // `index` is our position in the history stack; `maxIndex` is the furthest
-// forward entry that still exists. canForward = index < maxIndex. The History
-// API tracks the stack itself, but doesn't tell us whether forward entries
-// exist, so we mirror just enough (two integers, stamped into each entry's
-// state) to answer that.
+// forward entry that still exists, so forward() can tell when there is
+// nothing ahead. The History API tracks the stack itself but doesn't expose
+// that, so we mirror just enough (two integers, stamped into each entry's
+// state) to answer it.
 let snapshot: NavSnapshot = ROOT;
 let index = 0;
 let maxIndex = 0;
@@ -99,11 +93,7 @@ function isStamped(s: unknown): s is StampedState {
 }
 
 function compute(): NavState {
-  return {
-    snapshot,
-    canBack: index > 0,
-    canForward: index < maxIndex,
-  };
+  return { snapshot };
 }
 
 function commit(): void {

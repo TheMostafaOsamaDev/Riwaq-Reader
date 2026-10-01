@@ -33,7 +33,6 @@ import {
   getDownloadProgress,
   subscribeDownloadProgress,
 } from "../store/downloadProgress";
-import { useNav, back, forward } from "../store/navigation";
 import { useImportIndicator } from "../store/importIndicator";
 import { setMinimized } from "../store/importProgress";
 import type { Shelf } from "../store/shelves";
@@ -153,9 +152,7 @@ export function LibrarySidebar({
 
   return (
     <aside style={{ ...sidebarFrame(theme), fontFamily: FONT_STACKS.sans }}>
-      {/* Head — brand mark + wordmark, with the history back/forward pair
-          pinned to the inline-end (the desktop equivalent of the Android
-          hardware back). */}
+      {/* Head — brand mark + wordmark. */}
       <div
         style={{
           display: "flex",
@@ -183,7 +180,6 @@ export function LibrarySidebar({
         >
           {dir === "rtl" ? "رواق" : "Riwaq"}
         </span>
-        <NavArrows theme={theme} />
       </div>
 
       {/* Search — opens the full-screen search */}
@@ -986,60 +982,6 @@ function NavRow({
       </span>
       {label}
     </button>
-  );
-}
-
-/** History back/forward pair for the desktop chrome. Buttons disable when
- *  there's nowhere to go in that direction; the arrows mirror in RTL so
- *  "back" always points toward the reading-start edge. Keyboard (Alt+←/→)
- *  and mouse side-buttons drive the same nav store from anywhere. */
-function NavArrows({ theme }: { theme: Theme }) {
-  const { tr } = useI18n();
-  const { canBack, canForward } = useNav();
-  const arrow = (
-    kind: "back" | "forward",
-    enabled: boolean,
-    onClick: () => void,
-  ) => (
-    <button
-      onClick={enabled ? onClick : undefined}
-      disabled={!enabled}
-      aria-label={tr(kind === "back" ? "nav.back" : "nav.forward")}
-      title={tr(kind === "back" ? "nav.back" : "nav.forward")}
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        flexShrink: 0,
-        border: `1px solid ${theme.rule}`,
-        background: "transparent",
-        color: theme.ink,
-        cursor: enabled ? "pointer" : "default",
-        opacity: enabled ? 1 : 0.38,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: TRANSITION,
-      }}
-      onMouseEnter={(e) => {
-        if (enabled) e.currentTarget.style.background = theme.hover;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "transparent";
-      }}
-    >
-      <Icon
-        name={kind === "back" ? "arrowL" : "arrowR"}
-        size={15}
-        className="rtl-flip-x"
-      />
-    </button>
-  );
-  return (
-    <div style={{ display: "flex", gap: 5, marginInlineStart: "auto" }}>
-      {arrow("back", canBack, back)}
-      {arrow("forward", canForward, forward)}
-    </div>
   );
 }
 
