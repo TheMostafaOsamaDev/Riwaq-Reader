@@ -3614,6 +3614,8 @@ version = "0.5.3"
 dependencies = [
  "base64 0.22.1",
  "jni",
+ "objc2-app-kit",
+ "objc2-foundation",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

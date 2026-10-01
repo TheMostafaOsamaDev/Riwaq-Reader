@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
@@ -357,7 +358,18 @@ function App() {
       darkIcons,
       background: theme.bg,
     }).catch(() => {});
-  }, [theme.bg, theme.ink, theme.muted, themeKey]);
+    // Desktop: paint the native window itself in the theme's background.
+    // Whenever the webview does not cover the window — a frame of a
+    // maximize or full-screen animation, a resize the webview has not caught
+    // up with — that bare window shows through, and the OS default is a grey
+    // that reads as a broken band across the app. `dropCapable` is the
+    // desktop-OS check (see above).
+    if (dropCapable) {
+      void getCurrentWindow()
+        .setBackgroundColor(theme.bg)
+        .catch(() => {});
+    }
+  }, [theme.bg, theme.ink, theme.muted, themeKey, dropCapable]);
 
   // Overlay scrollbars for every scroll area in the app: a slim, translucent
   // bar that floats over the content while scrolling and fades once it stops.
