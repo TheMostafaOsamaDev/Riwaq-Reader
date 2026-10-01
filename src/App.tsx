@@ -1060,6 +1060,7 @@ function App() {
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <Suspense fallback={<LazyViewFallback background={theme.bg} />}>
               <FixedPageReader
+                sourceKey={`${t.fontFamily}|${t.fontSize}`}
                 docxMode={
                   loadedFixed.book.kind === "docx" ? "pages" : undefined
                 }
@@ -1085,7 +1086,10 @@ function App() {
                   const b = loadedFixed.book;
                   return b.kind === "pdf"
                     ? createPdfPageSource(b)
-                    : createDocxPageSource(b);
+                    : createDocxPageSource(b, {
+                        fontFamily: t.fontFamily,
+                        fontSize: t.fontSize,
+                      });
                 }}
                 onLocationChange={(page, off, pageCount, blockId) =>
                   savePagePosition(

@@ -68,6 +68,34 @@ describe("blockForPage / pageForBlock", () => {
   });
 });
 
+describe("reading typography", () => {
+  it("lays the page out in the font the reader chose", async () => {
+    const src = await createDocxPageSourceFromParts({
+      html: HTML,
+      dir: "ltr",
+      outline: [],
+      typography: { fontFamily: "Georgia, serif", fontSize: 28 },
+    });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    await src.renderPage(0, host, 1);
+    const card = host.firstElementChild as HTMLElement;
+    expect(card.style.fontFamily).toContain("Georgia");
+    expect(card.style.fontSize).toBe("28px");
+    host.remove();
+  });
+
+  it("falls back to the reading serif when nothing is chosen", async () => {
+    const src = await source();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    await src.renderPage(0, host, 1);
+    const card = host.firstElementChild as HTMLElement;
+    expect(card.style.fontSize).toBe("17px");
+    host.remove();
+  });
+});
+
 describe("a position survives the round trip through flowing text", () => {
   it("returns to the same block after pages -> flow -> pages", async () => {
     const src = await source();

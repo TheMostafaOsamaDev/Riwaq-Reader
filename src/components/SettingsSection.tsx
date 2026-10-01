@@ -838,13 +838,25 @@ export function fixedItems(ctx: {
   zoom: number;
   onZoomChange: (next: number) => void;
   mobile: boolean;
+  /** DOCX pages are real HTML text, so they can honour the reading font the
+   *  way the reflowable reader does. A PDF page is a rendered bitmap and
+   *  cannot, which is why this is opt-in rather than always on. */
+  typography?: boolean;
 }): SettingEntry[] {
   const { theme, t, setTweak, tr, locale, zoom, onZoomChange, mobile } = ctx;
+  // Reused verbatim from the reflowable control set rather than rebuilt, so
+  // the two readers cannot drift apart on the same two settings.
+  const typographyRows = ctx.typography
+    ? readingItems({ theme, t, setTweak, tr, showPageTurn: false }).filter(
+        (e) => e.id === "font" || e.id === "fontSize",
+      )
+    : [];
   const step = (delta: number) =>
     onZoomChange(
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(zoom + delta).toFixed(2))),
     );
   return [
+    ...typographyRows,
     {
       id: "fixedFlow",
       label: tr("settings.flow"),
@@ -954,6 +966,7 @@ export function FixedPageControls(props: {
   zoom: number;
   onZoomChange: (next: number) => void;
   mobile?: boolean;
+  typography?: boolean;
 }) {
   const { tr, locale } = useI18n();
   return (

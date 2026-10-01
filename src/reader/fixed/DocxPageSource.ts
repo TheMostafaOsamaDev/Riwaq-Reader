@@ -27,11 +27,22 @@ const PAGE_H = Math.round(PAGE_W * 1.414); // A-series ratio ≈ 1075
 const MARGIN = 56;
 const CW = PAGE_W - MARGIN * 2;
 const CH = PAGE_H - MARGIN * 2;
-const FONT = FONT_STACKS.serif;
-const FONT_SIZE = 17;
+const DEFAULT_FONT = FONT_STACKS.serif;
+const DEFAULT_FONT_SIZE = 17;
 const LINE_HEIGHT = 1.7;
 
+/** Reading typography for a DOCX page. The text is real HTML, so the page
+ *  honours the same font settings the reflowable reader does — a PDF page is
+ *  a bitmap and cannot. Changing either re-paginates, which is safe because
+ *  a reading position is anchored to a block, not to a page number. */
+export interface DocxTypography {
+  fontFamily?: string;
+  fontSize?: number;
+}
+
 interface DocxParts {
+  /** Reading typography; defaults to the serif face at 17px. */
+  typography?: DocxTypography;
   /** Body HTML with `<img>` srcs already resolved to loadable
    *  asset:// URLs. */
   html: string;
@@ -50,6 +61,8 @@ const IMG_CONSTRAIN = (img: HTMLImageElement) => {
 export async function createDocxPageSourceFromParts(
   parts: DocxParts,
 ): Promise<FixedPageSource> {
+  const FONT = parts.typography?.fontFamily || DEFAULT_FONT;
+  const FONT_SIZE = parts.typography?.fontSize || DEFAULT_FONT_SIZE;
   const parsed = new DOMParser().parseFromString(parts.html, "text/html");
 
   // Offscreen measuring container, styled exactly like the render card so
@@ -237,6 +250,7 @@ function delay(ms: number): Promise<void> {
  *  paginate. */
 export async function createDocxPageSource(
   book: DocxBook,
+  typography?: DocxTypography,
 ): Promise<FixedPageSource> {
   const html = await readTextFile(`${bookDir(book.id)}/content.html`, {
     baseDir: BASE,
@@ -252,5 +266,6 @@ export async function createDocxPageSource(
     html: parsed.body.innerHTML,
     dir: book.dir,
     outline: book.outline,
+    typography,
   });
 }

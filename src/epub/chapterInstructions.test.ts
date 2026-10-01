@@ -68,6 +68,23 @@ describe("collectInstructions", () => {
     expect(got[0].inst).toEqual({ kind: "text", text: "one two" });
   });
 
+  it("reports the heading level of a heading block", () => {
+    const got = collectInstructions(bodyOf("<h2>Section</h2><p>body</p>"));
+    expect(got[0].inst).toEqual({ kind: "text", text: "Section", level: 2 });
+    // A body paragraph carries no level at all, so existing saved chapters
+    // (which never had the field) keep reading as paragraphs.
+    expect(got[1].inst).toEqual({ kind: "text", text: "body" });
+  });
+
+  it("reports every heading level it recognises", () => {
+    const got = collectInstructions(
+      bodyOf("<h1>a</h1><h3>b</h3><h6>c</h6><blockquote>d</blockquote>"),
+    );
+    expect(
+      got.map((g) => ("level" in g.inst ? g.inst.level : undefined)),
+    ).toEqual([1, 3, 6, undefined]);
+  });
+
   it("returns nothing for an empty container", () => {
     expect(collectInstructions(bodyOf(""))).toEqual([]);
   });

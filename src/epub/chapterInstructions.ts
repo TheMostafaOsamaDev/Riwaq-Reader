@@ -13,8 +13,21 @@ const ITEM_SELECTOR = `${BLOCK_SELECTOR}, img`;
  *  step is deferred so a zip-read can run async without scattering awaits
  *  inside the DOM walk. */
 export type ChapterInstruction =
-  | { kind: "text"; text: string }
+  | {
+      kind: "text";
+      text: string;
+      /** 1-6 when the block was a heading, absent for body text. Absent is
+       *  the common case and the backward-compatible one: chapters saved
+       *  before this existed simply have no level and read as paragraphs. */
+      level?: number;
+    }
   | { kind: "image"; src: string; alt?: string };
+
+/** `h1`-`h6` -> 1-6; anything else -> undefined. */
+function headingLevel(tagName: string): number | undefined {
+  const m = /^h([1-6])$/i.exec(tagName);
+  return m ? Number(m[1]) : undefined;
+}
 
 /** One instruction plus the element that produced it. The EPUB path
  *  discards `node`; the DOCX flow adapter uses it to attribute each item
@@ -82,7 +95,11 @@ export function collectInstructions(
       }
       return;
     }
-    out.push({ inst: { kind: "text", text }, node });
+    const level = headingLevel(node.tagName);
+    out.push({
+      inst: level ? { kind: "text", text, level } : { kind: "text", text },
+      node,
+    });
   });
 
   return out;

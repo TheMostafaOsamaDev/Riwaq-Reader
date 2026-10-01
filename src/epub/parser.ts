@@ -555,7 +555,11 @@ function resolveChapterItems(
   const out: ChapterItem[] = [];
   for (const inst of instructions) {
     if (inst.kind === "text") {
-      out.push({ text: inst.text });
+      out.push(
+        inst.level
+          ? { text: inst.text, level: inst.level }
+          : { text: inst.text },
+      );
       continue;
     }
     const zipPath = joinPath(chapterDir, decodeURI(inst.src.split("#")[0]));

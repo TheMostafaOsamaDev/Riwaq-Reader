@@ -189,7 +189,11 @@ export function docxHtmlToFlowDoc(
 }
 
 function toItem(inst: ChapterInstruction): ChapterItem {
-  if (inst.kind === "text") return { text: inst.text };
+  if (inst.kind === "text") {
+    return inst.level
+      ? { text: inst.text, level: inst.level }
+      : { text: inst.text };
+  }
   // DOCX images already sit at `images/img-NNN.ext` under books/<id>/ —
   // the same shape EPUB extraction produces — so the href passes straight
   // through and chapterImageSrcFor resolves it unchanged.

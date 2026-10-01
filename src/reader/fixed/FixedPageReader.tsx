@@ -96,6 +96,10 @@ export interface FixedPageReaderProps {
   uiDir: "ltr" | "rtl";
   /** Build the page source (PDF from disk, DOCX from disk, or bytes in tests). */
   createSource: () => Promise<FixedPageSource>;
+  /** Changes whenever something `createSource` closes over changes, which is
+   *  the signal to re-paginate. The factory itself is a fresh closure every
+   *  render, so it cannot be an effect dependency. */
+  sourceKey?: string;
   /** Persist the reading position (debounced upstream in App). `pageCount` is
    *  the source's total — needed for docx, whose count is only known after
    *  pagination at read time. */
@@ -130,6 +134,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     layout,
     uiDir,
     createSource,
+    sourceKey,
     onLocationChange,
     onOpenFullSettings,
     docxMode,
@@ -266,8 +271,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
       live = false;
       created?.destroy();
     };
+    // Re-paginate when the reading font changes: a DOCX page is real text, so
+    // the font decides how much lands on a page. Safe to throw the pagination
+    // away because resume anchors to a block, not a page number — see the
+    // `resume` memo below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book.id]);
+  }, [book.id, sourceKey]);
 
   const fmt = useCallback((n: number) => formatNum(n, locale), [locale]);
   const formatCounter = useCallback(

@@ -124,6 +124,7 @@ export function SettingsPanel(props: Props) {
       )}
       {props.variant === "fixed" ? (
         <FixedPageControls
+          typography={docxMode != null}
           theme={theme}
           t={t}
           setTweak={setTweak}
