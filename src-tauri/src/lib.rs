@@ -96,6 +96,8 @@ pub fn run() {
             is_appimage,
             is_flatpak,
             updates::check_update_manifest,
+            updates::fetch_release_notes,
+            updates::fetch_apk_details,
             legacy_identity::migrate_legacy_identity,
             sources::source_fetch,
             sources::source_fetch_bytes,
