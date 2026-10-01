@@ -452,11 +452,20 @@ jobs:
         with:
           packages: 'platforms;android-36 build-tools;36.0.0 platform-tools'
 
-      - name: Install Android NDK r26
+      - name: Install Android NDK r29, and only r29
+        # The Tauri CLI builds with the NEWEST NDK under $ANDROID_HOME/ndk and
+        # ignores NDK_HOME when that is older: this step used to install r26b,
+        # and every release was linked by the runner's r29 regardless ("Info
+        # Using installed NDK: .../29.0.14206865"). So the pinned NDK is made
+        # the only one there, and the check after the build proves it was used.
+        # F-Droid's recipe pins the same version: a different NDK there means
+        # a different native library, and F-Droid will not ship ours.
         run: |
-          sdkmanager "ndk;26.1.10909125"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          ndk=29.0.14206865
+          sudo rm -rf "$ANDROID_SDK_ROOT"/ndk/* "$ANDROID_SDK_ROOT"/ndk-bundle
+          sdkmanager "ndk;$ndk"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ndk" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ndk" >> $GITHUB_ENV
 
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
@@ -545,6 +554,21 @@ jobs:
         # recipe runs too: it keeps this machine's cargo paths out of the
         # native library, so the two builds can match byte for byte.
         run: RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build --apk --target aarch64 armv7
+
+      - name: Check the native library was built with the pinned NDK
+        # Every compiler and linker stamps .comment with its build. If the
+        # Tauri CLI ever picks a different NDK again, this fails here rather
+        # than as an unexplained mismatch on F-Droid.
+        run: |
+          bin="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          want="$("$bin/clang" --version | grep -o 'Android ([0-9]*' | head -n1)"
+          test -n "$want"
+          for so in src-tauri/target/*-linux-android*/release/libriwaq_lib.so; do
+            stamps="$("$bin/llvm-readelf" -p .comment "$so" | grep -o 'Android ([0-9]*' | sort -u)"
+            echo "$so: $stamps (want $want)"
+            test "$stamps" = "$want" \
+              || { echo "::error::$so was not built only with the NDK at $NDK_HOME"; exit 1; }
+          done
 
       - name: Check the signing guard itself
         # The guard is a text parser over apksigner output. If its parsing

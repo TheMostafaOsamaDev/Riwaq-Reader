@@ -42,10 +42,18 @@ they drift:
 | | Release job | Recipe |
 |---|---|---|
 | Rust | `dtolnay/rust-toolchain@1.97.1` | `--default-toolchain 1.97.1` (and `rust-toolchain.toml`) |
-| NDK | `sdkmanager "ndk;26.1.10909125"` | `ndk: 26.1.10909125` |
+| NDK | 29.0.14206865, the only NDK on the runner | `ndk: 29.0.14206865` |
 | RUSTFLAGS | `scripts/android-rustflags.sh` | `scripts/android-rustflags.sh` |
 | JDK | Temurin 21 | trixie's OpenJDK 21 |
 | Node, pnpm | 20, 9 | trixie's Node 20, pnpm 9 |
+
+**Why the NDK is the only one installed.** The Tauri CLI links with the
+newest NDK under `$ANDROID_HOME/ndk`, whatever `NDK_HOME` says. The release
+job once installed r26b and every release was still linked by the runner's
+r29 (each library's `.comment` says `clang version 21.0.0`), which the first
+F-Droid test build, linked by r26b, could never match. So the job deletes the
+runner's other NDKs, and a step after the build checks the library's
+`.comment` against the pinned NDK's clang.
 
 **Why the RUSTFLAGS.** Without them, each native library carried ~540
 absolute paths into the building machine's cargo registry, from panic

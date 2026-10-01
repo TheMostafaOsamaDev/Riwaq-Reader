@@ -122,7 +122,8 @@ check_config() {
   local recipe="$root/docs/fdroid/com.riwaq.reader.yml" rel="$wfdir/release.yml"
   if [ -f "$recipe" ] && [ -f "$rel" ]; then
     local ndk_rel ndk_rec rust_rec
-    ndk_rel="$(grep -o 'ndk;[0-9.]*' "$rel" | head -n1 | sed 's/^ndk;//')"
+    # `ndk=<version>` in the install step, or a literal `ndk;<version>`.
+    ndk_rel="$(grep -o -E '(^[[:space:]]*ndk=|ndk;)[0-9][0-9.]*' "$rel" | head -n1 | sed -E 's/.*(=|;)//')"
     ndk_rec="$(sed -n 's/^[[:space:]]*ndk:[[:space:]]*\([0-9.]*\).*/\1/p' "$recipe" | head -n1)"
     if [ "$ndk_rel" != "$ndk_rec" ]; then
       echo "docs/fdroid recipe builds with NDK '${ndk_rec}' but release.yml installs '${ndk_rel}'"
@@ -203,6 +204,11 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 1 "a recipe on a different Rust"         "$(mkfd fdrust 26.1.1 1.96.0 "$ok" 26.1.1 "$ok")"    v0.2.0
   expect 1 "a recipe without the RUSTFLAGS script" "$(mkfd fdflag 26.1.1 1.97.1 "pnpm tauri" 26.1.1 "$ok")" v0.2.0
   expect 1 "release.yml without the RUSTFLAGS script" "$(mkfd fdrel 26.1.1 1.97.1 "$ok" 26.1.1 "pnpm tauri")" v0.2.0
+  d3="$(mkfd fdvar 29.0.1 1.97.1 "$ok" 0 "$ok")"
+  printf '        run: |\n          ndk=29.0.1\n          sdkmanager "ndk;$ndk"\nrun: %s\n' "$ok" > "$d3/.github/workflows/release.yml"
+  expect 0 "an NDK set through ndk= in release.yml"   "$d3"                                               v0.2.0
+  printf '        run: |\n          ndk=29.0.2\n          sdkmanager "ndk;$ndk"\nrun: %s\n' "$ok" > "$d3/.github/workflows/release.yml"
+  expect 1 "ndk= in release.yml that disagrees"       "$d3"                                               v0.2.0
   [ "$fails" -eq 0 ] || die "$fails self-test failure(s) — the guard itself is broken"
   echo "verify-release-config: self-test passed"
   exit 0

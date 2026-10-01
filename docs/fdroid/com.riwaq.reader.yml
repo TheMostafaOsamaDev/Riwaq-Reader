@@ -6,7 +6,7 @@
 # comes out byte-identical (Binaries + AllowedAPKSigningKeys below):
 #
 #   Rust 1.97.1       rust-toolchain.toml, and the workflows' pinned ref
-#   NDK 26.1.10909125 release.yml's `sdkmanager "ndk;..."`
+#   NDK 29.0.14206865 release.yml's `sdkmanager "ndk;..."`, the only NDK there
 #   JDK 21            release.yml's setup-java, F-Droid's builder default
 #   Node 20, pnpm 9   release.yml's setup-node / pnpm action
 #   RUSTFLAGS         scripts/android-rustflags.sh, run by both
@@ -66,7 +66,7 @@ Builds:
         "$wrapper/")
       - RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build
         --apk --target aarch64 armv7
-    ndk: 26.1.10909125
+    ndk: 29.0.14206865
 
 AllowedAPKSigningKeys: 83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d10291e2
 
