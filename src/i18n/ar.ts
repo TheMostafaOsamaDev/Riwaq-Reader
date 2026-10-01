@@ -790,6 +790,7 @@ export const ar: Messages = {
   "update.action.install": "تحديث",
   "update.action.download": "تنزيل",
   "update.action.later": "لاحقًا",
+  "update.action.whatsNew": "ما الجديد",
   "update.downloading": "جارٍ التنزيل…",
   "update.opening": "جارٍ الفتح…",
   "update.failed": "تعذّر التحديث. جرّب تنزيله بدلًا من ذلك.",

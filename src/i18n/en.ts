@@ -963,6 +963,7 @@ export const en = {
   "update.action.install": "Update",
   "update.action.download": "Download",
   "update.action.later": "Later",
+  "update.action.whatsNew": "What's new",
   "update.downloading": "Downloading…",
   "update.opening": "Opening…",
   "update.failed": "Update failed. Try downloading it instead.",
