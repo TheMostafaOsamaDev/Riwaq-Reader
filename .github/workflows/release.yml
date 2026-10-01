@@ -74,6 +74,17 @@ jobs:
         # with no tag the script still checks every other invariant.
         run: bash scripts/verify-release-config.sh "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}"
 
+      - name: Verify the release notes (English and Arabic)
+        # Plain `node` on the runner image (ubuntu-22.04 ships Node; no
+        # setup-node here, the script uses only built-ins). A tag push also
+        # requires THIS version's file: no notes, no release.
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            node scripts/verify-release-notes.mjs --require "${GITHUB_REF_NAME}"
+          else
+            node scripts/verify-release-notes.mjs
+          fi
+
   # ──────────────────────────────────────────────────────────────────
   # Linux x86_64 — .deb, .AppImage, .rpm
   # ──────────────────────────────────────────────────────────────────
@@ -682,6 +693,50 @@ jobs:
         run: bash scripts/verify-update-manifest.sh latest.json "${{ github.ref_name }}"
 
   # ──────────────────────────────────────────────────────────────────
+  # Release notes — uploads release-notes/<version>.json as whats-new.json
+  # (plus the images it names) and puts the rendered English + Arabic notes
+  # at the top of the release body. Installed apps read whats-new.json, so
+  # its name is a contract.
+  #
+  # Waits for every build job: the build jobs create the draft with
+  # generated notes, and editing the body while one is still creating or
+  # updating the release would race with it.
+  #
+  # Re-run safe: assets use --clobber, and the rendered notes are only
+  # prepended when the body does not already carry the RTL marker.
+  # ──────────────────────────────────────────────────────────────────
+  notes:
+    needs: [preflight, linux, linux-arm64, windows, windows-arm64, macos, android]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload whats-new.json and its images; put the notes on the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          v="${TAG#v}"
+          cp "release-notes/${v}.json" whats-new.json
+          imgs=$(node -e 'const n=require("./whats-new.json");for(const i of [n.highlight?.image,...(n.stories??[]).map(s=>s.image)])if(i)console.log("release-notes/img/"+i)')
+          # The build jobs have finished, so the draft exists; the loop only
+          # absorbs API lag.
+          for _ in $(seq 1 60); do gh release view "$TAG" >/dev/null 2>&1 && break; sleep 20; done
+          # shellcheck disable=SC2086
+          gh release upload "$TAG" whats-new.json $imgs --clobber
+          current="$(gh release view "$TAG" --json body -q .body)"
+          if grep -q '<div dir="rtl">' <<<"$current"; then
+            echo "Release body already carries the notes; leaving it alone."
+          else
+            node scripts/render-release-notes.mjs "$v" > body.md
+            printf '%s\n' "$current" >> body.md
+            gh release edit "$TAG" --notes-file body.md
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
   # Checksums — runs LAST. Downloads every asset attached to the draft
   # release for this tag, writes a single SHA256SUMS manifest, and
   # uploads it back to the same draft. Tag pushes only (workflow_dispatch
@@ -692,7 +747,7 @@ jobs:
   # half-built release. (Don't add `if: always()`.)
   # ──────────────────────────────────────────────────────────────────
   checksums:
-    needs: [linux, linux-arm64, windows, windows-arm64, macos, android, manifest]
+    needs: [linux, linux-arm64, windows, windows-arm64, macos, android, manifest, notes]
     runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
