@@ -19,6 +19,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- AppUpdater: isActiveNetworkMetered and the "wait for Wi-Fi" network
+         callback both throw SecurityException without it. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -125,6 +128,13 @@
 
         <service
             android:name=".TaskService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- App-update APK download (AppUpdater). Its own service so it is not
+             stopped with the WebView when the task is swiped away. -->
+        <service
+            android:name=".UpdateService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
     </application>

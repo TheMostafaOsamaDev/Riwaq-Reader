@@ -49,3 +49,58 @@ export function androidChannel(src: InstallSource | null): AndroidChannel {
   }
   return { kind: "managed", pkg: src.installer, label: src.label };
 }
+
+const STATES = [
+  "idle",
+  "waiting",
+  "downloading",
+  "verifying",
+  "ready",
+  "installing",
+  "failed",
+] as const;
+export type NativeState = (typeof STATES)[number];
+export interface NativeStatus {
+  state: NativeState;
+  version?: string;
+  bytes: number;
+  total: number;
+  error: string | null;
+}
+
+/** AppUpdater.status() as JSON. Anything unreadable is "idle": a status poll
+ *  must never throw into the UI. */
+export function parseNativeStatus(json: string): NativeStatus {
+  const idle: NativeStatus = { state: "idle", bytes: 0, total: 0, error: null };
+  try {
+    const o = JSON.parse(json) as Record<string, unknown>;
+    if (!o || !STATES.includes(o.state as NativeState)) return idle;
+    return {
+      state: o.state as NativeState,
+      ...(typeof o.version === "string" ? { version: o.version } : {}),
+      bytes: typeof o.bytes === "number" ? o.bytes : 0,
+      total: typeof o.total === "number" ? o.total : 0,
+      error: typeof o.error === "string" ? o.error : null,
+    };
+  } catch {
+    return idle;
+  }
+}
+
+/** Android's versionCode, as tauri derives it: major*1e6 + minor*1e3 + patch.
+ *  AppUpdater.code() in Kotlin is the same formula. */
+export function versionCode(v: string): number {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v);
+  return m ? +m[1] * 1_000_000 + +m[2] * 1_000 + +m[3] : -1;
+}
+
+/** Whether the APK cached for `cached` is stale. Once the running version is
+ *  at or past it — whoever did the update — it goes. AppUpdater.cleanupAsync
+ *  in Kotlin mirrors this exactly; this copy is the tested specification. */
+export function cleanupDecision(
+  running: string,
+  cached: string | undefined,
+): "keep" | "delete" {
+  if (!cached) return "keep";
+  return versionCode(running) >= versionCode(cached) ? "delete" : "keep";
+}

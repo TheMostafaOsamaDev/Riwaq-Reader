@@ -37,6 +37,10 @@ class MainActivity : TauriActivity() {
         // then those commands fail with an error instead of reaching a window.
         registerWithRust()
 
+        // Drop a cached update APK the running version has caught up with
+        // (whoever installed it). On its own thread: never delays first paint.
+        AppUpdater.cleanupAsync(this)
+
         // Suppress Android's floating text-selection toolbar
         // ("Copy / Select all / Share / Manage apps") so the app's
         // in-page SelectionPopover is the only UI shown when the

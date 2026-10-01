@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { androidChannel } from "./updateFlow";
+import {
+  androidChannel,
+  cleanupDecision,
+  parseNativeStatus,
+  versionCode,
+} from "./updateFlow";
 
 const src = (installer: string, storeInstalled = true, label = "") => ({
   installer,
@@ -47,5 +52,43 @@ describe("androidChannel", () => {
   });
   it("uses the old link when the lookup failed", () => {
     expect(androidChannel(null).kind).toBe("manual");
+  });
+});
+
+describe("cleanupDecision", () => {
+  it("deletes a cached APK once the running app is at or past it — whoever updated", () => {
+    // Orion/Obtainium/F-Droid/adb updated us while our APK sat in cache.
+    expect(cleanupDecision("0.6.0", "0.6.0")).toBe("delete");
+    expect(cleanupDecision("0.6.1", "0.6.0")).toBe("delete");
+    expect(cleanupDecision("0.5.3", "0.6.0")).toBe("keep");
+    expect(cleanupDecision("0.5.3", undefined)).toBe("keep");
+  });
+});
+
+describe("parseNativeStatus", () => {
+  it("reads a downloading status", () => {
+    expect(
+      parseNativeStatus(
+        '{"state":"downloading","version":"0.6.0","bytes":5,"total":10,"error":null}',
+      ),
+    ).toEqual({
+      state: "downloading",
+      version: "0.6.0",
+      bytes: 5,
+      total: 10,
+      error: null,
+    });
+  });
+  it("treats garbage as idle instead of throwing", () => {
+    expect(parseNativeStatus("nope").state).toBe("idle");
+    expect(parseNativeStatus('{"state":"exploded"}').state).toBe("idle");
+  });
+});
+
+describe("versionCode", () => {
+  it("matches Android's versionCode rule", () => {
+    expect(versionCode("0.6.1")).toBe(6001);
+    expect(versionCode("1.2.3")).toBe(1002003);
+    expect(versionCode("x")).toBe(-1);
   });
 });

@@ -67,6 +67,10 @@ EXPECTED=(
   "com.riwaq.reader.DownloadNotifier void cancel(android.content.Context,int)"
   "com.riwaq.reader.AppUpdater java.lang.String installSource(android.content.Context)"
   "com.riwaq.reader.AppUpdater void openStore(android.app.Activity,java.lang.String)"
+  "com.riwaq.reader.AppUpdater void start(android.content.Context,java.lang.String,java.lang.String,java.lang.String,long,boolean)"
+  "com.riwaq.reader.AppUpdater java.lang.String status(android.content.Context)"
+  "com.riwaq.reader.AppUpdater void cancel(android.content.Context)"
+  "com.riwaq.reader.AppUpdater boolean isMetered(android.content.Context)"
 )
 
 FAILED=0
