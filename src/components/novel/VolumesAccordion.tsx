@@ -9,7 +9,7 @@ import { Icon } from "../Icon";
 import { AnimatedDialog } from "../AnimatedDialog";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Toast, type ToastMessage } from "../Toast";
-import { VolumeActionsMenu } from "../VolumeActionsMenu";
+import { ActionsMenu } from "../ActionsMenu";
 import {
   deleteChaptersWithQueue,
   downloadedChapterIds,
@@ -63,6 +63,9 @@ export interface VolumesAccordionProps {
       | ((current: SourceNovel | null) => SourceNovel | null),
   ) => void;
 }
+
+/** The volume ⋯ menu's rows. */
+type VolumeMenuId = "delete-read" | "delete-all";
 
 export function VolumesAccordion({
   theme,
@@ -362,11 +365,11 @@ export function VolumesAccordion({
     right: number;
     y: number;
   } | null>(null);
-  /** The ⋯ button that opened the menu. Handed to VolumeActionsMenu so
+  /** The ⋯ button that opened the menu. Handed to ActionsMenu so
    *  its outside-press listener can skip the trigger, letting the
    *  trigger's own click toggle the menu shut. */
   const volumeMenuTriggerRef = useRef<HTMLElement | null>(null);
-  // Stable identity so VolumeActionsMenu's DesktopPopover effect (which
+  // Stable identity so ActionsMenu's DesktopPopover effect (which
   // depends on onClose) doesn't tear down and re-add its window
   // listeners on every parent re-render (the download-queue subscription
   // above re-renders this component frequently while the popover is open).
@@ -1172,7 +1175,7 @@ export function VolumesAccordion({
         );
       })}
       {(() => {
-        // VolumeActionsMenu stays mounted regardless of `volumeMenu` —
+        // The menu stays mounted regardless of `volumeMenu` —
         // only `open` toggles. On mobile this is load-bearing: its
         // MobileSheet plays a slide-down exit whose setTimeout unmount
         // never gets to run if the whole tree is torn down synchronously
@@ -1192,8 +1195,9 @@ export function VolumesAccordion({
         const downloaded = downloadedChapterIds(all, chapterFlags);
         const read = readDownloadedChapterIds(all, chapterFlags);
         return (
-          <VolumeActionsMenu
+          <ActionsMenu<VolumeMenuId>
             theme={theme}
+            label={tr("downloads.delete.volumeActions")}
             layout={layout}
             open={volumeMenu !== null}
             anchor={

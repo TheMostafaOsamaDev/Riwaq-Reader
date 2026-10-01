@@ -14,10 +14,10 @@
 // NOT bearable is an unnamed control, so every icon button here carries an
 // aria-label; `Button`'s `iconOnly` makes the compiler insist on it.
 
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useI18n } from "../../i18n/useI18n";
 import type { Theme } from "../../styles/tokens";
-import { ActionsMenu, type MenuAction } from "../ActionsMenu";
+import { ActionsMenu, type MenuAction, type MenuAnchor } from "../ActionsMenu";
 import { Button } from "../Button";
 import { Icon, type IconProps } from "../Icon";
 import { DisabledHint } from "./DisabledHint";
@@ -31,10 +31,12 @@ type MenuId = "offline" | "remove";
  *  dominates the three 44px circles beside it rather than matching them. */
 const READ_MIN_WIDTH = 210;
 
-/** One icon-only button in the row. */
+/** One icon-only button in the row. The ⋮ is not one of these — it owns a
+ *  ref and opens the menu, so it is written out after the map rather than
+ *  carrying a "which one am I" check into the loop. */
 interface IconAction {
   /** Also its `data-hero-action`. */
-  key: "range" | "shelves" | "add" | "more";
+  key: "range" | "shelves" | "add";
   icon: IconProps["name"];
   /** Its accessible name, and its desktop tooltip. There is no label. */
   name: string;
@@ -82,12 +84,15 @@ export function HeroActions({
   const { tr } = useI18n();
   const isMobile = layout === "mobile";
   const moreRef = useRef<HTMLButtonElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [anchor, setAnchor] = useState<{
-    left: number;
-    right: number;
-    y: number;
-  } | null>(null);
+  // One piece of state, not an `open` flag beside an anchor: they are set
+  // and cleared together, and holding them apart allows an open-but-
+  // unanchored menu that renders nothing. VolumesAccordion's copy of this
+  // menu does the same.
+  const [anchor, setAnchor] = useState<MenuAnchor | null>(null);
+  // Stable identity: DesktopPopover lists onClose in the deps of the effect
+  // that mounts its window listeners, and this component re-renders
+  // whenever the page's chapter flags change underneath it.
+  const closeMenu = useCallback(() => setAnchor(null), []);
 
   const downloadDisabled =
     working || chapterCount === 0 || !!downloadDisabledReason;
@@ -149,31 +154,18 @@ export function HeroActions({
       disabled: libraryBusy,
     });
   }
-  if (menuActions.length > 0) {
-    icons.push({
-      key: "more",
-      icon: "more",
-      name: tr("novel.moreActions"),
-      onClick: () => {
-        if (menuOpen) {
-          setMenuOpen(false);
-          return;
-        }
-        const r = moreRef.current?.getBoundingClientRect();
-        if (r) setAnchor({ left: r.left, right: r.right, y: r.bottom });
-        setMenuOpen(true);
-      },
-      // The ⋮ holds Remove, so while an add or remove is running it both
-      // reports that and stays shut.
-      busy: working,
-      disabled: working,
-    });
-  }
+  const toggleMenu = () => {
+    if (anchor) {
+      setAnchor(null);
+      return;
+    }
+    const r = moreRef.current?.getBoundingClientRect();
+    if (r) setAnchor({ left: r.left, right: r.right, y: r.bottom });
+  };
 
   return (
     <>
       <div
-        className="riwaq-hero-actions"
         style={{
           marginTop: 20,
           display: "flex",
@@ -181,23 +173,30 @@ export function HeroActions({
           alignItems: "center",
         }}
       >
-        <Slot action="read" style={{ flex: isMobile ? 1 : undefined }}>
+        {/* The cell owns Read's width in both layouts — the whole leftover
+            row on a phone, a floor wide enough to dominate the icons on
+            desktop — and the button simply fills it. It also keeps a stable
+            flex item under DisabledHint, which collapses to a fragment when
+            there is no reason to give. */}
+        <div
+          style={{
+            display: "flex",
+            minWidth: 0,
+            ...(isMobile ? { flex: 1 } : { minWidth: READ_MIN_WIDTH }),
+          }}
+        >
           <DisabledHint
             reason={readDisabledReason}
             style={{ flex: 1, minWidth: 0 }}
           >
             <Button
+              data-hero-action="read"
               theme={theme}
               surface="onImage"
               variant="primary"
               shape="pill"
               size="lg"
-              fullWidth={isMobile}
-              // Sized by its own four-letter word, Read came out barely
-              // wider than the 44px circles next to it and stopped reading
-              // as the primary. On a phone `fullWidth` in a flex:1 slot
-              // already gives it the whole leftover row.
-              style={isMobile ? undefined : { minWidth: READ_MIN_WIDTH }}
+              fullWidth
               onClick={onRead}
               disabled={!!readDisabledReason}
               title={readDisabledReason}
@@ -208,43 +207,62 @@ export function HeroActions({
               {tr("novel.read")}
             </Button>
           </DisabledHint>
-        </Slot>
+        </div>
 
         {icons.map((a) => (
-          <Slot key={a.key} action={a.key}>
-            <DisabledHint reason={a.disabledReason}>
-              <Button
-                ref={a.key === "more" ? moreRef : undefined}
-                theme={theme}
-                surface="onImage"
-                variant="outline"
-                shape="pill"
-                size="lg"
-                iconOnly
-                aria-label={a.name}
-                title={a.disabledReason ?? a.name}
-                loading={a.busy}
-                onClick={a.onClick}
-                disabled={a.disabled}
-                leadingIcon={<Icon name={a.icon} size={16} />}
-              />
-            </DisabledHint>
-          </Slot>
+          <DisabledHint key={a.key} reason={a.disabledReason}>
+            <Button
+              data-hero-action={a.key}
+              theme={theme}
+              surface="onImage"
+              variant="outline"
+              shape="pill"
+              size="lg"
+              iconOnly
+              aria-label={a.name}
+              title={a.disabledReason ?? a.name}
+              loading={a.busy}
+              onClick={a.onClick}
+              disabled={a.disabled}
+              leadingIcon={<Icon name={a.icon} size={16} />}
+            />
+          </DisabledHint>
         ))}
+
+        {menuActions.length > 0 && (
+          <Button
+            data-hero-action="more"
+            ref={moreRef}
+            theme={theme}
+            surface="onImage"
+            variant="outline"
+            shape="pill"
+            size="lg"
+            iconOnly
+            aria-label={tr("novel.moreActions")}
+            title={tr("novel.moreActions")}
+            // The ⋮ holds Remove, so while an add or remove is running it
+            // both reports that and stays shut.
+            loading={working}
+            disabled={working}
+            onClick={toggleMenu}
+            leadingIcon={<Icon name="more" size={16} />}
+          />
+        )}
       </div>
 
       {menuActions.length > 0 && (
         <ActionsMenu<MenuId>
           theme={theme}
           layout={layout}
-          open={menuOpen}
+          open={anchor !== null}
           anchor={anchor}
           triggerRef={moreRef}
           label={tr("novel.moreActions")}
-          // Sized to its rows rather than to a share of the screen: this
-          // menu is two 44px rows at most, and a fixed 34% left half the
-          // sheet empty under them.
-          sheetHeight={`${56 + menuActions.length * 44}px`}
+          // Anchored to the ⋮ on a phone as well as on desktop. Two rows
+          // hanging off a button in the middle of the page do not warrant
+          // a sheet rising from the bottom of the screen.
+          presentation="popover"
           actions={menuActions}
           // On Android a disabled row has no tooltip to explain itself, so
           // the reason is stated in the menu rather than only on hover.
@@ -253,31 +271,9 @@ export function HeroActions({
             if (id === "offline") onOpenSaveOffline?.();
             else onRemoveFromLibrary();
           }}
-          onClose={() => setMenuOpen(false)}
+          onClose={closeMenu}
         />
       )}
     </>
-  );
-}
-
-/** A cell of the row, carrying the `data-hero-action` the tests read the
- *  cluster's shape off. `display: flex` so the button (or the span
- *  DisabledHint wraps it in) fills it. */
-function Slot({
-  action,
-  style,
-  children,
-}: {
-  action: string;
-  style?: CSSProperties;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      data-hero-action={action}
-      style={{ display: "flex", minWidth: 0, ...style }}
-    >
-      {children}
-    </div>
   );
 }

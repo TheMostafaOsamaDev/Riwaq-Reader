@@ -681,8 +681,6 @@ export const en = {
   "novel.noCover": "No cover",
   "novel.shelves": "Shelves",
   "novel.moreActions": "More actions",
-  // Short names for the phone novel page's action pills, two to a row. The
-  // full names are their tooltips.
   "novel.descMore": "more",
   "novel.descLess": "less",
   "novel.fromSource": "From {source}",

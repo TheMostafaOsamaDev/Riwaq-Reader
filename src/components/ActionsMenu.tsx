@@ -10,20 +10,35 @@
 // Not ContextMenu: that one is shaped around a library book (cover, author,
 // reading status, edit/delete) and none of it applies to either caller.
 
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { MobileSheet } from "./MobileSheet";
 import { Icon, type IconProps } from "./Icon";
 import { useI18n } from "../i18n/useI18n";
-import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
+import { FONT_STACKS, type Theme, TOUCH_TARGET_MIN, Z } from "../styles/tokens";
 
-/** Rendered box width of the desktop popover: minWidth 250 + 5px padding
- *  and a 0.5px border on each side. Used both to mirror the menu under RTL
- *  and to keep it inside the viewport. */
-const MENU_BOX_WIDTH = 262;
+/** How close to the viewport edge the popover may sit. */
 const VIEWPORT_MARGIN = 8;
+/** Gap between the popover and the trigger it hangs from. */
+const ANCHOR_GAP = 6;
 
-export interface MenuAction<Id extends string = string> {
+/** Viewport coordinates of the control a popover hangs from. Both
+ *  horizontal edges, because which one it hangs from depends on the UI
+ *  direction — see DesktopPopover. `y` is the trigger's bottom. */
+export interface MenuAnchor {
+  left: number;
+  right: number;
+  y: number;
+}
+
+export interface MenuAction<Id extends string> {
   id: Id;
   label: string;
   icon: IconProps["name"];
@@ -35,10 +50,8 @@ export interface ActionsMenuProps<Id extends string> {
   theme: Theme;
   layout: "desktop" | "mobile";
   open: boolean;
-  /** Viewport coords of the trigger. Desktop only; ignored on mobile.
-   *  Both horizontal edges, because which one the menu hangs from
-   *  depends on the UI direction — see DesktopPopover. */
-  anchor: { left: number; right: number; y: number } | null;
+  /** Where to hang the popover. Ignored by the sheet presentation. */
+  anchor: MenuAnchor | null;
   /** The button that opened this menu. The outside-press listener skips
    *  presses landing inside it so the trigger's own click can toggle
    *  the menu shut instead of closing and immediately reopening it. */
@@ -54,8 +67,12 @@ export interface ActionsMenuProps<Id extends string> {
    *  off a cleared selection leaves role="dialog" nameless for the length
    *  of the exit. */
   label: string;
-  /** CSS height for the sheet's default snap, sized to the row count. */
-  sheetHeight?: string;
+  /** How the menu is presented. "auto" (the default) follows `layout`: a
+   *  bottom sheet on a phone, an anchored popover on desktop. "popover"
+   *  anchors it on both — for a short menu hanging off a button in the
+   *  middle of the page, where a sheet rising from the bottom of the
+   *  screen is a bigger gesture than the action deserves. */
+  presentation?: "auto" | "popover";
   actions: MenuAction<Id>[];
   /** Why some rows are unavailable, when they are. Rendered with the rows
    *  so BOTH layouts get it; silently greyed rows with no reason is the
@@ -74,13 +91,68 @@ export function ActionsMenu<Id extends string>({
   title,
   subtitle,
   label,
-  sheetHeight = "min(46%, 320px)",
+  presentation = "auto",
   actions,
   note,
   onPick,
   onClose,
 }: ActionsMenuProps<Id>) {
   const rows = (
+    <Rows
+      theme={theme}
+      actions={actions}
+      note={note}
+      onPick={onPick}
+      onClose={onClose}
+    />
+  );
+
+  if (presentation === "auto" && layout === "mobile") {
+    return (
+      <MobileSheet
+        theme={theme}
+        open={open}
+        onClose={onClose}
+        label={label}
+        // Sized to its content: a header plus three rows. The percentage
+        // still bounds it on short phones.
+        height="min(46%, 320px)"
+      >
+        <div style={{ paddingBlock: "4px 16px", paddingInline: 8 }}>
+          {title && (
+            <div style={{ paddingBlock: "0 12px", paddingInline: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div>
+              {subtitle && (
+                <div style={{ fontSize: 12, color: theme.muted }}>
+                  {subtitle}
+                </div>
+              )}
+            </div>
+          )}
+          {rows}
+        </div>
+      </MobileSheet>
+    );
+  }
+
+  return (
+    <DesktopPopover {...{ theme, open, anchor, triggerRef, onClose }}>
+      {rows}
+    </DesktopPopover>
+  );
+}
+
+function Rows<Id extends string>({
+  theme,
+  actions,
+  note,
+  onPick,
+  onClose,
+}: Pick<
+  ActionsMenuProps<Id>,
+  "theme" | "actions" | "note" | "onPick" | "onClose"
+>) {
+  return (
     <div style={{ fontFamily: FONT_STACKS.sans }}>
       {actions.map((a) => (
         <button
@@ -97,12 +169,11 @@ export function ActionsMenu<Id extends string>({
             alignItems: "center",
             gap: 10,
             width: "100%",
-            // 44px minimum touch target, and comfortable with a mouse.
             // minHeight, not padding alone: 12px blocks around a 15px
             // line box measured 39px, so the comment was describing an
             // intention the row didn't meet — on a destructive action
             // that is a mobile mis-tap away from a bulk delete.
-            minHeight: 44,
+            minHeight: TOUCH_TARGET_MIN,
             paddingBlock: 12,
             paddingInline: 12,
             border: "none",
@@ -148,40 +219,6 @@ export function ActionsMenu<Id extends string>({
       )}
     </div>
   );
-
-  if (layout === "mobile") {
-    return (
-      <MobileSheet
-        theme={theme}
-        open={open}
-        onClose={onClose}
-        label={label}
-        // Sized to its content: a header plus its rows. The percentage
-        // still bounds it on short phones.
-        height={sheetHeight}
-      >
-        <div style={{ paddingBlock: "4px 16px", paddingInline: 8 }}>
-          {title && (
-            <div style={{ paddingBlock: "0 12px", paddingInline: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div>
-              {subtitle && (
-                <div style={{ fontSize: 12, color: theme.muted }}>
-                  {subtitle}
-                </div>
-              )}
-            </div>
-          )}
-          {rows}
-        </div>
-      </MobileSheet>
-    );
-  }
-
-  return (
-    <DesktopPopover {...{ theme, open, anchor, triggerRef, onClose }}>
-      {rows}
-    </DesktopPopover>
-  );
 }
 
 function DesktopPopover({
@@ -194,19 +231,36 @@ function DesktopPopover({
 }: {
   theme: Theme;
   open: boolean;
-  anchor: { left: number; right: number; y: number } | null;
+  anchor: MenuAnchor | null;
   triggerRef?: RefObject<HTMLElement | null>;
   onClose: () => void;
   children: ReactNode;
 }) {
   const { dir } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
+  // The popover's own rendered size, measured rather than assumed. This
+  // used to be two constants describing the volume menu — a pinned 262px
+  // box and a 190px height allowance — which a second caller with a
+  // different number of rows made wrong in both directions: a 2-row menu
+  // was shoved 72px up off its trigger to leave room it never needed, and
+  // a menu wider than 262 (Arabic copy measured 304) hung off the edge the
+  // clamp thought it was respecting. ContextMenu already measures; so does
+  // this now. Null until the first layout pass.
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open || !anchor) {
+      setSize(null);
+      return;
+    }
+    const r = ref.current?.getBoundingClientRect();
+    if (r) setSize({ w: r.width, h: r.height });
+  }, [open, anchor]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (ref.current && ref.current.contains(target)) return;
       // The trigger opens on click but this listener fires on
@@ -219,33 +273,48 @@ function DesktopPopover({
       onClose();
     };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onDown);
+    // `pointerdown`, not `mousedown`: this popover is now shown on phones
+    // too, where a tap only reaches `mousedown` as a synthesised event
+    // after the touch sequence ends — and not at all if the page treats
+    // the touch as a gesture. `pointerdown` covers mouse and finger alike.
+    window.addEventListener("pointerdown", onDown);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("pointerdown", onDown);
     };
   }, [open, onClose, triggerRef]);
 
   if (!open || !anchor) return null;
   // Into the body, not where it was triggered. The novel page's ⋮ sits
-  // inside Hero, which is `overflow: hidden` with `isolation: isolate` —
-  // the first clips the popover at the hero's rounded edge, and the second
-  // confines its z-index to the hero's own stacking context, so everything
-  // after the hero in the document paints over it. The menu came out as a
-  // sliver. Nothing here reads its position from the DOM (the anchor is
-  // viewport coordinates and the box is `position: fixed`), so leaving the
-  // subtree costs nothing and is what every caller wants.
+  // inside Hero, which sets `isolation: isolate` — a new stacking context,
+  // so Z.menuMenu stops meaning "above the page" and means only "above the
+  // hero's own children". Everything after the hero in document order then
+  // paints over the menu, and it came out as a sliver under the button.
+  // (Not clipping, despite the `overflow: hidden` next to it: a
+  // position-fixed box is only clipped by an ancestor that establishes a
+  // containing block, which the hero frame does not — its blur filter is
+  // on the backdrop img.) Nothing here reads its position from the DOM —
+  // the anchor is viewport coordinates and the box is `position: fixed` —
+  // so leaving the subtree costs nothing and is what every caller wants.
   return createPortal(
     <div
       ref={ref}
       role="menu"
       style={{
         position: "fixed",
-        // Clamp so a trigger near the viewport edge doesn't push the menu
-        // off-screen. The floor matters in a resized dev-server browser
-        // window (below the packaged app's 720x540 minimum, this is
-        // otherwise unreachable).
-        top: Math.max(8, Math.min(anchor.y + 6, window.innerHeight - 190)),
+        // Hang under the trigger, and if that would run past the bottom,
+        // sit as low as the menu's own height allows. Measured, so a short
+        // menu stays on its trigger; the first pass before `size` lands is
+        // never painted, because the measurement is a layout effect.
+        top: Math.max(
+          VIEWPORT_MARGIN,
+          size
+            ? Math.min(
+                anchor.y + ANCHOR_GAP,
+                window.innerHeight - size.h - VIEWPORT_MARGIN,
+              )
+            : anchor.y + ANCHOR_GAP,
+        ),
         // Physical `left`, deliberately: `anchor` holds physical
         // viewport coordinates and this element is position: fixed, so
         // insetInlineStart would resolve against the direction and land
@@ -256,19 +325,23 @@ function DesktopPopover({
         // directions opened the menu away from its own trigger.
         left: Math.max(
           VIEWPORT_MARGIN,
-          Math.min(
-            dir === "rtl" ? anchor.right - MENU_BOX_WIDTH : anchor.left,
-            window.innerWidth - MENU_BOX_WIDTH - VIEWPORT_MARGIN,
-          ),
+          size
+            ? Math.min(
+                dir === "rtl" ? anchor.right - size.w : anchor.left,
+                window.innerWidth - size.w - VIEWPORT_MARGIN,
+              )
+            : dir === "rtl"
+              ? anchor.right
+              : anchor.left,
         ),
         zIndex: Z.menuMenu,
-        // Pinned, not minWidth: the note line's copy can be wider than
-        // 250 and a box that outgrows MENU_BOX_WIDTH invalidates both
-        // the RTL mirror and the viewport clamp above — measured at 304
-        // wide in Arabic, hanging 42px past where the clamp thought the
-        // right edge was.
+        // Free to be as wide as its longest row needs, bounded only by the
+        // viewport: the clamps above read the result instead of assuming
+        // it, so a long Arabic label widens the box rather than hanging it
+        // off the screen.
         boxSizing: "border-box",
-        width: MENU_BOX_WIDTH,
+        minWidth: 250,
+        maxWidth: Math.max(250, window.innerWidth - VIEWPORT_MARGIN * 2),
         padding: 5,
         background: theme.bg,
         border: `0.5px solid ${theme.rule}`,

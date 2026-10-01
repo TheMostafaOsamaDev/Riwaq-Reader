@@ -80,14 +80,14 @@ const IN_LIBRARY: Partial<NovelHeroProps> = {
   onOpenSaveOffline: () => {},
 };
 
-const slots = () => [
-  ...host.querySelectorAll<HTMLElement>(
-    ".riwaq-hero-actions [data-hero-action]",
-  ),
+const buttons = () => [
+  ...host.querySelectorAll<HTMLButtonElement>("[data-hero-action]"),
 ];
-const order = () => slots().map((s) => s.dataset.heroAction);
+const order = () => buttons().map((b) => b.dataset.heroAction);
 const button = (key: string) =>
-  host.querySelector<HTMLButtonElement>(`[data-hero-action="${key}"] button`);
+  host.querySelector<HTMLButtonElement>(`[data-hero-action="${key}"]`);
+/** The flex cell Read sits in, which owns its width in both layouts. */
+const readCell = () => button("read")?.closest("div");
 
 /** The ⋮ menu's rows, which only exist once it has been opened. */
 const rows = () => [
@@ -162,9 +162,9 @@ describe("the novel page's action cluster", () => {
   // on desktop it stays its own width, with the icons beside it.
   it("stretches Read to fill the phone's row, but not the desktop's", () => {
     render(IN_LIBRARY);
-    expect(slots()[0]?.style.flexGrow).toBe("1");
+    expect(readCell()?.style.flexGrow).toBe("1");
     render({ ...IN_LIBRARY, layout: "desktop" });
-    expect(slots()[0]?.style.flexGrow).toBe("");
+    expect(readCell()?.style.flexGrow).toBe("");
   });
 
   // Sized by its four-letter word, "Read" came out barely wider than the
@@ -172,7 +172,7 @@ describe("the novel page's action cluster", () => {
   // the cluster should look like.
   it("gives Read a floor wide enough to dominate the icons", () => {
     render({ ...IN_LIBRARY, layout: "desktop" });
-    expect(button("read")?.style.minWidth).toBe("210px");
+    expect(readCell()?.style.minWidth).toBe("210px");
   });
 });
 
@@ -188,16 +188,9 @@ describe("the ⋮ menu", () => {
     expect(row("remove")?.textContent?.trim()).toBe("Remove from library");
   });
 
-  // On desktop, where the popover unmounts the moment it closes. The phone's
-  // sheet keeps its rows mounted for the length of its exit animation, so
-  // "has it closed" is not a question its DOM can answer synchronously.
   it("runs the picked action and closes", () => {
     let removed = 0;
-    render({
-      ...IN_LIBRARY,
-      layout: "desktop",
-      onRemoveFromLibrary: () => removed++,
-    });
+    render({ ...IN_LIBRARY, onRemoveFromLibrary: () => removed++ });
     openMenu();
     expect(rows()).toHaveLength(2);
     act(() => {
@@ -205,6 +198,17 @@ describe("the ⋮ menu", () => {
     });
     expect(removed).toBe(1);
     expect(rows()).toHaveLength(0);
+  });
+
+  // A phone gets the same anchored popover as desktop, not a bottom sheet:
+  // this menu is two rows hanging off a button in the middle of the page,
+  // and a sheet sliding up from the bottom of the screen for that is a
+  // bigger gesture than the action deserves.
+  it("opens as an anchored popover on a phone too", () => {
+    render(IN_LIBRARY);
+    openMenu();
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   // The Hero is `overflow: hidden` with `isolation: isolate`, so a menu
