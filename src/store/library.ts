@@ -687,6 +687,7 @@ export async function loadDocxFlowBook(
     chapterFallback,
   });
   const state = await readState(id);
+  const { bridgeDocxHighlights } = await import("../docx/highlightBridge");
   return {
     book: {
       id,
@@ -697,10 +698,34 @@ export async function loadDocxFlowBook(
       language: docx.dir === "rtl" ? "ar" : "",
       chapters,
     },
-    state,
+    // Highlights made in pages mode carry only a block anchor, which this
+    // reader cannot render or jump to. Bridging on load means a highlight is
+    // visible in whichever mode it is read in, not just the one it was made
+    // in.
+    state: {
+      ...state,
+      highlights: bridgeDocxHighlights(state.highlights, blockMap),
+    },
     blockMap,
     dir: docx.dir,
   };
+}
+
+/**
+ * A DOCX's block map, without building the chapters.
+ *
+ * The pages reader needs it only to bridge highlights made in flowing text,
+ * so this exists to make that need explicit at the call site rather than
+ * looking like a stray flow-mode load.
+ */
+export async function docxBlockMap(id: string): Promise<number[][]> {
+  const raw = await readTextFile(`${bookDir(id)}/book.json`, { baseDir: BASE });
+  const docx = JSON.parse(raw) as DocxBook;
+  const html = await readTextFile(`${bookDir(id)}/content.html`, {
+    baseDir: BASE,
+  });
+  const { docxHtmlToFlowDoc } = await import("../docx/flowDoc");
+  return docxHtmlToFlowDoc(html, docx.outline).blockMap;
 }
 
 /**

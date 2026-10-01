@@ -58,6 +58,7 @@ import {
   getEntry,
   listBooks,
   loadBook,
+  docxBlockMap,
   loadDocxFlowBook,
   setDocxReadingMode,
   loadFixedBook,
@@ -536,6 +537,34 @@ function App() {
             // eslint-disable-next-line no-console
             console.error("[docx] flow mode failed, falling back to pages:", e);
             setError(e instanceof Error ? e.message : String(e));
+          }
+        }
+        // Pages mode: bridge the other way, so a highlight made in flowing
+        // text is visible here and the panel can jump to it. Costs one parse
+        // of content.html, on open of a DOCX that has highlights at all.
+        if (!flow && fixed && entry?.kind === "docx") {
+          const needsBridge = fixed.state.highlights.some(
+            (h) => !h.fixed && h.charEnd > h.charStart,
+          );
+          if (needsBridge) {
+            try {
+              const [{ bridgeDocxHighlights }, blockMap] = await Promise.all([
+                import("./docx/highlightBridge"),
+                docxBlockMap(id),
+              ]);
+              fixed.state = {
+                ...fixed.state,
+                highlights: bridgeDocxHighlights(
+                  fixed.state.highlights,
+                  blockMap,
+                ),
+              };
+            } catch (e) {
+              // Highlights are an enhancement; the book still opens without
+              // the bridge. Never let this path block reading.
+              // eslint-disable-next-line no-console
+              console.warn("[docx] could not bridge highlights:", e);
+            }
           }
         }
         if (flow) {
