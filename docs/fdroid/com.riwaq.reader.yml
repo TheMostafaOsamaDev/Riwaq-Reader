@@ -56,7 +56,7 @@ Builds:
       - sed -i 's/signingConfigs.getByName("debug")/null/' src-tauri/gen/android/app/build.gradle.kts
     build:
       - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain 1.97.1
-        --target aarch64-linux-android armv7-linux-androideabi
+        --target aarch64-linux-android,armv7-linux-androideabi
       - source $HOME/.cargo/env
       - export NDK_HOME=$$NDK$$
       - pnpm install --frozen-lockfile
