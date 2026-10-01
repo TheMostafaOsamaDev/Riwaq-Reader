@@ -11,6 +11,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "./Icon";
 import { Spinner } from "./Spinner";
+import { SIDEBAR_ROW_INSET, sidebarFrame } from "./sidebarFrame";
 import type { IconProps } from "./Icon";
 import {
   FONT_SERIF_DISPLAY,
@@ -143,21 +144,7 @@ export function LibrarySidebar({
   }, [menuOpen]);
 
   return (
-    <aside
-      style={{
-        width: 252,
-        flexShrink: 0,
-        background: theme.chrome,
-        border: `1.5px solid ${theme.rule}`,
-        borderRadius: 16,
-        margin: 12,
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: FONT_STACKS.sans,
-        padding: "16px 12px 14px",
-        boxSizing: "border-box",
-      }}
-    >
+    <aside style={{ ...sidebarFrame(theme), fontFamily: FONT_STACKS.sans }}>
       {/* Head — brand mark + wordmark, with the history back/forward pair
           pinned to the inline-end (the desktop equivalent of the Android
           hardware back). */}
@@ -199,7 +186,7 @@ export function LibrarySidebar({
           alignItems: "center",
           gap: 9,
           width: "calc(100% - 8px)",
-          margin: "0 4px 12px",
+          margin: `0 ${SIDEBAR_ROW_INSET}px 12px`,
           background: theme.bg,
           border: `1px solid ${theme.rule}`,
           borderRadius: 11,
@@ -260,7 +247,7 @@ export function LibrarySidebar({
             display: "flex",
             flexDirection: "column",
             gap: 5,
-            padding: "0 4px",
+            padding: `0 ${SIDEBAR_ROW_INSET}px`,
           }}
         >
           {/* Library (collapsible) — row + tree grouped so the nav gap stays uniform */}
@@ -445,7 +432,7 @@ export function LibrarySidebar({
       </div>
 
       {/* Bottom: primary Import */}
-      <div style={{ padding: "10px 4px 0" }}>
+      <div style={{ padding: `10px ${SIDEBAR_ROW_INSET}px 0` }}>
         <div ref={importRef} style={{ position: "relative" }}>
           <div style={{ display: "flex" }}>
             <button
@@ -575,19 +562,40 @@ export function LibrarySidebar({
 }
 
 /** Smoothly expand/collapse a group by animating its measured height. */
-function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+export function Collapse({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const [h, setH] = useState(0);
+  // null until measured. An open tree then renders unclamped ("none"), so
+  // the first measured height replaces a value the transition cannot
+  // interpolate from: it lands without animating. Starting from 0 made every
+  // mount — each return from Settings — slide the trees open and push the
+  // rows below them down the panel.
+  const [h, setH] = useState<number | null>(null);
+  // Measure once before first paint, then only when the content resizes (a
+  // shelf added or renamed, the UI language switched). Reading scrollHeight
+  // after every render forced a synchronous layout each time — and the
+  // sidebar re-renders on every download-progress tick.
   useLayoutEffect(() => {
-    if (ref.current) setH(ref.current.scrollHeight);
-  });
+    const el = ref.current;
+    if (!el) return;
+    setH(el.scrollHeight);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setH(el.scrollHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div
       style={{
         flexShrink: 0,
         minHeight: 0,
         overflow: "hidden",
-        maxHeight: open ? h : 0,
+        maxHeight: open ? (h ?? "none") : 0,
         opacity: open ? 1 : 0,
         transition: "max-height 220ms ease, opacity 180ms ease",
       }}
