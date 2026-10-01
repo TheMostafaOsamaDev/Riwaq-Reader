@@ -103,6 +103,9 @@ export interface FixedPageReaderProps {
     page: number,
     pageOffset: number,
     pageCount: number,
+    /** DOCX only — the topmost block on `page`. Persisted alongside the page
+     *  so the position survives re-pagination and a switch to flowing text. */
+    blockId?: string,
   ) => void;
   onOpenFullSettings?: () => void;
   /** DOCX only — the reading-mode toggle, forwarded to the shared settings
@@ -272,10 +275,22 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     [fmt],
   );
 
-  const resume = useMemo(
-    () => ({ page: state.currentPage ?? 0, pageOffset: state.pageOffset ?? 0 }),
-    [state.currentPage, state.pageOffset],
-  );
+  // Resume from the block anchor when there is one, falling back to the raw
+  // page number.
+  //
+  // A page number only means something inside the pagination that produced
+  // it. Re-paginating (a different page box) moves it, and flowing text has
+  // no page numbers at all — so after reading in flowing text and switching
+  // back, `currentPage` is whatever the reader last saw in PAGES mode, which
+  // is not where they are. The block id names a piece of the document, so it
+  // survives both. `pageForBlock` is DOCX-only; PDF keeps the page number,
+  // which is stable for it.
+  const resume = useMemo(() => {
+    const anchor = state.fixedAnchor;
+    const page = anchor ? source?.pageForBlock?.(anchor.blockId) : undefined;
+    if (anchor && page != null) return { page, pageOffset: anchor.frac };
+    return { page: state.currentPage ?? 0, pageOffset: state.pageOffset ?? 0 };
+  }, [state.fixedAnchor, state.currentPage, state.pageOffset, source]);
 
   const openPanel = (p: Exclude<Panel, null>) =>
     setPanel((cur) => (cur === p ? null : p));
@@ -643,7 +658,15 @@ export function FixedPageReader(props: FixedPageReaderProps) {
                 })
               }
               onLocationChange={(page, off) =>
-                onLocationChange?.(page, off, source?.pageCount ?? 0)
+                onLocationChange?.(
+                  page,
+                  off,
+                  source?.pageCount ?? 0,
+                  // DOCX only — undefined for PDF, whose page numbers are
+                  // already stable. This is what makes the position portable
+                  // across re-pagination and across a switch to flowing text.
+                  source?.blockForPage?.(page),
+                )
               }
             />
           ) : (

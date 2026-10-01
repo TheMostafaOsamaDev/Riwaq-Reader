@@ -473,7 +473,11 @@ function App() {
    * old one left off.
    */
   const switchDocxMode = useCallback(
-    async (id: string, to: "pages" | "flow") => {
+    async (id: string, to: "pages" | "flow", from: "pages" | "flow") => {
+      // SegRow fires for the already-selected option too. Re-running the
+      // switch would reparse the document twice and remount the reader for
+      // nothing, losing up to 600ms of debounced scroll position on the way.
+      if (to === from) return;
       try {
         const { blockMap } = await loadDocxFlowBook(id, (n) =>
           tr("reader.chapterNumber", { n }),
@@ -507,14 +511,29 @@ function App() {
         // reflowable path instead, built from the same content.html the
         // fixed reader paginates. Absent readingMode means "pages", so
         // every DOCX imported before this existed is unaffected.
-        const flowDocx =
-          entry?.kind === "docx" &&
-          (await loadFixedBook(id)).state.readingMode === "flow";
-        if (flowDocx) {
+        const isFixed = entry?.kind === "pdf" || entry?.kind === "docx";
+        // Read once and keep it: the pages branch below needs the same two
+        // files this probe already opened.
+        const fixed = isFixed ? await loadFixedBook(id) : null;
+        // A flow DOCX is built from the same content.html the fixed reader
+        // paginates. If that build fails — the file is gone, book.json is
+        // malformed — fall back to pages rather than stranding the book: the
+        // toggle that would set the mode back lives inside the reader that
+        // could not open, so an unguarded throw here is unrecoverable without
+        // a re-import.
+        let flow: Awaited<ReturnType<typeof loadDocxFlowBook>> | null = null;
+        if (entry?.kind === "docx" && fixed?.state.readingMode === "flow") {
+          try {
+            flow = await loadDocxFlowBook(id, (n) =>
+              tr("reader.chapterNumber", { n }),
+            );
+          } catch {
+            flow = null;
+          }
+        }
+        if (flow) {
           setFlowDocxId(id);
-          const { book, state } = await loadDocxFlowBook(id, (n) =>
-            tr("reader.chapterNumber", { n }),
-          );
+          const { book, state } = flow;
           setLoadedFixed(null);
           setLoaded({
             book,
@@ -524,11 +543,10 @@ function App() {
             resumeOffset: state.paragraphOffset ?? 0,
             jumpNonce: 0,
           });
-        } else if (entry && (entry.kind === "pdf" || entry.kind === "docx")) {
+        } else if (fixed) {
           setFlowDocxId(null);
-          const { book, state } = await loadFixedBook(id);
           setLoaded(null);
-          setLoadedFixed({ book, state });
+          setLoadedFixed(fixed);
         } else {
           setFlowDocxId(null);
           const { book, state } = await loadBook(id);
@@ -679,11 +697,25 @@ function App() {
   // Debounced persistence of fixed-page (PDF/DOCX) reading position + progress.
   const pageSaveTimer = useRef<number | null>(null);
   const savePagePosition = useCallback(
-    (bookId: string, pageCount: number, page: number, pageOffset: number) => {
+    (
+      bookId: string,
+      pageCount: number,
+      page: number,
+      pageOffset: number,
+      blockId?: string,
+    ) => {
       if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
       pageSaveTimer.current = window.setTimeout(() => {
         pageSaveTimer.current = null;
-        void updatePagePosition(bookId, page, pageOffset);
+        void updatePagePosition(
+          bookId,
+          page,
+          pageOffset,
+          // The portable half of the position. Without it `fixedAnchor` is
+          // never written, and a switch to flowing text has nothing to
+          // translate — it would always land on the first paragraph.
+          blockId ? { blockId, frac: pageOffset } : undefined,
+        );
         void updatePageProgress(bookId, page, pageCount);
       }, 600);
     },
@@ -1033,7 +1065,8 @@ function App() {
                 }
                 onDocxModeChange={
                   loadedFixed.book.kind === "docx"
-                    ? (m) => void switchDocxMode(loadedFixed.book.id, m)
+                    ? (m) =>
+                        void switchDocxMode(loadedFixed.book.id, m, "pages")
                     : undefined
                 }
                 theme={theme}
@@ -1054,8 +1087,14 @@ function App() {
                     ? createPdfPageSource(b)
                     : createDocxPageSource(b);
                 }}
-                onLocationChange={(page, off, pageCount) =>
-                  savePagePosition(loadedFixed.book.id, pageCount, page, off)
+                onLocationChange={(page, off, pageCount, blockId) =>
+                  savePagePosition(
+                    loadedFixed.book.id,
+                    pageCount,
+                    page,
+                    off,
+                    blockId,
+                  )
                 }
                 onOpenFullSettings={openSettings}
                 onBack={closeBook}
@@ -1068,7 +1107,7 @@ function App() {
                   docxMode={loaded.book.id === flowDocxId ? "flow" : undefined}
                   onDocxModeChange={
                     loaded.book.id === flowDocxId
-                      ? (m) => void switchDocxMode(loaded.book.id, m)
+                      ? (m) => void switchDocxMode(loaded.book.id, m, "flow")
                       : undefined
                   }
                   theme={theme}
@@ -1096,7 +1135,7 @@ function App() {
                   docxMode={loaded.book.id === flowDocxId ? "flow" : undefined}
                   onDocxModeChange={
                     loaded.book.id === flowDocxId
-                      ? (m) => void switchDocxMode(loaded.book.id, m)
+                      ? (m) => void switchDocxMode(loaded.book.id, m, "flow")
                       : undefined
                   }
                   theme={theme}

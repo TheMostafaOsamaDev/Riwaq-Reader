@@ -33,6 +33,15 @@ export interface FixedPageSource {
   /** DOCX only — the page a block id currently lives on, for jumping to a
    *  highlight. Undefined for PDF (highlights carry their own page). */
   pageForBlock?(blockId: string): number | undefined;
+  /** DOCX only — the first block on a page, the inverse of `pageForBlock`.
+   *
+   *  This is what makes a reading position portable. A page number means
+   *  nothing outside the current pagination (it moves when the page box
+   *  changes, and has no counterpart at all in flowing text), whereas a block
+   *  id names a piece of the document itself. The reader records one
+   *  alongside the page so resume survives re-pagination AND a switch to
+   *  flowing text. */
+  blockForPage?(page: number): string | undefined;
   /** Give the source the current highlights + theme so it can show them.
    *
    *  How each backend uses it differs. DOCX weaves `<mark>` spans into the text

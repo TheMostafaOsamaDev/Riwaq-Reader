@@ -117,6 +117,14 @@ export async function createDocxPageSourceFromParts(
   });
   document.body.removeChild(meas);
 
+  // page -> its topmost block, built once from the same walk that assigned
+  // the ids. `blocks.forEach` above visits in document order, so the first
+  // write for a page wins and later blocks on it do not overwrite it.
+  const firstBlockByPage = new Map<number, string>();
+  for (const [blockId, page] of Object.entries(blockPage)) {
+    if (!firstBlockByPage.has(page)) firstBlockByPage.set(page, blockId);
+  }
+
   const outline: TocEntry[] = parts.outline.map((o) => ({
     title: o.title,
     level: o.level,
@@ -139,6 +147,13 @@ export async function createDocxPageSourceFromParts(
     hasTextLayer: true,
     pageForBlock(blockId) {
       return blockPage[blockId];
+    },
+    blockForPage(page) {
+      // Blocks are numbered in document order and packed into pages in that
+      // order, so the first id that maps to this page is the topmost block on
+      // it. Scanning beats keeping a second index: this runs once per saved
+      // position, not per frame.
+      return firstBlockByPage.get(page);
     },
     setHighlights(hs, themeKey) {
       curHighlights = hs;
