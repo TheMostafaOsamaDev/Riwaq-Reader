@@ -1,6 +1,15 @@
 // Design tokens — themes, highlight palette, font stacks.
 // Mirrors the prototype's `reader-core.jsx`, but typed.
 
+/** Minimum hit area for a control whose visual bounds are smaller than a
+ *  finger: Apple HIG asks for 44pt, Material for 48dp. Used as a floor via
+ *  minWidth/minHeight rather than as a size, so a control may be larger.
+ *
+ *  Named here rather than in any one component because the controls that
+ *  need it — icon-only buttons, menu rows — live in different files and
+ *  were each carrying their own `44`. */
+export const TOUCH_TARGET_MIN = 44;
+
 export type ThemeKey = "light" | "sepia" | "dark" | "oled";
 
 /** Stored theme preference: the four concrete themes plus "system",

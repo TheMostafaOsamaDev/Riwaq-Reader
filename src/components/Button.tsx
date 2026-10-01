@@ -5,7 +5,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { FONT_STACKS, type Theme } from "../styles/tokens";
+import { FONT_STACKS, type Theme, TOUCH_TARGET_MIN } from "../styles/tokens";
 import { Spinner } from "./Spinner";
 
 export type ButtonVariant =
@@ -18,7 +18,7 @@ export type ButtonVariant =
 
 export type ButtonSize = "sm" | "md" | "lg";
 
-export interface ButtonProps
+interface ButtonBaseProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "ref"> {
   theme: Theme;
   variant?: ButtonVariant;
@@ -45,10 +45,23 @@ export interface ButtonProps
   loadingProgress?: number;
 }
 
-// Press animation feels right for action buttons but not for chrome icon
-// buttons in the reader's header — those have their own toolbar feel. Keep
-// this component focused on labelled actions; icon-only chrome buttons
-// stay where they are.
+/** A button whose whole content is its icon, with no label beside it. It
+ *  drops the wide label padding — which would stretch a lone glyph into an
+ *  oval — for a square TOUCH_TARGET_MIN box.
+ *
+ *  The label does not disappear, it moves, so the compiler asks for the
+ *  `aria-label` that replaces it rather than trusting a reviewer to notice
+ *  it missing. Callers should pass the same string as `title` so a pointer
+ *  can find it too; there is no tooltip on Android — see DisabledHint on
+ *  why that is acceptable and never the only explanation. */
+export type ButtonProps = ButtonBaseProps &
+  ({ iconOnly: true; "aria-label": string } | { iconOnly?: false });
+
+// The press animation feels right for action buttons but not for chrome
+// icon buttons in the reader's header, which have their own toolbar feel.
+// So `iconOnly` here is for an icon-only ACTION sitting among labelled
+// ones — the novel page's hero cluster. Reader chrome keeps
+// ReaderIconButton, and the library's bottom bar keeps NavIconButton.
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   function Button(
     {
@@ -63,6 +76,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       surface = "default",
       loading = false,
       loadingProgress,
+      iconOnly = false,
       disabled,
       style,
       children,
@@ -79,8 +93,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const [pressed, setPressed] = useState(false);
     const busy = loading && !!disabled;
 
-    const padding =
-      size === "lg" ? "12px 24px" : size === "sm" ? "7px 12px" : "9px 18px";
+    const padY = size === "lg" ? 12 : size === "sm" ? 7 : 9;
+    // Square for an icon-only button, so the glyph sits in the middle of a
+    // circle rather than of an oval. Its actual size comes from the
+    // TOUCH_TARGET_MIN floor below — a 16px glyph plus any of these
+    // paddings is under it — so `size` only affects a labelled button.
+    const padX = iconOnly ? padY : size === "lg" ? 24 : size === "sm" ? 12 : 18;
+    const padding = `${padY}px ${padX}px`;
     const fontSize = size === "lg" ? 14 : size === "sm" ? 12 : 13;
     const gap = size === "sm" ? 6 : 8;
 
@@ -122,6 +141,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         "transform 90ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease",
       transform: interactive && pressed ? "scale(0.97)" : "scale(1)",
       width: fullWidth ? "100%" : undefined,
+      minWidth: iconOnly ? TOUCH_TARGET_MIN : undefined,
+      minHeight: iconOnly ? TOUCH_TARGET_MIN : undefined,
+      flexShrink: iconOnly ? 0 : undefined,
       userSelect: "none",
       // Buttons should never wrap their label across lines — they're sized
       // by content. If you need a multi-line button you're using the wrong
