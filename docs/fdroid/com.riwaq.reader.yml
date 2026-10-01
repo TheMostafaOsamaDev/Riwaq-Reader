@@ -54,8 +54,6 @@ Builds:
     prebuild:
       - sed -i '/^org\.gradle\.java\.home=/d' src-tauri/gen/android/gradle.properties
       - sed -i 's/signingConfigs.getByName("debug")/null/' src-tauri/gen/android/app/build.gradle.kts
-    scandelete:
-      - src-tauri/gen/android/gradle/wrapper/gradle-wrapper.jar
     build:
       - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain 1.97.1
         --target aarch64-linux-android armv7-linux-androideabi
