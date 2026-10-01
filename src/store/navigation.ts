@@ -28,12 +28,18 @@
 
 import { useSyncExternalStore } from "react";
 
+/** A page inside the Store. No page means the sources list. */
+export type StorePage =
+  | { kind: "extensions" }
+  | { kind: "source"; sourceId: string }
+  | { kind: "novel"; sourceId: string; novelUrl: string };
+
 /** The book-status filter (Reading/Finished/Wishlist/All) is deliberately NOT
  *  part of navigation history — flipping a filter pill is not a "back" step
  *  (see the design note in Library). It stays ephemeral in the Library. */
 export type LibraryView =
   | { kind: "shelf" }
-  | { kind: "store" }
+  | { kind: "store"; page?: StorePage }
   | { kind: "shelves" }
   | { kind: "shelfDetail"; shelfId: string }
   | {
@@ -78,6 +84,11 @@ const ROOT: NavSnapshot = {
 let snapshot: NavSnapshot = ROOT;
 let index = 0;
 let maxIndex = 0;
+// The snapshots of the entries we know, by index. Used only to spot a move
+// back onto the entry directly behind (A→B→A), which becomes a back step
+// rather than a third entry. After a full reload only the current entry is
+// known, so the rule simply finds nothing behind and pushes as before.
+let entries: NavSnapshot[] = [];
 let state: NavState = compute();
 const listeners = new Set<() => void>();
 
@@ -113,6 +124,8 @@ function init(): void {
     index = existing.navIndex;
     maxIndex = Math.max(maxIndex, index);
     snapshot = existing.snapshot;
+    entries = [];
+    entries[index] = snapshot;
   } else {
     // Fresh launch: stamp the current (root) entry as index 0 so a later
     // popstate back to it is recognized instead of read as "unknown".
@@ -120,6 +133,7 @@ function init(): void {
     index = 0;
     maxIndex = 0;
     snapshot = ROOT;
+    entries = [ROOT];
   }
   window.addEventListener("popstate", onPopState);
   commit();
@@ -137,6 +151,7 @@ function onPopState(e: PopStateEvent): void {
     snapshot = ROOT;
   }
   // maxIndex is left untouched: forward entries still exist above us.
+  entries[index] = snapshot;
   commit();
 }
 
@@ -157,9 +172,19 @@ export function navigate(
   if (opts?.replace) {
     window.history.replaceState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
+    entries[index] = next;
   } else {
+    const behind = index > 0 ? entries[index - 1] : undefined;
+    if (behind && snapshotsEqual(next, behind)) {
+      // Going to where we just came from: step back instead, so the forward
+      // entry survives and the stack doesn't grow A→B→A→B…
+      back();
+      return;
+    }
     index += 1;
     maxIndex = index; // pushing a new entry truncates any forward history
+    entries.length = index;
+    entries[index] = next;
     window.history.pushState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
   }
@@ -168,10 +193,13 @@ export function navigate(
 
 /** Step back one entry (the platform fires `popstate`, which updates us). At
  *  the root this is a no-op on desktop; on Android the OS then handles the
- *  back press itself (backgrounding/closing the app), which is what we want. */
+ *  back press itself (backgrounding/closing the app), which is what we want.
+ *  If the first entry is somehow not the root, Back goes to the root rather
+ *  than doing nothing, so a close button can never be dead. */
 export function back(): void {
   init();
   if (index > 0) window.history.back();
+  else if (!snapshotsEqual(snapshot, ROOT)) navigate(ROOT, { replace: true });
 }
 
 export function forward(): void {
@@ -195,6 +223,11 @@ export function goLibrary(
 
 export function goShelf(shelfId: string, opts?: { replace?: boolean }): void {
   goLibrary({ kind: "shelfDetail", shelfId }, opts);
+}
+
+/** Go to the Store, optionally at one of its pages. */
+export function goStorePage(page?: StorePage): void {
+  goLibrary(page ? { kind: "store", page } : { kind: "store" });
 }
 
 export function goReader(bookId: string, opts?: { replace?: boolean }): void {
