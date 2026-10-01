@@ -51,26 +51,40 @@ vi.mock("./SourcesListView", () => ({
     />
   ),
 }));
-vi.mock("./SourceHomeView", () => ({
-  SourceHomeView: ({
-    sourceId,
-    onOpenNovel,
-    onBack,
-  }: {
-    sourceId: string;
-    onOpenNovel: (url: string) => void;
-    onBack: () => void;
-  }) => (
-    <div data-testid="source-home" data-source={sourceId}>
-      <button
-        type="button"
-        data-testid="open-novel"
-        onClick={() => onOpenNovel("/n1")}
-      />
-      <button type="button" data-testid="source-back" onClick={onBack} />
-    </div>
-  ),
-}));
+// Records which source the instance was MOUNTED for: SourceHomeView keeps
+// per-source state (search query, loaded result pages, an in-flight search
+// generation), so an instance re-used for another source would show the
+// first source's results under the second's id.
+vi.mock("./SourceHomeView", async () => {
+  const { useState } = await import("react");
+  return {
+    SourceHomeView: ({
+      sourceId,
+      onOpenNovel,
+      onBack,
+    }: {
+      sourceId: string;
+      onOpenNovel: (url: string) => void;
+      onBack: () => void;
+    }) => {
+      const [mountedFor] = useState(sourceId);
+      return (
+        <div
+          data-testid="source-home"
+          data-source={sourceId}
+          data-mounted-for={mountedFor}
+        >
+          <button
+            type="button"
+            data-testid="open-novel"
+            onClick={() => onOpenNovel("/n1")}
+          />
+          <button type="button" data-testid="source-back" onClick={onBack} />
+        </div>
+      );
+    },
+  };
+});
 vi.mock("./novel/NovelDetailView", () => ({
   NovelDetailView: ({
     novelUrl,
@@ -259,6 +273,24 @@ describe("Store — initialises its own extensions on mount", () => {
     act(() => window.history.forward());
     click("source-back");
     expect(q("sources-list-view")).not.toBeNull();
+  });
+
+  // Back/Forward between two sources' pages (⌘K → Websites opens one source
+  // while another is showing) must not hand the first source's search state
+  // to the second.
+  it("remounts the source page when history moves to another source", async () => {
+    act(() =>
+      goLibrary({ kind: "store", page: { kind: "source", sourceId: "a" } }),
+    );
+    act(() =>
+      goLibrary({ kind: "store", page: { kind: "source", sourceId: "b" } }),
+    );
+    mount(<HistoryStore />);
+    await ready();
+    expect(q("source-home")?.dataset.mountedFor).toBe("b");
+    act(() => window.history.back());
+    expect(q("source-home")?.dataset.source).toBe("a");
+    expect(q("source-home")?.dataset.mountedFor).toBe("a");
   });
 
   it("gives the skeleton no opacity/animation transition on the swap", () => {

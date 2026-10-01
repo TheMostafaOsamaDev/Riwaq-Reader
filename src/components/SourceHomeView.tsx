@@ -88,9 +88,9 @@ export function SourceHomeView({
   // query-text comparison alone can't detect.
   const searchGeneration = useRef(0);
 
-  // Load sections on mount, and again whenever sourceId changes — e.g.
-  // the main search opening another source while this page is showing
-  // swaps sourceId in place without unmounting this component.
+  // Load sections on mount. The Store keys this view by sourceId, so another
+  // source gets a fresh instance; the dependency is a belt-and-braces guard
+  // for any caller that doesn't.
   useEffect(() => {
     if (!source) return;
     let cancelled = false;

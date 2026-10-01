@@ -171,6 +171,10 @@ export function Store({
         )}
         {view.kind === "source" && (
           <SourceHomeView
+            // A new instance per source: its search query, loaded result
+            // pages and in-flight search belong to one source, and Back/
+            // Forward can move straight between two sources' pages.
+            key={view.sourceId}
             theme={theme}
             layout={layout}
             sourceId={view.sourceId}
