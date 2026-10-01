@@ -50,25 +50,43 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      - name: Find the Release run for this commit
+      - name: Find the Release run to compare against
         id: run
         env:
           GH_TOKEN: ${{ github.token }}
           GIVEN: ${{ github.event.workflow_run.id || inputs.release_run }}
         run: |
+          # Files that go into the F-Droid build but not into the release APK.
+          # A Release run of a commit differing only in these built the very
+          # APK this commit would, so it is just as good to compare against,
+          # and changing the checker does not cost a fresh 30-minute release.
+          same_apk_inputs() {
+            git diff --quiet "$1" HEAD -- . ':!docs' \
+              ':!.github/workflows/fdroid-verify.yml' ':!scripts/fdroid-verify-in-container.sh'
+          }
           id="$GIVEN"
-          if [ -z "$id" ]; then
-            sha="$(git rev-parse HEAD)"
-            # A manual or push run: wait for a Release run of this commit.
-            for _ in $(seq 1 60); do
-              id="$(gh run list -R "$GITHUB_REPOSITORY" --workflow release.yml --commit "$sha" \
-                    --json databaseId -q '.[0].databaseId')"
-              [ -n "$id" ] && break
-              sleep 30
-            done
-            test -n "$id" || { echo "::error::no Release run for $sha"; exit 1; }
-            gh run watch "$id" -R "$GITHUB_REPOSITORY" --exit-status >/dev/null
-          fi
+          sha="$(git rev-parse HEAD)"
+          for _ in $(seq 1 60); do
+            [ -n "$id" ] && break
+            runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow release.yml --limit 30 \
+                    --json databaseId,headSha,status,conclusion)"
+            # This commit's own run, finished or not.
+            id="$(jq -r --arg s "$sha" '[.[] | select(.headSha == $s)][0].databaseId // empty' <<<"$runs")"
+            if [ -z "$id" ]; then
+              # Else the newest successful run on identical APK inputs.
+              for cand in $(jq -r '.[] | select(.conclusion == "success") | "\(.databaseId):\(.headSha)"' <<<"$runs"); do
+                git cat-file -e "${cand#*:}^{commit}" 2>/dev/null || continue
+                if same_apk_inputs "${cand#*:}"; then id="${cand%%:*}"; break; fi
+              done
+            fi
+            [ -n "$id" ] || sleep 30
+          done
+          test -n "$id" || { echo "::error::no Release run with this commit's APK inputs"; exit 1; }
+          gh run watch "$id" -R "$GITHUB_REPOSITORY" --exit-status >/dev/null
+          run_sha="$(gh run view "$id" -R "$GITHUB_REPOSITORY" --json headSha -q .headSha)"
+          git cat-file -e "$run_sha^{commit}" 2>/dev/null && same_apk_inputs "$run_sha" \
+            || { echo "::error::Release run $id built $run_sha, whose APK inputs differ from this commit"; exit 1; }
+          echo "Comparing against Release run $id ($run_sha)"
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
       - name: Fetch the release APK to compare against
@@ -80,10 +98,6 @@ jobs:
           apk="$(find out/artifact -name '*.apk' | head -n1)"
           test -n "$apk"
           cp "$apk" out/release.apk
-          # Same commit, or the comparison means nothing.
-          run_sha="$(gh run view "${{ steps.run.outputs.id }}" --json headSha -q .headSha)"
-          test "$run_sha" = "$(git rev-parse HEAD)" \
-            || { echo "::error::release run $run_sha is not this commit $(git rev-parse HEAD)"; exit 1; }
 
       - name: Build with F-Droid's builder and compare
         run: |

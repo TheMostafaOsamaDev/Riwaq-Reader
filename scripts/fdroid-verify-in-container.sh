@@ -26,6 +26,9 @@ appid=com.riwaq.reader
 home_vagrant=/home/vagrant
 export ANDROID_HOME=/opt/android-sdk
 
+# The checkout is mounted from the runner, owned by another uid.
+git config --global --add safe.directory '*'
+
 commit="$(git -C /src rev-parse HEAD)"
 version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' /src/package.json)"
 IFS=. read -r major minor patch <<<"$version"
@@ -57,7 +60,6 @@ s = re.sub(r"(?m)^CurrentVersion: .*$", "CurrentVersion: " + version, s)
 s = re.sub(r"(?m)^CurrentVersionCode: .*$", "CurrentVersionCode: " + vercode, s)
 open(out, "w").write(s)
 PY
-git config --global --add safe.directory '*'
 sudo -u vagrant git config --global --add safe.directory '*'
 
 cd "$work"
