@@ -41,6 +41,18 @@ fn is_appimage() -> bool {
     std::env::var_os("APPIMAGE").is_some()
 }
 
+/// True when this process is running inside a Flatpak sandbox.
+///
+/// Flathub updates a Flatpak install itself, so the in-app updater has
+/// nothing to offer there — and its manual channel would point the user at a
+/// .deb/.rpm download for an app the store has already updated. `flatpak run`
+/// exports FLATPAK_ID, so its presence is the signal. Always false off Linux,
+/// which is correct: Flatpak does not exist anywhere else.
+#[tauri::command]
+fn is_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -81,6 +93,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .invoke_handler(tauri::generate_handler![
             is_appimage,
+            is_flatpak,
             legacy_identity::migrate_legacy_identity,
             sources::source_fetch,
             sources::source_fetch_bytes,
