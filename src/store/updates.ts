@@ -26,7 +26,8 @@ export const RELEASES_PAGE_URL = `${REPO}/releases/latest`;
 export interface UpdateInfo {
   version: string;
   notes?: string;
-  channel: UpdateChannel;
+  /** Never "none": that channel is expressed by there being no UpdateInfo. */
+  channel: Exclude<UpdateChannel, "none">;
 }
 
 /** GET the manifest and read its version. Null on any failure — offline is the
@@ -62,9 +63,9 @@ export function evaluateUpdate({
   // getVersion() yields if it throws — so an unknown running version offers
   // nothing rather than offering an update on every launch.
   if (!isNewerVersion(latest.version, current)) return null;
-  return {
-    version: latest.version,
-    notes: latest.notes,
-    channel: resolveChannel(env),
-  };
+  const channel = resolveChannel(env);
+  // Null rather than an UpdateInfo carrying "none": no info means the banner
+  // never renders, so nothing downstream has to know this channel exists.
+  if (channel === "none") return null;
+  return { version: latest.version, notes: latest.notes, channel };
 }

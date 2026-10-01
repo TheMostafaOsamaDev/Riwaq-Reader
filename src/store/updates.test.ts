@@ -50,7 +50,7 @@ describe("evaluateUpdate", () => {
       evaluateUpdate({
         latest: { version: "0.3.0", notes: "n" },
         current: "0.2.0",
-        env: { os: "macos", isAppImage: false },
+        env: { os: "macos", isAppImage: false, isFlatpak: false },
       }),
     ).toEqual({ version: "0.3.0", notes: "n", channel: "auto" });
   });
@@ -60,7 +60,7 @@ describe("evaluateUpdate", () => {
       evaluateUpdate({
         latest: { version: "0.3.0" },
         current: "0.2.0",
-        env: { os: "android", isAppImage: false },
+        env: { os: "android", isAppImage: false, isFlatpak: false },
       }),
     ).toEqual({ version: "0.3.0", notes: undefined, channel: "manual" });
   });
@@ -70,7 +70,7 @@ describe("evaluateUpdate", () => {
       evaluateUpdate({
         latest: { version: "0.2.0" },
         current: "0.2.0",
-        env: { os: "windows", isAppImage: false },
+        env: { os: "windows", isAppImage: false, isFlatpak: false },
       }),
     ).toBeNull();
   });
@@ -80,7 +80,7 @@ describe("evaluateUpdate", () => {
       evaluateUpdate({
         latest: null,
         current: "0.2.0",
-        env: { os: "windows", isAppImage: false },
+        env: { os: "windows", isAppImage: false, isFlatpak: false },
       }),
     ).toBeNull();
   });
@@ -92,7 +92,31 @@ describe("evaluateUpdate", () => {
       evaluateUpdate({
         latest: { version: "0.3.0" },
         current: "",
-        env: { os: "windows", isAppImage: false },
+        env: { os: "windows", isAppImage: false, isFlatpak: false },
+      }),
+    ).toBeNull();
+  });
+
+  it("offers nothing in a Flatpak even when a newer version exists", () => {
+    // Flathub ships the update on its own schedule. A banner here would point
+    // at a .deb/.rpm download for an install that package cannot replace, and
+    // nothing else would notice if it came back: the banner just appears.
+    const latest = { version: "0.3.0", notes: "n" };
+    const linux = { os: "linux", isAppImage: false };
+    // The control: the same install outside a Flatpak is offered the update,
+    // so the null below is down to the flag and not to the inputs.
+    expect(
+      evaluateUpdate({
+        latest,
+        current: "0.2.0",
+        env: { ...linux, isFlatpak: false },
+      }),
+    ).toEqual({ version: "0.3.0", notes: "n", channel: "manual" });
+    expect(
+      evaluateUpdate({
+        latest,
+        current: "0.2.0",
+        env: { ...linux, isFlatpak: true },
       }),
     ).toBeNull();
   });

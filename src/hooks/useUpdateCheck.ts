@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Tweaks } from "../types/reader";
+import type { ChannelEnv } from "../store/updateChannel";
 import { shouldCheck } from "../store/updateThrottle";
 import {
   evaluateUpdate,
@@ -13,21 +14,37 @@ import {
  *  pulls a desktop-only path, and every failure degrades to `{ os: "" }` —
  *  which `resolveChannel` maps to the manual channel. Guessing wrong in that
  *  direction costs a user one extra tap; guessing wrong the other way offers
- *  an install that cannot happen. */
-async function readEnv(): Promise<{ os: string; isAppImage: boolean }> {
+ *  an install that cannot happen.
+ *
+ *  Both flags degrade to false, the safe answer for each, though not for the
+ *  same reason. A false isAppImage withholds the self-update button. A false
+ *  isFlatpak withholds nothing, and that is the point: a wrongly TRUE one
+ *  silences every update offer, so a non-Flatpak user would stop hearing about
+ *  releases with nothing to show why, whereas a Flatpak user wrongly told
+ *  "false" only sees a redundant link. Each probe fails on its own so one
+ *  broken command cannot hide the other's answer, and every OS but Linux is
+ *  false outright because Flatpak does not exist there.
+ */
+async function readEnv(): Promise<ChannelEnv> {
   try {
     const { type } = await import("@tauri-apps/plugin-os");
     const os = type() as string;
-    if (os !== "linux") return { os, isAppImage: false };
+    if (os !== "linux") return { os, isAppImage: false, isFlatpak: false };
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      return { os, isAppImage: await invoke<boolean>("is_appimage") };
+      const probe = (command: string) =>
+        invoke<boolean>(command).catch(() => false);
+      const [isAppImage, isFlatpak] = await Promise.all([
+        probe("is_appimage"),
+        probe("is_flatpak"),
+      ]);
+      return { os, isAppImage, isFlatpak };
     } catch {
       // Can't tell — treat it as a package install and offer the download.
-      return { os, isAppImage: false };
+      return { os, isAppImage: false, isFlatpak: false };
     }
   } catch {
-    return { os: "", isAppImage: false };
+    return { os: "", isAppImage: false, isFlatpak: false };
   }
 }
 
