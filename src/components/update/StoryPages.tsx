@@ -1,7 +1,7 @@
 // Full-screen, one feature per page, shown once after a BIG release (one
 // whose notes define `stories`). Small releases never get here — see
 // WhatsNewAfterUpdate.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../../i18n/useI18n";
 import { pick, type ReleaseNotes } from "../../store/releaseNotes";
 import { type Theme, Z } from "../../styles/tokens";
@@ -23,6 +23,14 @@ export function StoryPages({
   const { tr, locale } = useI18n();
   const pages = notes.stories ?? [];
   const [i, setI] = useState(0);
+  // Escape leaves the tour, like it leaves any dialog.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDone();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDone]);
   const page = pages[i];
   if (!page) return null;
   const last = i === pages.length - 1;

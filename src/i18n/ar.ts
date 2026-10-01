@@ -779,6 +779,7 @@ export const ar: Messages = {
   "settings.updates": "التحقق من التحديثات",
   "settings.updates.hint":
     "يسأل رواق GitHub مرة يوميًا عمّا إذا كان هناك إصدار أحدث. لا يُرسَل أي شيء عنك أو عن كتبك، ولا يُنزَّل شيء حتى تضغط تحديث.",
+  "settings.updates.whatsNew": "ما الجديد في هذا الإصدار",
   "settings.updates.checkNow": "تحقق الآن",
   "settings.updates.checking": "جارٍ التحقق…",
   "settings.updates.upToDate": "لديك أحدث إصدار ({v}).",

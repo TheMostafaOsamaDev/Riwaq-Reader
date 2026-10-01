@@ -5,6 +5,7 @@ import {
   LEGACY_FONT_FAMILY,
   UI_FONT_STACKS,
 } from "../styles/tokens";
+import { appVersion } from "virtual:whats-new";
 import { migrateStorageKey } from "../lib/legacyStorage";
 import { isHeroStyle } from "../components/library/heroModel";
 
@@ -43,7 +44,9 @@ export function loadTweaks(): Tweaks {
   try {
     migrateStorageKey(STORAGE_KEY);
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_TWEAKS;
+    // Nothing stored = a brand-new user with nothing to compare against, so
+    // this version counts as already seen and they skip the update tour.
+    if (!raw) return { ...DEFAULT_TWEAKS, lastSeenWhatsNew: appVersion };
     const parsed = JSON.parse(raw);
     // Migrate the old `columns: 1 | 2` field into the new `readingMode`
     // shape — pre-readingMode users had two-column scroll if they picked

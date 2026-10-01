@@ -81,6 +81,10 @@ export interface Tweaks {
   /** Adds devLog's geometry capture to the diagnostics log. Off by default —
    *  the snapshot costs a getComputedStyle per ancestor. */
   verboseDiagnostics: boolean;
+  /** Newest app version whose release notes the user has seen. Absent for
+   *  installs that predate the feature, which is what makes them see the
+   *  notes once after updating. */
+  lastSeenWhatsNew?: string;
   /** Fixed-page (PDF/DOCX) default flow: continuous scroll or one page at a
       time. Reflowable books ignore it (they use `readingMode`). */
   fixedFlow: FixedFlow;

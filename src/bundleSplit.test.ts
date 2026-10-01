@@ -50,6 +50,16 @@ beforeAll(async () => {
     plugins: [
       react(),
       {
+        // Stands in for vite-plugin-whats-new (a node-side file the app
+        // tsconfig can't import): App.tsx imports virtual:whats-new.
+        name: "stub-whats-new",
+        resolveId: (id) => (id === "virtual:whats-new" ? "\0whats-new" : null),
+        load: (id) =>
+          id === "\0whats-new"
+            ? 'export const appVersion = "0.0.0"; export const images = {}; export default null;'
+            : null,
+      },
+      {
         name: "collect-chunks",
         generateBundle(_options, bundle) {
           for (const [file, chunk] of Object.entries(bundle)) {

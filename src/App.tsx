@@ -99,6 +99,12 @@ import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { UpdateBanner } from "./components/UpdateBanner";
+import {
+  WhatsNewAfterUpdate,
+  bundledNotes,
+} from "./components/update/WhatsNewAfterUpdate";
+import { shouldShowWhatsNew } from "./store/whatsNew";
+import { appVersion } from "virtual:whats-new";
 
 // Kept off the startup path — neither of these is needed to paint the library,
 // and a user who only reads EPUBs from their device never loads either.
@@ -231,6 +237,18 @@ function App() {
   }, []);
 
   const update = useUpdateCheck(t, setTweak);
+  // Decided synchronously at first render from versions alone: nothing is
+  // awaited before paint, and it works whoever performed the update.
+  const [whatsNewOpen, setWhatsNewOpen] = useState(() =>
+    shouldShowWhatsNew({
+      bundled: bundledNotes?.version ?? null,
+      lastSeen: t.lastSeenWhatsNew,
+    }),
+  );
+  const closeWhatsNew = () => {
+    setWhatsNewOpen(false);
+    setTweak("lastSeenWhatsNew", appVersion);
+  };
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1001,6 +1019,11 @@ function App() {
             onDismiss={update.dismiss}
           />
         )}
+        <WhatsNewAfterUpdate
+          theme={theme}
+          open={whatsNewOpen}
+          onClose={closeWhatsNew}
+        />
         {loading && (
           <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />
         )}
@@ -1085,6 +1108,9 @@ function App() {
               onCheckUpdates={update.check}
               updateChecking={update.checking}
               updateResult={update.result}
+              onOpenWhatsNew={
+                bundledNotes ? () => setWhatsNewOpen(true) : undefined
+              }
             />
           ) : base.screen === "library" ? (
             <Library

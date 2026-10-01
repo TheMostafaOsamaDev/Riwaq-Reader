@@ -67,6 +67,8 @@ interface Props {
   updateChecking: boolean;
   /** The last check's outcome this session, or null before one finishes. */
   updateResult: CheckResult | null;
+  /** Reopen this version's release notes. Omitted when none are bundled. */
+  onOpenWhatsNew?: () => void;
 }
 
 export function SettingsPage({
@@ -80,6 +82,7 @@ export function SettingsPage({
   onCheckUpdates,
   updateChecking,
   updateResult,
+  onOpenWhatsNew,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -582,6 +585,24 @@ export function SettingsPage({
                 ? tr("settings.updates.checking")
                 : tr("settings.updates.checkNow")}
             </Button>
+            {onOpenWhatsNew && (
+              <div style={{ marginTop: 8 }}>
+                <ActionRow
+                  theme={theme}
+                  icon={<Icon name="doc" size={16} />}
+                  label={tr("settings.updates.whatsNew")}
+                  onClick={onOpenWhatsNew}
+                  trailing={
+                    <Icon
+                      name="chevronR"
+                      size={16}
+                      className="rtl-flip-x"
+                      style={{ opacity: 0.5 }}
+                    />
+                  }
+                />
+              </div>
+            )}
             {/* Always mounted so the live region exists before its text
                 changes — screen readers ignore a region that arrives filled.
                 minHeight reserves the line so a result doesn't push the

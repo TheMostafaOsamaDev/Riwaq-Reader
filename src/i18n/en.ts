@@ -952,6 +952,7 @@ export const en = {
   "settings.updates.hint":
     "Riwaq asks GitHub once a day whether a newer version exists. Nothing about you or your books is sent, and nothing downloads until you tap Update.",
   "settings.updates.checkNow": "Check now",
+  "settings.updates.whatsNew": "What's new in this version",
   "settings.updates.checking": "Checking…",
   "settings.updates.upToDate": "You're on the latest version ({v}).",
   "settings.updates.failed":
