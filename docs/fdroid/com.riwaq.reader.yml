@@ -46,7 +46,7 @@ Builds:
     commit: v0.5.4
     sudo:
       - apt-get update
-      - apt-get install -y nodejs npm
+      - apt-get install -y build-essential nodejs npm
       - npm install -g pnpm@9
     output: src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
     srclibs:
