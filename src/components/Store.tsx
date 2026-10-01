@@ -53,7 +53,7 @@
 // find its source until some navigated view has loaded the registry in this
 // session; that path already null-checks a missing source and reports it,
 // so it degrades visibly rather than silently or unsafely.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ExtensionsView } from "./ExtensionsView";
 import { SourcesListView } from "./SourcesListView";
 import { back, goStorePage, type StorePage } from "../store/navigation";
@@ -82,8 +82,6 @@ interface Props {
   page?: StorePage;
 }
 
-type StoreView = { kind: "sources" } | StorePage;
-
 export function Store({
   theme,
   layout,
@@ -91,7 +89,7 @@ export function Store({
   onImportComplete,
   page,
 }: Props) {
-  const view: StoreView = page ?? { kind: "sources" };
+  const view = page ?? ({ kind: "sources" } as const);
   const [rangeDialog, setRangeDialog] = useState<{
     sourceId: string;
     novelUrl: string;
@@ -125,20 +123,25 @@ export function Store({
     };
   }, []);
 
-  const openSource = useCallback((sourceId: string) => {
+  const openSource = (sourceId: string) =>
     goStorePage({ kind: "source", sourceId });
-  }, []);
-
-  const openExtensions = useCallback(() => {
-    goStorePage({ kind: "extensions" });
-  }, []);
-
-  const openNovel = useCallback((sourceId: string, novelUrl: string) => {
+  const openExtensions = () => goStorePage({ kind: "extensions" });
+  const openNovel = (sourceId: string, novelUrl: string) =>
     goStorePage({ kind: "novel", sourceId, novelUrl });
-  }, []);
 
-  const backToSources = useCallback(() => back(), []);
-  const backToSource = useCallback(() => back(), []);
+  // The range dialog belongs to the novel page it was opened on. Back keeps
+  // the Store mounted while the page changes under it, so close the dialog
+  // as soon as that page is gone rather than float it over the next one.
+  if (
+    rangeDialog &&
+    !(
+      view.kind === "novel" &&
+      view.sourceId === rangeDialog.sourceId &&
+      view.novelUrl === rangeDialog.novelUrl
+    )
+  ) {
+    setRangeDialog(null);
+  }
 
   return (
     <>
@@ -167,9 +170,16 @@ export function Store({
             re-lists the registry — so an install or a removal shows up
             there without an app restart. */}
         {view.kind === "extensions" && (
-          <ExtensionsView theme={theme} onBack={backToSources} />
+          <ExtensionsView theme={theme} onBack={back} />
         )}
-        {view.kind === "source" && (
+        {/* A source or novel page resolves its source from the registry, so it
+            waits for the registry like the sources list does — a page
+            restored from history can mount before it has loaded. */}
+        {(view.kind === "source" || view.kind === "novel") &&
+          !extensionsReady && (
+            <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
+          )}
+        {view.kind === "source" && extensionsReady && (
           <SourceHomeView
             // A new instance per source: its search query, loaded result
             // pages and in-flight search belong to one source, and Back/
@@ -178,17 +188,17 @@ export function Store({
             theme={theme}
             layout={layout}
             sourceId={view.sourceId}
-            onBack={backToSources}
+            onBack={back}
             onOpenNovel={(novelUrl) => openNovel(view.sourceId, novelUrl)}
           />
         )}
-        {view.kind === "novel" && (
+        {view.kind === "novel" && extensionsReady && (
           <NovelDetailView
             theme={theme}
             layout={layout}
             sourceId={view.sourceId}
             novelUrl={view.novelUrl}
-            onBack={backToSource}
+            onBack={back}
             onStreamRead={(chapterId) =>
               onStreamRead(view.sourceId, view.novelUrl, chapterId)
             }

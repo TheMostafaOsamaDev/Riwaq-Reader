@@ -606,7 +606,6 @@ export const en = {
   "store.noSources": "No sources installed yet.",
   "store.filterWebsites": "Search websites…",
   "store.noMatchingWebsites": "No websites match “{query}”.",
-  "store.backToSources": "Back to sources",
   "store.searchPlaceholder": "Search…",
   "store.searching": "Searching…",
   "store.loadSourceError": "Couldn't load this source — {error}",

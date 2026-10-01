@@ -88,9 +88,8 @@ export function SourceHomeView({
   // query-text comparison alone can't detect.
   const searchGeneration = useRef(0);
 
-  // Load sections on mount. The Store keys this view by sourceId, so another
-  // source gets a fresh instance; the dependency is a belt-and-braces guard
-  // for any caller that doesn't.
+  // Load sections on mount. The Store keys this view by sourceId (search
+  // state belongs to one source), so another source is a fresh instance.
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
@@ -332,7 +331,7 @@ function HomeHeader({
       >
         <button
           onClick={onBack}
-          aria-label={tr("store.backToSources")}
+          aria-label={tr("common.back")}
           style={{
             width: 34,
             height: 34,

@@ -523,7 +523,6 @@ export const ar: Messages = {
   "store.noSources": "لا مصادر مثبَّتة بعد.",
   "store.filterWebsites": "بحث في المواقع…",
   "store.noMatchingWebsites": "لا مواقع تطابق «{query}».",
-  "store.backToSources": "العودة إلى المصادر",
   "store.searchPlaceholder": "بحث…",
   "store.searching": "جارٍ البحث…",
   "store.loadSourceError": "تعذّر تحميل هذا المصدر — {error}",
