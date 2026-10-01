@@ -145,6 +145,9 @@ vi.mock("./components/UpdateBanner", () => ({ UpdateBanner: () => null }));
 vi.mock("./store/library", () => ({
   deleteHighlights: vi.fn(),
   getEntry: vi.fn(),
+  // The background importer's: wired at mount, never awaited there.
+  importPaths: vi.fn(never),
+  sweepStaleStaging: vi.fn(never),
   listBooks: vi.fn(never),
   loadBook: vi.fn(),
   loadFixedBook: vi.fn(),

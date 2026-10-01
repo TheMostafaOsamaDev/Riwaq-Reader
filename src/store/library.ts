@@ -19,6 +19,7 @@ import {
   readFile,
   readTextFile,
   remove,
+  stat,
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
@@ -363,7 +364,17 @@ export async function loadBook(
 export interface StagedPick {
   autoImported: BookIndexEntry[];
   drafts: FixedImportDraft[];
-  errors: { file: string; message: string }[];
+  /** `name` is the display name when it was resolved before the failure,
+   *  else the path's last segment (on Android often a bare provider row id).
+   *  `retryable` is false when trying the same file again cannot help — it
+   *  is not a book — and is decided here, where the failure is known, rather
+   *  than by whoever later displays it. */
+  errors: {
+    path: string;
+    name: string;
+    message: string;
+    retryable: boolean;
+  }[];
   /** True only for folder picks that found no importable files. */
   empty?: boolean;
   /** Books already in the library that the picked files turned out to be
@@ -441,7 +452,7 @@ async function stagePaths(
   await ensureRoot();
   const autoImported: BookIndexEntry[] = [];
   const drafts: FixedImportDraft[] = [];
-  const errors: { file: string; message: string }[] = [];
+  const errors: StagedPick["errors"] = [];
   const reused: BookIndexEntry[] = [];
   const pruned: string[] = [];
   // Read once, outside the loop: a multi-file drop shouldn't re-read the
@@ -458,10 +469,11 @@ async function stagePaths(
     const token = newStagingToken();
     const stagedPath = `${STAGING}/${token}`;
     let unlisten: (() => void) | undefined;
+    let name: string | undefined;
     try {
       // Once per file: all three consumers below want the same answer, and
       // on Android resolving it can cost an IPC round trip.
-      const name = await importName(path);
+      name = await importName(path);
       report?.file(i, paths.length, name);
       unlisten = await onStageProgress(token, (p) => report?.progress(p));
 
@@ -542,9 +554,12 @@ async function stagePaths(
       }
     } catch (err) {
       await deleteStaged(stagedPath);
+      const message = err instanceof Error ? err.message : String(err);
       errors.push({
-        file: path.split(/[\\/]/).pop() ?? path,
-        message: err instanceof Error ? err.message : String(err),
+        path,
+        name: name || (path.split(/[\\/]/).pop() ?? path),
+        message,
+        retryable: message !== UNSUPPORTED_FILE,
       });
     } finally {
       unlisten?.();
@@ -568,6 +583,48 @@ export async function importPaths(
   report?: ImportReporter,
 ): Promise<StagedPick> {
   return stagePaths(paths, report);
+}
+
+/**
+ * Delete staged copies an earlier process left behind.
+ *
+ * A file is copied into STAGING before anything knows what it is, and only a
+ * finished or cancelled import moves or deletes it. An import the OS killed
+ * part-way through (Android reclaiming a backgrounded app, a force-quit, a
+ * crash) did neither, so its copy, often a whole 200 MB book, stayed on disk
+ * with nothing that would ever touch it again.
+ *
+ * "Earlier process" is decided by modification time, not by a list of live
+ * tokens: anything this process staged was written after `before` (the
+ * moment this JS context started), and a copy still being written keeps
+ * moving its mtime forward. So the sweep cannot take a file out from under an
+ * import that is running now, whatever the timing. An entry with no mtime is
+ * left alone. Never throws: this is housekeeping, and the next launch retries.
+ */
+export async function sweepStaleStaging(before: number): Promise<number> {
+  let entries: { name: string }[];
+  try {
+    // No exists() first: a missing folder throws here just the same, and
+    // on Android every check is an IPC round trip.
+    entries = await readDir(STAGING, { baseDir: BASE });
+  } catch {
+    return 0; // absent or unreadable this launch; try again next time
+  }
+  // Each entry's stat (and remove) is independent of every other's.
+  const removed = await Promise.all(
+    entries.map(async ({ name }) => {
+      const path = `${STAGING}/${name}`;
+      try {
+        const info = await stat(path, { baseDir: BASE });
+        if (!info.mtime || info.mtime.getTime() >= before) return false;
+        await remove(path, { baseDir: BASE, recursive: true });
+        return true;
+      } catch {
+        return false; // gone already, or unreadable: not worth failing over
+      }
+    }),
+  );
+  return removed.filter(Boolean).length;
 }
 
 /**

@@ -463,6 +463,31 @@ export const en = {
   // Label for the import button while a run is in flight — a tap opens the
   // stepper above rather than the file picker.
   "import.progress.openDetails": "Open import progress",
+  // Background import (store/backgroundImport.ts) — the toast for a book
+  // opened from outside the app. {name}/{n} arrive already formatted.
+  "bgImport.preparing": "Opening file…",
+  "bgImport.importing": "Importing {name}",
+  "bgImport.progress": "{i} of {n}",
+  "bgImport.waiting": "{n} more waiting",
+  // Joins the progress fragments. Localized because a middle dot between two
+  // Arabic-Indic digits reads as a zero (٠): "٢ من ٣ · ٢" looked like ٢٠٣.
+  "bgImport.sep": " · ",
+  "bgImport.queuedOne": "Book received",
+  "bgImport.queuedOther": "{n} books received",
+  "bgImport.queuedSub": "It will import when the current import finishes.",
+  "bgImport.added": "Added to your library",
+  "bgImport.alreadyHave": "Already in your library",
+  "bgImport.addedOther": "{n} books added to your library",
+  "bgImport.alreadyHaveOther": "{n} were already in your library",
+  "bgImport.failedOne": "Couldn't import {name}",
+  "bgImport.failedOther": "Couldn't import {n} files",
+  "bgImport.partial": "{added} added · {failed} couldn't be imported",
+  "bgImport.unreadable":
+    "Riwaq couldn't read this file. Try opening it again from your file manager.",
+  "bgImport.open": "Open",
+  "bgImport.edit": "Edit details",
+  "bgImport.viewLibrary": "View library",
+  "bgImport.hide": "Hide — the import keeps running",
 
   // download-range dialog (source-backed novels)
   "downloads.range.title": "Download a chapter range",

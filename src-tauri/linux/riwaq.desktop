@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Comment[ar]=قارئ كتب هادئ يعمل دون اتصال
+Exec={{exec}} %F
+StartupWMClass={{exec}}
+Icon={{icon}}
+Terminal=false
+Categories=Office;Viewer;Literature;
+Keywords=book;epub;pdf;docx;reader;arabic;
+Keywords[ar]=كتاب;قراءة;
+{{#if mime_type}}
+MimeType={{mime_type}};
+{{/if}}
+StartupNotify=true

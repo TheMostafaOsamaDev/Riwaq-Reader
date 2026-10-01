@@ -1,14 +1,10 @@
 // Shared state for the full-window drop/received overlay (DropOverlay.tsx).
 //
-// Two producers write here: useFileDrop (desktop drag-and-drop) and
-// useIncomingFiles (a book arriving via "Open with" or the Android share
-// sheet). Before this store existed, the overlay's state lived as local
-// React state inside useFileDrop, so only a drag-and-drop could ever show
-// it — a book arriving through Open-with or a share while the reader or
-// settings was on screen (the most common Android path) produced no
-// feedback at all: Library owns the only import toast, and it's unmounted
-// behind those screens. Mirrors the store/incomingFiles.ts idiom: a
-// module-scoped place two unrelated call sites can both push into.
+// Written by useFileDrop (desktop drag-and-drop). A module-scoped store
+// rather than that hook's own state so the overlay, mounted at the app root,
+// can render it. Files arriving through "Open with" or the Android share sheet
+// don't come through here: the background importer's toast acknowledges
+// those (components/BackgroundImportToast.tsx).
 
 import { useSyncExternalStore } from "react";
 
@@ -58,10 +54,8 @@ export function setRefuse(): void {
   emit();
 }
 
-/** Show the "received" confirmation and auto-idle after RECEIVED_MS. Used
- *  by both a desktop drop (useFileDrop) and a file arriving from outside
- *  while the app is already running (useIncomingFiles) — the one acked by
- *  its own drag gesture, the other by nothing else, which is the point. */
+/** Show the "received" confirmation for a drop, and auto-idle after
+ *  RECEIVED_MS. */
 export function showReceived(count: number, skipped = 0): void {
   clearTimer();
   state = { kind: "received", count, skipped };

@@ -105,11 +105,9 @@ export function finishImportRun(bookId: string | null): void {
 
 /** Mark the run failed; the store keeps the message visible.
  *
- *  Un-minimizes so the modal actually appears. Device imports start
- *  minimized (see above), and the floating chip that used to be the way
- *  back into the modal is gone — without this the failed step and its
- *  message would sit in the store unreachable. */
+ *  Revealing it is the caller's call: device imports start minimized (see
+ *  above), so the library un-minimizes the stepper to show the failure, while
+ *  the background importer reports through its own toast instead. */
 export function failImportRun(message: string): void {
   failStep(STEP_ID, message);
-  setMinimized(false);
 }

@@ -84,6 +84,41 @@ export function isImportActive(s: ProgressState): boolean {
   return s.active && s.finishedAt === null && s.error === null;
 }
 
+// ── the import lock ───────────────────────────────────────────────────────
+//
+// This store is a singleton: two runs writing it at once would show one run's
+// steps with the other's percentage, on the FAB, the stepper and the Android
+// notification alike. So one run at a time, and this is where that is decided.
+//
+// Busy means held OR a run is active in the store. The second half is what
+// lets the Sources importer take part without holding anything: its own
+// guard checks `isImportBusy()` and then calls `startImport` with no await in
+// between, and from then on its active run keeps everyone else out. The
+// library's imports and the background importer hold the lock explicitly,
+// because each has a stretch where the store is still idle but the run has
+// already begun (a file dialog open, a file being identified).
+
+let lockHolder: object | null = null;
+
+/** True when a new import run must not start. */
+export function isImportBusy(): boolean {
+  return lockHolder !== null || isImportActive(state);
+}
+
+/** Take the import lock. Returns its release, or null when busy. Releasing
+ *  twice, or after someone else took it, is a no-op. Waiters subscribe to
+ *  the store: a release emits, like every other state change. */
+export function acquireImportLock(): (() => void) | null {
+  if (isImportBusy()) return null;
+  const token = {};
+  lockHolder = token;
+  return () => {
+    if (lockHolder !== token) return;
+    lockHolder = null;
+    emit();
+  };
+}
+
 export function useImportProgress(): ProgressState {
   return useSyncExternalStore(subscribe, getState, getState);
 }
@@ -183,4 +218,10 @@ export function setMinimized(minimized: boolean): void {
 export function dismiss(): void {
   state = initial;
   emit();
+}
+
+/** Test-only: drop the lock, whoever holds it. A test that ends with a run
+ *  still pending would otherwise hold it into the next one. */
+export function __resetImportLockForTests(): void {
+  lockHolder = null;
 }

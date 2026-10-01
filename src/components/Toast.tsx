@@ -3,6 +3,10 @@ import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 
 export type ToastKind = "info" | "warn" | "error";
 
+/** The warning accent, shared with the background-import card so the two
+ *  never disagree about what "partly went wrong" looks like. */
+export const TOAST_WARN = "#c98b42";
+
 export interface ToastMessage {
   id: number;
   kind: ToastKind;
@@ -34,7 +38,7 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
     toast.kind === "error"
       ? "#c04a3a"
       : toast.kind === "warn"
-        ? "#c98b42"
+        ? TOAST_WARN
         : theme.ink;
 
   return (

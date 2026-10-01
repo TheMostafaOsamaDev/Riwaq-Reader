@@ -12,16 +12,11 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { pushIncoming } from "../store/incomingFiles";
-import { showReceived } from "../store/dropOverlay";
 
 async function drainOnce(): Promise<void> {
-  let received = 0;
   try {
     const desktop = (await invoke("take_pending_opens")) as string[] | null;
-    if (desktop && desktop.length > 0) {
-      pushIncoming(desktop);
-      received += desktop.length;
-    }
+    if (desktop && desktop.length > 0) pushIncoming(desktop);
   } catch {
     // Command unavailable or transient — the next trigger retries.
   }
@@ -34,22 +29,15 @@ async function drainOnce(): Promise<void> {
       // inside a content:// URI. A single VIEW/SEND still round-trips
       // unchanged, since splitting a string with no "\n" yields one
       // element.
-      const paths = uri.split("\n");
-      pushIncoming(paths);
-      received += paths.length;
+      pushIncoming(uri.split("\n"));
     }
   } catch {
     // Non-Android or transient — silent, same as useLaunchIntent.
   }
-  if (received > 0) {
-    // Acknowledge the arrival even when nobody is looking at the library.
-    // Without this, a book handed to Riwaq via Open-with or the Android
-    // share sheet while the reader or settings was on screen was
-    // completely silent — Library owns the only import toast, and it's
-    // unmounted behind those screens, which is exactly the common case
-    // (the app foregrounding from a share while mid-chapter).
-    showReceived(received);
-  }
+  // No acknowledgement here. The background importer's toast says
+  // "Importing <name>" the moment the file is queued, on whatever screen is
+  // up — the job the full-window "received" flash used to do, before there
+  // was anything on screen that could report the import itself.
 }
 
 export function useIncomingFiles(): void {

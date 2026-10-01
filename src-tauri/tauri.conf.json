@@ -50,9 +50,14 @@
     "macOS": {
       "minimumSystemVersion": "11.0"
     },
+    "linux": {
+      "deb": { "desktopTemplate": "linux/riwaq.desktop" },
+      "rpm": { "desktopTemplate": "linux/riwaq.desktop" }
+    },
     "fileAssociations": [
       {
         "ext": ["epub"],
+        "contentTypes": ["org.idpf.epub-container"],
         "name": "EPUB Book",
         "description": "EPUB e-book",
         "mimeType": "application/epub+zip",
@@ -60,6 +65,7 @@
       },
       {
         "ext": ["pdf"],
+        "contentTypes": ["com.adobe.pdf"],
         "name": "PDF Document",
         "description": "PDF document",
         "mimeType": "application/pdf",
@@ -67,6 +73,7 @@
       },
       {
         "ext": ["docx"],
+        "contentTypes": ["org.openxmlformats.wordprocessingml.document"],
         "name": "Word Document",
         "description": "Word document",
         "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

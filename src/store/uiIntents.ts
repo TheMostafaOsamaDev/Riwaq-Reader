@@ -106,3 +106,33 @@ export function takePendingExtensionsManager(): boolean {
   pendingExtensionsManager = false;
   return pending;
 }
+
+// "Edit this book's details" — the background-import toast's action for a
+// book that was imported with default title and cover (see
+// store/backgroundImport.ts). The edit dialog belongs to the Library, which
+// is unmounted behind the reader, so the request is remembered (same one-shot
+// pattern as pendingStoreSource) and the Library consumes it on mount.
+let pendingEditBook: string | null = null;
+
+/** Request the edit dialog for a book. Safe from anywhere in the app. */
+export function requestEditBook(bookId: string): void {
+  pendingEditBook = bookId;
+  emit("edit-book");
+}
+
+/** Subscribe to edit requests fired while already mounted. The pending id is
+ *  cleared as it is delivered. Returns an unsubscribe function. */
+export function onEditBook(fn: (bookId: string) => void): () => void {
+  return on("edit-book", () => {
+    const id = pendingEditBook;
+    pendingEditBook = null;
+    if (id) fn(id);
+  });
+}
+
+/** Consume an edit request that arrived before the Library mounted. */
+export function takePendingEditBook(): string | null {
+  const id = pendingEditBook;
+  pendingEditBook = null;
+  return id;
+}
