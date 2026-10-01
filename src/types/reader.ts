@@ -85,6 +85,14 @@ export interface Tweaks {
    *  installs that predate the feature, which is what makes them see the
    *  notes once after updating. */
   lastSeenWhatsNew?: string;
+  /** The one release the user chose "Skip this version" for (Android). It
+   *  covers that version only: cleared once anything newer is offered or
+   *  running, so the next release is announced as usual. */
+  skippedUpdateVersion?: string;
+  /** Android: what an update download does on a metered network. "ask"
+   *  shows the size and lets the user choose; "always" downloads anyway;
+   *  "wifi" waits for an unmetered network and starts on its own. */
+  updateOverMobile: "ask" | "always" | "wifi";
   /** Fixed-page (PDF/DOCX) default flow: continuous scroll or one page at a
       time. Reflowable books ignore it (they use `readingMode`). */
   fixedFlow: FixedFlow;

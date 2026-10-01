@@ -1,6 +1,8 @@
 // Pure decisions for the Android update flow. No React, no IPC — every rule
 // here is a function of plain inputs, so each one is tested on its own.
 
+import { isNewerVersion } from "./updateVersion";
+
 export type AndroidChannel =
   | { kind: "in-app" }
   | {
@@ -103,4 +105,93 @@ export function cleanupDecision(
 ): "keep" | "delete" {
   if (!cached) return "keep";
   return versionCode(running) >= versionCode(cached) ? "delete" : "keep";
+}
+
+export type Pill =
+  | { kind: "available" }
+  | { kind: "progress"; pct: number }
+  | { kind: "waiting" }
+  | { kind: "ready" }
+  | { kind: "failed" }
+  | null;
+
+export interface FlowInput {
+  offered: string | null;
+  running: string;
+  native: NativeStatus;
+  skipped: string | undefined;
+  laterThisSession: boolean;
+  channel: AndroidChannel["kind"];
+}
+
+/** Everything is keyed on the RUNNING version: if Orion, Obtainium, F-Droid
+ *  or adb already put the offered version (or newer) on the device, there is
+ *  nothing to show, whatever state our own download was in. */
+function pending({ offered, running }: FlowInput): boolean {
+  return offered !== null && isNewerVersion(offered, running);
+}
+
+export function pillFor(i: FlowInput): Pill {
+  if (!pending(i) || i.channel === "managed" || i.channel === "manual") {
+    return null;
+  }
+  // A file for an OLDER offer (0.6.0 ready, 0.6.1 now published) is stale:
+  // show the new offer, never an install of the superseded APK. The store's
+  // offer() cancels it natively, which deletes the file.
+  const stale =
+    i.native.version !== undefined && i.native.version !== i.offered;
+  switch (stale ? "idle" : i.native.state) {
+    case "downloading":
+    case "verifying":
+      return {
+        kind: "progress",
+        pct: i.native.total
+          ? Math.min(100, Math.floor((i.native.bytes / i.native.total) * 100))
+          : 0,
+      };
+    case "waiting":
+      return { kind: "waiting" };
+    case "ready":
+    case "installing":
+      return { kind: "ready" };
+    case "failed":
+      return { kind: "failed" };
+    default:
+      if (i.skipped === i.offered || i.laterThisSession) return null;
+      return { kind: "available" };
+  }
+}
+
+export function attentionDot(i: FlowInput): boolean {
+  if (!pending(i) || i.channel === "managed" || i.channel === "manual") {
+    return false;
+  }
+  return i.skipped !== i.offered;
+}
+
+export type MobilePref = "ask" | "always" | "wifi";
+
+export function decideStart({
+  metered,
+  pref,
+}: {
+  metered: boolean;
+  pref: MobilePref;
+}): "start" | "ask" | "wait" {
+  if (!metered || pref === "always") return "start";
+  return pref === "wifi" ? "wait" : "ask";
+}
+
+/** A skip covers one version only: clear it once the device is at or past
+ *  it, or once something newer than it is offered. */
+export function clearSkip(
+  skipped: string | undefined,
+  offered: string | null,
+  running: string,
+): boolean {
+  if (!skipped) return false;
+  const s = versionCode(skipped);
+  return (
+    versionCode(running) >= s || (offered !== null && versionCode(offered) > s)
+  );
 }

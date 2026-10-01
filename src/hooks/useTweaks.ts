@@ -37,7 +37,28 @@ export const DEFAULT_TWEAKS: Tweaks = {
   fixedFlow: "scroll",
   fixedFit: "width",
   fixedPageTint: "none",
+  updateOverMobile: "ask",
 };
+
+const UPDATE_OVER_MOBILE: readonly unknown[] = ["ask", "always", "wifi"];
+
+/** Would Import Settings take value `v` for tweak `k`? Only a known key whose
+ *  value matches the default's type (and, for numbers, is finite). Guards
+ *  against corrupt or foreign JSON — e.g. a string where a number is
+ *  expected, or NaN, which would otherwise poison a downstream effect
+ *  (chrome font, download concurrency). */
+export function acceptsTweak(k: string, v: unknown): boolean {
+  return (
+    k in DEFAULT_TWEAKS &&
+    v !== undefined &&
+    typeof v === typeof DEFAULT_TWEAKS[k as keyof Tweaks] &&
+    !(typeof v === "number" && !Number.isFinite(v)) &&
+    // A string of the right type can still name a value that does not
+    // exist (an export from a newer build, or a hand edit).
+    !(k === "heroStyle" && !isHeroStyle(v)) &&
+    !(k === "updateOverMobile" && !UPDATE_OVER_MOBILE.includes(v))
+  );
+}
 
 export function loadTweaks(): Tweaks {
   if (typeof localStorage === "undefined") return DEFAULT_TWEAKS;
@@ -103,6 +124,9 @@ export function loadTweaks(): Tweaks {
     if (!isHeroStyle(merged.heroStyle)) {
       merged.heroStyle = DEFAULT_TWEAKS.heroStyle;
     }
+    if (!UPDATE_OVER_MOBILE.includes(merged.updateOverMobile)) {
+      merged.updateOverMobile = DEFAULT_TWEAKS.updateOverMobile;
+    }
     return merged;
   } catch {
     return DEFAULT_TWEAKS;
@@ -132,20 +156,7 @@ export function useTweaks() {
       const next: Tweaks = { ...prev };
       for (const k of Object.keys(partial) as (keyof Tweaks)[]) {
         const v = partial[k];
-        // Only accept a known key whose value matches the default's type (and,
-        // for numbers, is finite). Guards Import Settings against corrupt or
-        // foreign JSON — e.g. a string where a number is expected, or NaN,
-        // which would otherwise poison a downstream effect (chrome font,
-        // download concurrency).
-        if (
-          k in DEFAULT_TWEAKS &&
-          v !== undefined &&
-          typeof v === typeof DEFAULT_TWEAKS[k] &&
-          !(typeof v === "number" && !Number.isFinite(v)) &&
-          // A string of the right type can still name a style that does not
-          // exist (an export from a newer build, or a hand edit).
-          !(k === "heroStyle" && !isHeroStyle(v))
-        ) {
+        if (acceptsTweak(k, v)) {
           (next as unknown as Record<string, unknown>)[k] = v;
         }
       }
