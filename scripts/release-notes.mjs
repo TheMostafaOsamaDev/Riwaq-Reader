@@ -17,7 +17,10 @@ function onlyKeys(o, allowed, at, errs) {
 }
 
 function localized(o, at, errs) {
-  if (!isObj(o)) return errs.push(`${at}: must be { en, ar }`);
+  if (!isObj(o)) {
+    errs.push(`${at}: must be { en, ar }`);
+    return;
+  }
   onlyKeys(o, ["en", "ar"], at, errs);
   text(o.en, `${at}.en`, errs);
   text(o.ar, `${at}.ar`, errs, true);
@@ -44,7 +47,10 @@ function image(name, at, errs, imageBytes) {
 }
 
 function card(c, at, errs, imageBytes, withKind) {
-  if (!isObj(c)) return errs.push(`${at}: must be an object`);
+  if (!isObj(c)) {
+    errs.push(`${at}: must be an object`);
+    return;
+  }
   onlyKeys(
     c,
     withKind ? ["kind", "image", "title", "body"] : ["image", "title", "body"],
@@ -95,7 +101,10 @@ export function validateReleaseNotes(notes, { version, imageBytes }) {
   } else {
     for (const [i, it] of notes.items.entries()) {
       const at = `items[${i}]`;
-      if (!isObj(it)) return errs.push(`${at}: must be an object`);
+      if (!isObj(it)) {
+        errs.push(`${at}: must be an object`);
+        continue;
+      }
       onlyKeys(it, ["kind", "en", "ar"], at, errs);
       if (!KINDS.includes(it.kind))
         errs.push(`${at}.kind: must be one of ${KINDS.join(", ")}`);

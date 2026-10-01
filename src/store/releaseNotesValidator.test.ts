@@ -64,4 +64,9 @@ describe("validateReleaseNotes", () => {
     expect(run({ ...ok(), items: [] }).join()).toMatch(/items/);
     expect(run({ ...ok(), date: "15/10/2026" }).join()).toMatch(/date/);
   });
+  it("rejects non-object items and returns an array", () => {
+    const errs = run({ ...ok(), items: [null] });
+    expect(Array.isArray(errs)).toBe(true);
+    expect(errs.join()).toMatch(/items\[0\]/);
+  });
 });
