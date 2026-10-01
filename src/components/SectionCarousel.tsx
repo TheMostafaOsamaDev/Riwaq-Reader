@@ -207,12 +207,9 @@ function ArrowButton({ theme, edge, visible, onClick }: ArrowProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: Z_LOCAL.raised,
         // Carousel arrows compete with the scroller behind for hover
-        // events; the arrow stays above by virtue of z-index but we
-        // also disable text-selection on it so a quick drag doesn't
-        // select the icon glyph.
-        userSelect: "none",
+        // events; the arrow stays above by virtue of z-index.
+        zIndex: Z_LOCAL.raised,
       }}
     >
       {/* `rtl-flip-x` mirrors the glyph under RTL, so "toward the start" still

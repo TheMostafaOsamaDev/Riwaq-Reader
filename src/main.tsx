@@ -5,6 +5,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./styles/global.css";
 import { markBoot } from "./lib/diagnostics/breadcrumbs";
 import { deferPastPageLoad } from "./lib/deferPastPageLoad";
+import { installSelectAllGuard } from "./lib/selectAllGuard";
 import { migrateLegacyRoot } from "./store/legacyRoot";
 
 // The app-data root is migrated BEFORE the tree mounts, not lazily from inside
@@ -74,6 +75,10 @@ markBoot("module");
 // second call site whose first act is an fs/scope-resolving Tauri call gets
 // the identical timing instead of a near-copy of it.
 deferPastPageLoad(() => void migrateLegacyRoot());
+
+// Select-all (⌘A, Ctrl+A, the Edit menu) selects nothing outside a text field.
+// A synchronous listener, no IPC — it cannot hold up the mount.
+installSelectAllGuard();
 
 // The boundary wraps App because a throw anywhere outside the two reader views
 // used to unmount the whole tree, leaving the boot background and nothing else

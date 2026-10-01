@@ -174,7 +174,6 @@ export function LibrarySidebar({
           alt=""
           width={34}
           height={34}
-          draggable={false}
           style={{ width: 34, height: 34, objectFit: "contain", flexShrink: 0 }}
         />
         <span
@@ -765,8 +764,6 @@ function CollapsibleRow({
           fontFamily: "inherit",
           cursor: "pointer",
           textAlign: "start",
-          userSelect: "none",
-          WebkitUserSelect: "none",
           transition: TRANSITION,
         }}
         onMouseEnter={(e) => {

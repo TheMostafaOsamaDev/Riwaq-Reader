@@ -56,10 +56,7 @@ export const MobileShelfCard = memo(function MobileShelfCard({
         // reserved height so the grid doesn't reflow while scrolling.
         contentVisibility: "auto",
         containIntrinsicSize: `auto ${MOBILE_CARD_INTRINSIC_H}px`,
-        // Suppress the platform long-press text-selection / callout so the
-        // menu opens cleanly without a stray selection box flickering in.
-        WebkitUserSelect: "none",
-        userSelect: "none",
+        // No long-press callout, so the menu opens cleanly.
         WebkitTouchCallout: "none",
       }}
     >

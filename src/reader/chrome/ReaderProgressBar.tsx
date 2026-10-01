@@ -322,8 +322,6 @@ export function ReaderProgressBar({
         color: theme.chromeInk,
         fontSize: 11.5,
         flexShrink: 0,
-        userSelect: "none",
-        WebkitUserSelect: "none",
       }}
     >
       <ReaderIconButton

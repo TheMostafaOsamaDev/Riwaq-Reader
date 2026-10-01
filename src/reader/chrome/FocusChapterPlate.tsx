@@ -122,8 +122,6 @@ export function FocusChapterPlate({
         // page from the root's edge tracking, which reads `e.target` to tell
         // the page apart from a docked panel.
         pointerEvents: "none",
-        userSelect: "none",
-        WebkitUserSelect: "none",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",

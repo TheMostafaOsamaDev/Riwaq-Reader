@@ -227,10 +227,11 @@ export function BookBody({
         // reader). MobileReader drives its own selection via custom
         // pointer handlers — without this, Android/Samsung shows the
         // OS text-selection toolbar which can't be hidden at the app
-        // layer. Desktop passes selectable=true (the default) so its
-        // native selection is unaffected.
-        userSelect: selectable ? undefined : "none",
-        WebkitUserSelect: selectable ? undefined : "none",
+        // layer. Desktop passes selectable=true (the default) and has to
+        // say `text` outright: the app shell is `none` (global.css), and
+        // that is what this would otherwise inherit.
+        userSelect: selectable ? "text" : "none",
+        WebkitUserSelect: selectable ? "text" : "none",
         // No touch-action here: the phone reader sets pan-y on its whole
         // scroller (`data-pan-scroller`), which covers this and everything
         // around it. Never `none` — that loses the compositor-driven native
