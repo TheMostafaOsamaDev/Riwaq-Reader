@@ -66,6 +66,46 @@ state is built from existing theme tokens. Tags and errors carry an icon and
 words, never colour alone. The sheet and toasts are `aria-live="polite"`, and
 both work in RTL.
 
+### Desktop: the same flow, in the sidebar (decided 2026-10-02)
+
+The user reviewed three desktop placements and chose the **sidebar card**. It
+replaces today's bottom `UpdateBanner` on desktop:
+
+| State | Sidebar card (above Import) | Click opens |
+|---|---|---|
+| available | "Riwaq 0.6.0 is available" · "What's new ›" | centred dialog: highlight, tagged notes, **Update** (or **Download** on .deb/.rpm), **Later**, **Skip this version** |
+| downloading | "Downloading 0.6.0…", progress bar, "5.1 of 12 MB" | dialog with the progress and **Hide**. There is no Cancel: the Tauri updater cannot abort a download |
+| ready | "Riwaq 0.6.0 is ready", **Restart now** | — (never restarts by itself mid-chapter) |
+| failed | red card, "The update didn't finish", **Try again** | dialog with **Try again** and **Download from GitHub** |
+| Later | card hidden; a **dot on Settings** in the sidebar; toast "It'll wait for you in Settings" | Settings → About shows the update card |
+| Skip | card hidden; toast with **Undo** | — |
+
+**How the install works.** The download and the install are split, so the
+restart happens when the user chooses it:
+
+1. `update.download(onEvent)` fetches the bundle and reports progress.
+2. **Restart now** calls `update.install()`. On macOS and the AppImage it
+   replaces the bundle, then `relaunch()` restarts the app. On Windows (NSIS)
+   the plugin runs the installer and exits the app itself.
+
+**Which installs get it.**
+- `.deb`/`.rpm` (manual channel) get the same card and dialog, but the button
+  is **Download** and opens the release page.
+- Flatpak (managed) shows nothing.
+
+**Reused pieces.** `NotesView`, `StoryPages`, `fetchNotes`, the after-update
+screen, and the `skippedUpdateVersion` / `lastSeenWhatsNew` tweaks. The card
+lives in the sidebar, so it is not visible in the reader or focus mode. The
+Settings dot stays until the update is handled.
+
+**Desktop storage.** tauri-plugin-updater 2.11 on Windows writes the installer
+to `%TEMP%\Riwaq-<ver>-updater-XXXX\Riwaq-<ver>-installer.exe`, using
+`tempdir().keep()`, then exits the process. That folder is never deleted, so
+each update leaves about 10 MB behind. On every desktop launch, in the
+background, Riwaq deletes any temp-dir entry named `<productName>-<ver>-updater-*`
+whose `<ver>` is ≤ the running version. macOS and the Linux AppImage already
+leave nothing: their `TempDir`s are dropped normally.
+
 ## Where the content comes from
 
 The GitHub release body is generated from PR titles ("perf(reader): give
