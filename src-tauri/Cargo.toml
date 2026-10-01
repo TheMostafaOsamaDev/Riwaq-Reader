@@ -78,6 +78,13 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
+# macOS-only: webview_frame.rs reaches the WKWebView's NSView to repair its
+# frame after a resize. Both crates are already in the graph through wry, at
+# these versions; the features are just the two types the module touches.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry"] }
+
 # Android-only: JNI bridge into the Kotlin DownloadNotifier class (see
 # src/notify.rs). Pinned to a version that matches the JNI ABI used by
 # Tauri 2's Android runtime.

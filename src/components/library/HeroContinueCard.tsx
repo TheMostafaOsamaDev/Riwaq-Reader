@@ -394,6 +394,24 @@ type CardProps = Props & { pos: ReadingPosition | null };
 
 // ── refined ─────────────────────────────────────────────────────────────────
 
+/** A desktop card's cover + details row. It wraps: in a narrow window
+ *  (down to the 720px window minimum) the details drop under the cover
+ *  instead of being squeezed until the actions are clipped off the edge. */
+function desktopRow(gap: number): CSSProperties {
+  return { display: "flex", flexWrap: "wrap", columnGap: gap, rowGap: 24 };
+}
+
+/** The details column beside the cover. The basis is the narrowest it reads
+ *  well at; below it, `desktopRow` wraps it onto its own line. */
+const DESKTOP_DETAILS: CSSProperties = { flex: "1 1 300px", minWidth: 0 };
+
+const ACTIONS_ROW: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 8,
+};
+
 function RefinedCard({
   theme,
   layout,
@@ -466,12 +484,11 @@ function RefinedCard({
   }
 
   return (
-    <div style={{ display: "flex", gap: 48, alignItems: "center" }}>
+    <div style={desktopRow(48)}>
       <Cover book={book} covers={covers} width={200} shadow />
       <div
         style={{
-          flex: 1,
-          minWidth: 0,
+          ...DESKTOP_DETAILS,
           maxWidth: 620,
           display: "flex",
           flexDirection: "column",
@@ -503,7 +520,7 @@ function RefinedCard({
             {tr("library.lastRead", { rel })}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={ACTIONS_ROW}>
           <ResumeButton
             theme={theme}
             book={book}
@@ -620,8 +637,7 @@ function AmbientCard({
     >
       <div
         style={{
-          display: "flex",
-          gap: 44,
+          ...desktopRow(44),
           alignItems: "flex-end",
           color: ON_IMAGE,
         }}
@@ -629,8 +645,7 @@ function AmbientCard({
         <Cover book={book} covers={covers} width={188} shadow />
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
+            ...DESKTOP_DETAILS,
             maxWidth: 640,
             display: "flex",
             flexDirection: "column",
@@ -654,7 +669,7 @@ function AmbientCard({
               fontSize={13.5}
             />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={ACTIONS_ROW}>
             <ResumeButton
               theme={theme}
               book={book}
@@ -829,7 +844,7 @@ function BookmarkCard({
   }
 
   return (
-    <div style={{ display: "flex", gap: 52, alignItems: "center" }}>
+    <div style={desktopRow(52)}>
       <div style={{ position: "relative", flexShrink: 0 }}>
         <Ribbon
           style={{ insetInlineStart: 150, top: 240, width: 18, height: 92 }}
@@ -840,8 +855,7 @@ function BookmarkCard({
       </div>
       <div
         style={{
-          flex: 1,
-          minWidth: 0,
+          ...DESKTOP_DETAILS,
           maxWidth: 660,
           display: "flex",
           flexDirection: "column",
@@ -901,7 +915,7 @@ function BookmarkCard({
             {meta}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={ACTIONS_ROW}>
           <ResumeButton
             theme={theme}
             book={book}
@@ -1180,20 +1194,14 @@ function StackCard({
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr)",
-        gap: 20,
-      }}
-    >
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
       <div
         style={{
+          flex: "1.6 1 420px",
           padding: 28,
           borderRadius: 16,
           background: theme.chrome,
-          display: "flex",
-          gap: 28,
+          ...desktopRow(28),
           alignItems: "center",
           minWidth: 0,
         }}
@@ -1201,8 +1209,8 @@ function StackCard({
         <Cover book={book} covers={covers} width={150} shadow />
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
+            ...DESKTOP_DETAILS,
+            flexBasis: 220,
             display: "flex",
             flexDirection: "column",
             gap: 20,
@@ -1223,7 +1231,7 @@ function StackCard({
             height={5}
             fontSize={13}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={ACTIONS_ROW}>
             <ResumeButton
               theme={theme}
               book={book}
@@ -1240,6 +1248,7 @@ function StackCard({
       </div>
       <div
         style={{
+          flex: "1 1 260px",
           padding: "14px 10px 10px",
           borderRadius: 16,
           border: `0.5px solid ${theme.ruleStrong}`,

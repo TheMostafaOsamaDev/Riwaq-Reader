@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
@@ -265,8 +266,13 @@ function App() {
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
   // device with a short viewport as mobile too.
+  //
+  // 719.98, not 720: the desktop window's minWidth is 720 (tauri.conf.json),
+  // and an inclusive 720 meant dragging the window to its narrowest flipped
+  // the whole app into the phone UI — bottom tab bar, remounted sidebar — and
+  // back again one pixel wider. A desktop window now never reaches it.
   const isMobile = useMediaQuery(
-    "(max-width: 720px), (pointer: coarse) and (max-height: 480px)",
+    "(max-width: 719.98px), (pointer: coarse) and (max-height: 480px)",
   );
   // Drag-and-drop is desktop-only: Android has no pointer drag onto the
   // window, and Tauri emits no drag events there. Gate on the actual OS via
@@ -352,7 +358,18 @@ function App() {
       darkIcons,
       background: theme.bg,
     }).catch(() => {});
-  }, [theme.bg, theme.ink, theme.muted, themeKey]);
+    // Desktop: paint the native window itself in the theme's background.
+    // Whenever the webview does not cover the window — a frame of a
+    // maximize or full-screen animation, a resize the webview has not caught
+    // up with — that bare window shows through, and the OS default is a grey
+    // that reads as a broken band across the app. `dropCapable` is the
+    // desktop-OS check (see above).
+    if (dropCapable) {
+      void getCurrentWindow()
+        .setBackgroundColor(theme.bg)
+        .catch(() => {});
+    }
+  }, [theme.bg, theme.ink, theme.muted, themeKey, dropCapable]);
 
   // Overlay scrollbars for every scroll area in the app: a slim, translucent
   // bar that floats over the content while scrolling and fades once it stops.
