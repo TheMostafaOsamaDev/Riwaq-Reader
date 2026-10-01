@@ -310,7 +310,7 @@ export const en = {
   // changes on screen, not the machinery behind it.
   "settings.docxLayout": "Layout",
   "settings.docxLayout.pages": "Pages",
-  "settings.docxLayout.flow": "Flowing text",
+  "settings.docxLayout.flow": "Flowing text (EPUB mode)",
   "settings.docxLayout.hint":
     "Pages keep the document exactly as written. Flowing text reflows it to your font size.",
   "reader.chapterDash": "Chapter {n} — {title}",

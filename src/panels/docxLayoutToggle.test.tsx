@@ -60,7 +60,7 @@ describe("DOCX layout toggle", () => {
         onZoomChange={() => {}}
       />,
     );
-    expect(segLabels()).not.toContain("Flowing text");
+    expect(segLabels()).not.toContain("Flowing text (EPUB mode)");
   });
 
   it("offers both layouts on the fixed reader's panel", () => {
@@ -79,7 +79,7 @@ describe("DOCX layout toggle", () => {
       />,
     );
     expect(segLabels()).toContain("Pages");
-    expect(segLabels()).toContain("Flowing text");
+    expect(segLabels()).toContain("Flowing text (EPUB mode)");
   });
 
   // The way back. A reader who switched to flowing text is now on the
@@ -97,7 +97,7 @@ describe("DOCX layout toggle", () => {
       />,
     );
     expect(segLabels()).toContain("Pages");
-    expect(segLabels()).toContain("Flowing text");
+    expect(segLabels()).toContain("Flowing text (EPUB mode)");
   });
 
   it("marks the current layout as the pressed option", () => {
@@ -114,8 +114,8 @@ describe("DOCX layout toggle", () => {
     );
     const pressed = [...host.querySelectorAll('button[aria-pressed="true"]')]
       .map((b) => (b.textContent ?? "").trim())
-      .filter((l) => l === "Pages" || l === "Flowing text");
-    expect(pressed).toEqual(["Flowing text"]);
+      .filter((l) => l === "Pages" || l === "Flowing text (EPUB mode)");
+    expect(pressed).toEqual(["Flowing text (EPUB mode)"]);
   });
 
   it("reports the layout the reader chose", () => {
@@ -132,7 +132,7 @@ describe("DOCX layout toggle", () => {
       />,
     );
     const flow = [...host.querySelectorAll("button[aria-pressed]")].find(
-      (b) => (b.textContent ?? "").trim() === "Flowing text",
+      (b) => (b.textContent ?? "").trim() === "Flowing text (EPUB mode)",
     ) as HTMLButtonElement;
     act(() => flow.click());
     expect(onChange).toHaveBeenCalledWith("flow");

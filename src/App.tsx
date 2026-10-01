@@ -527,8 +527,15 @@ function App() {
             flow = await loadDocxFlowBook(id, (n) =>
               tr("reader.chapterNumber", { n }),
             );
-          } catch {
+          } catch (e) {
+            // Fall back to pages so the book still opens — but SAY SO. A
+            // silent fallback is indistinguishable from the toggle not
+            // working: the mode is set on disk, the reader shows pages, and
+            // nothing anywhere explains why.
             flow = null;
+            // eslint-disable-next-line no-console
+            console.error("[docx] flow mode failed, falling back to pages:", e);
+            setError(e instanceof Error ? e.message : String(e));
           }
         }
         if (flow) {
