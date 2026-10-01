@@ -6,56 +6,16 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FixedPageViewer } from "./FixedPageViewer";
-import type { FixedPageSource } from "./FixedPageSource";
+import { fakeSource, fakeViewport, settle } from "./viewerTestHarness";
 import { THEMES } from "../../styles/tokens";
 
-const VIEWPORT = 900;
-const sizeProps = ["clientWidth", "clientHeight"] as const;
-let saved: PropertyDescriptor[] = [];
+let restoreViewport: () => void;
 let host: HTMLDivElement;
 let root: Root;
 let page = -1;
 
-function fakeSource(): FixedPageSource {
-  return {
-    kind: "pdf",
-    pageCount: 60,
-    outline: [],
-    hasTextLayer: false,
-    async pageSize() {
-      return { w: 612, h: 792 };
-    },
-    async renderPage(i, el) {
-      const p = document.createElement("div");
-      p.setAttribute("data-page-index", String(i));
-      el.replaceChildren(p);
-    },
-    destroy() {},
-  };
-}
-
-async function settle() {
-  for (let n = 0; n < 6; n++) {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20));
-    });
-  }
-}
-
 beforeEach(async () => {
-  // happy-dom lays nothing out; give the viewer a viewport to measure.
-  saved = sizeProps.map(
-    (p) => Object.getOwnPropertyDescriptor(HTMLElement.prototype, p)!,
-  );
-  for (const p of sizeProps) {
-    Object.defineProperty(HTMLElement.prototype, p, {
-      configurable: true,
-      get: () => VIEWPORT,
-    });
-  }
-  (
-    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true;
+  restoreViewport = fakeViewport(900);
   page = -1;
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -87,9 +47,7 @@ beforeEach(async () => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
-  sizeProps.forEach((p, i) => {
-    Object.defineProperty(HTMLElement.prototype, p, saved[i]);
-  });
+  restoreViewport();
 });
 
 async function press(init: KeyboardEventInit) {

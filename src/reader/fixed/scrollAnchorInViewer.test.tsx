@@ -20,37 +20,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FixedPageViewer } from "./FixedPageViewer";
 import type { FixedPageSource } from "./FixedPageSource";
+import { fakeSource, fakeViewport, settle } from "./viewerTestHarness";
 import type { FixedFit } from "../../types/reader";
 import { THEMES } from "../../styles/tokens";
 
 const VIEWPORT = 900;
-const PAGE_COUNT = 60;
-const PAGE = { w: 612, h: 792 };
 
 interface Scale {
   zoom?: number;
   fit?: FixedFit;
-}
-
-/** A source with no pixels: the viewer only ever asks it for page sizes and
- *  for something to put in the host, and the geometry under test is derived
- *  from the sizes alone. */
-function fakeSource(): FixedPageSource {
-  return {
-    kind: "pdf",
-    pageCount: PAGE_COUNT,
-    outline: [],
-    hasTextLayer: false,
-    async pageSize() {
-      return PAGE;
-    },
-    async renderPage(i, host) {
-      const el = document.createElement("div");
-      el.setAttribute("data-page-index", String(i));
-      host.replaceChildren(el);
-    },
-    destroy() {},
-  };
 }
 
 function viewer({ zoom = 1, fit = "width" }: Scale) {
@@ -75,25 +53,10 @@ function viewer({ zoom = 1, fit = "width" }: Scale) {
 let source: FixedPageSource;
 let host: HTMLDivElement;
 let root: Root;
-const sizeProps = ["clientWidth", "clientHeight"] as const;
-let saved: PropertyDescriptor[] = [];
+let restoreViewport: () => void;
 
 beforeEach(() => {
-  // happy-dom lays nothing out, so the viewer would measure a 0x0 container
-  // and reserve no height at all. Every element reporting the viewport's size
-  // is enough: the only ones the viewer measures are its own scroll layer.
-  saved = sizeProps.map(
-    (p) => Object.getOwnPropertyDescriptor(HTMLElement.prototype, p)!,
-  );
-  for (const p of sizeProps) {
-    Object.defineProperty(HTMLElement.prototype, p, {
-      configurable: true,
-      get: () => VIEWPORT,
-    });
-  }
-  (
-    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true;
+  restoreViewport = fakeViewport(VIEWPORT);
   source = fakeSource();
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -103,20 +66,8 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
-  sizeProps.forEach((p, i) => {
-    Object.defineProperty(HTMLElement.prototype, p, saved[i]);
-  });
+  restoreViewport();
 });
-
-/** Let effects, the page-size promises and the rAF-throttled scroll handler
- *  all run. */
-async function settle() {
-  for (let n = 0; n < 6; n++) {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20));
-    });
-  }
-}
 
 function scroller(): HTMLElement {
   const el = host.querySelector<HTMLElement>(".no-scrollbar");

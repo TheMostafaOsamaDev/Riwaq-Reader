@@ -22,39 +22,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EpubBook } from "../epub/types";
-import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
-import { I18nProvider } from "../i18n/I18nProvider";
-import type { BookState } from "../store/library";
-import { THEMES } from "../styles/tokens";
-import { DesktopReader } from "./DesktopReader";
+import { desktopReader, makeBook } from "./desktopReaderTestHarness";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
 }));
-
-const BOOK: EpubBook = {
-  id: "b1",
-  title: "كتاب",
-  author: "مؤلف",
-  language: "ar",
-  chapters: [0, 1].map((i) => ({
-    id: `c${i}`,
-    href: `c${i}.xhtml`,
-    title: `الفصل ${i + 1}`,
-    order: i,
-    paragraphs: Array.from({ length: 30 }, (_, n) => ({
-      text: `فقرة رقم ${n} من الفصل ${i + 1}.`,
-    })),
-  })),
-};
-
-const STATE: BookState = {
-  bookId: "b1",
-  currentChapter: 0,
-  paragraphIndex: 0,
-  highlights: [],
-};
 
 let host: HTMLDivElement;
 let root: Root;
@@ -64,30 +36,7 @@ beforeEach(() => {
   document.body.appendChild(host);
   root = createRoot(host);
   act(() => {
-    root.render(
-      <I18nProvider locale="ar">
-        <DesktopReader
-          theme={THEMES.sepia}
-          themeKey="sepia"
-          t={{ ...DEFAULT_TWEAKS, readingMode: "scroll" }}
-          setTweak={() => {}}
-          book={BOOK}
-          state={STATE}
-          currentChapter={0}
-          resumeParagraph={0}
-          jumpNonce={0}
-          onChapterChange={() => {}}
-          onParagraphChange={() => {}}
-          onCreateHighlight={() => {}}
-          onDeleteHighlight={() => {}}
-          onUpdateHighlightNote={() => {}}
-          onJumpToHighlight={() => {}}
-          activePanel={null}
-          setActivePanel={() => {}}
-          onBack={() => {}}
-        />
-      </I18nProvider>,
-    );
+    root.render(desktopReader({ book: makeBook("ar", 2, 30), locale: "ar" }));
   });
 });
 

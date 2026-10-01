@@ -6,39 +6,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EpubBook } from "../epub/types";
-import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
-import { I18nProvider } from "../i18n/I18nProvider";
-import type { BookState } from "../store/library";
-import { THEMES } from "../styles/tokens";
-import { DesktopReader } from "./DesktopReader";
+import { desktopReader, makeBook } from "./desktopReaderTestHarness";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
 }));
-
-const BOOK: EpubBook = {
-  id: "b1",
-  title: "Book",
-  author: "Author",
-  language: "en",
-  chapters: [0, 1, 2].map((i) => ({
-    id: `c${i}`,
-    href: `c${i}.xhtml`,
-    title: `Chapter ${i + 1}`,
-    order: i,
-    paragraphs: Array.from({ length: 10 }, (_, n) => ({
-      text: `Paragraph ${n} of chapter ${i + 1}.`,
-    })),
-  })),
-};
-
-const STATE: BookState = {
-  bookId: "b1",
-  currentChapter: 1,
-  paragraphIndex: 0,
-  highlights: [],
-};
 
 const onChapterChange = vi.fn();
 let host: HTMLDivElement;
@@ -51,28 +23,12 @@ beforeEach(() => {
   root = createRoot(host);
   act(() => {
     root.render(
-      <I18nProvider locale="en">
-        <DesktopReader
-          theme={THEMES.sepia}
-          themeKey="sepia"
-          t={{ ...DEFAULT_TWEAKS, readingMode: "scroll" }}
-          setTweak={() => {}}
-          book={BOOK}
-          state={STATE}
-          currentChapter={1}
-          resumeParagraph={0}
-          jumpNonce={0}
-          onChapterChange={onChapterChange}
-          onParagraphChange={() => {}}
-          onCreateHighlight={() => {}}
-          onDeleteHighlight={() => {}}
-          onUpdateHighlightNote={() => {}}
-          onJumpToHighlight={() => {}}
-          activePanel={null}
-          setActivePanel={() => {}}
-          onBack={() => {}}
-        />
-      </I18nProvider>,
+      desktopReader({
+        book: makeBook("en", 3, 10),
+        locale: "en",
+        currentChapter: 1,
+        onChapterChange,
+      }),
     );
   });
 });
