@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CSSProperties } from "react";
+import type {
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { Icon } from "./Icon";
 import { BookBody, readingGutter } from "./BookBody";
 import { ChapterEndCard, ChapterStartLink } from "./ChapterEnd";
@@ -20,10 +24,22 @@ import {
 } from "../reader/chrome/ReaderProgressBar";
 import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
 import { FocusRail } from "../reader/chrome/FocusRail";
-import { FocusLock, FocusPill } from "../reader/chrome/FocusSigns";
+import {
+  FOCUS_TOAST_MS,
+  FocusLock,
+  FocusPill,
+} from "../reader/chrome/FocusSigns";
 import { isDoubleTap, type Tap } from "../reader/chrome/focusGesture";
+import {
+  isPageTap,
+  LONG_PRESS_MOVE_TOLERANCE,
+  LONG_PRESS_MS,
+} from "../reader/chrome/pageTap";
 import { glassBar } from "../reader/chrome/glass";
-import { attachTouchPanFallback } from "../reader/scroll/touchPanFallback";
+import {
+  attachTouchPanFallback,
+  movesThePage,
+} from "../reader/scroll/touchPanFallback";
 import { SelectionPopover } from "./SelectionPopover";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { SelectionHandle } from "./SelectionHandle";
@@ -64,8 +80,8 @@ import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 // in React state — never on window.getSelection() — so the OS
 // selection toolbar has no anchor and never appears.
 
-const LONG_PRESS_MS = 400;
-const LONG_PRESS_MOVE_TOLERANCE = 8; // px before pointer cancels long-press
+// The two numbers that separate a hold from a tap from a scroll live with the
+// test that decides between them — reader/chrome/pageTap.ts.
 const WORD_BOUNDARY_REGEX = /[\s\p{P}\p{S}]/u; // whitespace, punctuation, symbols
 
 interface RangeEndpoint {
@@ -305,7 +321,7 @@ export const READING_INSET_TOP =
 /** A control standing on the reading surface, as opposed to the surface
  *  itself. Tapping one is a request to use it, never to toggle the chrome —
  *  see the reading surface's `onClick`. */
-const PAGE_CONTROL = 'button, a, [role="button"]';
+const PAGE_CONTROL = 'button, a, [role="button"], [data-h-id]';
 
 export function MobileReader({
   theme,
@@ -339,27 +355,107 @@ export function MobileReader({
   // you entered on purpose should still be there when you come back.
   const focusOn = t.focusMode;
   const setFocusOn = (next: boolean) => setTweak("focusMode", next);
+  // Whether the bars are up right now, OUTSIDE focus mode. Session state, not
+  // a tweak: hiding the bars is a gesture made about this sitting with the
+  // book, not a preference about the app, so it resets when the reader comes
+  // back. It outlives a chapter turn because this component does — a reader
+  // who cleared the page and then turned the page has not asked for the
+  // furniture back.
+  const [barsUp, setBarsUp] = useState(true);
+  // Mirrored so the touchmove listener can ask without a dep or a re-subscribe.
+  const barsUpRef = useRef(barsUp);
+  barsUpRef.current = barsUp;
   const [showProgress, setShowProgress] = useState(true);
   const reduced = useReducedMotion();
   // Top/bottom chrome bars stay mounted and animate via transform + opacity,
-  // so entering focus mode is a fade rather than a hard cut. Pointer-events
-  // are dropped while hidden so taps fall through to the reader.
-  const chromeHidden = focusOn;
-  // The pill, shown on EVERY entry rather than once per install: it carries
+  // so the bars leaving is a fade rather than a hard cut. Pointer-events are
+  // dropped while hidden so taps fall through to the reader.
+  //
+  // Two ways to the same bare page, and the difference between them is how you
+  // get back: outside focus mode one tap is enough, inside it takes a
+  // double-tap. That is what makes focus mode a mode — a stray tap cannot end
+  // it — and what keeps the plain toggle as cheap as it should be.
+  const chromeHidden = focusOn || !barsUp;
+  /** End focus mode, from wherever. Always lands with the bars up: a reader
+   *  who left the mode asked for their controls back, and the one route in
+   *  that does not go through here (the header button) is unreachable without
+   *  them. Without this, entering focus mode from an already-bare page and
+   *  leaving it again gave back a screen just as empty. */
+  const leaveFocus = () => {
+    setFocusOn(false);
+    setBarsUp(true);
+    setPillUp(false);
+  };
+  /** Where the finger landed. The click is the only event that says a gesture
+   *  ENDED, and on its own it cannot say WHICH gesture: a tap, a scroll and
+   *  the hold that starts a highlight all finish with one. Comparing the two
+   *  ends settles it — see reader/chrome/pageTap.ts. */
+  const onPagePointerDown = (e: ReactPointerEvent) => {
+    pressRef.current = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+  };
+
+  /**
+   * A tap on the page takes the chrome away, and brings it back.
+   *
+   * "The page" is the paper and the type, NOT the things standing on it. The
+   * previous-chapter capsule, the end-of-chapter card and a highlight are all
+   * children of the scroller, so their tap bubbles up here — and a reader in
+   * focus mode who turned a chapter used to get the header and the bottom bar
+   * back with it, thrown out of the mode by the one control whose whole job is
+   * to keep them reading.
+   *
+   * Asked of the DOM in one question rather than threaded through each control
+   * as `stopPropagation`: a control says it is one in the markup, so this
+   * settles the ones that exist and whatever is added next to the foot of a
+   * chapter. Narrow on purpose — the paper AROUND a control still toggles, and
+   * so does the text.
+   */
+  const onPageClick = (e: ReactMouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest(PAGE_CONTROL)) return;
+    // And the tap that DISMISSES a popover, which lands on plain text, so only
+    // the state says what it was for. By now it is set: the handler that sets
+    // it ran on the click that opened the popover.
+    if (selAnchor || activeHl) return;
+    const press = pressRef.current;
+    pressRef.current = null;
+    const up = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+    // Reaching for a highlight is a press that never moves, and a scroll is one
+    // that does. Both end in a click, and treating either as a tap took the
+    // chrome away every time a reader went to select something.
+    if (!isPageTap(press, up)) return;
+    if (!focusOn) {
+      // One tap, both ways. This is the whole difference from focus mode,
+      // which needs two to let go.
+      setBarsUp((wasUp) => !wasUp);
+      return;
+    }
+    if (isDoubleTap(lastTapRef.current, up)) {
+      lastTapRef.current = null;
+      leaveFocus();
+      return;
+    }
+    lastTapRef.current = up;
+    // A single tap inside the mode does nothing — deliberately. It used to
+    // re-raise the toast, which made the thing a reader saw most of a mode
+    // they chose for quiet a message about it. The lock in the corner answers
+    // the same question, all the time, silently.
+  };
+
+  // The toast, shown on EVERY entry rather than once per install: it carries
   // the exit gesture, and a reader who enters focus mode twice a year needs
-  // telling both times. `pillKey` remounts it so its timer restarts.
-  const [pillKey, setPillKey] = useState(0);
+  // telling both times. It is NOT re-shown by a tap inside the mode — that
+  // made the thing a reader saw most of a mode they chose for quiet.
+  //
+  // One flag is enough to restart the keyframe: the toast is mounted only
+  // while it is up, and the only way in clears it on the way out, so it has
+  // always left the tree before it can be asked for again.
   const [pillUp, setPillUp] = useState(false);
   useEffect(() => {
     if (!pillUp) return;
-    const id = window.setTimeout(() => setPillUp(false), 2200);
+    const id = window.setTimeout(() => setPillUp(false), FOCUS_TOAST_MS);
     return () => window.clearTimeout(id);
-  }, [pillUp, pillKey]);
-  /** Show the mode's name and its exit, restarting the timer if it is up. */
-  const announceFocus = () => {
-    setPillKey((n) => n + 1);
-    setPillUp(true);
-  };
+  }, [pillUp]);
 
   const chromeTransition = reduced
     ? "none"
@@ -374,9 +470,16 @@ export function MobileReader({
   // (transient) or the moment the chrome is tapped back in.
   //
   // Rejects and no-ops everywhere but Android, so no platform check is needed.
+  //
+  // Keyed to the bars being AWAY, not to focus mode: a reader who tapped the
+  // page clear outside focus mode asked for the same thing, and leaving the
+  // clock and the nav bar behind on an otherwise bare page is the half-measure
+  // this was added to stop.
   useEffect(() => {
-    void invoke("set_immersive_mode", { immersive: focusOn }).catch(() => {});
-  }, [focusOn]);
+    void invoke("set_immersive_mode", { immersive: chromeHidden }).catch(
+      () => {},
+    );
+  }, [chromeHidden]);
   // Leaving the reader always restores them, whatever state the chrome was in.
   // Kept apart from the effect above deliberately: as that one's cleanup it
   // would fire on every toggle, showing the bars again a frame after each
@@ -396,6 +499,9 @@ export function MobileReader({
   const selectingRef = useRef(false);
   /** The last page tap, for the double-tap test. */
   const lastTapRef = useRef<Tap | null>(null);
+  /** Where and when the finger landed, for the test that decides whether the
+   *  click it ends with was a tap at all. */
+  const pressRef = useRef<Tap | null>(null);
   const startEndpointRef = useRef<RangeEndpoint | null>(null);
   const endEndpointRef = useRef<RangeEndpoint | null>(null);
   const paragraphRef = useRef<HTMLElement | null>(null);
@@ -432,8 +538,8 @@ export function MobileReader({
   // Read by the scroll-to-resume effect so it knows whether the chrome is
   // currently occluding the top of the scroll area. Tracked via a ref so a
   // chrome toggle alone doesn't re-trigger the scroll.
-  const showChromeRef = useRef(!focusOn);
-  showChromeRef.current = !focusOn;
+  const showChromeRef = useRef(!chromeHidden);
+  showChromeRef.current = !chromeHidden;
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
 
@@ -831,6 +937,46 @@ export function MobileReader({
     return attachTouchPanFallback(root, scroller, () => selectingRef.current);
   }, []);
 
+  // Scrolling the page takes the bars with it. Reading is the gesture; the
+  // furniture is what you ask for in between, and a reader who has started
+  // moving down the page has stopped asking.
+  //
+  // Driven by the finger (`touchmove`) rather than by the `scroll` event,
+  // which the reader does not own: `jumpScrollTop` deliberately nudges the
+  // scroller a pixel and back after every chapter turn (to make WKWebView
+  // paint), and the resume effect scrolls on mount. Both would read as the
+  // reader scrolling, so the bars would vanish on their own the moment a book
+  // opened. A fling is covered — it begins with a real touchmove.
+  //
+  // In focus mode this is already true and `setBarsUp(false)` is a no-op React
+  // bails out of; leaveFocus puts them back up either way.
+  useEffect(() => {
+    const root = rootRef.current;
+    const scroller = scrollRef.current;
+    if (!root || !scroller) return;
+    const onTouchMove = (e: TouchEvent) => {
+      // Already away. Returning here rather than leaning on React to bail out
+      // of an unchanged `setState`: its cheap path needs the fiber to have no
+      // pending work, and the one flip that matters schedules a render over
+      // this whole component — so every touchmove landing in that window
+      // would buy another full pass to compute the same `false`. Scroll is
+      // the one gesture this reader refuses to do React work on.
+      if (!barsUpRef.current) return;
+      // A long-press drag is extending a selection, not scrolling — the page
+      // is not moving, and the reader is working with the text, not past it.
+      if (selectingRef.current) return;
+      const target = e.target as Element | null;
+      if (!target || !movesThePage(scroller, target)) return;
+      setBarsUp(false);
+    };
+    // On the ROOT, not the scroller: the bars are `data-pan-zone` elements
+    // OUTSIDE it, and the pan fallback scrolls the page for a swipe that
+    // starts on one. Listening on the scroller alone left the bars up for
+    // exactly the swipe that began on them.
+    root.addEventListener("touchmove", onTouchMove, { passive: true });
+    return () => root.removeEventListener("touchmove", onTouchMove);
+  }, []);
+
   // Handle-drag effect: tracks pointer movement after the user grabs
   // one of the start/end handles and extends the selection range.
   // Depends on whether handles are up, NOT on where they are: the
@@ -1153,7 +1299,7 @@ export function MobileReader({
             // Entering is "just the book": a sheet left open would float over
             // a chrome-less page with no way back to its own controls.
             setSheet(null);
-            announceFocus();
+            setPillUp(true);
           }}
           aria-label={tr("reader.focusMode")}
           style={{
@@ -1176,43 +1322,8 @@ export function MobileReader({
         // so a swipe that leans sideways is declined the same way wherever it
         // starts and the pan fallback scrolls it (global.css).
         data-pan-scroller
-        // A tap anywhere on the page toggles the chrome — including on a
-        // highlight, which also opens its action popover through the
-        // document-level click handler. The reading surface is scroll-only:
-        // the edge bands that used to page up and down are gone.
-        //
-        // "The page" is the paper and the type, NOT the controls standing on
-        // it. The previous-chapter capsule and the end-of-chapter card are
-        // children of this element, so their tap bubbled up here and toggled
-        // the chrome too: a reader in focus mode who turned a chapter got the
-        // header and the bottom bar back with it, thrown out of the mode by
-        // the one control whose whole job is to keep them reading.
-        //
-        // Asked of the DOM by role rather than threaded through each control
-        // as `stopPropagation`: every control here is a real <button>, so one
-        // question settles the four that exist and whatever is added next to
-        // the foot of a chapter. Narrow on purpose — the paper around a
-        // control still toggles, and so does the text. A highlight is NOT
-        // covered: a <mark> is text, and tapping text is the gesture.
-        onClick={(e) => {
-          if ((e.target as HTMLElement | null)?.closest(PAGE_CONTROL)) return;
-          // Outside focus mode the page tap does NOTHING. It used to toggle
-          // the chrome, which made a bare screen reachable by accident and
-          // gave the app two overlapping routes to the same state. Focus mode
-          // is entered from its control now; one concept, one way in.
-          if (!focusOn) return;
-          const tap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
-          if (isDoubleTap(lastTapRef.current, tap)) {
-            lastTapRef.current = null;
-            setFocusOn(false);
-            setPillUp(false);
-            return;
-          }
-          lastTapRef.current = tap;
-          // A single tap has no job left, and doing nothing at all reads as a
-          // frozen app — so it answers the question that prompted it.
-          announceFocus();
-        }}
+        onPointerDown={onPagePointerDown}
+        onClick={onPageClick}
         style={{
           flex: 1,
           overflow: "auto",
@@ -1563,15 +1674,11 @@ export function MobileReader({
         <FocusLock
           theme={theme}
           label={tr("reader.exitFocusMode")}
-          onExit={() => {
-            setFocusOn(false);
-            setPillUp(false);
-          }}
+          onExit={leaveFocus}
         />
       )}
       {focusOn && pillUp && (
         <FocusPill
-          key={pillKey}
           theme={theme}
           title={tr("reader.focusMode")}
           hint={tr("reader.focusExitHint")}

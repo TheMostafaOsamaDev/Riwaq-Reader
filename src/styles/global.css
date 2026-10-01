@@ -588,6 +588,42 @@ input:focus-visible,
     forwards;
 }
 
+/* The phone's focus-mode toast: a small bar along the bottom that names the
+   mode and the way out of it, on entry only.
+
+   Paced in percentages rather than milliseconds because the duration lives in
+   TypeScript — FOCUS_TOAST_MS in reader/chrome/FocusSigns.tsx, which also
+   unmounts the element on the same clock, and sets `animation-duration` inline
+   (inline wins over this shorthand's implicit 0s). The percentages below are
+   that total split as ~160ms in, the rest holding, ~140ms out: exits are
+   shorter than enters so a thing leaving never feels like it is lingering.
+
+   `forwards`, never `both` — see enterAnimations.test.ts. The resting state of
+   this element is the arrived one, so an animation a webview drops shows the
+   toast without its fade instead of holding it invisible. Reduced motion takes
+   that path deliberately: no inline duration, so the keyframe never runs. */
+@keyframes riwaq-focus-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  9% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  92% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.riwaq-focus-pill {
+  animation: riwaq-focus-toast ease-out forwards;
+}
+
 /* Skeleton shimmer. Used by the Store's loading placeholders — the
    gradient sweeps across to give the user a sense of progress while the
    real content is being fetched. Colors live on the element via

@@ -33,14 +33,27 @@ import {
   planFling,
 } from "./touchPan";
 
+/** Is a gesture starting on `target` one that moves the PAGE?
+ *
+ *  True inside the scroller, and on the floating bars, which sit outside it
+ *  but whose swipes scroll it all the same. False for sheets, popovers and
+ *  anything else floating over the reader.
+ *
+ *  Exported because "the reader is scrolling the page" has a second consumer
+ *  — the chrome, which goes away when it happens — and two answers to that
+ *  question would disagree on exactly the swipes that start on a bar. */
+export function movesThePage(scroller: HTMLElement, target: Element): boolean {
+  return (
+    scroller.contains(target) || target.closest("[data-pan-zone]") !== null
+  );
+}
+
 /** Where a gesture started decides whether it is ours to consider. */
 function panZoneOf(
   scroller: HTMLElement,
   target: Element,
 ): PanDownOptions | null {
-  if (!scroller.contains(target) && !target.closest("[data-pan-zone]")) {
-    return null; // sheets, popovers, anything else floating over the reader
-  }
+  if (!movesThePage(scroller, target)) return null;
   return { verticalOnly: target.closest('[data-pan-axis="x"]') !== null };
 }
 
