@@ -169,6 +169,12 @@ export function HeroActions({
         style={{
           marginTop: 20,
           display: "flex",
+          // Read's floor plus three icons is ~370px, and at 721–900px wide
+          // (a tablet in portrait, a narrow desktop window) the hero's text
+          // column is less. Without wrapping, download / shelf / ⋮ were
+          // clipped off the card. On a phone the row always fits: Read
+          // shrinks there instead (flex: 1, no floor).
+          flexWrap: "wrap",
           gap: 10,
           alignItems: "center",
         }}
