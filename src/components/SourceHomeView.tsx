@@ -25,7 +25,7 @@ import { NovelCard } from "./NovelCard";
 import { appendPage, searchView, type SearchPage } from "./searchPaging";
 import { SectionCarousel } from "./SectionCarousel";
 import { SourceIcon } from "./SourceIcon";
-import { openExtensionsManager } from "../store/uiIntents";
+import { goStorePage } from "../store/navigation";
 import { NovelCardSkeleton, SectionsListSkeleton } from "./Skeleton";
 
 interface Props {
@@ -88,9 +88,8 @@ export function SourceHomeView({
   // query-text comparison alone can't detect.
   const searchGeneration = useRef(0);
 
-  // Load sections on mount, and again whenever sourceId changes — e.g.
-  // uiIntents.openStoreSource can swap sourceId in place without
-  // unmounting this component.
+  // Load sections on mount. The Store keys this view by sourceId (search
+  // state belongs to one source), so another source is a fresh instance.
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
@@ -205,7 +204,7 @@ export function SourceHomeView({
         <Button
           theme={theme}
           variant="secondary"
-          onClick={openExtensionsManager}
+          onClick={() => goStorePage({ kind: "extensions" })}
           leadingIcon={<Icon name="layers" size={14} />}
           style={{ minHeight: 44 }}
         >
@@ -332,7 +331,7 @@ function HomeHeader({
       >
         <button
           onClick={onBack}
-          aria-label={tr("store.backToSources")}
+          aria-label={tr("common.back")}
           style={{
             width: 34,
             height: 34,

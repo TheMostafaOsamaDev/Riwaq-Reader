@@ -44,74 +44,11 @@ export function onOpenDownloadQueue(fn: Listener): () => void {
   return on("open-download-queue", fn);
 }
 
-// One-shot "open a specific source in the Store" intent. Carries the source
-// id via a module var, and remembers the LAST request as `pendingStoreSource`
-// so a request emitted BEFORE the Store mounts (e.g. the main search jumping
-// in from the shelf) isn't lost — the Store consumes it on mount.
-let pendingStoreSource: string | null = null;
-
-/** Request that the Store open a given source's home page. */
-export function openStoreSource(sourceId: string): void {
-  pendingStoreSource = sourceId;
-  emit("open-store-source");
-}
-
-/** Subscribe to "open store source" requests fired while already mounted. The
- *  handler receives the requested source id; the pending value is cleared as
- *  it's delivered. Returns an unsubscribe function. */
-export function onOpenStoreSource(fn: (sourceId: string) => void): () => void {
-  return on("open-store-source", () => {
-    const id = pendingStoreSource;
-    pendingStoreSource = null;
-    if (id) fn(id);
-  });
-}
-
-/** Consume a request that arrived before any subscriber existed — call once
- *  when the Store mounts. Returns the pending source id, or null. */
-export function takePendingStoreSource(): string | null {
-  const id = pendingStoreSource;
-  pendingStoreSource = null;
-  return id;
-}
-
-// "Open the Extensions manager" — fired by the banner a saved novel shows
-// when its source extension is gone or broken. Two subscribers answer it:
-// the Library switches to the Store destination, and the Store selects its
-// extensions view. Neither alone is enough — from a library-backed novel
-// page the Store isn't even mounted yet, which is why the request is also
-// REMEMBERED (same one-shot pattern as pendingStoreSource above) so the
-// Store can consume it on its own mount.
-let pendingExtensionsManager = false;
-
-/** Request the Extensions manager. Safe from anywhere in the app. */
-export function openExtensionsManager(): void {
-  pendingExtensionsManager = true;
-  emit("open-extensions-manager");
-}
-
-/** Subscribe to "open the Extensions manager" requests fired while already
- *  mounted. Returns an unsubscribe function. The pending flag is NOT
- *  cleared here: the Library listens too, and it only switches tabs — the
- *  Store is the one that consumes the request, on mount or below. */
-export function onOpenExtensionsManager(fn: Listener): () => void {
-  return on("open-extensions-manager", fn);
-}
-
-/** Consume a pending "open the Extensions manager" request — call from the
- *  Store on mount and from its own subscription. Returns true once per
- *  request. */
-export function takePendingExtensionsManager(): boolean {
-  const pending = pendingExtensionsManager;
-  pendingExtensionsManager = false;
-  return pending;
-}
-
 // "Edit this book's details" — the background-import toast's action for a
 // book that was imported with default title and cover (see
 // store/backgroundImport.ts). The edit dialog belongs to the Library, which
-// is unmounted behind the reader, so the request is remembered (same one-shot
-// pattern as pendingStoreSource) and the Library consumes it on mount.
+// is unmounted behind the reader, so the request is remembered as a one-shot
+// pending id and the Library consumes it on mount.
 let pendingEditBook: string | null = null;
 
 /** Request the edit dialog for a book. Safe from anywhere in the app. */

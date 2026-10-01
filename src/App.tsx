@@ -54,8 +54,8 @@ import {
   goSettings,
   openOverlay,
   back,
-  forward,
 } from "./store/navigation";
+import { installNavInput } from "./store/navInput";
 import {
   deleteHighlights,
   getEntry,
@@ -403,28 +403,9 @@ function App() {
     setReduceMotionOverride(t.reduceMotion);
   }, [t.reduceMotion]);
 
-  // Desktop back/forward, routed through nav history. Alt+←/→ and (on macOS)
-  // ⌘[ / ⌘] mirror the browser convention (Alt+Left = back in every locale,
-  // independent of text direction). Mouse side-buttons are left to the
-  // webview, which emits `popstate` — already handled by the nav store.
-  // preventDefault stops any native key mapping so each press navigates once.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const isBack =
-        (e.altKey && e.key === "ArrowLeft") || (e.metaKey && e.key === "[");
-      const isForward =
-        (e.altKey && e.key === "ArrowRight") || (e.metaKey && e.key === "]");
-      if (isBack) {
-        e.preventDefault();
-        back();
-      } else if (isForward) {
-        e.preventDefault();
-        forward();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Keyboard and mouse back/forward (see navInput.ts for the side-button
+  // story). Android's hardware Back arrives as popstate instead.
+  useEffect(() => installNavInput(), []);
 
   // Push download-queue runtime config from the tweaks.
   useEffect(() => {

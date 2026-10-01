@@ -370,7 +370,7 @@ export function ExtensionsView({
         <button
           type="button"
           onClick={onBack}
-          aria-label={tr("store.backToSources")}
+          aria-label={tr("common.back")}
           style={{
             width: 44,
             height: 44,
