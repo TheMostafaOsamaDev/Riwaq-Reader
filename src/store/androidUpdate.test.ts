@@ -295,6 +295,42 @@ describe("androidUpdate store", () => {
     expect(store.getState().channel).toEqual({ kind: "in-app" });
   });
 
+  it("fetches the notes and the APK's details only for a channel that shows them", async () => {
+    const fetched = () => [
+      ...calls("fetch_release_notes"),
+      ...calls("fetch_apk_details"),
+    ];
+    // Managed (F-Droid): no pill, no sheet, so nothing to fetch.
+    fakeNative({ installer: "org.fdroid.fdroid", storeInstalled: true });
+    configure();
+    await store.offer({ version: "0.6.0" });
+    expect(store.getState().channel?.kind).toBe("managed");
+    expect(fetched()).toHaveLength(0);
+
+    // Manual (the lookup failed): the release-page banner needs neither.
+    store.__resetForTests();
+    h.invoke.mockClear();
+    fakeNative({ sourceFails: true });
+    configure();
+    await store.offer({ version: "0.6.0" });
+    expect(store.getState().channel?.kind).toBe("manual");
+    expect(fetched()).toHaveLength(0);
+
+    // The controls: in-app and store-assisted fetch both, once.
+    for (const over of [
+      {},
+      { installer: "com.orion.store", storeInstalled: true },
+    ]) {
+      store.__resetForTests();
+      h.invoke.mockClear();
+      fakeNative(over);
+      configure();
+      await store.offer({ version: "0.6.0" });
+      expect(calls("fetch_release_notes")).toEqual([{ version: "0.6.0" }]);
+      expect(calls("fetch_apk_details")).toEqual([{ version: "0.6.0" }]);
+    }
+  });
+
   it("a newer offer cancels a stale ready APK first — it deletes the file", async () => {
     fakeNative({ status: { state: "ready", version: "0.6.0" } });
     configure();

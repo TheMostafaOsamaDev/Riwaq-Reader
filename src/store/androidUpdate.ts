@@ -329,7 +329,15 @@ export async function offer(info: { version: string } | null): Promise<void> {
   reconcileSkip();
   // First: a file left for an older offer is deleted before anything else.
   await refresh();
-  const work: Promise<unknown>[] = [loadChannel()];
+  // The notes and the APK's size exist for the pill, the sheet and the
+  // Settings card, which only an in-app or store-assisted install shows. A
+  // managed install (F-Droid, Play) or a failed lookup (manual) would fetch
+  // three files from the release for nothing, once a day: say nothing, ask
+  // nothing.
+  await loadChannel();
+  const kind = state.channel?.kind;
+  if (kind !== "in-app" && kind !== "store-assisted") return;
+  const work: Promise<unknown>[] = [];
   if (notesFor !== info.version) {
     notesFor = info.version;
     const v = info.version;
