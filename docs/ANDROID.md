@@ -214,10 +214,12 @@ per running version whoever did the update.
 ### The flow
 
 1. The daily check (Rust, `check_update_manifest`) finds a newer `latest.json`.
-   Rust then fetches that release's `whats-new.json` + highlight image (held in
-   memory as a `data:` URL), its `SHA256SUMS` line for
-   `app-universal-release.apk`, and the APK's size (HEAD). No checksum line, no
-   offer.
+   Only then, and only for an **in-app** or **store-assisted** install, the
+   store's `offer()` asks Rust for that release's `whats-new.json` + highlight
+   image (held in memory as a `data:` URL), its `SHA256SUMS` line for
+   `app-universal-release.apk`, and the APK's size (HEAD). A managed or manual
+   install makes none of these requests (see the channels above). No checksum
+   line, no offer.
 2. Pill → notes sheet → **Update** (on a metered network: Ask first / Always /
    Wait for Wi-Fi, per Settings).
 3. `UpdateService` (foreground, `dataSync`, notification id 1003) runs

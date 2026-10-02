@@ -486,9 +486,19 @@ is `.superpowers/sdd/2026-10-02-android-in-app-updates/task-14-report.md`.
 - "Installed · Open" is posted only after Riwaq's own update; a store's update no
   longer gets a second notification next to the store's.
 
-**Proven on macOS**: sidebar card → What's new dialog → Update → progress → "ready"
+**Proven on macOS** (checklist item 14: PASS with an unexplained run-1 restart, see
+"Not proven" below): sidebar card → What's new dialog → Update → progress → "ready"
 with **Restart now**; the app stayed on 0.6.90 for 75 s until Restart now; relaunch
 as 0.6.91 → story pages once; no `Riwaq*`/`*updater*` leftovers in `$TMPDIR`.
+
+**Changed after the macOS proof** (so that proof predates them; it is re-run in
+final verification):
+- de95c82: Restart now is its own element, away from Update / Try again, and it
+  ignores clicks for a second after it appears; story pages do the same per page.
+- f7466b9: `restart()` itself refuses a call within a second of the download
+  finishing, and closing and reopening the notes dialog re-arms Restart now.
+- 0c31506: desktop never shows story pages; every release gets the scrolling
+  after-update dialog.
 
 **Not proven, or open**
 - Windows (`%TEMP%` sweep) and the Linux AppImage were not run end to end; the sweep
@@ -499,6 +509,11 @@ as 0.6.91 → story pages once; no `Riwaq*`/`*updater*` leftovers in `$TMPDIR`.
   emulator reports Wi-Fi as unmetered; airplane mode showed the mobile-data sheet).
 - In the first macOS run the app restarted by itself about 2 s after the download
   finished, and skipped its story pages. Three later runs did not reproduce it, and no
-  code path restarts without a press on Restart now; stray input from outside the test
-  is the likely cause, but it is unconfirmed.
+  code path restarts without a press on Restart now. A second click or other stray
+  input on the old Update spot is suspected, not confirmed; de95c82 and f7466b9 guard
+  against it either way.
+- The Linux .deb/.rpm manual path (card → Download → release page) was not run end to
+  end.
+- The desktop proof covers WKWebView (macOS) only: WebKitGTK (Linux) and WebView2
+  (Windows) were not exercised.
 - On the tablet layout the pill is centred on the window, not on the content pane.
