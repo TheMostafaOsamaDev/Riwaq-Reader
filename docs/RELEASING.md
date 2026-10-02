@@ -74,6 +74,12 @@ set after the first signed Android release:
    bash scripts/verify-release-config.sh v0.2.0
    ```
 
+   The same check covers what the Android stores read per release:
+   `fastlane/metadata/android/{en-US,ar}/changelogs/<versionCode>.txt` (500
+   characters at most) and the five version fields in
+   `docs/fdroid/com.riwaq.reader.yml`. Both are named after the release, so a
+   stale one can only be corrected by cutting another.
+
    **1b.** Write `release-notes/<version>.json`: English and Arabic, in the
    product's voice (see `release-notes/README.md`). Then run
    `pnpm verify:notes --require <version>`. The release **fails in

@@ -41,9 +41,9 @@ Repo: https://github.com/TheMostafaOsamaDev/Riwaq-Reader.git
 Binaries: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v%v/app-universal-release.apk
 
 Builds:
-  - versionName: 0.5.4
-    versionCode: 5004
-    commit: v0.5.4
+  - versionName: 0.6.0
+    versionCode: 6000
+    commit: v0.6.0
     sudo:
       - apt-get update
       - apt-get install -y build-essential nodejs npm
@@ -72,5 +72,5 @@ AllowedAPKSigningKeys: 83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.5.4
-CurrentVersionCode: 5004
+CurrentVersion: 0.6.0
+CurrentVersionCode: 6000
