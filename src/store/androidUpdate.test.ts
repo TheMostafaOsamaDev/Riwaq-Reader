@@ -263,7 +263,7 @@ describe("androidUpdate store", () => {
     fakeNative({ installer: "com.orion.store", storeInstalled: true });
     configure();
     await store.offer({ version: "0.6.0" });
-    expect(store.getState().channel.kind).toBe("store-assisted");
+    expect(store.getState().channel?.kind).toBe("store-assisted");
     await store.startDownload({ allowMetered: true });
     expect(calls("open_store")).toEqual([{ pkg: "com.orion.store" }]);
     expect(calls("android_update_start")).toHaveLength(0);

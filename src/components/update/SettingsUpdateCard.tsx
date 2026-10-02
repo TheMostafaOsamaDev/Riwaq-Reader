@@ -40,7 +40,7 @@ export function SettingsUpdateCard({
   const input = flowInput(s);
   const c = s.channel;
 
-  if (c.kind === "managed") {
+  if (c?.kind === "managed") {
     const store = c.label || tr("settings.updates.yourStore");
     return (
       <div style={{ marginTop: 10 }}>
@@ -103,7 +103,7 @@ export function SettingsUpdateCard({
   // opens that state's sheet instead of starting again.
   const pill = pillFor(input);
   const inFlight = pill ? SHEET_FOR[pill.kind] : undefined;
-  const assisted = c.kind === "store-assisted" ? c : null;
+  const assisted = c?.kind === "store-assisted" ? c : null;
   const primary = inFlight
     ? pill?.kind === "progress"
       ? tr("update.pill.progress", { p: pill.pct })

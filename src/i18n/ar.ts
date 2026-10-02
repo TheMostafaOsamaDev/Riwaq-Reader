@@ -841,6 +841,8 @@ export const ar: Messages = {
   "update.fail.title": "لم يكتمل التنزيل",
   "update.fail.offline":
     "انقطع الاتصال عند {p}٪. لم يتغيّر شيء، وسيكمل رواق من حيث توقف.",
+  "update.fail.offlineStart":
+    "تعذّر الوصول إلى GitHub. تحقّق من اتصالك وحاول مجددًا.",
   "update.fail.checksum": "لم يطابق الملف ما نُشر، لذا حُذف.",
   "update.fail.signature": "هذا الملف ليس تحديثًا لهذه النسخة من رواق، لذا حُذف.",
   "update.fail.storage": "لا توجد مساحة كافية: يلزم {mb} م.ب.",

@@ -23,18 +23,14 @@ interface Props {
   onDismiss: () => void;
   /** Auto-dismiss timeout in ms. Default 3500. */
   ttl?: number;
-  /** CSS `bottom`. Default 24px; the phone library lifts it over its
-   *  bottom bar. */
+  /** A CSS `bottom` for a toast lifted over the phone's bottom bar (the
+   *  Android update toasts pass one). Passing it also sizes the toast to
+   *  its sentence, up to the screen's width less a 16px gutter each side.
+   *  Omitted, the toast renders exactly as it always has. */
   bottom?: string;
 }
 
-export function Toast({
-  theme,
-  toast,
-  onDismiss,
-  ttl = 3500,
-  bottom = "24px",
-}: Props) {
+export function Toast({ theme, toast, onDismiss, ttl = 3500, bottom }: Props) {
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(onDismiss, ttl);
@@ -56,7 +52,7 @@ export function Toast({
       aria-live="polite"
       style={{
         position: "fixed",
-        bottom,
+        bottom: bottom ?? 24,
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: Z.toast,
@@ -72,12 +68,17 @@ export function Toast({
         fontFamily: FONT_STACKS.sans,
         fontSize: 13,
         lineHeight: 1.4,
-        // max-content, capped: with left:50% a shrink-to-fit box only gets
-        // half the viewport, which on a phone wrapped a sentence into a
-        // narrow column.
-        width: "max-content",
-        maxWidth: "min(420px, calc(100vw - 32px))",
-        boxSizing: "border-box",
+        // With left:50% a shrink-to-fit box only gets half the viewport,
+        // which on a phone wraps a sentence into a narrow column. A lifted
+        // (phone) toast sizes to its content instead; 420px is the content
+        // width, as on desktop; the 16px gutters plus the 36px padding and
+        // 3.5px of border keep the whole box inside the screen.
+        ...(bottom === undefined
+          ? { maxWidth: 420 }
+          : {
+              width: "max-content",
+              maxWidth: "min(420px, calc(100vw - 32px - 40px))",
+            }),
         boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
       }}
     >

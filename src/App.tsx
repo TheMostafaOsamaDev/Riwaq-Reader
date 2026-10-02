@@ -99,10 +99,11 @@ import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { UpdatePill } from "./components/update/UpdatePill";
+import { ManualUpdateBanner, UpdatePill } from "./components/update/UpdatePill";
 import { UpdateSheet, UpdateToasts } from "./components/update/UpdateSheet";
 import {
   configure as configureAndroidUpdate,
+  loadChannel as loadAndroidChannel,
   offer as offerAndroidUpdate,
 } from "./store/androidUpdate";
 import {
@@ -339,6 +340,11 @@ function App() {
       saveSkipped: (v) => setTweak("skippedUpdateVersion", v),
     });
   }, [isAndroid, t.skippedUpdateVersion, t.updateOverMobile, setTweak]);
+  // Who updates this install, for Settings → About, whether or not an
+  // update is offered.
+  useEffect(() => {
+    if (isAndroid) void loadAndroidChannel();
+  }, [isAndroid]);
   useEffect(() => {
     if (isAndroid && update.info) void offerAndroidUpdate(update.info);
   }, [isAndroid, update.info]);
@@ -1042,11 +1048,30 @@ function App() {
       >
         {isAndroid ? (
           <>
-            {base.screen === "library" && !streaming && (
-              <UpdatePill theme={theme} />
-            )}
+            {/* Over the library's shelves only: not over a book, the
+                downloads page, or a novel's detail page (which has no
+                bottom bar to sit above). */}
+            {base.screen === "library" &&
+              !overlay &&
+              base.view.kind !== "novel" && (
+                <UpdatePill
+                  theme={theme}
+                  layout={isMobile ? "mobile" : "desktop"}
+                />
+              )}
             <UpdateSheet theme={theme} themeKey={themeKey} />
-            <UpdateToasts theme={theme} />
+            <UpdateToasts
+              theme={theme}
+              layout={isMobile ? "mobile" : "desktop"}
+            />
+            {/* Install source unknown: the release-page link, as before. */}
+            {update.info && (
+              <ManualUpdateBanner
+                info={update.info}
+                theme={theme}
+                onDismiss={update.dismiss}
+              />
+            )}
           </>
         ) : null}
         {!isAndroid && update.info && (

@@ -40,6 +40,7 @@ import { MobileSheet } from "../MobileSheet";
 import { Spinner } from "../Spinner";
 import { Toast, type ToastMessage } from "../Toast";
 import { NotesView } from "./NotesView";
+import { VISUALLY_HIDDEN } from "./UpdatePill";
 
 /** Bytes as MB with one decimal: 19230841 → "18.3". */
 export function mb(bytes: number): string {
@@ -66,11 +67,17 @@ function failText(
     case "install":
       return { text: tr("update.fail.install"), resumable: false };
     default: {
-      // "offline", and anything unrecognised: the file (if any) is kept and
-      // the next start resumes from where it stopped.
+      // Nothing was ever downloaded (the APK's details could not be
+      // fetched, or the download died before its first byte): there is no
+      // percentage to report and nothing to resume.
       const { bytes, total } = s.native;
+      if (s.fetchError || bytes === 0) {
+        return { text: tr("update.fail.offlineStart"), resumable: false };
+      }
+      // "offline", and anything unrecognised: the file is kept and the next
+      // start resumes from where it stopped.
       const p = total ? Math.min(100, Math.floor((bytes / total) * 100)) : 0;
-      return { text: tr("update.fail.offline", { p }), resumable: bytes > 0 };
+      return { text: tr("update.fail.offline", { p }), resumable: true };
     }
   }
 }
@@ -229,7 +236,7 @@ export function UpdateSheet({
   let content: ReactNode = null;
 
   if (view === "notes") {
-    const assisted = s.channel.kind === "store-assisted" ? s.channel : null;
+    const assisted = s.channel?.kind === "store-assisted" ? s.channel : null;
     title = tr("whatsNew.title", { v });
     const date = s.notes?.notes?.date;
     const sub = [date, size && tr("update.sheet.size", { mb: size })]
@@ -418,8 +425,14 @@ export function UpdateSheet({
               }}
             />
           </div>
+          {/* The state for screen readers; the figures below change on every
+              poll, so they are not live (the progressbar carries the value). */}
+          <span aria-live="polite" style={VISUALLY_HIDDEN}>
+            {waiting
+              ? tr("update.pill.waiting", { v })
+              : tr("update.downloading")}
+          </span>
           <p
-            aria-live="polite"
             style={{
               margin: "10px 0 0",
               fontSize: 13,
@@ -608,13 +621,20 @@ export function UpdateSheet({
 }
 
 /** "Later" and "Skip" confirmations. Lifted over the phone's bottom bar. */
-export function UpdateToasts({ theme }: { theme: Theme }) {
+export function UpdateToasts({
+  theme,
+  layout = "mobile",
+}: {
+  theme: Theme;
+  /** "mobile" lifts the toast over MobileBottomNav; "desktop" keeps the
+   *  ordinary toast position. */
+  layout?: "mobile" | "desktop";
+}) {
   const { tr } = useI18n();
   const s = useAndroidUpdate();
   const v = s.offer?.version ?? "";
   const kind = s.toast;
   // One object per toast shown: Toast restarts its timer on a new identity.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the toast, not the strings
   const toast = useMemo<ToastMessage | null>(() => {
     if (kind === "later") {
       return {
@@ -647,7 +667,11 @@ export function UpdateToasts({ theme }: { theme: Theme }) {
       toast={toast}
       onDismiss={onDismiss}
       ttl={6000}
-      bottom="calc(84px + env(safe-area-inset-bottom, 0px))"
+      bottom={
+        layout === "mobile"
+          ? "calc(84px + env(safe-area-inset-bottom, 0px))"
+          : undefined
+      }
     />
   );
 }

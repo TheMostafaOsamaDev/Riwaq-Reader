@@ -20,7 +20,7 @@ import * as store from "../../store/androidUpdate";
 import { THEMES } from "../../styles/tokens";
 import { MobileBottomNav } from "../library/MobileBottomNav";
 import { SettingsUpdateCard } from "./SettingsUpdateCard";
-import { UpdatePill } from "./UpdatePill";
+import { ManualUpdateBanner, UpdatePill } from "./UpdatePill";
 import { UpdateSheet, UpdateToasts } from "./UpdateSheet";
 
 (
@@ -28,6 +28,12 @@ import { UpdateSheet, UpdateToasts } from "./UpdateSheet";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 interface Fake {
+  /** install_source rejects (Kotlin threw): the manual channel. */
+  sourceFails?: boolean;
+  /** While set, install_source waits for it. */
+  sourceGate?: Promise<void>;
+  /** fetch_apk_details rejects (GitHub unreachable). */
+  apkFails?: boolean;
   installer: string;
   label: string;
   storeInstalled: boolean;
@@ -56,17 +62,23 @@ function fake(over: Partial<Fake> = {}): Fake {
   };
   h.invoke.mockImplementation((cmd) => {
     switch (cmd) {
-      case "install_source":
-        return JSON.stringify({
-          installer: f.installer,
-          label: f.label,
-          storeInstalled: f.storeInstalled,
-        });
+      case "install_source": {
+        const json = () => {
+          if (f.sourceFails) throw new Error("lookup failed");
+          return JSON.stringify({
+            installer: f.installer,
+            label: f.label,
+            storeInstalled: f.storeInstalled,
+          });
+        };
+        return f.sourceGate ? f.sourceGate.then(json) : json();
+      }
       case "android_update_status":
         return JSON.stringify({ bytes: 0, total: 0, error: null, ...f.status });
       case "fetch_release_notes":
         return { notes: NOTES };
       case "fetch_apk_details":
+        if (f.apkFails) throw new Error("offline");
         return {
           url: "https://x/a.apk",
           sha256: "ab".repeat(32),
@@ -281,6 +293,18 @@ describe("UpdatePill", () => {
     expect(store.getState().sheet).toBe("notes");
   });
 
+  // happy-dom drops env() from inline styles, so the offset itself is checked
+  // in the screenshot pass; this pins which placement each layout gets.
+  it("sits above the bottom bar on the phone, near the edge on a wide layout", async () => {
+    await setup();
+    await render(<UpdatePill theme={THEMES.sepia} />);
+    expect(document.querySelector("button")?.dataset.layout).toBe("mobile");
+    await act(async () => root?.unmount());
+    document.body.innerHTML = "";
+    await render(<UpdatePill theme={THEMES.sepia} layout="desktop" />);
+    expect(document.querySelector("button")?.dataset.layout).toBe("desktop");
+  });
+
   it("is absent for a store-managed install", async () => {
     await setup({
       installer: "org.fdroid.fdroid",
@@ -391,5 +415,125 @@ describe("SettingsUpdateCard", () => {
     );
     await act(async () => button("Download from GitHub")?.click());
     expect(onOpenUrl).toHaveBeenCalled();
+  });
+});
+
+describe("channel loading (no offer needed)", () => {
+  it("managed: the Settings line shows with no update offered", async () => {
+    fake({
+      installer: "org.fdroid.fdroid",
+      label: "F-Droid",
+      storeInstalled: true,
+    });
+    await act(async () => {
+      await store.loadChannel();
+    });
+    expect(store.getState().offer).toBeNull();
+    await render(
+      <SettingsUpdateCard theme={THEMES.sepia} onOpenUrl={() => {}} />,
+    );
+    expect(text()).toContain("Updates for this install come from F-Droid.");
+  });
+
+  it("reads install_source once, however often it is asked", async () => {
+    fake();
+    await act(async () => {
+      await Promise.all([store.loadChannel(), store.loadChannel()]);
+      await store.offer({ version: "0.6.0" });
+    });
+    expect(
+      h.invoke.mock.calls.filter(([c]) => c === "install_source"),
+    ).toHaveLength(1);
+  });
+});
+
+describe("ManualUpdateBanner (Android, install source unknown)", () => {
+  const info = { version: "0.6.0", channel: "manual" as const };
+  const banner = () =>
+    render(
+      <ManualUpdateBanner
+        info={info}
+        theme={THEMES.sepia}
+        onDismiss={() => {}}
+      />,
+    );
+
+  it("a failed lookup is the manual channel: the old release-page banner", async () => {
+    await setup({ sourceFails: true });
+    expect(store.getState().channel).toEqual({ kind: "manual" });
+    await banner();
+    expect(text()).toContain("Riwaq 0.6.0 is available");
+    expect(button("Download")).toBeTruthy();
+  });
+
+  it("nothing while the lookup is still out, and no pill either", async () => {
+    let open!: () => void;
+    const sourceGate = new Promise<void>((r) => {
+      open = r;
+    });
+    fake({ sourceGate });
+    store.configure({
+      running: "0.5.3",
+      skipped: undefined,
+      pref: "ask",
+      saveSkipped: () => {},
+    });
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = store.offer({ version: "0.6.0" });
+    });
+    expect(store.getState().channel).toBeNull();
+    await banner();
+    await render(<UpdatePill theme={THEMES.sepia} />);
+    expect(text()).not.toContain("0.6.0");
+    await act(async () => {
+      open();
+      await pending;
+    });
+  });
+
+  it("an in-app install never gets the banner", async () => {
+    await setup();
+    await banner();
+    expect(text()).not.toContain("Riwaq 0.6.0 is available");
+  });
+});
+
+describe("failure and live-region details", () => {
+  it("APK details unreachable: the offline copy with no percentage", async () => {
+    await setup({ apkFails: true });
+    await sheet();
+    await act(async () => {
+      await store.startDownload({ allowMetered: true });
+    });
+    expect(store.getState().sheet).toBe("failed");
+    expect(text()).toContain("Couldn't reach GitHub.");
+    expect(text()).not.toContain("dropped at");
+    expect(button("Try again")).toBeTruthy();
+  });
+
+  it("polls do not re-announce: no percentage or MB inside a live region", async () => {
+    await setup({
+      status: {
+        state: "downloading",
+        version: "0.6.0",
+        bytes: 5_242_880,
+        total: 19_230_841,
+      },
+    });
+    await render(
+      <>
+        <UpdatePill theme={THEMES.sepia} />
+        <UpdateSheet theme={THEMES.sepia} />
+      </>,
+    );
+    await act(async () => store.openSheet("progress"));
+    expect(text()).toContain("Downloading · 27%");
+    expect(text()).toContain("5.0 of 18.3 MB");
+    const live = [...document.querySelectorAll('[aria-live="polite"]')]
+      .map((e) => e.textContent ?? "")
+      .join("|");
+    expect(live).not.toMatch(/\d+%/);
+    expect(live).not.toContain("of 18.3 MB");
   });
 });

@@ -50,8 +50,10 @@ export interface ApkDetails {
 export interface AndroidUpdateState {
   offer: { version: string } | null;
   native: NativeStatus;
-  /** "manual" until install_source answers: no pill before we know. */
-  channel: AndroidChannel;
+  /** null until install_source answers (no pill, no banner before we
+   *  know); "manual" when the lookup failed, which App answers with the old
+   *  release-page banner. */
+  channel: AndroidChannel | null;
   sheet: Sheet;
   toast: "later" | "skipped" | null;
   /** "Later" was tapped: the pill hides for this session, the dot stays. */
@@ -81,7 +83,7 @@ function initial(): AndroidUpdateState {
   return {
     offer: null,
     native: IDLE,
-    channel: { kind: "manual" },
+    channel: null,
     sheet: "closed",
     toast: null,
     later: false,
@@ -101,7 +103,8 @@ let saveSkipped: (v: string | undefined) => void = () => {};
 /** The skip that "Undo" puts back (usually undefined). */
 let skipBeforeUndo: string | undefined;
 let notesFor: string | null = null;
-let channelLoaded = false;
+/** The one install_source read, shared by every caller. */
+let channelLoad: Promise<void> | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let listening = false;
 /** Bumped by every user action and every new offer. A status read begun
@@ -144,7 +147,8 @@ export function flowInput(s: AndroidUpdateState): FlowInput {
     native: s.native,
     skipped: s.skipped,
     laterThisSession: s.later,
-    channel: s.channel.kind,
+    // Not loaded yet reads as manual: pillFor and attentionDot show nothing.
+    channel: s.channel?.kind ?? "manual",
   };
 }
 
@@ -302,6 +306,18 @@ function reconcileSkip() {
   }
 }
 
+/** Who updates this install, read once. App calls it after paint on
+ *  Android so Settings can say "Updates come from F-Droid" with no update
+ *  offered; offer() reuses the same read. */
+export function loadChannel(): Promise<void> {
+  if (!channelLoad) {
+    channelLoad = readInstallSource().then((src) =>
+      setState({ channel: androidChannel(src) }),
+    );
+  }
+  return channelLoad;
+}
+
 /** What useUpdateCheck found. Idempotent for the same version. */
 export async function offer(info: { version: string } | null): Promise<void> {
   if (!info) return;
@@ -313,15 +329,7 @@ export async function offer(info: { version: string } | null): Promise<void> {
   reconcileSkip();
   // First: a file left for an older offer is deleted before anything else.
   await refresh();
-  const work: Promise<unknown>[] = [];
-  if (!channelLoaded) {
-    channelLoaded = true;
-    work.push(
-      readInstallSource().then((src) =>
-        setState({ channel: androidChannel(src) }),
-      ),
-    );
-  }
+  const work: Promise<unknown>[] = [loadChannel()];
   if (notesFor !== info.version) {
     notesFor = info.version;
     const v = info.version;
@@ -404,11 +412,11 @@ export async function startDownload(
 ): Promise<void> {
   const version = state.offer?.version;
   if (!version) return;
-  if (state.channel.kind === "store-assisted") {
+  if (state.channel?.kind === "store-assisted") {
     await openStoreApp();
     return;
   }
-  if (state.channel.kind !== "in-app" || starting) return;
+  if (state.channel?.kind !== "in-app" || starting) return;
   starting = true;
   try {
     await start(version, opts);
@@ -508,6 +516,7 @@ export async function retry(): Promise<void> {
  *  managed store's "Open F-Droid"). */
 export async function openStoreApp(): Promise<void> {
   const c = state.channel;
+  if (!c) return;
   if (c.kind !== "store-assisted" && c.kind !== "managed") return;
   await call("open_store", { pkg: c.pkg });
 }
@@ -525,7 +534,7 @@ export function __resetForTests(): void {
   saveSkipped = () => {};
   skipBeforeUndo = undefined;
   notesFor = null;
-  channelLoaded = false;
+  channelLoad = null;
   generation = 0;
   starting = false;
 }

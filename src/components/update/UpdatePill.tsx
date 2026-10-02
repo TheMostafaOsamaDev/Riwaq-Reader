@@ -17,7 +17,41 @@ import {
   TOUCH_TARGET_MIN,
   Z,
 } from "../../styles/tokens";
+import type { CSSProperties } from "react";
+import type { UpdateInfo } from "../../store/updates";
 import { Icon } from "../Icon";
+import { UpdateBanner } from "../UpdateBanner";
+
+/** Read by screen readers, never drawn. */
+export const VISUALLY_HIDDEN: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
+/** Android, when install_source could not be read (the manual channel):
+ *  the old behaviour, the release-page banner. Nothing while the lookup is
+ *  still out, and nothing for any channel the pill or the store covers. Its
+ *  own component so App does not re-render on every status poll. */
+export function ManualUpdateBanner({
+  info,
+  theme,
+  onDismiss,
+}: {
+  info: UpdateInfo;
+  theme: Theme;
+  onDismiss: () => void;
+}) {
+  const s = useAndroidUpdate();
+  if (s.channel?.kind !== "manual") return null;
+  return <UpdateBanner info={info} theme={theme} onDismiss={onDismiss} />;
+}
 
 const SHEET_FOR: Record<NonNullable<Pill>["kind"], Exclude<Sheet, "closed">> = {
   available: "notes",
@@ -54,7 +88,15 @@ function Ring({ pct, theme }: { pct: number; theme: Theme }) {
   );
 }
 
-export function UpdatePill({ theme }: { theme: Theme }) {
+export function UpdatePill({
+  theme,
+  layout = "mobile",
+}: {
+  theme: Theme;
+  /** "mobile" sits above MobileBottomNav; "desktop" (a wide Android layout,
+   *  no bottom bar) sits near the bottom edge. */
+  layout?: "mobile" | "desktop";
+}) {
   const { tr } = useI18n();
   const s = useAndroidUpdate();
   const pill = pillFor(flowInput(s));
@@ -72,14 +114,22 @@ export function UpdatePill({ theme }: { theme: Theme }) {
             ? tr("update.pill.ready", { v })
             : tr("update.pill.failed");
   const quiet = pill.kind === "waiting";
+  // What a screen reader hears: the state, not the percentage. The visible
+  // label changes on every 500 ms poll while downloading; announcing each
+  // tick would talk over the book.
+  const announce = pill.kind === "progress" ? tr("update.downloading") : label;
   return (
     <button
       type="button"
       onClick={() => openSheet(SHEET_FOR[pill.kind])}
       className="riwaq-update-pill"
+      data-layout={layout}
       style={{
         position: "fixed",
-        bottom: "calc(76px + env(safe-area-inset-bottom, 0px))",
+        bottom:
+          layout === "mobile"
+            ? "calc(76px + env(safe-area-inset-bottom, 0px))"
+            : "calc(24px + env(safe-area-inset-bottom, 0px))",
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: Z.banner,
@@ -119,8 +169,11 @@ export function UpdatePill({ theme }: { theme: Theme }) {
           stroke={2.2}
         />
       )}
+      <span aria-live="polite" style={VISUALLY_HIDDEN}>
+        {announce}
+      </span>
       <span
-        aria-live="polite"
+        aria-hidden="true"
         style={{
           overflow: "hidden",
           textOverflow: "ellipsis",

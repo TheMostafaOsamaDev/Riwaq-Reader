@@ -1014,6 +1014,8 @@ export const en = {
   "update.fail.title": "The download didn't finish",
   "update.fail.offline":
     "Your connection dropped at {p}%. Nothing was changed. Riwaq will pick up where it stopped.",
+  "update.fail.offlineStart":
+    "Couldn't reach GitHub. Check your connection and try again.",
   "update.fail.checksum":
     "The file didn't match what was published, so it was deleted.",
   "update.fail.signature":
