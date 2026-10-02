@@ -18,12 +18,16 @@
 // it after paint with configure() and offer(). The webview never fetches the
 // network: the plugin and the fetch_release_notes command do.
 
-import { useSyncExternalStore } from "react";
 import { ARM_MS } from "../hooks/useArmed";
 import { fetchNotes } from "./fetchNotes";
 import type { ReleaseNotes } from "./releaseNotes";
-import { clearSkip } from "./updateFlow";
 import { RELEASES_PAGE_URL, type UpdateInfo } from "./updates";
+import {
+  createSkip,
+  createStore,
+  type SkipFields,
+  showToast,
+} from "./updateStore";
 import { isNewerVersion } from "./updateVersion";
 
 export type DesktopPhase =
@@ -38,19 +42,16 @@ export type DesktopPhase =
 export type DesktopDialog = "closed" | "notes" | "progress" | "failed";
 export type FailReason = "unavailable" | "download" | "install";
 
-export interface DesktopUpdateState {
+export interface DesktopUpdateState extends SkipFields {
   offer: { version: string; channel: UpdateInfo["channel"] } | null;
   phase: DesktopPhase;
   bytes: number;
   total: number;
   reason: FailReason | null;
   dialog: DesktopDialog;
-  toast: "later" | "skipped" | null;
   /** "Later" was clicked: the card hides for this session, the dot shows. */
   later: boolean;
   notes: { notes: ReleaseNotes | null; highlightImage?: string } | null;
-  running: string;
-  skipped: string | undefined;
 }
 
 export type Card =
@@ -70,6 +71,7 @@ function initial(): DesktopUpdateState {
     reason: null,
     dialog: "closed",
     toast: null,
+    toastSeq: 0,
     later: false,
     notes: null,
     running: "",
@@ -89,11 +91,9 @@ type DownloadEvent =
   | { event: "Progress"; data: { chunkLength: number } }
   | { event: "Finished" };
 
-let state: DesktopUpdateState = initial();
-type Listener = (s: DesktopUpdateState) => void;
-const listeners = new Set<Listener>();
-let saveSkipped: (v: string | undefined) => void = () => {};
-let skipBeforeUndo: string | undefined;
+const store = createStore(initial);
+const setState = store.set;
+const skips = createSkip(store);
 let notesFor: string | null = null;
 /** The downloaded Update, kept for install(). */
 let pending: PluginUpdate | null = null;
@@ -119,29 +119,14 @@ function resetIdle() {
     total: 0,
     reason: null,
     // The progress or failed dialog would describe a download that is gone.
-    dialog: state.dialog === "notes" ? "notes" : "closed",
+    dialog: store.state.dialog === "notes" ? "notes" : "closed",
   });
 }
 
-function setState(patch: Partial<DesktopUpdateState>) {
-  state = { ...state, ...patch };
-  for (const l of listeners) l(state);
-}
-
-export function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function getState(): DesktopUpdateState {
-  return state;
-}
-
-export function useDesktopUpdate(): DesktopUpdateState {
-  return useSyncExternalStore(subscribe, getState, getState);
-}
+export const { subscribe, getState } = store;
+export const useDesktopUpdate = store.use;
+/** One derived value (e.g. dotFor): re-renders only when it changes. */
+export const useDesktopUpdateSelect = store.useSelect;
 
 // ── derived ────────────────────────────────────────────────────────────────
 
@@ -193,20 +178,11 @@ export function configure(c: {
   skipped: string | undefined;
   saveSkipped: (v: string | undefined) => void;
 }): void {
-  saveSkipped = c.saveSkipped;
-  if (c.running !== state.running || c.skipped !== state.skipped) {
+  skips.setSave(c.saveSkipped);
+  if (c.running !== store.state.running || c.skipped !== store.state.skipped) {
     setState({ running: c.running, skipped: c.skipped });
   }
-  reconcileSkip();
-}
-
-/** The shared rule: a skip covers one version only. */
-function reconcileSkip() {
-  if (!state.running) return;
-  if (clearSkip(state.skipped, state.offer?.version ?? null, state.running)) {
-    setState({ skipped: undefined });
-    saveSkipped(undefined);
-  }
+  skips.reconcile();
 }
 
 async function tauriInvoke(cmd: string, args: Record<string, unknown>) {
@@ -219,10 +195,10 @@ async function tauriInvoke(cmd: string, args: Record<string, unknown>) {
 export async function offer(info: UpdateInfo | null): Promise<void> {
   if (!info) return;
   const same =
-    state.offer?.version === info.version &&
-    state.offer.channel === info.channel;
+    store.state.offer?.version === info.version &&
+    store.state.offer.channel === info.channel;
   if (!same) {
-    const newVersion = state.offer?.version !== info.version;
+    const newVersion = store.state.offer?.version !== info.version;
     setState({ offer: { version: info.version, channel: info.channel } });
     if (newVersion) {
       generation++;
@@ -236,12 +212,12 @@ export async function offer(info: UpdateInfo | null): Promise<void> {
       if (!busy) resetIdle();
     }
   }
-  reconcileSkip();
+  skips.reconcile();
   if (notesFor !== info.version) {
     notesFor = info.version;
     const v = info.version;
     const notes = await fetchNotes(tauriInvoke, v);
-    if (state.offer?.version === v) setState({ notes });
+    if (store.state.offer?.version === v) setState({ notes });
   }
 }
 
@@ -260,22 +236,21 @@ export function dismissToast(): void {
 }
 
 export function later(): void {
-  setState({ later: true, dialog: "closed", toast: "later" });
+  setState({
+    later: true,
+    dialog: "closed",
+    ...showToast(store.state, "later"),
+  });
 }
 
 export function skip(): void {
-  const v = state.offer?.version;
+  const v = store.state.offer?.version;
   if (!v) return;
-  skipBeforeUndo = state.skipped;
-  setState({ skipped: v, dialog: "closed", toast: "skipped" });
-  saveSkipped(v);
+  skips.skip(v, { dialog: "closed" });
 }
 
 export function undoSkip(): void {
-  const prev = skipBeforeUndo;
-  skipBeforeUndo = undefined;
-  setState({ skipped: prev, toast: null });
-  saveSkipped(prev);
+  skips.undo();
 }
 
 export async function openReleasePage(): Promise<void> {
@@ -302,7 +277,8 @@ function onEvent(gen: number) {
       counted += e.data.chunkLength;
       // A render per 0.1 MB, which is what the card can show.
       if (
-        Math.floor(counted / MB_TENTH) !== Math.floor(state.bytes / MB_TENTH)
+        Math.floor(counted / MB_TENTH) !==
+        Math.floor(store.state.bytes / MB_TENTH)
       ) {
         setState({ bytes: counted });
       }
@@ -314,20 +290,25 @@ function fail(reason: FailReason) {
   setState({
     phase: "failed",
     reason,
-    dialog: state.dialog === "closed" ? "closed" : "failed",
+    dialog: store.state.dialog === "closed" ? "closed" : "failed",
   });
 }
 
 /** The primary button: Update (auto) or Download (manual). Also "Try again".
  *  A second press while one is under way does nothing. */
 export async function update(): Promise<void> {
-  const offered = state.offer;
-  if (!offered || !pendingVersion(state)) return;
+  const offered = store.state.offer;
+  if (!offered || !pendingVersion(store.state)) return;
   if (offered.channel === "manual") {
     await openReleasePage();
     return;
   }
-  if (busy || state.phase === "ready" || state.phase === "installing") return;
+  if (
+    busy ||
+    store.state.phase === "ready" ||
+    store.state.phase === "installing"
+  )
+    return;
   busy = true;
   const gen = generation;
   counted = 0;
@@ -336,7 +317,7 @@ export async function update(): Promise<void> {
     bytes: 0,
     total: 0,
     reason: null,
-    dialog: state.dialog === "closed" ? "closed" : "progress",
+    dialog: store.state.dialog === "closed" ? "closed" : "progress",
   });
   try {
     const { check } = await import("@tauri-apps/plugin-updater");
@@ -372,7 +353,7 @@ export async function update(): Promise<void> {
     setState({
       phase: "ready",
       bytes: counted,
-      dialog: state.dialog === "progress" ? "closed" : state.dialog,
+      dialog: store.state.dialog === "progress" ? "closed" : store.state.dialog,
     });
   } catch {
     if (gen === generation) fail("unavailable");
@@ -384,7 +365,11 @@ export async function update(): Promise<void> {
 
 /** "Restart now". Never called by anything but the user. */
 export async function restart(): Promise<void> {
-  if (state.offer?.channel !== "auto" || state.phase !== "ready" || busy) {
+  if (
+    store.state.offer?.channel !== "auto" ||
+    store.state.phase !== "ready" ||
+    busy
+  ) {
     return;
   }
   // Defence in depth, behind the armed buttons: a restart asked for within
@@ -425,10 +410,8 @@ export async function restart(): Promise<void> {
 
 /** Test-only: back to a fresh module. */
 export function __resetForTests(): void {
-  listeners.clear();
-  state = initial();
-  saveSkipped = () => {};
-  skipBeforeUndo = undefined;
+  store.reset();
+  skips.reset();
   notesFor = null;
   pending = null;
   generation = 0;

@@ -17,13 +17,11 @@
 // next launch's cleanup.
 
 import { invoke } from "@tauri-apps/api/core";
-import { useSyncExternalStore } from "react";
 import { fetchNotes } from "./fetchNotes";
 import type { ReleaseNotes } from "./releaseNotes";
 import {
   type AndroidChannel,
   androidChannel,
-  clearSkip,
   decideStart,
   type FlowInput,
   type InstallSource,
@@ -31,6 +29,12 @@ import {
   type NativeStatus,
   parseNativeStatus,
 } from "./updateFlow";
+import {
+  createSkip,
+  createStore,
+  type SkipFields,
+  showToast,
+} from "./updateStore";
 
 export type Sheet =
   | "closed"
@@ -47,7 +51,7 @@ export interface ApkDetails {
   size: number;
 }
 
-export interface AndroidUpdateState {
+export interface AndroidUpdateState extends SkipFields {
   offer: { version: string } | null;
   native: NativeStatus;
   /** null until install_source answers (no pill, no banner before we
@@ -55,7 +59,6 @@ export interface AndroidUpdateState {
    *  release-page banner. */
   channel: AndroidChannel | null;
   sheet: Sheet;
-  toast: "later" | "skipped" | null;
   /** "Later" was tapped: the pill hides for this session, the dot stays. */
   later: boolean;
   notes: { notes: ReleaseNotes | null; highlightImage?: string } | null;
@@ -63,10 +66,8 @@ export interface AndroidUpdateState {
   /** The APK's details could not be fetched, so nothing was started. The
    *  failed sheet shows this in place of native.error (same vocabulary). */
   fetchError: "offline" | null;
-  /** From configure(): the running app version, the stored skip, and the
-   *  "Over mobile data" setting. */
-  running: string;
-  skipped: string | undefined;
+  /** From configure(), with `running` and `skipped`: the "Over mobile
+   *  data" setting. */
   pref: MobilePref;
 }
 
@@ -86,6 +87,7 @@ function initial(): AndroidUpdateState {
     channel: null,
     sheet: "closed",
     toast: null,
+    toastSeq: 0,
     later: false,
     notes: null,
     apk: null,
@@ -96,12 +98,9 @@ function initial(): AndroidUpdateState {
   };
 }
 
-let state: AndroidUpdateState = initial();
-type Listener = (s: AndroidUpdateState) => void;
-const listeners = new Set<Listener>();
-let saveSkipped: (v: string | undefined) => void = () => {};
-/** The skip that "Undo" puts back (usually undefined). */
-let skipBeforeUndo: string | undefined;
+const store = createStore(initial);
+const setState = store.set;
+const skips = createSkip(store);
 let notesFor: string | null = null;
 /** The one install_source read, shared by every caller. */
 let channelLoad: Promise<void> | null = null;
@@ -118,28 +117,13 @@ function bump() {
   generation++;
 }
 
-function setState(patch: Partial<AndroidUpdateState>) {
-  // A fresh object every time: useSyncExternalStore compares by identity.
-  state = { ...state, ...patch };
-  for (const l of listeners) l(state);
-}
+export const { subscribe, getState } = store;
+export const useAndroidUpdate = store.use;
+/** One derived value (e.g. the Settings dot): re-renders only when it
+ *  changes, not on every status poll. */
+export const useAndroidUpdateSelect = store.useSelect;
 
-export function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function getState(): AndroidUpdateState {
-  return state;
-}
-
-export function useAndroidUpdate(): AndroidUpdateState {
-  return useSyncExternalStore(subscribe, getState, getState);
-}
-
-/** The inputs pillFor / attentionDot take, from a store state. */
+/** The inputs pillFor / attentionDot take, from a store store.state. */
 export function flowInput(s: AndroidUpdateState): FlowInput {
   return {
     offered: s.offer?.version ?? null,
@@ -204,7 +188,7 @@ async function call(cmd: string, args?: Record<string, unknown>) {
 }
 
 function isStale(native: NativeStatus): boolean {
-  const offered = state.offer?.version;
+  const offered = store.state.offer?.version;
   return (
     offered !== undefined &&
     native.version !== undefined &&
@@ -240,7 +224,7 @@ function visible(): boolean {
  *  has settled (refresh() ends by calling this again), so a slow status
  *  call never stacks reads behind it. */
 function syncPolling() {
-  const want = ACTIVE.has(state.native.state) && visible();
+  const want = ACTIVE.has(store.state.native.state) && visible();
   if (want && !timer) {
     timer = setTimeout(() => {
       timer = null;
@@ -262,7 +246,7 @@ async function onVisibility() {
   // "Riwaq continues automatically": back from Android's install-permission
   // screen with the switch now on, carry straight on to the install.
   if (
-    state.sheet === "permission" &&
+    store.state.sheet === "permission" &&
     (await ask("android_update_can_install", false))
   ) {
     await install();
@@ -285,25 +269,15 @@ export function configure(c: {
   pref: MobilePref;
   saveSkipped: (v: string | undefined) => void;
 }): void {
-  saveSkipped = c.saveSkipped;
+  skips.setSave(c.saveSkipped);
   if (
-    c.running !== state.running ||
-    c.skipped !== state.skipped ||
-    c.pref !== state.pref
+    c.running !== store.state.running ||
+    c.skipped !== store.state.skipped ||
+    c.pref !== store.state.pref
   ) {
     setState({ running: c.running, skipped: c.skipped, pref: c.pref });
   }
-  reconcileSkip();
-}
-
-/** A skip covers one version: drop it once something newer is offered or
- *  the device is already at or past it. */
-function reconcileSkip() {
-  if (!state.running) return;
-  if (clearSkip(state.skipped, state.offer?.version ?? null, state.running)) {
-    setState({ skipped: undefined });
-    saveSkipped(undefined);
-  }
+  skips.reconcile();
 }
 
 /** Who updates this install, read once. App calls it after paint on
@@ -322,11 +296,11 @@ export function loadChannel(): Promise<void> {
 export async function offer(info: { version: string } | null): Promise<void> {
   if (!info) return;
   listen();
-  if (state.offer?.version !== info.version) {
+  if (store.state.offer?.version !== info.version) {
     bump();
     setState({ offer: { version: info.version }, apk: null, fetchError: null });
   }
-  reconcileSkip();
+  skips.reconcile();
   // First: a file left for an older offer is deleted before anything else.
   await refresh();
   // The notes and the APK's size exist for the pill, the sheet and the
@@ -335,7 +309,7 @@ export async function offer(info: { version: string } | null): Promise<void> {
   // three files from the release for nothing, once a day: say nothing, ask
   // nothing.
   await loadChannel();
-  const kind = state.channel?.kind;
+  const kind = store.state.channel?.kind;
   if (kind !== "in-app" && kind !== "store-assisted") return;
   const work: Promise<unknown>[] = [];
   if (notesFor !== info.version) {
@@ -343,13 +317,13 @@ export async function offer(info: { version: string } | null): Promise<void> {
     const v = info.version;
     work.push(
       fetchNotes(invoke as never, v).then((notes) => {
-        if (state.offer?.version === v) setState({ notes });
+        if (store.state.offer?.version === v) setState({ notes });
       }),
     );
   }
   // The size, for the sheet's "Update · 19 MB". Not fatal: startDownload
   // asks again.
-  if (!state.apk) work.push(loadApk(info.version));
+  if (!store.state.apk) work.push(loadApk(info.version));
   await Promise.all(work);
 }
 
@@ -368,7 +342,7 @@ async function loadApk(version: string): Promise<ApkDetails | null> {
       return null;
     }
     const apk = { url: r.url, sha256: r.sha256, size: r.size };
-    if (state.offer?.version === version) setState({ apk });
+    if (store.state.offer?.version === version) setState({ apk });
     return apk;
   } catch {
     return null;
@@ -390,14 +364,16 @@ export function dismissToast(): void {
 }
 
 export function later(): void {
-  setState({ later: true, sheet: "closed", toast: "later" });
+  setState({
+    later: true,
+    sheet: "closed",
+    ...showToast(store.state, "later"),
+  });
 }
 
 export async function skip(version: string): Promise<void> {
   bump();
-  skipBeforeUndo = state.skipped;
-  setState({ skipped: version, sheet: "closed", toast: "skipped" });
-  saveSkipped(version);
+  skips.skip(version, { sheet: "closed" });
   // Now, not next launch: the APK and any install session go at once.
   await call("android_update_cancel");
   await refresh();
@@ -406,10 +382,7 @@ export async function skip(version: string): Promise<void> {
 /** Puts the offer back. Nothing is downloaded again until the user asks. */
 export function undoSkip(): void {
   bump();
-  const prev = skipBeforeUndo;
-  skipBeforeUndo = undefined;
-  setState({ skipped: prev, toast: null });
-  saveSkipped(prev);
+  skips.undo();
 }
 
 /** The primary button. `allowMetered` is "Update anyway"; `waitForWifi` is
@@ -418,13 +391,13 @@ export function undoSkip(): void {
 export async function startDownload(
   opts: { allowMetered?: boolean; waitForWifi?: boolean } = {},
 ): Promise<void> {
-  const version = state.offer?.version;
+  const version = store.state.offer?.version;
   if (!version) return;
-  if (state.channel?.kind === "store-assisted") {
+  if (store.state.channel?.kind === "store-assisted") {
     await openStoreApp();
     return;
   }
-  if (state.channel?.kind !== "in-app" || starting) return;
+  if (store.state.channel?.kind !== "in-app" || starting) return;
   starting = true;
   try {
     await start(version, opts);
@@ -436,7 +409,9 @@ export async function startDownload(
 /** After every await: has the user since skipped this version, or has a
  *  newer offer replaced it? Then the start they asked for no longer stands. */
 function stillWanted(version: string): boolean {
-  return state.offer?.version === version && state.skipped !== version;
+  return (
+    store.state.offer?.version === version && store.state.skipped !== version
+  );
 }
 
 async function start(
@@ -449,7 +424,7 @@ async function start(
     // Unknown counts as metered: the cost of a wrong guess is one tap.
     const metered = await ask("android_network_metered", true);
     if (!stillWanted(version)) return;
-    const d = decideStart({ metered, pref: state.pref });
+    const d = decideStart({ metered, pref: store.state.pref });
     if (d === "ask") {
       setState({ sheet: "mobile" });
       return;
@@ -513,7 +488,10 @@ export async function openPermission(): Promise<void> {
  *  kept); anything else starts the download again, which resumes from the
  *  byte it stopped at, or starts fresh if the file was deleted. */
 export async function retry(): Promise<void> {
-  if (state.native.state === "failed" && state.native.error === "install") {
+  if (
+    store.state.native.state === "failed" &&
+    store.state.native.error === "install"
+  ) {
     await install();
     return;
   }
@@ -523,7 +501,7 @@ export async function retry(): Promise<void> {
 /** Open the store app that manages this install (Orion, Obtainium, or a
  *  managed store's "Open F-Droid"). */
 export async function openStoreApp(): Promise<void> {
-  const c = state.channel;
+  const c = store.state.channel;
   if (!c) return;
   if (c.kind !== "store-assisted" && c.kind !== "managed") return;
   await call("open_store", { pkg: c.pkg });
@@ -537,10 +515,8 @@ export function __resetForTests(): void {
     document.removeEventListener("visibilitychange", onVisibility);
   }
   listening = false;
-  listeners.clear();
-  state = initial();
-  saveSkipped = () => {};
-  skipBeforeUndo = undefined;
+  store.reset();
+  skips.reset();
   notesFor = null;
   channelLoad = null;
   generation = 0;
