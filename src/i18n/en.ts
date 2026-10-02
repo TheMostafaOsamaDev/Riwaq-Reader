@@ -1035,6 +1035,8 @@ export const en = {
   "update.manualBody":
     "This install (.deb/.rpm) can't update itself. Download the new package and install it as usual.",
   "update.keepReading": "Keep reading. Riwaq tells you when it's ready.",
+  "update.restartManually":
+    "The update is installed. Quit and reopen Riwaq to finish.",
   "settings.updates.overMobile": "Over mobile data",
   "settings.updates.mobileAsk": "Ask first",
   "settings.updates.mobileAlways": "Always",

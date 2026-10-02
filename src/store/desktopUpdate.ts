@@ -30,6 +30,9 @@ export type DesktopPhase =
   | "downloading"
   | "ready"
   | "installing"
+  /** install() succeeded but relaunch() did not: the new version is on disk
+   *  and needs the user to quit and reopen. Not a failure. */
+  | "installed"
   | "failed";
 export type DesktopDialog = "closed" | "notes" | "progress" | "failed";
 export type FailReason = "unavailable" | "download" | "install";
@@ -53,6 +56,7 @@ export type Card =
   | { kind: "available" }
   | { kind: "downloading"; bytes: number; total: number }
   | { kind: "ready" }
+  | { kind: "installed" }
   | { kind: "failed" }
   | null;
 
@@ -97,6 +101,25 @@ let generation = 0;
 /** A download or an install is between its first await and its end. */
 let busy = false;
 
+/** Let go of the downloaded Update, releasing the plugin's resource. */
+function dropPending() {
+  const old = pending;
+  pending = null;
+  void old?.close().catch(() => {});
+}
+
+/** Back to an untouched offer: what a superseded download ends in. */
+function resetIdle() {
+  setState({
+    phase: "idle",
+    bytes: 0,
+    total: 0,
+    reason: null,
+    // The progress or failed dialog would describe a download that is gone.
+    dialog: state.dialog === "notes" ? "notes" : "closed",
+  });
+}
+
 function setState(patch: Partial<DesktopUpdateState>) {
   state = { ...state, ...patch };
   for (const l of listeners) l(state);
@@ -137,6 +160,8 @@ export function cardFor(s: DesktopUpdateState): Card {
     case "ready":
     case "installing":
       return { kind: "ready" };
+    case "installed":
+      return { kind: "installed" };
     case "failed":
       return { kind: "failed" };
     default:
@@ -200,18 +225,12 @@ export async function offer(info: UpdateInfo | null): Promise<void> {
       generation++;
       // A file downloaded for the older offer is superseded. A download
       // still running cannot be stopped; its result is dropped when it ends.
-      if (!busy) {
-        void pending?.close().catch(() => {});
-        pending = null;
-        setState({
-          phase: "idle",
-          bytes: 0,
-          total: 0,
-          reason: null,
-          later: false,
-          notes: null,
-        });
-      }
+      // Not mid-install: install() may be using it.
+      if (!busy) dropPending();
+      setState({ later: false, notes: null });
+      // A download still running for the older offer is left to end; it
+      // finds its generation stale and resets to idle then (see update()).
+      if (!busy) resetIdle();
     }
   }
   reconcileSkip();
@@ -319,7 +338,12 @@ export async function update(): Promise<void> {
   try {
     const { check } = await import("@tauri-apps/plugin-updater");
     const u = (await check()) as PluginUpdate | null;
-    if (gen !== generation) return;
+    if (gen !== generation) {
+      // Superseded by a newer offer while checking: offer that one.
+      void u?.close().catch(() => {});
+      resetIdle();
+      return;
+    }
     if (!u) {
       // The manifest offered a version the plugin then declined (a platform
       // key we do not publish, a signature it would not accept).
@@ -329,13 +353,17 @@ export async function update(): Promise<void> {
     try {
       await u.download(onEvent(gen));
     } catch {
+      void u.close().catch(() => {});
       if (gen === generation) fail("download");
+      else resetIdle();
       return;
     }
     if (gen !== generation) {
       void u.close().catch(() => {});
+      resetIdle();
       return;
     }
+    if (pending !== u) dropPending();
     pending = u;
     setState({
       phase: "ready",
@@ -344,6 +372,7 @@ export async function update(): Promise<void> {
     });
   } catch {
     if (gen === generation) fail("unavailable");
+    else resetIdle();
   } finally {
     busy = false;
   }
@@ -370,7 +399,7 @@ export async function restart(): Promise<void> {
       await u.downloadAndInstall();
     }
   } catch {
-    pending = null;
+    dropPending();
     fail("install");
     return;
   } finally {
@@ -380,7 +409,9 @@ export async function restart(): Promise<void> {
     const { relaunch } = await import("@tauri-apps/plugin-process");
     await relaunch();
   } catch {
-    fail("install");
+    // The new version is installed; only the restart did not happen. Saying
+    // "nothing was changed" here would be false.
+    setState({ phase: "installed" });
   }
 }
 

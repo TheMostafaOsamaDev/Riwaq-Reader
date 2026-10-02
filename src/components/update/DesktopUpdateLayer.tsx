@@ -13,6 +13,7 @@ import {
   later,
   openDialog,
   openReleasePage,
+  restart,
   skip,
   undoSkip,
   update,
@@ -166,6 +167,55 @@ export function DesktopUpdateLayer({ theme }: { theme: Theme }) {
 
   const progressTitle = tr("update.dl.title", { v });
 
+  // The notes dialog can be opened from Settings in any state, so its
+  // primary button follows the state rather than always saying Update.
+  const offerOpen = manual || s.phase === "idle" || s.phase === "failed";
+  const notesAction: {
+    label: string;
+    disabled: boolean;
+    body?: string;
+    run: () => void;
+  } = manual
+    ? {
+        label: tr("update.action.download"),
+        disabled: false,
+        body: tr("update.manualBody"),
+        run: () => {
+          closeDialog();
+          void update();
+        },
+      }
+    : s.phase === "downloading"
+      ? { label: tr("update.downloading"), disabled: true, run: () => {} }
+      : s.phase === "ready" || s.phase === "installing"
+        ? {
+            label: tr("update.restart"),
+            disabled: false,
+            body: tr("update.restartBody"),
+            run: () => void restart(),
+          }
+        : s.phase === "installed"
+          ? {
+              label: tr("update.restart"),
+              disabled: true,
+              body: tr("update.restartManually"),
+              run: () => {},
+            }
+          : s.phase === "failed"
+            ? {
+                label: tr("update.fail.again"),
+                disabled: false,
+                run: () => {
+                  openDialog("progress");
+                  void update();
+                },
+              }
+            : {
+                label: tr("update.action.install"),
+                disabled: false,
+                run: () => void update(),
+              };
+
   return (
     <>
       {s.offer && (
@@ -174,18 +224,15 @@ export function DesktopUpdateLayer({ theme }: { theme: Theme }) {
           version={v}
           theme={theme}
           preloaded={s.notes}
-          body={manual ? tr("update.manualBody") : undefined}
-          actionLabel={
-            manual ? tr("update.action.download") : tr("update.action.install")
-          }
-          actionBusy={false}
-          onAction={() => {
-            if (manual) closeDialog();
-            void update();
-          }}
+          body={notesAction.body}
+          actionLabel={notesAction.label}
+          actionBusy={s.phase === "installing"}
+          actionDisabled={notesAction.disabled}
+          onAction={notesAction.run}
           onClose={onClose}
-          onLater={later}
-          onSkip={skip}
+          // Later and Skip are for an offer nobody has acted on yet.
+          onLater={offerOpen ? later : undefined}
+          onSkip={offerOpen ? skip : undefined}
         />
       )}
       <Frame

@@ -34,6 +34,7 @@ export function DesktopNotesDialog({
   theme,
   actionLabel,
   actionBusy,
+  actionDisabled = false,
   onAction,
   onClose,
   onLater,
@@ -47,6 +48,9 @@ export function DesktopNotesDialog({
   theme: Theme;
   actionLabel: string;
   actionBusy: boolean;
+  /** Shown but not pressable (with no spinner): the state it names is
+   *  under way somewhere else, e.g. "Downloading…". */
+  actionDisabled?: boolean;
   onAction: () => void;
   onClose: () => void;
   onLater?: () => void;
@@ -207,7 +211,7 @@ export function DesktopNotesDialog({
             size="sm"
             style={onLater ? { minHeight: TOUCH_TARGET_MIN } : undefined}
             loading={actionBusy}
-            disabled={actionBusy}
+            disabled={actionBusy || actionDisabled}
             onClick={onAction}
           >
             {actionLabel}

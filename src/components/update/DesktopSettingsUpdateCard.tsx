@@ -32,8 +32,8 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
     : "";
   const card = cardFor({ ...s, later: false });
 
-  let primary: string;
-  let onPrimary: () => void;
+  let primary: string | null;
+  let onPrimary: () => void = () => {};
   switch (card?.kind) {
     case "downloading":
       primary = tr("update.downloading");
@@ -42,6 +42,10 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
     case "ready":
       primary = tr("update.restart");
       onPrimary = () => void restart();
+      break;
+    case "installed":
+      // Installed; only the user can restart now.
+      primary = null;
       break;
     case "failed":
       primary = tr("update.fail.again");
@@ -55,7 +59,7 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
       onPrimary = () => void update();
   }
   const title =
-    card?.kind === "ready"
+    card?.kind === "ready" || card?.kind === "installed"
       ? tr("update.card.ready", { v })
       : card?.kind === "failed"
         ? tr("update.card.failed")
@@ -92,7 +96,7 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
             name={
               card?.kind === "failed"
                 ? "alert"
-                : card?.kind === "ready"
+                : card?.kind === "ready" || card?.kind === "installed"
                   ? "check"
                   : "arrowUp"
             }
@@ -122,6 +126,20 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
               {notes.date}
             </div>
           )}
+          {(card?.kind === "ready" || card?.kind === "installed") && (
+            <div
+              style={{
+                fontSize: 12.5,
+                lineHeight: 1.45,
+                color: theme.muted,
+                marginTop: 6,
+              }}
+            >
+              {card.kind === "ready"
+                ? tr("update.restartBody")
+                : tr("update.restartManually")}
+            </div>
+          )}
           {summary && (
             <div
               style={{
@@ -147,18 +165,20 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
         >
           {tr("settings.updates.seeNew")}
         </Button>
-        <Button
-          theme={theme}
-          variant="primary"
-          size="sm"
-          fullWidth
-          loading={s.phase === "installing"}
-          disabled={s.phase === "installing"}
-          style={{ minHeight: TOUCH_TARGET_MIN }}
-          onClick={onPrimary}
-        >
-          {primary}
-        </Button>
+        {primary && (
+          <Button
+            theme={theme}
+            variant="primary"
+            size="sm"
+            fullWidth
+            loading={s.phase === "installing"}
+            disabled={s.phase === "installing"}
+            style={{ minHeight: TOUCH_TARGET_MIN }}
+            onClick={onPrimary}
+          >
+            {primary}
+          </Button>
+        )}
       </div>
     </section>
   );

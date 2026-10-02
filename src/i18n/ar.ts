@@ -860,6 +860,8 @@ export const ar: Messages = {
   "update.manualBody":
     "هذه النسخة (\u2066.deb/.rpm\u2069) لا تستطيع تحديث نفسها. نزّل الحزمة الجديدة وثبّتها كالمعتاد.",
   "update.keepReading": "تابع القراءة؛ سيخبرك رواق عندما يجهز.",
+  "update.restartManually":
+    "تم تثبيت التحديث. أغلق رواق وافتحه من جديد لإكماله.",
   "settings.updates.overMobile": "عبر بيانات الجوال",
   "settings.updates.mobileAsk": "اسأل أولًا",
   "settings.updates.mobileAlways": "دائمًا",

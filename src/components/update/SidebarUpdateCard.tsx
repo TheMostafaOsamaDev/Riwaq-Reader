@@ -91,24 +91,36 @@ function announcement(
       return tr("update.downloading");
     case "ready":
       return tr("update.card.ready", { v });
+    case "installed":
+      return tr("update.restartManually");
     case "failed":
       return tr("update.card.failed");
   }
 }
 
 export function SidebarUpdateCard({ theme }: { theme: Theme }) {
-  const { tr, dir } = useI18n();
+  const { tr } = useI18n();
   const s = useDesktopUpdate();
   const card = cardFor(s);
   const v = s.offer?.version ?? "";
 
-  // Always mounted, so the live region exists before its text changes.
-  const live = (
-    <span aria-live="polite" style={VISUALLY_HIDDEN}>
-      {announcement(card, v, tr)}
-    </span>
+  // One live region, always mounted at the same place (first child of the
+  // same fragment, with or without a card), so it exists before its text
+  // changes and is never remounted when the card appears.
+  return (
+    <>
+      <span data-update-live aria-live="polite" style={VISUALLY_HIDDEN}>
+        {announcement(card, v, tr)}
+      </span>
+      {card && <CardBody theme={theme} card={card} />}
+    </>
   );
-  if (!card) return live;
+}
+
+function CardBody({ theme, card }: { theme: Theme; card: NonNullable<Card> }) {
+  const { tr, dir } = useI18n();
+  const s = useDesktopUpdate();
+  const v = s.offer?.version ?? "";
 
   const failed = card.kind === "failed";
   const icon: IconProps["name"] =
@@ -116,7 +128,7 @@ export function SidebarUpdateCard({ theme }: { theme: Theme }) {
       ? "arrowUp"
       : card.kind === "downloading"
         ? "download"
-        : card.kind === "ready"
+        : card.kind === "ready" || card.kind === "installed"
           ? "check"
           : "alert";
   const title =
@@ -124,9 +136,17 @@ export function SidebarUpdateCard({ theme }: { theme: Theme }) {
       ? tr("update.card.available", { v })
       : card.kind === "downloading"
         ? tr("update.dl.title", { v })
-        : card.kind === "ready"
+        : card.kind === "ready" || card.kind === "installed"
           ? tr("update.card.ready", { v })
           : tr("update.card.failed");
+  // Under the title: reassurance before a restart, or what to do when the
+  // app could not restart itself.
+  const note =
+    card.kind === "ready"
+      ? tr("update.restartBody")
+      : card.kind === "installed"
+        ? tr("update.restartManually")
+        : null;
 
   const head = (
     <>
@@ -187,6 +207,19 @@ export function SidebarUpdateCard({ theme }: { theme: Theme }) {
             {progressText(tr, card.bytes, card.total)}
           </span>
         )}
+        {note && (
+          <span
+            style={{
+              display: "block",
+              marginTop: 3,
+              fontSize: 12,
+              lineHeight: 1.45,
+              color: theme.muted,
+            }}
+          >
+            {note}
+          </span>
+        )}
       </span>
     </>
   );
@@ -228,7 +261,6 @@ export function SidebarUpdateCard({ theme }: { theme: Theme }) {
         transition: TRANSITION,
       }}
     >
-      {live}
       {opens ? (
         <button
           type="button"

@@ -267,4 +267,84 @@ describe("SidebarUpdateCard", () => {
     expect(card()?.textContent).toContain("رواق 0.6.0 جاهز");
     expect(button("أعد التشغيل الآن", card()!)).toBeTruthy();
   });
+
+  it("ready: the card and the Settings card say the restart is safe", async () => {
+    h.check.mockResolvedValue(fakeUpdate());
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    const body =
+      "Restart Riwaq to finish. Your books and progress stay exactly where they are.";
+    expect(card()?.textContent).toContain(body);
+    expect(
+      document.querySelector("[data-settings-update]")?.textContent,
+    ).toContain(body);
+  });
+
+  it("relaunch failing after a good install says to reopen, not that nothing changed", async () => {
+    h.check.mockResolvedValue(fakeUpdate());
+    h.relaunch.mockImplementationOnce(async () => {
+      throw new Error("no");
+    });
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    await click(button("Restart now", card()!));
+    expect(card()?.textContent).toContain(
+      "The update is installed. Quit and reopen Riwaq to finish.",
+    );
+    expect(document.body.textContent).not.toContain("Nothing was changed");
+  });
+
+  it("one live region, mounted before the card, announces the offer", async () => {
+    await mount();
+    const live = document.querySelector("[data-update-live]");
+    expect(live).toBeTruthy();
+    await offer();
+    const after = document.querySelector("[data-update-live]");
+    expect(after).toBe(live);
+    expect(after?.textContent).toBe("Riwaq 0.6.0 is available");
+    expect(document.querySelectorAll("[data-update-live]").length).toBe(1);
+  });
+
+  it("the notes dialog follows the state: Restart now when ready", async () => {
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    await act(async () => store.openDialog("notes"));
+    const d = dialog()!;
+    expect(button("Update", d)).toBeUndefined();
+    await click(button("Restart now", d));
+    expect(u.install).toHaveBeenCalled();
+  });
+
+  it("the notes dialog while downloading: no Update, a disabled Downloading…", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((r) => {
+      open = r;
+    });
+    h.check.mockResolvedValue({
+      ...fakeUpdate(),
+      download: vi.fn(async () => {
+        await gate;
+      }),
+    });
+    await mount();
+    await offer();
+    void store.update();
+    await act(async () => {});
+    await act(async () => store.openDialog("notes"));
+    const d = dialog()!;
+    expect(button("Update", d)).toBeUndefined();
+    expect(button("Downloading…", d)?.disabled).toBe(true);
+    await act(async () => open());
+  });
 });

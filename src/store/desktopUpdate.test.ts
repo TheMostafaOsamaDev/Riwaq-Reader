@@ -285,3 +285,89 @@ describe("desktop update store: manual channel", () => {
     expect(h.relaunch).not.toHaveBeenCalled();
   });
 });
+
+describe("desktop update store: fix round 1", () => {
+  it("a newer offer during a download: when the old one ends, the new one is offered and Update works", async () => {
+    setup();
+    await store.offer({ version: "0.6.0", channel: "auto" });
+    let open!: () => void;
+    const gate = new Promise<void>((r) => {
+      open = r;
+    });
+    const a = fakeUpdate({ gate });
+    h.check.mockResolvedValueOnce(a);
+    const p = store.update();
+    await flush();
+    await store.offer({ version: "0.6.1", channel: "auto" });
+    open();
+    await p;
+    let s = store.getState();
+    expect(s.phase).toBe("idle");
+    expect(s.bytes).toBe(0);
+    expect(store.cardFor(s)).toEqual({ kind: "available" });
+    expect(a.close).toHaveBeenCalled();
+    const b = fakeUpdate();
+    h.check.mockResolvedValueOnce(b);
+    await store.update();
+    s = store.getState();
+    expect(s.phase).toBe("ready");
+    await store.restart();
+    expect(b.install).toHaveBeenCalled();
+  });
+
+  it("a newer offer during a download that then fails: idle, not stuck", async () => {
+    setup();
+    await store.offer({ version: "0.6.0", channel: "auto" });
+    let open!: () => void;
+    const gate = new Promise<void>((r) => {
+      open = r;
+    });
+    h.check.mockResolvedValueOnce(fakeUpdate({ gate, downloadFails: true }));
+    const p = store.update();
+    await flush();
+    await store.offer({ version: "0.6.1", channel: "auto" });
+    open();
+    await p;
+    expect(store.getState().phase).toBe("idle");
+    expect(store.cardFor(store.getState())).toEqual({ kind: "available" });
+  });
+
+  it("install works but relaunch throws: installed, not failed", async () => {
+    setup();
+    await store.offer({ version: "0.6.0", channel: "auto" });
+    h.check.mockResolvedValue(fakeUpdate());
+    await store.update();
+    h.relaunch.mockImplementationOnce(async () => {
+      throw new Error("no relaunch");
+    });
+    await store.restart();
+    const s = store.getState();
+    expect(s.phase).toBe("installed");
+    expect(store.cardFor(s)).toEqual({ kind: "installed" });
+  });
+
+  it("a failed install closes the dropped Update", async () => {
+    setup();
+    await store.offer({ version: "0.6.0", channel: "auto" });
+    const u = fakeUpdate({ installFails: true });
+    h.check.mockResolvedValue(u);
+    await store.update();
+    await store.restart();
+    expect(u.close).toHaveBeenCalled();
+  });
+
+  it("a retry that downloads again closes the previous Update", async () => {
+    setup();
+    await store.offer({ version: "0.6.0", channel: "auto" });
+    const first = fakeUpdate({ installFails: true });
+    h.check.mockResolvedValueOnce(first);
+    await store.update();
+    await store.restart();
+    const second = fakeUpdate();
+    h.check.mockResolvedValueOnce(second);
+    await store.update();
+    expect(first.close).toHaveBeenCalled();
+    expect(second.close).not.toHaveBeenCalled();
+    expect(store.getState().phase).toBe("ready");
+  });
+});
