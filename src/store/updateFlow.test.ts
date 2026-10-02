@@ -170,6 +170,16 @@ describe("pillFor", () => {
       }),
     ).toBeNull();
   });
+  it("offers nothing it could not verify, but keeps a job already under way", () => {
+    expect(pillFor({ ...base, unverified: true })).toBeNull();
+    expect(
+      pillFor({
+        ...base,
+        unverified: true,
+        native: { ...idle, state: "downloading", version: "0.6.0" },
+      }),
+    ).toEqual({ kind: "progress", pct: 0 });
+  });
   it("hides after Later or Skip, but never hides a running download", () => {
     expect(pillFor({ ...base, laterThisSession: true })).toBeNull();
     expect(pillFor({ ...base, skipped: "0.6.0" })).toBeNull();

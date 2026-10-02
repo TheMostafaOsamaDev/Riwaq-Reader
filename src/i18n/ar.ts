@@ -844,6 +844,7 @@ export const ar: Messages = {
   "update.fail.signature": "هذا الملف ليس تحديثًا لهذه النسخة من رواق، لذا حُذف.",
   "update.fail.storage": "لا توجد مساحة كافية: يلزم {mb} م.ب.",
   "update.fail.install": "تعذّر على Android تثبيت التحديث.",
+  "update.unverified": "تعذّر التحقق من هذا التحديث.",
   "update.fail.resume": "استأنف التنزيل",
   "update.fail.again": "حاول مجددًا",
   "update.card.available": "الإصدار {v} من رواق متاح",

@@ -1019,6 +1019,7 @@ export const en = {
     "This file isn't a Riwaq update for this install, so it was deleted.",
   "update.fail.storage": "Not enough space: needs {mb} MB free.",
   "update.fail.install": "Android couldn't install the update.",
+  "update.unverified": "Couldn't verify this update.",
   "update.fail.resume": "Resume download",
   "update.fail.again": "Try again",
   "update.card.available": "Riwaq {v} is available",

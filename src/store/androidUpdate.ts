@@ -66,6 +66,11 @@ export interface AndroidUpdateState extends SkipFields {
   /** The APK's details could not be fetched, so nothing was started. The
    *  failed sheet shows this in place of native.error (same vocabulary). */
   fetchError: "offline" | null;
+  /** The offer's APK details could not be fetched when it arrived (no
+   *  SHA256SUMS line for the APK, the HEAD failed): an in-app update that
+   *  cannot be verified is not offered — no pill; Settings says so and
+   *  links to GitHub. Cleared by a later successful lookup. */
+  unverified: boolean;
   /** From configure(), with `running` and `skipped`: the "Over mobile
    *  data" setting. */
   pref: MobilePref;
@@ -92,6 +97,7 @@ function initial(): AndroidUpdateState {
     notes: null,
     apk: null,
     fetchError: null,
+    unverified: false,
     running: "",
     skipped: undefined,
     pref: "ask",
@@ -131,6 +137,7 @@ export function flowInput(s: AndroidUpdateState): FlowInput {
     native: s.native,
     skipped: s.skipped,
     laterThisSession: s.later,
+    unverified: s.unverified,
     // Not loaded yet reads as manual: pillFor and attentionDot show nothing.
     channel: s.channel?.kind ?? "manual",
   };
@@ -298,7 +305,12 @@ export async function offer(info: { version: string } | null): Promise<void> {
   listen();
   if (store.state.offer?.version !== info.version) {
     bump();
-    setState({ offer: { version: info.version }, apk: null, fetchError: null });
+    setState({
+      offer: { version: info.version },
+      apk: null,
+      fetchError: null,
+      unverified: false,
+    });
   }
   skips.reconcile();
   // First: a file left for an older offer is deleted before anything else.
@@ -321,9 +333,18 @@ export async function offer(info: { version: string } | null): Promise<void> {
       }),
     );
   }
-  // The size, for the sheet's "Update · 19 MB". Not fatal: startDownload
-  // asks again.
-  if (!store.state.apk) work.push(loadApk(info.version));
+  // The size, for the sheet's "Update · 19 MB". A failure here hides the
+  // in-app offer (no checksum, no offer); startDownload asks again.
+  if (!store.state.apk) {
+    const v = info.version;
+    work.push(
+      loadApk(v).then((apk) => {
+        if (!apk && kind === "in-app" && store.state.offer?.version === v) {
+          setState({ unverified: true });
+        }
+      }),
+    );
+  }
   await Promise.all(work);
 }
 
@@ -342,7 +363,9 @@ async function loadApk(version: string): Promise<ApkDetails | null> {
       return null;
     }
     const apk = { url: r.url, sha256: r.sha256, size: r.size };
-    if (store.state.offer?.version === version) setState({ apk });
+    if (store.state.offer?.version === version) {
+      setState({ apk, unverified: false });
+    }
     return apk;
   } catch {
     return null;

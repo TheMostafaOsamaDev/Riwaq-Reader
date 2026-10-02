@@ -89,6 +89,9 @@ export function SettingsUpdateCard({
   const inFlight =
     pill && pill.kind !== "available" ? SHEET_FOR[pill.kind] : undefined;
   const assisted = c?.kind === "store-assisted" ? c : null;
+  // No checksum, no offer: an APK that could not be verified is not
+  // downloaded from here; the release page is.
+  const unverified = s.unverified && !inFlight && !assisted;
   const primary = inFlight
     ? pill?.kind === "progress"
       ? tr("update.pill.progress", { p: pill.pct })
@@ -110,12 +113,21 @@ export function SettingsUpdateCard({
       title={tr("update.available", { v })}
       icon="arrowUp"
       meta={meta}
+      note={unverified ? tr("update.unverified") : undefined}
       summary={summaryOf(notes, locale)}
       onSeeNew={() => openSheet("notes")}
-      primary={{
-        label: primary,
-        onClick: () => (inFlight ? openSheet(inFlight) : void startDownload()),
-      }}
+      primary={
+        unverified
+          ? {
+              label: tr("settings.updates.github"),
+              onClick: () => onOpenUrl(RELEASES_PAGE_URL),
+            }
+          : {
+              label: primary,
+              onClick: () =>
+                inFlight ? openSheet(inFlight) : void startDownload(),
+            }
+      }
     />
   );
 }

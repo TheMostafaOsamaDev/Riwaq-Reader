@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 import { I18nProvider } from "../../i18n/I18nProvider";
 import type { Locale } from "../../i18n";
 import * as store from "../../store/androidUpdate";
+import { RELEASES_PAGE_URL } from "../../store/updates";
 import { THEMES } from "../../styles/tokens";
 import { MobileBottomNav } from "../library/MobileBottomNav";
 import { SettingsUpdateCard } from "./SettingsUpdateCard";
@@ -353,6 +354,14 @@ describe("UpdatePill", () => {
     );
   });
 
+  it("is absent when the offered APK could not be verified (no checksum, no offer)", async () => {
+    // fetch_apk_details fails when SHA256SUMS has no APK line or the HEAD
+    // fails: an in-app update that cannot be verified is not offered.
+    await setup({ apkFails: true });
+    await render(<UpdatePill theme={THEMES.sepia} />);
+    expect(document.querySelector("button")).toBeNull();
+  });
+
   it("is absent for a store-managed install", async () => {
     await setup({
       installer: "org.fdroid.fdroid",
@@ -453,6 +462,17 @@ describe("SettingsUpdateCard", () => {
     });
     await card();
     expect(text()).not.toContain("Riwaq 0.6.0 is available");
+  });
+
+  it("unverifiable offer: says so and links to GitHub instead of Update", async () => {
+    await setup({ apkFails: true });
+    const onOpenUrl = vi.fn();
+    await card(onOpenUrl);
+    expect(text()).toContain("Riwaq 0.6.0 is available");
+    expect(text()).toContain("Couldn't verify this update.");
+    expect(button("Update")).toBeUndefined();
+    await act(async () => button("Download from GitHub")?.click());
+    expect(onOpenUrl).toHaveBeenCalledWith(RELEASES_PAGE_URL);
   });
 
   it("managed with the store installed: who updates it, and Open store", async () => {

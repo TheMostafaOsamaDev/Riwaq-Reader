@@ -151,6 +151,9 @@ export interface FlowInput {
   skipped: string | undefined;
   laterThisSession: boolean;
   channel: AndroidChannel["kind"];
+  /** The offered APK's details (checksum line, size) could not be fetched:
+   *  no checksum, no offer. A job already under way is still shown. */
+  unverified?: boolean;
 }
 
 /** Everything is keyed on the RUNNING version: if Orion, Obtainium, F-Droid
@@ -186,7 +189,9 @@ export function pillFor(i: FlowInput): Pill {
     case "failed":
       return { kind: "failed" };
     default:
-      if (i.skipped === i.offered || i.laterThisSession) return null;
+      if (i.skipped === i.offered || i.laterThisSession || i.unverified) {
+        return null;
+      }
       return { kind: "available" };
   }
 }
