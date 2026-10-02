@@ -3,10 +3,11 @@
 # Prove the Rust->Kotlin JNI bridge survived R8 in a *release* (minified) APK.
 #
 # Why this exists. Every member listed below is reached ONLY over JNI from
-# src-tauri/src/notify.rs. R8 sees no bytecode call site for any of them, so
-# without an exact-signature -keep rule in gen/android/app/proguard-rules.pro it
-# prunes them from release builds. Debug builds (isMinifyEnabled = false) stay
-# green, so the breakage ships silently and only shows up on a real device as
+# src-tauri/src/notify.rs and src-tauri/src/android_update.rs. R8 sees no
+# bytecode call site for any of them, so without an exact-signature -keep rule
+# in gen/android/app/proguard-rules.pro it prunes them from release builds.
+# Debug builds (isMinifyEnabled = false) stay green, so the breakage ships
+# silently and only shows up on a real device as
 #
 #     java.lang.NoSuchMethodError: no static method "L<class>;.<name>(<sig>)V"
 #
@@ -53,8 +54,8 @@ if [ -z "$DEX" ]; then
   exit 2
 fi
 
-# Each entry mirrors a JNI lookup in src-tauri/src/notify.rs. Keep the two in
-# sync: adding a Rust->Kotlin call means adding a line here AND a -keep rule.
+# Each entry mirrors a JNI lookup in src-tauri/src/notify.rs or
+# src-tauri/src/android_update.rs. Keep them in sync: adding a Rust->Kotlin call means adding a line here AND a -keep rule.
 EXPECTED=(
   "com.riwaq.reader.TaskService void start(android.content.Context)"
   "com.riwaq.reader.TaskService void stop(android.content.Context)"
@@ -64,6 +65,15 @@ EXPECTED=(
   "com.riwaq.reader.MainActivity java.lang.String pendingOpenUri"
   "com.riwaq.reader.DownloadNotifier void update(android.content.Context,int,java.lang.String,java.lang.String,int,int,boolean,boolean,boolean)"
   "com.riwaq.reader.DownloadNotifier void cancel(android.content.Context,int)"
+  "com.riwaq.reader.AppUpdater java.lang.String installSource(android.content.Context)"
+  "com.riwaq.reader.AppUpdater void openStore(android.app.Activity,java.lang.String)"
+  "com.riwaq.reader.AppUpdater void start(android.content.Context,java.lang.String,java.lang.String,java.lang.String,long,boolean)"
+  "com.riwaq.reader.AppUpdater java.lang.String status(android.content.Context)"
+  "com.riwaq.reader.AppUpdater void cancel(android.content.Context)"
+  "com.riwaq.reader.AppUpdater boolean isMetered(android.content.Context)"
+  "com.riwaq.reader.AppUpdater boolean canInstall(android.content.Context)"
+  "com.riwaq.reader.AppUpdater void openInstallPermission(android.app.Activity)"
+  "com.riwaq.reader.AppUpdater void install(android.app.Activity)"
 )
 
 FAILED=0
@@ -82,8 +92,8 @@ if [ "$FAILED" -ne 0 ]; then
 verify-jni-bridge: FAILED — R8 removed or renamed a JNI-reached member.
 Add or correct an exact-signature -keep rule in
   src-tauri/gen/android/app/proguard-rules.pro
-so the Kotlin signature, the JNI descriptor in src-tauri/src/notify.rs, and the
-keep rule all agree, then rebuild.
+so the Kotlin signature, the JNI descriptor in src-tauri/src/notify.rs (or
+android_update.rs), and the keep rule all agree, then rebuild.
 MSG
   exit 1
 fi

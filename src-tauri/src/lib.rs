@@ -1,9 +1,12 @@
+mod android_update;
 mod archive;
 mod display_name;
 mod legacy_identity;
 mod notify;
 mod opened;
 mod sources;
+mod update_leftovers;
+mod updates;
 #[cfg(target_os = "macos")]
 mod webview_frame;
 
@@ -96,6 +99,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             is_appimage,
             is_flatpak,
+            updates::check_update_manifest,
+            updates::fetch_release_notes,
+            updates::fetch_apk_details,
             legacy_identity::migrate_legacy_identity,
             sources::source_fetch,
             sources::source_fetch_bytes,
@@ -120,6 +126,15 @@ pub fn run() {
             opened::take_pending_opens,
             opened::classify_drop,
             display_name::display_name,
+            android_update::install_source,
+            android_update::open_store,
+            android_update::android_update_start,
+            android_update::android_update_status,
+            android_update::android_update_cancel,
+            android_update::android_network_metered,
+            android_update::android_update_can_install,
+            android_update::android_update_open_permission,
+            android_update::android_update_install,
         ])
         .setup(|app| {
             // Cold start on Windows / Linux: the file double-clicked in the
@@ -137,6 +152,22 @@ pub fn run() {
                     .map(|a| a.to_string_lossy().into_owned())
                     .collect();
                 opened::push_silent(book_paths_from_argv(&argv));
+
+                // Windows' updater leaves each downloaded installer in %TEMP%
+                // and exits, so clear the ones for this version or older. Off
+                // the main thread, never awaited: it must not gate first paint.
+                let product = app
+                    .config()
+                    .product_name
+                    .clone()
+                    .unwrap_or_else(|| "Riwaq".to_string());
+                let version = app.package_info().version.to_string();
+                std::thread::spawn(move || {
+                    let n = update_leftovers::sweep(&std::env::temp_dir(), &product, &version);
+                    if n > 0 {
+                        println!("[updater] removed {n} leftover installer folder(s)");
+                    }
+                });
             }
 
             // Dev harness for the session-webview transport. Off unless

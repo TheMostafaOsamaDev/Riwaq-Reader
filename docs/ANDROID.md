@@ -171,12 +171,118 @@ unmasked and `tauri icon` already pads them, so they're left alone.
 
 ## Permissions
 
-Riwaq needs read access to pick EPUBs:
+Riwaq reads books through the system file picker (`@tauri-apps/plugin-dialog`),
+which grants scoped access, so it declares no storage permission. What the
+manifest does declare:
 
-- `android.permission.READ_EXTERNAL_STORAGE` is **not** required — we use the system file picker via `@tauri-apps/plugin-dialog`, which grants scoped access.
-- No network permission is declared, because we don't fetch anything.
+| Permission | Why |
+|---|---|
+| `INTERNET` | sources, book downloads, and the daily update check |
+| `ACCESS_NETWORK_STATE` | "Over mobile data" for updates: `isActiveNetworkMetered` and the wait-for-Wi-Fi callback |
+| `POST_NOTIFICATIONS` | download progress and "Riwaq x.y.z is installed" |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `WAKE_LOCK` | `TaskService` (book downloads) and `UpdateService` (the update APK) |
+| `REQUEST_INSTALL_PACKAGES` | in-app updates, below. Android also asks the user once ("Install unknown apps → Allow from this source") |
 
-The manifest template at `src-tauri/gen/android/app/src/main/AndroidManifest.xml` is generated on init — don't edit it before `init` runs.
+The manifest at `src-tauri/gen/android/app/src/main/AndroidManifest.xml` is
+committed and edited by hand; its `<queries>` block lists the store apps
+Riwaq looks up (Android 11+ package visibility).
+
+## In-app updates
+
+Spec: [`docs/superpowers/specs/2026-10-02-android-in-app-updates-design.md`](superpowers/specs/2026-10-02-android-in-app-updates-design.md).
+
+### Who gets which flow
+
+`AppUpdater.installSource` reads the installer of record
+(`getInstallSourceInfo`, API 30+). `androidChannel()` in `src/store/updateFlow.ts`
+maps it:
+
+- **in-app**: no installer, `com.android.shell` (adb), the system package
+  installer, or Riwaq itself (after one in-app update). The full flow below.
+- **store-assisted**: `com.orion.store`, `dev.imranr.obtainium[.fdroid]`. The
+  pill and notes as usual, but the button opens that store. If the store app is
+  gone, Android clears the installer of record and the install is in-app again.
+- **managed**: F-Droid clients, Play, any other installer. No pill, no prompt,
+  and nothing fetched beyond the daily `latest.json`; Settings → About names the
+  store.
+- **manual**: the lookup threw. The old release-page banner.
+
+What actually matters is keyed on the **running version**, never the installer:
+cached files at or below it are deleted at launch, and What's new shows once
+per running version whoever did the update.
+
+### The flow
+
+1. The daily check (Rust, `check_update_manifest`) finds a newer `latest.json`.
+   Only then, and only for an **in-app** or **store-assisted** install, the
+   store's `offer()` asks Rust for that release's `whats-new.json` + highlight
+   image (held in memory as a `data:` URL), its `SHA256SUMS` line for
+   `app-universal-release.apk`, and the APK's size (HEAD). A managed or manual
+   install makes none of these requests (see the channels above). No checksum
+   line, no offer.
+2. Pill → notes sheet → **Update** (on a metered network: Ask first / Always /
+   Wait for Wi-Fi, per Settings).
+3. `UpdateService` (foreground, `dataSync`, notification id 1003) runs
+   `AppUpdater`'s download in plain Kotlin. It resumes with
+   `Range: bytes=<part size>-`, so a dropped connection costs nothing already
+   downloaded.
+4. Verify: SHA-256 against `SHA256SUMS`, then package name, a higher
+   `versionCode`, and the same signing certificate as the installed app. Any
+   mismatch deletes the file.
+5. **Install now** → (first time only) Android's "Install unknown apps" screen;
+   coming back with the switch on continues by itself → a `PackageInstaller`
+   session → Android's "Do you want to update this app?".
+6. Android replaces the app and kills it. `PackageReplacedReceiver`
+   (`MY_PACKAGE_REPLACED`) frees the update's storage and, only when Riwaq did
+   the install itself, posts "Riwaq x.y.z is installed · Tap to open it"
+   (id 1004). The next launch shows the release's story pages or short list once.
+
+State lives in `cacheDir/updates/state.json` and the UI polls it
+(`android_update_status`, every 500 ms while something is moving and the page is
+visible).
+
+### Where the files live, and when they go
+
+Everything is under the app's cache dir:
+
+```
+/data/data/com.riwaq.reader/cache/updates/
+  riwaq-<version>.apk.part   while downloading
+  riwaq-<version>.apk        verified, waiting for Install now
+  state.json                 the status the UI polls (a few hundred bytes)
+```
+
+- One pending APK at most; starting another version deletes the rest.
+- Deleted at once on Cancel, Skip this version, a checksum or signature
+  mismatch, or a newer release superseding it.
+- Deleted when the update lands (the receiver), and again on every launch once
+  the running version is at or past the cached one (`cleanupAsync`).
+- Every `PackageInstaller` session of ours that is not the one being installed
+  is abandoned (each holds a staged copy of the APK in system storage).
+
+The 2026-10-02 emulator run measured the app's data before an update and after
+relaunching on the new version: 4904 KB → 4944 KB, the difference all in the
+WebView profile; no sessions, no staged `/data/app/vmdl*` dirs.
+
+### Testing it on the emulator
+
+Two debug builds signed with the same debug key, versions `0.6.90` and `0.6.91`,
+each built with `--config` overriding `version` and
+`plugins.updater.endpoints` (`http://127.0.0.1:<port>/latest.json`). Build the
+frontend from a scratch copy whose `package.json` carries the test version and
+whose `release-notes/` holds the test notes (point `build.beforeBuildCommand`
+and `build.frontendDist` at it), so nothing in the repo changes. Serve
+`latest.json`, `whats-new.json`, the images, `SHA256SUMS` and the APK as
+`app-universal-release.apk` with a server that honours `Range`, then
+`adb reverse tcp:<port> tcp:<port>`. Debug builds already allow cleartext
+(`usesCleartextTraffic` is true for the debug build type only).
+
+Two traps:
+- `adb install -i <pkg>` records **no** installer unless `<pkg>` is installed.
+  To test the F-Droid or Orion channels, install a stub APK with that package
+  name first.
+- Airplane mode does not stop traffic through `adb reverse`; to test a failing
+  download, make the server fail.
 
 ## Known rough edges
 

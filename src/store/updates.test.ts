@@ -1,46 +1,79 @@
 import { describe, expect, it } from "vitest";
-import { evaluateUpdate, fetchManifestVersion } from "./updates";
+import { evaluateUpdate, fetchManifestVersion, resolveCheck } from "./updates";
 
-const ok = (body: unknown) =>
-  (async () =>
-    new Response(JSON.stringify(body), {
-      status: 200,
-    })) as unknown as typeof fetch;
+const answers = (body: unknown) => async (command: string) => {
+  // The command name is part of the contract with src-tauri/src/updates.rs.
+  expect(command).toBe("check_update_manifest");
+  return body;
+};
 
 describe("fetchManifestVersion", () => {
-  it("reads the version and notes from a well-formed manifest", async () => {
+  it("reads the version and notes the Rust side returns", async () => {
     const r = await fetchManifestVersion(
-      ok({ version: "0.3.0", notes: "Faster covers", platforms: {} }),
+      answers({ version: "0.3.0", notes: "Faster covers" }),
     );
     expect(r).toEqual({ version: "0.3.0", notes: "Faster covers" });
   });
 
-  it("returns null on a non-200", async () => {
-    const fail = (async () =>
-      new Response("nope", { status: 404 })) as unknown as typeof fetch;
-    expect(await fetchManifestVersion(fail)).toBeNull();
-  });
-
-  it("returns null when the body is not JSON", async () => {
-    // A captive portal or a GitHub error page serves HTML with a 200.
-    const html = (async () =>
-      new Response("<!DOCTYPE html>", {
-        status: 200,
-      })) as unknown as typeof fetch;
-    expect(await fetchManifestVersion(html)).toBeNull();
-  });
-
-  it("returns null when the manifest carries no version", async () => {
-    expect(await fetchManifestVersion(ok({ platforms: {} }))).toBeNull();
-  });
-
-  it("returns null when the network throws", async () => {
-    // Offline is the NORMAL case for an offline-first reader. It must never
-    // surface as an error the user has to dismiss.
-    const boom = (async () => {
-      throw new Error("offline");
-    }) as unknown as typeof fetch;
+  it("returns null when the command rejects", async () => {
+    // Offline is the NORMAL case for an offline-first reader, and so is a
+    // captive portal's HTML — Rust rejects both. Neither may throw here.
+    const boom = async () => {
+      throw "manifest is not JSON";
+    };
     expect(await fetchManifestVersion(boom)).toBeNull();
+  });
+
+  it("returns null for a malformed answer", async () => {
+    expect(await fetchManifestVersion(answers(null))).toBeNull();
+    expect(await fetchManifestVersion(answers({ version: "" }))).toBeNull();
+    expect(await fetchManifestVersion(answers({ version: 3 }))).toBeNull();
+  });
+});
+
+const mac = { os: "macos", isAppImage: false, isFlatpak: false };
+
+describe("resolveCheck", () => {
+  it("keeps a failed check apart from an up-to-date one", () => {
+    // The bug this exists for: both used to collapse to "no banner".
+    expect(resolveCheck({ latest: null, current: "0.5.0", env: mac })).toEqual({
+      kind: "failed",
+    });
+    expect(
+      resolveCheck({
+        latest: { version: "0.5.0" },
+        current: "0.5.0",
+        env: mac,
+      }),
+    ).toEqual({ kind: "upToDate", current: "0.5.0" });
+  });
+
+  it("offers the update when one exists", () => {
+    expect(
+      resolveCheck({
+        latest: { version: "0.6.0" },
+        current: "0.5.0",
+        env: mac,
+      }),
+    ).toEqual({
+      kind: "update",
+      info: { version: "0.6.0", notes: undefined, channel: "auto" },
+    });
+  });
+
+  it("calls an unknown running version a failure, not up to date", () => {
+    expect(
+      resolveCheck({ latest: { version: "0.5.0" }, current: "", env: mac }),
+    ).toEqual({ kind: "failed" });
+  });
+
+  it("reports a Flatpak as managed whether or not it is behind", () => {
+    const env = { os: "linux", isAppImage: false, isFlatpak: true };
+    for (const version of ["0.6.0", "0.5.0"]) {
+      expect(
+        resolveCheck({ latest: { version }, current: "0.5.0", env }),
+      ).toEqual({ kind: "managed" });
+    }
   });
 });
 

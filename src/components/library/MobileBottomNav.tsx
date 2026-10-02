@@ -9,6 +9,8 @@ import { useImportIndicator } from "../../store/importIndicator";
 import { setMinimized } from "../../store/importProgress";
 import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
+import { flowInput, useAndroidUpdateSelect } from "../../store/androidUpdate";
+import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
 
 export interface MobileBottomNavProps {
@@ -35,6 +37,11 @@ export function MobileBottomNav({
   onOpenSettings,
 }: MobileBottomNavProps) {
   const { tr } = useI18n();
+  // Read here, not passed down: the update store is app-wide, and the dot is
+  // this bar's business alone.
+  // Selected: the 500 ms status polls re-render the bar only if the dot
+  // changes.
+  const updateDot = useAndroidUpdateSelect((s) => attentionDot(flowInput(s)));
   return (
     <div
       style={{
@@ -48,7 +55,7 @@ export function MobileBottomNav({
         borderTop: `1px solid ${theme.ruleStrong}`,
         // Soft upward shadow so the bar reads as a floating surface
         // hovering over the shelf, not a flush edge of the page.
-        boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+        boxShadow: "0 -2px 8px rgba(0,0,0,0.06)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
@@ -84,8 +91,11 @@ export function MobileBottomNav({
       <NavIconButton
         theme={theme}
         icon="settings"
-        ariaLabel={tr("sidebar.settings")}
+        ariaLabel={
+          updateDot ? tr("sidebar.settingsUpdate") : tr("sidebar.settings")
+        }
         onClick={onOpenSettings}
+        showUpdateDot={updateDot}
       />
     </div>
   );
@@ -98,6 +108,9 @@ export interface NavIconButtonProps {
   active?: boolean;
   disabled?: boolean;
   showQueueBadge?: boolean;
+  /** A waiting update (see attentionDot). Words in the aria-label carry the
+   *  meaning; the dot only repeats it. */
+  showUpdateDot?: boolean;
   onClick: () => void;
 }
 
@@ -108,6 +121,7 @@ export function NavIconButton({
   active,
   disabled,
   showQueueBadge,
+  showUpdateDot,
   onClick,
 }: NavIconButtonProps) {
   const [activeCount, setActiveCount] = useState(() =>
@@ -164,6 +178,23 @@ export function NavIconButton({
         >
           {activeCount > 99 ? "99+" : activeCount}
         </span>
+      )}
+      {showUpdateDot && (
+        <span
+          data-update-dot
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 1,
+            insetInlineEnd: 1,
+            width: 9,
+            height: 9,
+            borderRadius: "50%",
+            background: "#c4573a",
+            // The 2px ring separates the dot from the button's own outline.
+            boxShadow: `0 0 0 2px ${theme.bg}`,
+          }}
+        />
       )}
     </button>
   );

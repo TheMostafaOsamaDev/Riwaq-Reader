@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { whatsNew } from "./vite-plugin-whats-new";
 
 export default defineConfig({
+  plugins: [whatsNew()],
   test: {
     environment: "node",
     // `.tsx` too: a component render test is far clearer written in JSX

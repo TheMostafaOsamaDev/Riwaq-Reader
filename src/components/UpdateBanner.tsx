@@ -4,6 +4,7 @@ import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import { RELEASES_PAGE_URL, type UpdateInfo } from "../store/updates";
 import { Z } from "../styles/tokens";
+import { DesktopNotesDialog } from "./update/DesktopNotesDialog";
 
 type Phase = "idle" | "working" | "failed";
 
@@ -25,6 +26,7 @@ export function UpdateBanner({
 }) {
   const { tr } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
+  const [notesOpen, setNotesOpen] = useState(false);
 
   async function act() {
     setPhase("working");
@@ -73,45 +75,66 @@ export function UpdateBanner({
   }
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: "absolute",
-        insetInlineStart: 16,
-        insetInlineEnd: 16,
-        bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-        zIndex: Z.banner,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        flexWrap: "wrap",
-        padding: "12px 14px",
-        borderRadius: 12,
-        background: theme.chrome,
-        color: theme.ink,
-        border: `0.5px solid ${theme.ruleStrong}`,
-        boxShadow: "0 10px 34px rgba(0,0,0,0.22)",
-      }}
-    >
-      <span style={{ flex: 1, minWidth: 140, fontSize: 13, lineHeight: 1.45 }}>
-        {failed
-          ? tr("update.failed")
-          : tr("update.available", { v: info.version })}
-      </span>
-      <Button theme={theme} variant="ghost" size="sm" onClick={onDismiss}>
-        {tr("update.action.later")}
-      </Button>
-      <Button
-        theme={theme}
-        variant="primary"
-        size="sm"
-        loading={busy}
-        disabled={busy}
-        onClick={() => void onAction()}
+    <>
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          insetInlineStart: 16,
+          insetInlineEnd: 16,
+          bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+          zIndex: Z.banner,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          padding: "12px 14px",
+          borderRadius: 12,
+          background: theme.chrome,
+          color: theme.ink,
+          border: `0.5px solid ${theme.ruleStrong}`,
+          boxShadow: "0 10px 34px rgba(0,0,0,0.22)",
+        }}
       >
-        {label}
-      </Button>
-    </div>
+        <span
+          style={{ flex: 1, minWidth: 140, fontSize: 13, lineHeight: 1.45 }}
+        >
+          {failed
+            ? tr("update.failed")
+            : tr("update.available", { v: info.version })}
+        </span>
+        <Button theme={theme} variant="ghost" size="sm" onClick={onDismiss}>
+          {tr("update.action.later")}
+        </Button>
+        <Button
+          theme={theme}
+          variant="ghost"
+          size="sm"
+          onClick={() => setNotesOpen(true)}
+        >
+          {tr("update.action.whatsNew")}
+        </Button>
+        <Button
+          theme={theme}
+          variant="primary"
+          size="sm"
+          loading={busy}
+          disabled={busy}
+          onClick={() => void onAction()}
+        >
+          {label}
+        </Button>
+      </div>
+      <DesktopNotesDialog
+        open={notesOpen}
+        version={info.version}
+        theme={theme}
+        actionLabel={label}
+        actionBusy={busy}
+        onAction={() => void onAction()}
+        onClose={() => setNotesOpen(false)}
+      />
+    </>
   );
 }

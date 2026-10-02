@@ -100,7 +100,24 @@ import type { ActivePanel } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
-import { UpdateBanner } from "./components/UpdateBanner";
+import { DesktopUpdateLayer } from "./components/update/DesktopUpdateLayer";
+import { ManualUpdateBanner, UpdatePill } from "./components/update/UpdatePill";
+import { UpdateSheet, UpdateToasts } from "./components/update/UpdateSheet";
+import {
+  configure as configureAndroidUpdate,
+  loadChannel as loadAndroidChannel,
+  offer as offerAndroidUpdate,
+} from "./store/androidUpdate";
+import {
+  configure as configureDesktopUpdate,
+  offer as offerDesktopUpdate,
+} from "./store/desktopUpdate";
+import {
+  WhatsNewAfterUpdate,
+  bundledNotes,
+} from "./components/update/WhatsNewAfterUpdate";
+import { shouldShowWhatsNew } from "./store/whatsNew";
+import { appVersion } from "virtual:whats-new";
 
 // Kept off the startup path — neither of these is needed to paint the library,
 // and a user who only reads EPUBs from their device never loads either.
@@ -233,6 +250,19 @@ function App() {
   }, []);
 
   const update = useUpdateCheck(t, setTweak);
+  // Decided synchronously at first render from versions alone: nothing is
+  // awaited before paint, and it works whoever performed the update.
+  const [whatsNewOpen, setWhatsNewOpen] = useState(() =>
+    shouldShowWhatsNew({
+      bundled: bundledNotes?.version ?? null,
+      lastSeen: t.lastSeenWhatsNew,
+    }),
+  );
+  // Stable, so the dialogs' Escape listeners are not re-added every render.
+  const closeWhatsNew = useCallback(() => {
+    setWhatsNewOpen(false);
+    setTweak("lastSeenWhatsNew", appVersion);
+  }, [setTweak]);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -303,6 +333,46 @@ function App() {
     }
   });
   useFileDrop(dropCapable);
+  // The in-app update flow: Android has the pill, sheet and Settings card;
+  // desktop (dropCapable: not android, not ios) has the sidebar card and its
+  // dialogs. Same defensive platform() read as dropCapable.
+  const [isAndroid] = useState(() => {
+    try {
+      return platform() === "android";
+    } catch {
+      return false;
+    }
+  });
+  // Fed after paint, never awaited: the store only reacts to these.
+  useEffect(() => {
+    if (!isAndroid) return;
+    configureAndroidUpdate({
+      running: appVersion,
+      skipped: t.skippedUpdateVersion,
+      pref: t.updateOverMobile,
+      saveSkipped: (v) => setTweak("skippedUpdateVersion", v),
+    });
+  }, [isAndroid, t.skippedUpdateVersion, t.updateOverMobile, setTweak]);
+  // Who updates this install, for Settings → About, whether or not an
+  // update is offered.
+  useEffect(() => {
+    if (isAndroid) void loadAndroidChannel();
+  }, [isAndroid]);
+  useEffect(() => {
+    if (isAndroid && update.info) void offerAndroidUpdate(update.info);
+  }, [isAndroid, update.info]);
+  // Desktop: the same skip tweak and clear-skip rule, fed after paint.
+  useEffect(() => {
+    if (!dropCapable) return;
+    configureDesktopUpdate({
+      running: appVersion,
+      skipped: t.skippedUpdateVersion,
+      saveSkipped: (v) => setTweak("skippedUpdateVersion", v),
+    });
+  }, [dropCapable, t.skippedUpdateVersion, setTweak]);
+  useEffect(() => {
+    if (dropCapable && update.info) void offerDesktopUpdate(update.info);
+  }, [dropCapable, update.info]);
   const dropState = useDropOverlayState();
   // "system" resolves to light/dark from the OS setting; useMediaQuery
   // re-renders when the user flips OS appearance, so the whole app
@@ -1057,13 +1127,41 @@ function App() {
           overflow: "hidden",
         }}
       >
-        {update.info && (
-          <UpdateBanner
-            info={update.info}
-            theme={theme}
-            onDismiss={update.dismiss}
-          />
-        )}
+        {isAndroid ? (
+          <>
+            {/* Over the library's shelves only: not over a book, the
+                downloads page, or a novel's detail page (which has no
+                bottom bar to sit above). */}
+            {base.screen === "library" &&
+              !overlay &&
+              base.view.kind !== "novel" && (
+                <UpdatePill
+                  theme={theme}
+                  layout={isMobile ? "mobile" : "desktop"}
+                />
+              )}
+            <UpdateSheet theme={theme} themeKey={themeKey} />
+            <UpdateToasts
+              theme={theme}
+              layout={isMobile ? "mobile" : "desktop"}
+            />
+            {/* Install source unknown: the release-page link, as before. */}
+            {update.info && (
+              <ManualUpdateBanner
+                info={update.info}
+                theme={theme}
+                onDismiss={update.dismiss}
+              />
+            )}
+          </>
+        ) : null}
+        {dropCapable && <DesktopUpdateLayer theme={theme} />}
+        <WhatsNewAfterUpdate
+          theme={theme}
+          open={whatsNewOpen}
+          onClose={closeWhatsNew}
+          layout={isMobile ? "mobile" : "desktop"}
+        />
         {loading && (
           <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />
         )}
@@ -1154,6 +1252,12 @@ function App() {
               onClose={closeSettings}
               onCheckUpdates={update.check}
               updateChecking={update.checking}
+              updateResult={update.result}
+              onOpenWhatsNew={
+                bundledNotes ? () => setWhatsNewOpen(true) : undefined
+              }
+              android={isAndroid}
+              desktopUpdates={dropCapable}
             />
           ) : base.screen === "library" ? (
             <Library

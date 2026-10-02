@@ -212,7 +212,7 @@ pub async fn consume_open_uri(app: AppHandle) -> Result<Option<String>, String> 
 /// `dot_name` must be dot-separated (e.g. `"com.riwaq.reader.MainActivity"`)
 /// because `ClassLoader.loadClass` takes a binary name, not a JNI signature.
 #[cfg(target_os = "android")]
-fn find_app_class<'local>(
+pub(crate) fn find_app_class<'local>(
     env: &mut jni::JNIEnv<'local>,
     activity: &JObject<'local>,
     dot_name: &str,
@@ -249,7 +249,7 @@ fn find_app_class<'local>(
 /// `ExceptionCheck` / `Describe` / `Clear` are the JNI calls that are legal
 /// while an exception is pending, so this is safe to call unconditionally.
 #[cfg(target_os = "android")]
-fn drain_pending_exception(env: &mut jni::JNIEnv<'_>) {
+pub(crate) fn drain_pending_exception(env: &mut jni::JNIEnv<'_>) {
     if let Ok(true) = env.exception_check() {
         let _ = env.exception_describe();
         let _ = env.exception_clear();

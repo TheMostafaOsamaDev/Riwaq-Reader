@@ -68,11 +68,6 @@ export interface Tweaks {
   startupView: "library" | "resume";
   /** Ask for confirmation before deleting a book. */
   confirmDelete: boolean;
-  /** Ask GitHub, at most once a day, whether a newer Riwaq exists. This is
-   *  the only network request the app makes on its own behalf; off here stops
-   *  it entirely and the app stays fully functional. "Check now" in Settings
-   *  still works, because pressing it is the consent this withholds. */
-  autoCheckUpdates: boolean;
   /** Epoch ms of the last completed check, for the 24h throttle. Undefined
    *  means never checked. */
   lastUpdateCheck?: number;
@@ -86,6 +81,18 @@ export interface Tweaks {
   /** Adds devLog's geometry capture to the diagnostics log. Off by default —
    *  the snapshot costs a getComputedStyle per ancestor. */
   verboseDiagnostics: boolean;
+  /** Newest app version whose release notes the user has seen. Absent for
+   *  installs that predate the feature, which is what makes them see the
+   *  notes once after updating. */
+  lastSeenWhatsNew?: string;
+  /** The one release the user chose "Skip this version" for (Android). It
+   *  covers that version only: cleared once anything newer is offered or
+   *  running, so the next release is announced as usual. */
+  skippedUpdateVersion?: string;
+  /** Android: what an update download does on a metered network. "ask"
+   *  shows the size and lets the user choose; "always" downloads anyway;
+   *  "wifi" waits for an unmetered network and starts on its own. */
+  updateOverMobile: "ask" | "always" | "wifi";
   /** Fixed-page (PDF/DOCX) default flow: continuous scroll or one page at a
       time. Reflowable books ignore it (they use `readingMode`). */
   fixedFlow: FixedFlow;

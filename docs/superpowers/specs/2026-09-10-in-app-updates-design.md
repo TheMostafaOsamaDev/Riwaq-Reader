@@ -313,6 +313,29 @@ the design:
    a failing one. Verify the detection on a real `.deb` install in a VM rather
    than trusting an environment variable to be present.
 
+### Results (2026-10-02)
+
+Neither spike was run before shipping, and the first real end-to-end test found
+a bug neither of them would have: **the check itself never worked.** The
+manifest was fetched with a webview `fetch()`, GitHub's release-asset download
+sends no CORS headers on any hop, and the blocked response was caught and read
+as "no update". Every build from 0.4.x through 0.5.3 is affected and will
+never show the banner; those users need one manual reinstall. The check now
+runs in Rust (`src-tauri/src/updates.rs`).
+
+Spike 1 is answered **yes**. An unsigned, ad-hoc-signed 0.5.90 installed in
+`/Applications` (quarantine cleared, as the README instructs) was offered
+0.5.91 from a local manifest, downloaded it, verified the minisign signature,
+replaced its own bundle and relaunched as 0.5.91, on macOS 26. Recipe: build
+both versions with `--config` overriding `version`, `identifier`
+(`com.riwaq.reader.updatetest`, so no real library is touched), `productName`,
+and `plugins.updater` (a throwaway key's pubkey, an `http://127.0.0.1`
+endpoint and `dangerousInsecureTransportProtocol: true`), signed via
+`TAURI_SIGNING_PRIVATE_KEY`; serve `latest.json` and the `.app.tar.gz` with
+`python3 -m http.server`.
+
+Spike 2 (`.deb`/`.rpm` detection on a real install) is still open.
+
 ## Testing
 
 Unit, in the style the store already uses:

@@ -189,22 +189,35 @@ Windows ships the NSIS installer only. The `.msi` was dropped in v0.2.0 so there
 is one install path and one upgrade path. If you installed v0.1.0 from the
 `.msi`, uninstall it before installing a newer version.
 
-### Android: get updates automatically
+### Android: get updates
 
-Riwaq can tell you when a new version exists, but on Android it cannot install
-one. That is how sideloaded APKs work, so you would be tapping through a
-download every time. [Obtainium](https://github.com/ImranR98/Obtainium) removes
-that: it watches this repository and installs each release for you, the way an
-app store would, with no account and nothing else in the middle.
+Installed from the APK on this page, Riwaq updates itself. When a new version is
+out, a small **Update available** pill appears above the library. Tap it to read
+what changed, then **Update**: Riwaq downloads the APK in the background, checks
+it against the release's `SHA256SUMS` and against its own signing key, and hands
+it to Android's installer. Your books, highlights and reading positions stay where
+they are. The first time, Android asks you to allow Riwaq to install apps
+("Allow from this source"); that is a one-time switch.
+
+Versions 0.5.3 and older can't see the update. If you have one of those,
+download the new APK from this page and install it by hand once; updates arrive
+in the app from then on.
+
+Installed through a store, the store stays in charge, and Riwaq never installs over it:
+
+- **[Obtainium](https://github.com/ImranR98/Obtainium)** and **Orion Store**
+  install the same APK from this repository. Riwaq still tells you about a new
+  version, and its button opens Obtainium or Orion to do the update.
+- **F-Droid** builds update through F-Droid only. Riwaq shows no update prompt;
+  Settings → About says where updates come from.
+
+Either way, after an update Riwaq shows what is new in that version once.
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.riwaq.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img height="54" alt="Get Riwaq on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"></a>
 
-Open that on the phone itself. It hands Obtainium the whole app definition
-(id, repository, name), so there is nothing to type. Without Obtainium
-installed, the link explains where to get it rather than failing silently.
-
-Prefer to do it by hand? Add `https://github.com/TheMostafaOsamaDev/Riwaq-Reader`
-as a **GitHub** source in Obtainium, or just grab the `.apk` above.
+Open that link on the phone itself to add Riwaq to Obtainium with nothing to
+type. By hand: add `https://github.com/TheMostafaOsamaDev/Riwaq-Reader` as a
+**GitHub** source in Obtainium.
 
 ### First launch
 
@@ -243,8 +256,8 @@ chmod +x Riwaq_*.AppImage && ./Riwaq_*.AppImage
 <summary><b>Android</b></summary>
 
 Sideload the APK. Your browser or file manager will ask you to allow *"install from
-unknown sources"*. Play Store distribution isn't planned; F-Droid is a possible future
-channel.
+unknown sources"*. Later updates install from inside Riwaq; see
+[Android: get updates](#android-get-updates). Play Store distribution isn't planned.
 </details>
 
 <details>
@@ -258,20 +271,34 @@ Every release ships a `SHA256SUMS` manifest. Put it next to your download and ch
 
 ### Updates
 
-Riwaq asks GitHub, at most once a day, whether a newer version exists. That is
-the only network request the app makes on its own behalf, and it is a single
-unauthenticated GET for one static file. **Nothing about you or your books is
-sent**: no identifiers, no library contents, no reading data. Nothing is
-downloaded until you tap Update.
+Riwaq asks GitHub, at most once a day, whether a newer version exists. That is a
+single unauthenticated GET for one static file, `latest.json`. **Nothing about
+you or your books is sent**: no identifiers, no library contents, no reading
+data.
 
-Turn it off in **Settings → About → Check for updates**, and the app stays
-fully functional with it off.
+Only when a newer version exists, and only on an install that shows the offer,
+Riwaq also fetches that release's notes (`whats-new.json` and its picture) so it
+can show you what changed. On Android it also fetches the release's `SHA256SUMS`
+and the APK's size. They are files from the same release, fetched the same way,
+still with no identifiers. Nothing is downloaded until you tap Update. A store
+install (F-Droid, Flathub) makes only the daily check.
 
-Where a new version can be installed from inside the app, it is: Windows, macOS,
-and Linux via the AppImage. The other three (Android, and Linux `.deb`/`.rpm`)
-can't be updated in place, so Riwaq shows the same notice and takes you to the
-download instead. That is a limitation of how those packages install, not a
-choice about who gets updates.
+The check is always on. It is how an installed copy hears about fixes. If you
+would rather it never ran, block github.com for Riwaq in your firewall; the app
+is fully functional offline.
+
+How the update is installed depends on how you installed Riwaq:
+
+| Install | Update |
+|---|---|
+| Windows, macOS, Linux AppImage | In the app: **Update** in the sidebar, then **Restart now** when you are ready. |
+| Android APK from this page | In the app: download, verify, then Android's installer ([details](#android-get-updates)). |
+| Obtainium, Orion Store | Riwaq tells you; the store installs it. |
+| F-Droid, Flathub | The store updates Riwaq. No prompt in the app. |
+| Linux `.deb` / `.rpm` | Riwaq tells you and opens the download page; a system package can't replace itself. |
+
+Versions 0.5.3 and older, on desktop and Android, can't see an update. Install
+the new version by hand once; after that, updates arrive in the app.
 
 ---
 

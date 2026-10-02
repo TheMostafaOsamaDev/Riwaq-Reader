@@ -1,10 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 11+ package visibility: AppUpdater.installSource looks up the
+         store that installed us (label, launch intent) to hand updates back
+         to it. Unlisted stores still classify as "managed". -->
+    <queries>
+        <package android:name="com.orion.store" />
+        <package android:name="dev.imranr.obtainium" />
+        <package android:name="dev.imranr.obtainium.fdroid" />
+        <package android:name="org.fdroid.fdroid" />
+        <package android:name="org.fdroid.basic" />
+        <package android:name="com.looker.droidify" />
+        <package android:name="com.machiav3lli.fdroid" />
+        <package android:name="in.sunilpaulmathew.izzyondroid" />
+        <package android:name="com.android.vending" />
+        <package android:name="com.aurora.store" />
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- AppUpdater: isActiveNetworkMetered and the "wait for Wi-Fi" network
+         callback both throw SecurityException without it. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- AppUpdater.install: hand a verified update APK to PackageInstaller.
+         The user grants it once ("Install unknown apps"). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -113,5 +135,30 @@
             android:name=".TaskService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!-- App-update APK download (AppUpdater). Its own service so it is not
+             stopped with the WebView when the task is swiped away. -->
+        <service
+            android:name=".UpdateService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- AppUpdater.install's session callback, reached only through the
+             PendingIntent it hands PackageInstaller. -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
+
+        <!-- After Riwaq is replaced (by us or a store): free the update's
+             storage and post "installed · Open". MY_PACKAGE_REPLACED is
+             exempt from the implicit-broadcast limits and goes only to the
+             updated app itself, so exported="false" still receives it. -->
+        <receiver
+            android:name=".PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

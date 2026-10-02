@@ -73,6 +73,19 @@ set after the first signed Android release:
    ```bash
    bash scripts/verify-release-config.sh v0.2.0
    ```
+
+   **1b.** Write `release-notes/<version>.json`: English and Arabic, in the
+   product's voice (see `release-notes/README.md`). Then run
+   `pnpm verify:notes --require <version>`. The release **fails in
+   `preflight`** without this file. The pipeline uploads it as
+   `whats-new.json` (with its images), writes the release body from it, and
+   `SHA256SUMS` covers them.
+   A prerelease tag (one with a hyphen, like `v0.2.0-rc1`) needs no notes
+   file: preflight skips the requirement and the notes job exits early.
+   **One time only:** the FIRST release containing in-app updates must say,
+   in its notes file and its release body, that desktop and Android users on
+   0.5.3 or older need to download and install it once by hand (their update
+   check was broken). After that release, updates arrive in the app.
 2. Push a `v*` tag. `preflight` re-runs the config check in seconds, then the
    pipeline builds seven targets into a **draft** release. A tag containing a
    hyphen (`v0.2.0-rc1`) is published as a prerelease, so it is not served to

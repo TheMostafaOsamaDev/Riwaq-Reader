@@ -52,6 +52,11 @@ import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
+import type { CheckResult } from "../store/updates";
+import { SettingsUpdateCard } from "./update/SettingsUpdateCard";
+import { DesktopSettingsUpdateCard } from "./update/DesktopSettingsUpdateCard";
+import { useAndroidUpdateSelect } from "../store/androidUpdate";
+import { showsMobileDataSetting } from "../store/updateFlow";
 import { SIDEBAR_ROW_PAD_INLINE, sidebarFrame } from "./sidebarFrame";
 
 const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
@@ -72,6 +77,14 @@ interface Props {
    *  running a second, independent one. */
   onCheckUpdates: () => void;
   updateChecking: boolean;
+  /** The last check's outcome this session, or null before one finishes. */
+  updateResult: CheckResult | null;
+  /** Reopen this version's release notes. Omitted when none are bundled. */
+  onOpenWhatsNew?: () => void;
+  /** Android: the in-app update card and the "Over mobile data" row. */
+  android?: boolean;
+  /** Desktop: Settings → About shows the desktop update card. */
+  desktopUpdates?: boolean;
 }
 
 export function SettingsPage({
@@ -84,6 +97,10 @@ export function SettingsPage({
   onClose,
   onCheckUpdates,
   updateChecking,
+  updateResult,
+  onOpenWhatsNew,
+  android = false,
+  desktopUpdates = false,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -224,6 +241,10 @@ export function SettingsPage({
       setDiagBusy(null);
     }
   };
+
+  // Who updates this install (Android); empty and unused on desktop.
+  // Selected, so a download's status polls do not re-render all of Settings.
+  const androidChannel = useAndroidUpdateSelect((s) => s.channel);
 
   const openExternal = async (url: string) => {
     try {
@@ -573,29 +594,57 @@ export function SettingsPage({
         label: tr("settings.updates"),
         node: (
           <Field label={tr("settings.updates")} theme={theme}>
-            <SegRow<"on" | "off">
+            <Button
               theme={theme}
-              value={t.autoCheckUpdates ? "on" : "off"}
-              onChange={(v) => setTweak("autoCheckUpdates", v === "on")}
-              options={[
-                { value: "on", label: tr("settings.on") },
-                { value: "off", label: tr("settings.off") },
-              ]}
-            />
-            <div style={{ marginTop: 10 }}>
-              <Button
-                theme={theme}
-                variant="secondary"
-                size="sm"
-                loading={updateChecking}
-                disabled={updateChecking}
-                onClick={onCheckUpdates}
-              >
-                {updateChecking
-                  ? tr("settings.updates.checking")
-                  : tr("settings.updates.checkNow")}
-              </Button>
-            </div>
+              variant="secondary"
+              size="sm"
+              fullWidth
+              loading={updateChecking}
+              disabled={updateChecking}
+              onClick={onCheckUpdates}
+            >
+              {updateChecking
+                ? tr("settings.updates.checking")
+                : tr("settings.updates.checkNow")}
+            </Button>
+            {onOpenWhatsNew && (
+              <div style={{ marginTop: 8 }}>
+                <ActionRow
+                  theme={theme}
+                  icon={<Icon name="doc" size={16} />}
+                  label={tr("settings.updates.whatsNew")}
+                  onClick={onOpenWhatsNew}
+                  trailing={
+                    <Icon
+                      name="chevronR"
+                      size={16}
+                      className="rtl-flip-x"
+                      style={{ opacity: 0.5 }}
+                    />
+                  }
+                />
+              </div>
+            )}
+            {/* Always mounted so the live region exists before its text
+                changes — screen readers ignore a region that arrives filled.
+                minHeight reserves the line so a result doesn't push the
+                hint down. */}
+            <p
+              role="status"
+              aria-live="polite"
+              style={{
+                margin: "8px 2px 0",
+                minHeight: 18,
+                fontSize: 12,
+                lineHeight: 1.45,
+                color:
+                  updateResult?.kind === "failed" ? theme.danger : theme.muted,
+              }}
+            >
+              {!updateChecking &&
+                updateResult &&
+                updateStatusText(updateResult, tr)}
+            </p>
             <p
               style={{
                 margin: "8px 2px 0",
@@ -606,9 +655,47 @@ export function SettingsPage({
             >
               {tr("settings.updates.hint")}
             </p>
+            {android && (
+              <SettingsUpdateCard
+                theme={theme}
+                onOpenUrl={(url) => void openExternal(url)}
+              />
+            )}
+            {desktopUpdates && <DesktopSettingsUpdateCard theme={theme} />}
           </Field>
         ),
       },
+      ...(android && showsMobileDataSetting(androidChannel)
+        ? [
+            {
+              id: "updateOverMobile",
+              label: tr("settings.updates.overMobile"),
+              node: (
+                <Field label={tr("settings.updates.overMobile")} theme={theme}>
+                  <SegRow<Tweaks["updateOverMobile"]>
+                    theme={theme}
+                    value={t.updateOverMobile}
+                    onChange={(v) => setTweak("updateOverMobile", v)}
+                    options={[
+                      {
+                        value: "ask",
+                        label: tr("settings.updates.mobileAsk"),
+                      },
+                      {
+                        value: "always",
+                        label: tr("settings.updates.mobileAlways"),
+                      },
+                      {
+                        value: "wifi",
+                        label: tr("settings.updates.mobileWifi"),
+                      },
+                    ]}
+                  />
+                </Field>
+              ),
+            },
+          ]
+        : []),
       {
         id: "sourceCode",
         label: tr("settings.about.sourceCode"),
@@ -1122,4 +1209,23 @@ function MobileCategoryRow({
       />
     </button>
   );
+}
+
+/** One line for the last check's outcome. Every kind gets words, not just a
+ *  colour: "failed" and "up to date" were indistinguishable once, and that is
+ *  how an update check that never worked shipped five times. */
+function updateStatusText(
+  r: CheckResult,
+  tr: ReturnType<typeof useI18n>["tr"],
+): string {
+  switch (r.kind) {
+    case "update":
+      return tr("update.available", { v: r.info.version });
+    case "upToDate":
+      return tr("settings.updates.upToDate", { v: r.current });
+    case "managed":
+      return tr("settings.updates.managed");
+    case "failed":
+      return tr("settings.updates.failed");
+  }
 }

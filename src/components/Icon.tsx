@@ -41,6 +41,13 @@ export const ICONS = {
   /** Expand-all / collapse-all pair for accordion groups. */
   chevronsD: "M7 7l5 5 5-5M7 13l5 5 5-5",
   chevronsU: "M7 11l5-5 5 5M7 17l5-5 5 5",
+  /** The update pill's "a newer version" arrow. */
+  arrowUp: "M12 19V5M5 12l7-7 7 7",
+  /** "Waiting for Wi-Fi". */
+  wifi: "M5 12.55a11 11 0 0114 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01",
+  /** A warning: mobile data, a failed download. */
+  alert:
+    "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01",
   /** Focus mode — corners pulling outward, the usual "fill the frame" mark. */
   focus:
     "M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M3 16v3a2 2 0 002 2h3",

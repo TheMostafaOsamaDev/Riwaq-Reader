@@ -3,9 +3,9 @@ import type { Tweaks } from "../types/reader";
 import type { ChannelEnv } from "../store/updateChannel";
 import { shouldCheck } from "../store/updateThrottle";
 import {
-  evaluateUpdate,
+  type CheckResult,
   fetchManifestVersion,
-  type UpdateInfo,
+  resolveCheck,
 } from "../store/updates";
 
 /** Ask the platform what it is.
@@ -56,7 +56,8 @@ export function useUpdateCheck(
   t: Tweaks,
   setTweak: <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void,
 ) {
-  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  // Null until a check in this session has finished.
+  const [result, setResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   // A ref, not state: the guard has to be set synchronously or a double
@@ -73,7 +74,6 @@ export function useUpdateCheck(
       const tw = latest.current;
       if (
         !shouldCheck({
-          enabled: tw.autoCheckUpdates,
           lastCheck: tw.lastUpdateCheck,
           now: Date.now(),
           manual,
@@ -84,17 +84,22 @@ export function useUpdateCheck(
       inFlight.current = true;
       setChecking(true);
       try {
+        const { invoke } = await import("@tauri-apps/api/core");
         const [manifest, env, current] = await Promise.all([
-          fetchManifestVersion(fetch),
+          fetchManifestVersion(invoke),
           readEnv(),
           import("@tauri-apps/api/app")
             .then((m) => m.getVersion())
             .catch(() => ""),
         ]);
-        setInfo(evaluateUpdate({ latest: manifest, current, env }));
-        // Stamp even when there was no update: the throttle is about how
-        // often we ask, not about how often the answer is yes.
-        setTweak("lastUpdateCheck", Date.now());
+        const r = resolveCheck({ latest: manifest, current, env });
+        setResult(r);
+        // Stamp whenever GitHub actually answered, update or not: the
+        // throttle is about how often we ask. But NOT on a failure — an
+        // offline launch should try again next launch, not a day later.
+        if (r.kind !== "failed") setTweak("lastUpdateCheck", Date.now());
+      } catch {
+        setResult({ kind: "failed" });
       } finally {
         inFlight.current = false;
         setChecking(false);
@@ -108,9 +113,15 @@ export function useUpdateCheck(
   }, [run]);
 
   return {
-    info: dismissed ? null : info,
+    info: !dismissed && result?.kind === "update" ? result.info : null,
+    result,
     checking,
-    check: useCallback(() => void run(true), [run]),
+    // A manual check un-dismisses: pressing "Check now" is asking to be told,
+    // so an update found by it must show even after an earlier "Later".
+    check: useCallback(() => {
+      setDismissed(false);
+      void run(true);
+    }, [run]),
     dismiss: useCallback(() => setDismissed(true), []),
   };
 }
