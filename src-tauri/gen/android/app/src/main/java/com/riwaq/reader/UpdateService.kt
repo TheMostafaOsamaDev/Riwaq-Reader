@@ -48,7 +48,7 @@ class UpdateService : Service() {
         DownloadNotifier.ensureChannelPublic(this)
         // Always first, unconditionally: this is what the platform demands of
         // every startForegroundService, even one we are about to stop.
-        startInForeground(NOTIF_ID, build(this, "Downloading Riwaq update", 0, true))
+        startInForeground(NOTIF_ID, build(this, getString(R.string.update_downloading), 0, true))
         val keep = synchronized(lock) {
             if (stopRequested || !AppUpdater.isWorking()) {
                 stopRequested = false
@@ -169,7 +169,7 @@ class UpdateService : Service() {
             DownloadNotifier.ensureChannelPublic(ctx)
             try {
                 NotificationManagerCompat.from(ctx)
-                    .notify(NOTIF_ID, build(ctx, "Downloading Riwaq $version", pct, total <= 0))
+                    .notify(NOTIF_ID, build(ctx, ctx.getString(R.string.update_downloading_version, version), pct, total <= 0))
             } catch (_: SecurityException) {
                 // POST_NOTIFICATIONS denied: the download carries on unseen.
             }
