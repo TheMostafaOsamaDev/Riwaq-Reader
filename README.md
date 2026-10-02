@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/brand/mark-ink.webp" width="88" alt="Riwaq"/>
+<img src="docs/assets/app-icon.webp" width="96" alt="Riwaq"/>
 
 # رواق · Riwaq
 
@@ -10,12 +10,11 @@ macOS, Linux and Android. No accounts, no sync, no analytics.
 <p align="center">
 <a href="https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/latest"><img height="58" alt="Get it on GitHub" src="https://raw.githubusercontent.com/Kunzisoft/Github-badge/main/get-it-on-github.png"/></a>
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.riwaq.reader%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FTheMostafaOsamaDev%2FRiwaq-Reader%22%2C%22author%22%3A%22TheMostafaOsamaDev%22%2C%22name%22%3A%22Riwaq%22%7D"><img height="58" alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"/></a>
-<a href="https://github.com/RookieEnough/Orion-Store"><img height="58" alt="Get it on Orion Store" src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png"/></a>
+<a href="https://rookieenough.github.io/Orion-Data/redirect.html?id=riwaq"><img height="58" alt="Get it on Orion Store" src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png"/></a>
 </p>
 
-<sub>GitHub and Obtainium work today. Orion Store is submitted and waiting on
-review; F-Droid and Flathub are not submitted yet. Badges go up as each
-store goes live.</sub>
+<sub>GitHub, Obtainium and Orion Store work today. F-Droid and Flathub are not
+submitted yet; badges go up as each store goes live.</sub>
 
 </div>
 
@@ -31,17 +30,29 @@ moves the sidebar, flips the icons and translates every label.
 
 | | |
 |---|---|
-| Read | EPUB 2/3, PDF, `.docx`. Two pages, one page, or a continuous scroll. Tap to turn, with zones you can resize. |
+| Read | EPUB 2/3, PDF, `.docx`. A continuous scroll, one page, or two. Word files open either as flowing text or page-for-page, and your highlights follow you between the two. |
+| Library | Shelves, and four styles for the Continue Reading card — pick the one you like in Settings. |
+| Updates | Riwaq tells you what changed and installs it: in the app on Windows, macOS, the Linux AppImage and Android. |
 | Type | 16 bundled faces across Naskh, modern sans, Kufi and display. Size, line height, letter spacing, paragraph spacing, width, alignment, hyphenation. |
 | Themes | Light, Sepia, Dark, and a true black for OLED. Or follow the system. |
-| Focus mode | Everything but the page goes, including Android's system bars. Double tap, or tap the lock, to come back. |
+| Focus mode | Everything but the page goes, including Android's system bars. On desktop your progress stays as a thin rail along the top. Double tap, or tap the lock, to come back. |
 | Highlight | Four colours, notes, and a sidebar that collects every one with the chapter it came from. |
 | Store | Browse Arabic web novel sites inside the app. Read online, add to the library, download a range of chapters, or bake the lot into one EPUB. |
 | Extensions | Sources install at runtime from a repository. Add your own. Nothing is compiled in. |
 | Languages | English and العربية, mirrored all the way down. |
 | Privacy | No account, no sync, no telemetry. Plain JSON on your disk. |
 
-## Three things it does differently
+## Four things it does differently
+
+### Word files are read, not converted
+
+A `.docx` opens two ways. **Flowing text** reflows it like an EPUB — your font,
+your size, your margins, chapters running one into the next. **Page for page**
+keeps the document's own layout, images and tables where the author put them.
+Switch between them whenever you like: your place is kept, and a highlight made
+in one mode is still there, in the same words, in the other.
+
+![A Word file in flowing text, with the mode picker open](docs/screenshots/desktop/28-docx-modes.png)
 
 ### Sources are extensions
 
@@ -58,7 +69,8 @@ confirm that you trust whoever publishes it.
 
 ### Focus mode knows it is a mode
 
-On desktop the toolbar comes back when the pointer nears an edge. A phone has no pointer,
+On desktop nothing is left but the page and a thin progress rail along the top, and the
+toolbar comes back when the pointer nears an edge. A phone has no pointer,
 so it tells you instead: entering names the mode and the gesture that leaves it, and a
 small lock stays in the corner afterwards. The lock is also a button. If you never saw the
 message, or a double tap does not register for you, there is still something on screen you

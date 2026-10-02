@@ -1,7 +1,5 @@
 # Shelves and Featured Hero Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build persistent many-to-many shelves, shelf-aware folder import and add-book flows, plus a reusable, theme-safe featured reading hero.
 
 **Architecture:** Persist shelf records in the local library index and isolate pure name/membership/import-policy helpers for unit testing. Keep import orchestration, dialogs, refreshes, and feedback in `Library`; extract the existing hero into a variant-driven presentation component.

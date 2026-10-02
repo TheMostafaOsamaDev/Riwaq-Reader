@@ -1,7 +1,5 @@
 # Fixed-Reader Highlighting Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add user text-highlighting to the fixed-layout reader (DOCX and PDF), matching the EPUB reader's create / render / panel / notes behavior.
 
 **Architecture:** Reuse the EPUB highlight store, colors, `SelectionPopover`, and `HighlightsPanel`. Do NOT change the reflow highlight data model. Add an optional discriminated `fixed?` anchor to `Highlight`: DOCX anchors by stable block-id + intra-block char range (survives re-pagination); PDF anchors by page + rectangles normalized 0..1 to page size (survives zoom). Selection is captured in `FixedPageViewer`; DOCX renders `<mark>` into its DOM cards, PDF draws translucent rects over a newly-added pdf.js text layer.

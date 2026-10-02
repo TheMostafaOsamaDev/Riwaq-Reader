@@ -1,7 +1,5 @@
 # Cenele Repair + Unified Search Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Repair the Cenele extension against the site's redesigned novel page, and collapse every source onto one search interaction — type, press Enter, get a results grid.
 
 **Architecture:** Cenele's chapter pipeline is verified working and untouched; only the novel page's config global and metadata selectors are rewritten. `Source.searchSuggest` is deleted from the interface and `Source.search` becomes required, so `SourceHomeView` loses its debounce/dropdown machinery and gains a Load-more control driven by the already-existing-but-unused `SourceSearchResult.hasMore`.

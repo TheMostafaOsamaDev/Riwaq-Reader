@@ -1,7 +1,5 @@
 # Import Title From Filename — Implementation Plan (Phase 1 of 3)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make the import dialog prefill a PDF/DOCX title from the file's name instead of the document's embedded metadata.
 
 **Architecture:** The sanitization layer already exists (`filenameTitle()` in `src/store/importName.ts`). Only the precedence changes, at four sites in `src/store/fixedImportStage.ts`. The rule is extracted into one named function rather than inverted four times inline, because the naive inversion (`fallback || doc.meta.title`) still loses to a whitespace-only metadata title — a shape Word-produced PDFs emit routinely.

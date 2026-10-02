@@ -1,7 +1,5 @@
 # Instant Add to Library Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make "Add to library" land instantly by doing only local work on the tap, and move the cover fetch into the existing download queue so it gets the system notification, foreground service, persistence and retry that are already built.
 
 **Architecture:** Split the add at the local/network boundary. `addNovelToLibrary` takes the `SourceNovel` the detail view already parsed, writes the index entry and `source.json`, and returns — no network, and the index lock held only for the read-modify-write. The cover becomes a third `DownloadJob` kind (`library-add`) whose worker fetches, writes, thumbnails and patches the entry. Two independent IPC fixes ride along: `source_fetch_bytes` returns raw bytes instead of a JSON number array, and the thumbnail is derived from bytes in hand instead of re-read from disk.

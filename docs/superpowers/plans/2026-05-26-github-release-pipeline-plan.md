@@ -1,7 +1,5 @@
 # GitHub Actions Release Pipeline Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add `.github/workflows/release.yml` that builds Leaflet on every `v*` tag push for Linux x86_64, Windows x86_64, and Android (ARM + ARM64), and attaches all binaries to a draft GitHub Release with auto-generated notes.
 
 **Architecture:** Single workflow file, three parallel jobs (`linux`, `windows`, `android`), each producing one platform's bundles. Linux + Windows use the official `tauri-apps/tauri-action@v0`. Android uses a custom recipe (JDK 17 + Android SDK 36 + NDK r26 + Rust Android targets + `pnpm tauri android build`) and uploads its APK via `softprops/action-gh-release@v2`. Both upload paths are idempotent on release creation. `workflow_dispatch` builds run without publishing.
@@ -297,7 +295,7 @@ Expected: exactly one file added — `.github/workflows/release.yml`. Roughly 15
 
 ## Task 2: User pushes the branch and opens a PR
 
-**Cannot be done by an implementer subagent — requires the user's GitHub credentials.**
+**Cannot be automated — requires GitHub credentials.**
 
 ### - [ ] Step 2.1: Push the branch
 
@@ -326,7 +324,7 @@ The workflow file only becomes available to trigger from the `main` branch once 
 
 ## Task 3: User runs the dry-run verification
 
-**Cannot be done by an implementer subagent — requires manually pushing a tag and inspecting the GitHub UI.**
+**Cannot be automated — requires manually pushing a tag and inspecting the GitHub UI.**
 
 This is the equivalent of the on-device verification from the notification spec: the implementation can be confirmed correct only by exercising it.
 
@@ -387,7 +385,7 @@ The Android job uploads its APK as a **workflow artifact** instead (downloadable
 
 ## Task 4: User cleans up the dry-run release
 
-**Cannot be done by an implementer subagent.**
+**Cannot be automated.**
 
 ### - [ ] Step 4.1: Delete the draft release
 
@@ -447,7 +445,7 @@ The workflow fires automatically. Wait for it to complete (~15-30 min). Visit th
 
 ## Risks / known issues
 
-- **`tauri-apps/tauri-action@v0` parameter naming.** The plan uses `tagName`, `releaseName`, `releaseDraft`, `prerelease`, `generateReleaseNotes`. These are the v0.5+ names. If the action's input names have drifted, the implementer should consult the current README at `https://github.com/tauri-apps/tauri-action`.
+- **`tauri-apps/tauri-action@v0` parameter naming.** The plan uses `tagName`, `releaseName`, `releaseDraft`, `prerelease`, `generateReleaseNotes`. These are the v0.5+ names. If the action's input names have drifted, consult the current README at `https://github.com/tauri-apps/tauri-action`.
 - **Android NDK version pin.** `ndk;26.1.10909125` is a specific full version. If `sdkmanager` no longer offers that exact version when this runs, switch to a nearby r26 — e.g., `26.3.11579264`. Both work with Tauri 2.
 - **Ubuntu 22.04 deprecation.** GitHub Actions tentatively retires `ubuntu-22.04` in early 2027. When the runner shifts to `ubuntu-24.04`, verify `libwebkit2gtk-4.1-dev` is still available (it should be — Ubuntu 24.04 ships the same package).
 - **`generateReleaseNotes` on multiple jobs.** Both `tauri-action` and `softprops` are passed `generateReleaseNotes: true` / `generate_release_notes: true`. They're idempotent on this — the first job to create the release fills in the notes; subsequent calls don't overwrite.

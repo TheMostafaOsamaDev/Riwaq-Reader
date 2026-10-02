@@ -1,7 +1,5 @@
 # Diagnostics and Log Export Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make Riwaq record its own launches in release builds, keep the record across restarts, and export it as one shareable file — so a blank launch can be diagnosed without reproducing it.
 
 **Architecture:** Two independent tracks. Track A writes four boot marks to `localStorage` synchronously (no IPC, survives the process) and classifies the *previous* launch on the next start. Track B is the existing `devLog` ring buffer, re-pointed off `import.meta.env.DEV` onto a tier check and rotated across the last 3 sessions. A new Settings → Data section exports both.

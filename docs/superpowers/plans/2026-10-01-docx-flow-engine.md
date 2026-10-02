@@ -1,7 +1,5 @@
 # DOCX Flow Engine — Implementation Plan (Phase 2a of 3)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Turn a stored DOCX's `content.html` into reflowable chapters, and map a reading position losslessly between fixed-page and reflow coordinates.
 
 **Architecture:** `content.html` is the single source of truth for both modes. This phase builds the pure, headless half: a shared block-instruction collector (extracted from the EPUB parser so the two paths cannot drift), a `flowDoc` builder that produces `EpubChapter[]` plus a `blockMap`, and a position mapper. No UI, no state, no routing — Phase 2b wires it up.

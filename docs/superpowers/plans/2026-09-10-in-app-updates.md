@@ -1,7 +1,5 @@
 # In-App Updates Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Tell every Riwaq user when a new version exists, and install it for them on the platforms where that is possible.
 
 **Architecture:** One version check and one banner, with two strategies behind it. Installs that can self-update (Windows NSIS, macOS `.app.tar.gz`, Linux AppImage) go through `tauri-plugin-updater`. Installs that cannot (Android `.apk`, Linux `.deb`/`.rpm`) open the release page instead. Both read the same `latest.json`, so the two channels cannot drift apart.

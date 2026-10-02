@@ -1,7 +1,5 @@
 # Native Android Download-Notification Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace the unicode-bar download notification with a real Android `NotificationCompat.Builder.setProgress(...)` widget; give it a dynamic `Downloading <Novel> — Ch. NNN` title; keep one notification id; route taps to the in-app Download Queue view; degrade gracefully to plain text on iOS / desktop.
 
 **Architecture:** Three layers:
@@ -1470,5 +1468,4 @@ After Tasks 11 + 12 pass:
 | Channel = `leaflet-downloads` at `IMPORTANCE_LOW` | Task 2 (Kotlin), Task 6 (id constant) |
 | `setOnlyAlertOnce(true)` to suppress per-update alert | Task 2 |
 | `FLAG_IMMUTABLE` on PendingIntent | Task 2 |
-
 

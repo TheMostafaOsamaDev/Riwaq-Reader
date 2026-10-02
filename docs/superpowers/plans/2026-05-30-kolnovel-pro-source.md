@@ -1,7 +1,5 @@
 # KolNovel Pro Source Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add a "KolNovel Pro" source that imports `kolnovel.com`'s per-chapter PDFs (translated text + official illustrations) into the library as reflowable, fully-offline EPUBs.
 
 **Architecture:** A new TS source (`kolnovel-pro`) reuses the existing KolNovel WordPress-theme discovery code (extracted into a shared `kolnovel-theme.ts`). Its `getChapterContent` resolves each chapter's PDF via the site's `ts_ln_dl_url` token flow, downloads it through the Rust HTTP bridge, and parses it in the webview with pdf.js into `SourceLine[]` (NFKC-normalized text + extracted illustration bytes). A new optional `Source.resolveImage(ref)` hook lets the importer bake the PDF-extracted image bytes into the EPUB.

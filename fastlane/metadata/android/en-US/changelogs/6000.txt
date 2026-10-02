@@ -1,0 +1,13 @@
+New
+
+* Word files open as flowing text or page for page, and a highlight made in one mode is still there in the other.
+* Four styles for the Continue Reading card, chosen in Settings.
+* Books now open in scroll mode.
+* After an update, Riwaq shows what changed, once.
+
+Fixes
+
+* Your place survives a switch between layouts.
+* EPUB pages turn by touch on tablets.
+* Every swipe on the page scrolls it.
+* The sidebar no longer shakes on the way into Settings.

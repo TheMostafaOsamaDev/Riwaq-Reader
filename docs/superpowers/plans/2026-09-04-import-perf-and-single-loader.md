@@ -1,7 +1,5 @@
 # Import: One Loader, Half the Work — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Show exactly one import indicator, and stop the import from writing the book twice or freezing the UI thread.
 
 **Architecture:** The floating progress dock is deleted and the bottom-bar FAB becomes the single indicator, reading the shared `importProgress` store directly so progress ticks stop re-rendering the whole library tree. On the pipeline side: EPUB in-flow images are recorded in a manifest and extracted lazily at read time instead of being copied out of the archive at import; the spine parse loop yields to the event loop on an 8 ms slice and reports per-chapter progress; PDFs are read through a Rust range command via a pdf.js range transport instead of being loaded whole into the webview.

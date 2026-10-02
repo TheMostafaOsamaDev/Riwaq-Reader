@@ -280,7 +280,7 @@ export const ar: Messages = {
   "reader.chapterNumber": "الفصل {n}",
   "settings.docxLayout": "التخطيط",
   "settings.docxLayout.pages": "صفحات",
-  "settings.docxLayout.flow": "نص متدفّق (وضع EPUB)",
+  "settings.docxLayout.flow": "نص متدفّق",
   "settings.docxLayout.hint":
     "الصفحات تُبقي المستند كما كُتب تمامًا. النص المتدفّق يعيد تنسيقه حسب حجم الخط.",
   "reader.chapterDash": "الفصل {n} — {title}",
