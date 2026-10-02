@@ -43,11 +43,13 @@ describe("androidChannel", () => {
   it("falls back to in-app when that store app is gone", () => {
     expect(androidChannel(src("com.orion.store", false)).kind).toBe("in-app");
   });
-  it("leaves F-Droid, Play and unknown stores alone", () => {
+  it("leaves F-Droid, IzzyOnDroid, Play, Aurora and unknown stores alone", () => {
     for (const i of [
       "org.fdroid.fdroid",
       "com.looker.droidify",
+      "in.sunilpaulmathew.izzyondroid",
       "com.android.vending",
+      "com.aurora.store",
       "com.example.somestore",
     ]) {
       expect(androidChannel(src(i)).kind).toBe("managed");

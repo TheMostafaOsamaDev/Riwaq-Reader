@@ -11,7 +11,9 @@
         <package android:name="org.fdroid.basic" />
         <package android:name="com.looker.droidify" />
         <package android:name="com.machiav3lli.fdroid" />
+        <package android:name="in.sunilpaulmathew.izzyondroid" />
         <package android:name="com.android.vending" />
+        <package android:name="com.aurora.store" />
     </queries>
 
     <uses-permission android:name="android.permission.INTERNET" />
