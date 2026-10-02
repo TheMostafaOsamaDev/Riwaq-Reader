@@ -163,8 +163,25 @@ check_config() {
     rec_commit="$(sed -n 's/^[[:space:]]*commit:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
     cur_name="$(sed -n 's/^CurrentVersion:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
     cur_code="$(sed -n 's/^CurrentVersionCode:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
+    # fdroiddata requires the FULL commit hash, not a tag: "The `commit` field
+    # should be the full hash. Please don't use tag or branch in commit."
+    # A tag can be moved or deleted after review, and this repository has in
+    # fact deleted release tags, so F-Droid would be building something other
+    # than what was reviewed. Resolve the tag here when it exists locally; when
+    # it does not (the preflight runs BEFORE the tag is pushed), still insist
+    # it is a hash rather than letting `v0.6.0` through.
+    local want_commit
+    want_commit="$(git -C "$root" rev-list -n1 "v$tag" 2>/dev/null || true)"
+    if [ -z "$want_commit" ]; then
+      if ! printf '%s' "$rec_commit" | grep -Eq '^[0-9a-f]{40}$'; then
+        echo "docs/fdroid recipe says commit '$rec_commit' — fdroiddata requires the full 40-character hash, never a tag"
+        problems=$((problems + 1))
+      fi
+      want_commit="$rec_commit"   # nothing to compare against; shape was checked
+    fi
+
     local pair
-    for pair in "versionName:$rec_name:$tag" "commit:$rec_commit:v$tag" \
+    for pair in "versionName:$rec_name:$tag" "commit:$rec_commit:$want_commit" \
                 "versionCode:$rec_code:$want_code" \
                 "CurrentVersion:$cur_name:$tag" "CurrentVersionCode:$cur_code:$want_code"; do
       local field="${pair%%:*}" rest="${pair#*:}"
@@ -247,11 +264,11 @@ if [ "${1:-}" = "--self-test" ]; then
   # F-Droid recipe in step with release.yml
   # A recipe carries the release's version as well as its toolchain, so the
   # fixture writes both and the version half defaults to the tag under test.
-  mkfd() { # dir recipe-ndk recipe-rust recipe-flags release-ndk release-flags [name] [code]
+  mkfd() { # dir recipe-ndk recipe-rust recipe-flags release-ndk release-flags [name] [code] [commit]
     local d; d="$(mktc "$1" 1.97.1 1.97.1)"; mkdir -p "$d/docs/fdroid"
     local name="${7:-0.2.0}" code="${8:-2000}"
-    printf 'Builds:\n  - versionName: %s\n    versionCode: %s\n    commit: v%s\n' \
-      "$name" "$code" "$name" > "$d/docs/fdroid/com.riwaq.reader.yml"
+    printf 'Builds:\n  - versionName: %s\n    versionCode: %s\n    commit: %s\n' \
+      "$name" "$code" "${9:-0123456789abcdef0123456789abcdef01234567}" > "$d/docs/fdroid/com.riwaq.reader.yml"
     printf '    build:\n      - x --default-toolchain %s\n      - %s\n    ndk: %s\n' \
       "$3" "$4" "$2" >> "$d/docs/fdroid/com.riwaq.reader.yml"
     printf 'CurrentVersion: %s\nCurrentVersionCode: %s\n' "$name" "$code" \
@@ -281,7 +298,12 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 1 "a recipe whose versionCode is wrong" "$(mkfd fdcode 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.2.0 2)"   v0.2.0
   d4="$(mkfd fdcommit 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"
   sed -i.bak 's/^    commit: .*/    commit: main/' "$d4/docs/fdroid/com.riwaq.reader.yml"
-  expect 1 "a recipe building a branch, not the tag" "$d4"                                                   v0.2.0
+  expect 1 "a recipe building a branch, not a hash"  "$d4"                                                   v0.2.0
+  # fdroiddata refuses a tag here: tags move, and this repo has deleted some.
+  d4b="$(mkfd fdtag 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.2.0 2000 v0.2.0)"
+  expect 1 "a recipe pinning the TAG rather than the hash" "$d4b"                                            v0.2.0
+  d4c="$(mkfd fdshort 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.2.0 2000 56e20c5)"
+  expect 1 "an abbreviated hash is not the full hash"  "$d4c"                                                v0.2.0
   d5="$(mkfd fdcur 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"
   sed -i.bak 's/^CurrentVersion: .*/CurrentVersion: 0.1.0/' "$d5/docs/fdroid/com.riwaq.reader.yml"
   expect 1 "a stale CurrentVersion"                  "$d5"                                                   v0.2.0

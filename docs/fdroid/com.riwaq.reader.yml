@@ -16,10 +16,12 @@
 # and .github/workflows/fdroid-verify.yml builds a commit with this recipe in
 # F-Droid's own build image and compares the result with our release APK.
 #
-# The Builds entry is the latest release. fdroid-verify.yml rewrites its
-# version and commit for a test build; fdroiddata's copy carries the real
-# ones, and F-Droid's checkupdates adds later releases on its own from the
-# tags (AutoUpdateMode below).
+# The Builds entry is the latest release, and `commit` is the FULL HASH:
+# fdroiddata requires one rather than a tag, because a tag can be moved or
+# deleted after review and this repository has deleted release tags before.
+# fdroid-verify.yml rewrites the version and commit for a test build;
+# fdroiddata's copy carries the real ones, and F-Droid's checkupdates adds
+# later releases on its own from the tags (AutoUpdateMode below).
 
 AntiFeatures:
   NonFreeNet:
@@ -43,7 +45,7 @@ Binaries: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v
 Builds:
   - versionName: 0.6.0
     versionCode: 6000
-    commit: v0.6.0
+    commit: 56e20c5562e62a0f7528902a6e7dcc7082869684
     sudo:
       - apt-get update
       - apt-get install -y build-essential nodejs npm
