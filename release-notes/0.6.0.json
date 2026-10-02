@@ -1,0 +1,134 @@
+{
+  "version": "0.6.0",
+  "date": "2026-10-02",
+  "highlight": {
+    "title": {
+      "en": "Riwaq updates itself",
+      "ar": "رواق يحدّث نفسه"
+    },
+    "body": {
+      "en": "When a new version is out, Riwaq shows you what changed and installs it — on Android too, where you used to go hunting for the APK. Your books, highlights and places stay exactly where they are.",
+      "ar": "عند صدور إصدار جديد يعرض لك رواق ما تغيّر ويثبّته — على أندرويد أيضًا، حيث كان عليك البحث عن ملف APK. تبقى كتبك وتظليلاتك ومواضعك كما هي تمامًا."
+    }
+  },
+  "stories": [
+    {
+      "kind": "new",
+      "image": "0.6.0-docx.webp",
+      "title": {
+        "en": "Read Word files like books",
+        "ar": "اقرأ ملفات Word ككتب"
+      },
+      "body": {
+        "en": "A .docx opens as flowing text or page-for-page, and a highlight you make in one mode is still there in the other.",
+        "ar": "يفتح ملف .docx كنص متدفق أو صفحة بصفحة، والتظليل الذي تصنعه في أحد الوضعين يبقى في الآخر."
+      }
+    },
+    {
+      "kind": "new",
+      "image": "0.6.0-cards.webp",
+      "title": {
+        "en": "Make the library yours",
+        "ar": "اجعل المكتبة على ذوقك"
+      },
+      "body": {
+        "en": "The Continue Reading card comes in four styles, from quiet to bold. Pick one in Settings → Appearance.",
+        "ar": "بطاقة «تابع القراءة» بأربعة أنماط، من الهادئ إلى الجريء. اختر واحدًا من الإعدادات ← المظهر."
+      }
+    },
+    {
+      "kind": "new",
+      "image": "0.6.0-focus.webp",
+      "title": {
+        "en": "Focus, without the furniture",
+        "ar": "تركيز بلا زوائد"
+      },
+      "body": {
+        "en": "A bare reading mode on desktop: the page, and your progress as a thin rail along the top.",
+        "ar": "وضع قراءة صافٍ على سطح المكتب: الصفحة، وتقدّمك شريط رفيع في الأعلى."
+      }
+    }
+  ],
+  "items": [
+    {
+      "kind": "new",
+      "en": "Books now open in scroll mode",
+      "ar": "تُفتح الكتب الآن في وضع التمرير"
+    },
+    {
+      "kind": "new",
+      "en": "What's new appears once after every update",
+      "ar": "يظهر «ما الجديد» مرة واحدة بعد كل تحديث"
+    },
+    {
+      "kind": "improved",
+      "en": "Files opened from other apps import in the background",
+      "ar": "الملفات المفتوحة من تطبيقات أخرى تُستورد في الخلفية"
+    },
+    {
+      "kind": "improved",
+      "en": "Back and forward work everywhere, the Store included",
+      "ar": "الرجوع والتقدّم يعملان في كل مكان، بما في ذلك المتجر"
+    },
+    {
+      "kind": "improved",
+      "en": "Resizing the window and going full screen are smooth",
+      "ar": "تغيير حجم النافذة والانتقال لملء الشاشة صارا سلسين"
+    },
+    {
+      "kind": "improved",
+      "en": "One primary Read on the book page, the rest tucked away",
+      "ar": "زر قراءة واحد في صفحة الكتاب، والباقي مطوي"
+    },
+    {
+      "kind": "improved",
+      "en": "Chapter titles are set in the reader's own font",
+      "ar": "عناوين الفصول بخط القارئ نفسه"
+    },
+    {
+      "kind": "improved",
+      "en": "The sidebar's shelves read as a tree",
+      "ar": "رفوف الشريط الجانبي تُقرأ كشجرة"
+    },
+    {
+      "kind": "improved",
+      "en": "Android builds are reproducible, for F-Droid",
+      "ar": "بناء أندرويد صار قابلًا لإعادة الإنتاج، من أجل F-Droid"
+    },
+    {
+      "kind": "fixed",
+      "en": "Your place survives a layout switch",
+      "ar": "يبقى موضعك عند تغيّر التخطيط"
+    },
+    {
+      "kind": "fixed",
+      "en": "EPUB pages turn by touch on tablets",
+      "ar": "تُقلَّب صفحات EPUB باللمس على الأجهزة اللوحية"
+    },
+    {
+      "kind": "fixed",
+      "en": "The app's own chrome no longer selects like a web page",
+      "ar": "لم تعد واجهة التطبيق تُحدَّد كصفحة ويب"
+    },
+    {
+      "kind": "fixed",
+      "en": "The sidebar no longer shakes on the way into Settings",
+      "ar": "لم يعد الشريط الجانبي يهتز عند الدخول إلى الإعدادات"
+    },
+    {
+      "kind": "fixed",
+      "en": "Every swipe on the phone scrolls the page",
+      "ar": "كل سحبة على الهاتف تمرّر الصفحة"
+    },
+    {
+      "kind": "fixed",
+      "en": "A lazy source's volumes load before the book is built",
+      "ar": "تُحمَّل مجلدات المصدر الكسول قبل بناء الكتاب"
+    },
+    {
+      "kind": "fixed",
+      "en": "No update is offered inside a Flatpak",
+      "ar": "لا يُعرض تحديث داخل Flatpak"
+    }
+  ]
+}
