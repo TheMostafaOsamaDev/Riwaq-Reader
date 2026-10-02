@@ -1,5 +1,6 @@
 package com.riwaq.reader
 
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -66,9 +67,12 @@ class PackageReplacedReceiver : BroadcastReceiver() {
                 Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            DownloadNotifier.ensureChannelPublic(ctx)
-            val n = NotificationCompat.Builder(ctx, TaskService.CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+            ensureChannel(ctx)
+            // A default-importance channel of its own: the downloads channel
+            // is LOW, which put this in Silent. And a white-on-transparent
+            // icon: the launcher mipmap's opaque background drew a plain disc.
+            val n = NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_riwaq)
                 .setContentTitle(ctx.getString(R.string.update_installed_title, version))
                 .setContentText(ctx.getString(R.string.update_installed_body))
                 .setContentIntent(open)
@@ -83,5 +87,22 @@ class PackageReplacedReceiver : BroadcastReceiver() {
     companion object {
         /** 1001/1002: book downloads; 1003: UpdateService. */
         const val NOTIF_ID = 1004
+        const val CHANNEL_ID = "riwaq-updates"
+
+        /** Idempotent. Named from resources, so it reads in the device's
+         *  language in the system notification settings. */
+        fun ensureChannel(ctx: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.getNotificationChannel(CHANNEL_ID) != null) return
+            val ch = NotificationChannel(
+                CHANNEL_ID,
+                ctx.getString(R.string.update_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = ctx.getString(R.string.update_channel_desc)
+            }
+            nm.createNotificationChannel(ch)
+        }
     }
 }

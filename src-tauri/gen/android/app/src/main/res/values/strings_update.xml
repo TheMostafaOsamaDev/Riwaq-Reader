@@ -3,4 +3,7 @@
     <!-- PackageReplacedReceiver: posted after Riwaq was updated. -->
     <string name="update_installed_title">Riwaq %1$s is installed</string>
     <string name="update_installed_body">Tap to open it.</string>
+    <!-- The notification channel for it (Settings → Notifications). -->
+    <string name="update_channel_name">App updates</string>
+    <string name="update_channel_desc">When Riwaq has finished updating itself</string>
 </resources>

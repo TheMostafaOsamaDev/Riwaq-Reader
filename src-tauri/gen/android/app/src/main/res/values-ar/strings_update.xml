@@ -3,4 +3,7 @@
     <!-- PackageReplacedReceiver: posted after Riwaq was updated. -->
     <string name="update_installed_title">تم تثبيت رواق %1$s</string>
     <string name="update_installed_body">اضغط لفتحه.</string>
+    <!-- The notification channel for it (Settings → Notifications). -->
+    <string name="update_channel_name">تحديثات التطبيق</string>
+    <string name="update_channel_desc">عندما ينتهي رواق من تحديث نفسه</string>
 </resources>
