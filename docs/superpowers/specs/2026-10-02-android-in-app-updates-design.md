@@ -451,7 +451,8 @@ Run on the `leaflet` AVD (API 36, arm64) with two debug builds, 0.6.90 → 0.6.9
 signed with the same debug key, against a local server through `adb reverse`
 (port 8766: 8765 was taken on the host), and on macOS with the throwaway-key recipe
 under `com.riwaq.reader.updatetest`. The full log, with every command and number,
-is `.superpowers/sdd/2026-10-02-android-in-app-updates/task-14-report.md`.
+was kept in the implementer's local working notes, which are not committed; the
+results below are what it established.
 
 **Proven on Android**
 - Release (R8) build: `verify:jni` reports all 17 JNI members kept, before and after
