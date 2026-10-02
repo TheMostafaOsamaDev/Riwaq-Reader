@@ -651,16 +651,30 @@ jobs:
                 "$GITHUB_WORKSPACE/src-tauri/gen/android/key.properties"
 
   # ──────────────────────────────────────────────────────────────────
-  # Update manifest — verifies the latest.json tauri-action produced.
+  # Update manifest — repairs and then verifies the latest.json tauri-action
+  # produced.
   #
-  # Five jobs upload to the same draft release and each writes latest.json.
-  # Whether that MERGES platform entries or overwrites them is not documented
-  # anywhere, and the failure is silent either way: a manifest missing
-  # linux-aarch64 is valid JSON, uploads cleanly, and simply means those users
-  # never see an update again. Nobody finds out until someone asks why their
-  # copy is six versions old.
+  # Five jobs upload to the same draft release and each rewrites latest.json:
+  # read what is there, add its own platform, upload the result. That is a
+  # read-modify-write with no lock across five machines, so two jobs finishing
+  # together can both read the same file and the second upload drops the
+  # first's platform. The failure is silent: a manifest missing linux-aarch64
+  # is valid JSON, uploads cleanly, and simply means those users never see an
+  # update again. Nobody finds out until someone asks why their copy is six
+  # versions old.
   #
-  # So this job does not build the manifest — it checks the one that shipped.
+  # v0.4.1, v0.5.0 and v0.5.1 merged correctly. v0.6.0 lost BOTH Linux jobs —
+  # the AppImages and their .sig files uploaded fine and latest.json had no
+  # linux entry at all. So it is a dice roll, and refusing to publish (which
+  # is the right floor, and is still what happens) turns it into a failed
+  # release every time it comes up.
+  #
+  # The repair is mechanical and needs nothing the release does not already
+  # have: the signature for a missing platform is sitting on the release as
+  # <artifact>.sig, and the URL is where that artifact already is. So rebuild
+  # the missing entries, then check the result exactly as before — the verify
+  # step is unchanged and still has the last word.
+  #
   # Tag pushes only; workflow_dispatch creates no release to check.
   # ──────────────────────────────────────────────────────────────────
   manifest:
@@ -675,10 +689,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the guard itself
-        run: bash scripts/verify-update-manifest.sh --self-test
+      - name: Check the guard and the repair themselves
+        run: |
+          bash scripts/verify-update-manifest.sh --self-test
+          bash scripts/repair-update-manifest.sh --self-test
 
-      - name: Download latest.json from the draft release
+      - name: Download latest.json and the signatures from the draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -690,6 +706,27 @@ jobs:
               echo "::error title=No update manifest::tauri-action published no latest.json. The updater is configured, so this means the signing secrets are missing — every desktop install would stop receiving updates."
               exit 1
             }
+          mkdir -p sigs
+          gh release download "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.sig' --dir sigs --clobber
+
+      - name: Put back any platform the upload race dropped
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          before="$(sha256sum latest.json | cut -d' ' -f1)"
+          bash scripts/repair-update-manifest.sh latest.json sigs \
+            "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          after="$(sha256sum latest.json | cut -d' ' -f1)"
+          # Only re-upload when something actually changed: an untouched
+          # manifest must not be deleted and replaced for nothing.
+          if [ "$before" != "$after" ]; then
+            gh release upload "${{ github.ref_name }}" latest.json \
+              --repo "${{ github.repository }}" --clobber
+            echo "::warning title=Update manifest repaired::tauri-action's latest.json was missing a platform and has been rebuilt from the release's own signatures. This is the known upload race between the build jobs."
+          fi
 
       - name: Verify every platform is covered
         run: bash scripts/verify-update-manifest.sh latest.json "${{ github.ref_name }}"
