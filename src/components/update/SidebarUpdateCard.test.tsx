@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ import { THEMES } from "../../styles/tokens";
 import { LibrarySidebar } from "../LibrarySidebar";
 import { DesktopSettingsUpdateCard } from "./DesktopSettingsUpdateCard";
 import { DesktopUpdateLayer } from "./DesktopUpdateLayer";
+import { SidebarUpdateCard } from "./SidebarUpdateCard";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -294,6 +296,35 @@ describe("SidebarUpdateCard", () => {
     expect(
       document.querySelector("[data-settings-update]")?.textContent,
     ).toContain(body);
+  });
+
+  it("ready: the sidebar note is clamped to two lines, its full text in the title", async () => {
+    // At an 800 px window the unclamped note pushed Settings half out of view.
+    h.check.mockResolvedValue(fakeUpdate());
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    const body =
+      "Restart Riwaq to finish. Your books and progress stay exactly where they are.";
+    const note = card()?.querySelector<HTMLElement>("[data-update-note]");
+    expect(note?.textContent).toBe(body);
+    expect(note?.title).toBe(body);
+    // happy-dom's CSSOM drops the -webkit-box declarations it does not
+    // know, so read the style React itself serialises for the same card.
+    const html = renderToStaticMarkup(
+      <I18nProvider locale="en">
+        <SidebarUpdateCard theme={theme} />
+      </I18nProvider>,
+    );
+    const style = /data-update-note="[^"]*"[^>]*style="([^"]*)"/.exec(
+      html,
+    )?.[1];
+    expect(style).toMatch(/display:\s*-webkit-box/);
+    expect(style).toMatch(/line-clamp:\s*2/);
+    expect(style).toMatch(/box-orient:\s*vertical/);
+    expect(style).toMatch(/overflow:\s*hidden/);
   });
 
   it("relaunch failing after a good install says to reopen, not that nothing changed", async () => {

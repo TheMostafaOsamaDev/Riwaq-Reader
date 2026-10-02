@@ -141,9 +141,17 @@ function CardBody({ theme, card }: { theme: Theme; card: NonNullable<Card> }) {
           </span>
         )}
         {note && (
+          // Two lines at most: unclamped, it pushed the sidebar's Settings
+          // row half out of view at an 800 px window. The full text is in
+          // the title here, and in full on the Settings card and the dialog.
           <span
+            data-update-note
+            title={note}
             style={{
-              display: "block",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
               marginTop: 3,
               fontSize: 12,
               lineHeight: 1.45,
