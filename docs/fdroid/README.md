@@ -77,3 +77,35 @@ F-Droid requires it, none affecting the APK's contents:
   `prebuild`, so the build comes out unsigned for F-Droid to compare.
   fdroidserver strips the `signingConfigs { }` block itself, but not the
   multi-line `signingConfig = if (...)` that picks the fallback.
+
+## The install permission, and anti-features
+
+One manifest serves the GitHub APK and the F-Droid build (they must be
+byte-identical), so the F-Droid build declares `REQUEST_INSTALL_PACKAGES` too.
+It is **never used** there. At launch Riwaq reads its installer of record. Any
+installer that is not the system installer, adb, Riwaq itself, Obtainium or
+Orion is "managed", which covers every F-Droid client (`org.fdroid.fdroid`,
+`org.fdroid.basic`, `com.looker.droidify`, `com.machiav3lli.fdroid`, …):
+
+- no update prompt, no download, no install session, ever;
+- nothing fetched beyond the daily `latest.json` check (not the release notes,
+  not `SHA256SUMS`, not the APK);
+- Settings → About says "Updates for this install come from F-Droid" with an
+  **Open F-Droid** button.
+
+Checked on the emulator on 2026-10-02 with an install recorded as from
+`org.fdroid.fdroid`: no pill, the server saw only `GET /latest.json`, and an
+F-Droid-style update (`adb install -r -i org.fdroid.fdroid`) posted no Riwaq
+notification of its own; the What's new pages, bundled in the APK, still showed
+once on the next launch.
+
+Say so in the metadata when the first release carrying in-app updates goes to
+fdroiddata (a reviewer will see the permission): the updater is inert for
+F-Droid installs, and F-Droid's build is our GitHub APK, so stripping the
+permission would break reproducibility.
+
+**Anti-features, reviewed 2026-10-02:** no change. `NonFreeNet` (the Store)
+stays. The daily check is one unauthenticated GET of a static file on the
+project's own GitHub release, with no identifiers, so it is not `Tracking`.
+Nothing non-free is downloaded or run for F-Droid installs, so no
+`NonFreeAdd`/`NonFreeDep`/`UpstreamNonFree` applies.

@@ -440,3 +440,61 @@ Modified:
 - `.github/workflows/release.yml` (validate, upload, render body)
 - `docs/RELEASING.md` (the notes step), `README.md` (privacy paragraph: the
   extra GETs are the same release, still no identifiers)
+
+## Results (2026-10-02, emulator and macOS)
+
+Run on the `leaflet` AVD (API 36, arm64) with two debug builds, 0.6.90 → 0.6.91,
+signed with the same debug key, against a local server through `adb reverse`
+(port 8766: 8765 was taken on the host), and on macOS with the throwaway-key recipe
+under `com.riwaq.reader.updatetest`. The full log, with every command and number,
+is `.superpowers/sdd/2026-10-02-android-in-app-updates/task-14-report.md`.
+
+**Proven on Android**
+- Release (R8) build: `verify:jni` reports all 17 JNI members kept, before and after
+  the fixes below; the minified APK ran on the emulator and checked GitHub from Rust.
+- Pill → notes sheet (highlight image as a `data:` URL, tagged lines, 197.2 MB) →
+  Update → progress ring and notification 1003.
+- Server killed at 40%: red pill, "Your connection dropped at 41%"; **Resume** sent
+  `Range: bytes=85458944-`, exactly the `.part` size, and the server answered 206 with
+  the remaining 121,337,614 bytes. The joined file verified.
+- First-time permission: our sheet → Android's "Install unknown apps" → toggle → back
+  → Android's install dialog with no further tap.
+- Cancel on Android's dialog → Ready, APK kept, session abandoned. Home during the
+  session copy → the dialog was blocked, and Install now worked on return (a new
+  session, the old one abandoned).
+- Update → the `MY_PACKAGE_REPLACED` receiver (exported=false) posted
+  "Riwaq 0.6.91 is installed · Tap to open it" → story pages once → library intact.
+- Storage: app data 4904 KB before, 4944 KB after relaunching on 0.6.91 (+40 KB, all
+  WebView profile); `cache/updates` empty; no active or staged install sessions.
+- Failures: an instant download failure four times in a row, no foreground-service
+  crash; Cancel removes notification 1003 for good; cancel-then-start restarts in 2 s;
+  a tampered APK is rejected ("didn't match"), deleted, and no Install is offered.
+- Stores (with stub store APKs, since `adb install -i` records no installer for a
+  package that is not installed): F-Droid gets no pill and the "Updates for this install
+  come from F-Droid" line; Orion gets **Update in Orion Store**, which opens Orion; with
+  Orion uninstalled Android clears the installer and the in-app flow returns; a store
+  update during an in-app download leaves `cache/updates` empty, no pill, and What's new
+  shown once.
+
+**Changed as a result**
+- A managed or manual install no longer fetches the notes, `SHA256SUMS` or the APK's
+  size (it did, on every check). It makes only the daily `latest.json` request.
+- "Installed · Open" is posted only after Riwaq's own update; a store's update no
+  longer gets a second notification next to the store's.
+
+**Proven on macOS**: sidebar card → What's new dialog → Update → progress → "ready"
+with **Restart now**; the app stayed on 0.6.90 for 75 s until Restart now; relaunch
+as 0.6.91 → story pages once; no `Riwaq*`/`*updater*` leftovers in `$TMPDIR`.
+
+**Not proven, or open**
+- Windows (`%TEMP%` sweep) and the Linux AppImage were not run end to end; the sweep
+  is covered by its unit and tempdir tests only.
+- The real Obtainium and Orion apps were not installed; stubs stood in for them, so
+  each store's own launch screen and update behaviour are untested.
+- The "Wait for Wi-Fi" path and a real metered network were not exercised (the
+  emulator reports Wi-Fi as unmetered; airplane mode showed the mobile-data sheet).
+- In the first macOS run the app restarted by itself about 2 s after the download
+  finished, and skipped its story pages. Three later runs did not reproduce it, and no
+  code path restarts without a press on Restart now; stray input from outside the test
+  is the likely cause, but it is unconfirmed.
+- On the tablet layout the pill is centred on the window, not on the content pane.
