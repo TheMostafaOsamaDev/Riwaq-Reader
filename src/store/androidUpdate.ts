@@ -316,7 +316,7 @@ export async function offer(info: { version: string } | null): Promise<void> {
     notesFor = info.version;
     const v = info.version;
     work.push(
-      fetchNotes(invoke as never, v).then((notes) => {
+      fetchNotes(invoke, v).then((notes) => {
         if (store.state.offer?.version === v) setState({ notes });
       }),
     );

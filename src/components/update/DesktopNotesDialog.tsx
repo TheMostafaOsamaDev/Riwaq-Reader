@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
-import { fetchNotes } from "../../store/fetchNotes";
+import { fetchNotes, type Invoke, lazyInvoke } from "../../store/fetchNotes";
 import type { ReleaseNotes } from "../../store/releaseNotes";
 import {
   FONT_SERIF_DISPLAY,
@@ -13,13 +13,6 @@ import { AnimatedDialog } from "../AnimatedDialog";
 import { Button } from "../Button";
 import { NotesView } from "./NotesView";
 import { NotesLoading, useDialogKeys } from "./parts";
-
-type Invoke = (cmd: string, args: Record<string, unknown>) => Promise<unknown>;
-
-async function tauriInvoke(cmd: string, args: Record<string, unknown>) {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(cmd, args);
-}
 
 type Notes = { notes: ReleaseNotes | null; highlightImage?: string };
 
@@ -43,7 +36,7 @@ export function DesktopNotesDialog({
   onSkip,
   body,
   preloaded,
-  invokeImpl = tauriInvoke,
+  invokeImpl = lazyInvoke,
 }: {
   open: boolean;
   version: string;

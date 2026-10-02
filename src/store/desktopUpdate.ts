@@ -19,7 +19,7 @@
 // network: the plugin and the fetch_release_notes command do.
 
 import { ARM_MS } from "../hooks/useArmed";
-import { fetchNotes } from "./fetchNotes";
+import { fetchNotes, lazyInvoke } from "./fetchNotes";
 import type { ReleaseNotes } from "./releaseNotes";
 import { RELEASES_PAGE_URL, type UpdateInfo } from "./updates";
 import {
@@ -132,7 +132,7 @@ export const useDesktopUpdateSelect = store.useSelect;
 
 /** An offer newer than what runs. Keyed on the running version, so an
  *  update installed some other way shows nothing. */
-export function pendingVersion(s: DesktopUpdateState): string | null {
+function pendingVersion(s: DesktopUpdateState): string | null {
   const v = s.offer?.version;
   return v && isNewerVersion(v, s.running) ? v : null;
 }
@@ -185,11 +185,6 @@ export function configure(c: {
   skips.reconcile();
 }
 
-async function tauriInvoke(cmd: string, args: Record<string, unknown>) {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(cmd, args);
-}
-
 /** What useUpdateCheck found. Idempotent for the same version; null (no
  *  update, or Flatpak) changes nothing. */
 export async function offer(info: UpdateInfo | null): Promise<void> {
@@ -216,7 +211,7 @@ export async function offer(info: UpdateInfo | null): Promise<void> {
   if (notesFor !== info.version) {
     notesFor = info.version;
     const v = info.version;
-    const notes = await fetchNotes(tauriInvoke, v);
+    const notes = await fetchNotes(lazyInvoke, v);
     if (store.state.offer?.version === v) setState({ notes });
   }
 }

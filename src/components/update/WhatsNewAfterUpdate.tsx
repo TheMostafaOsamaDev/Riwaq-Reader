@@ -93,7 +93,7 @@ export function WhatsNewAfterUpdate({
 /** The desktop frame: built like DesktopNotesDialog. The header and Got it
  *  are fixed; only the body scrolls, so a long release can never push the
  *  button off a small window. */
-export function WhatsNewDialog({
+function WhatsNewDialog({
   theme,
   open,
   onClose,
