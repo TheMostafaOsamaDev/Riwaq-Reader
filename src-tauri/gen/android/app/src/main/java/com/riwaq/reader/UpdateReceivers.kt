@@ -42,17 +42,22 @@ class InstallResultReceiver : BroadcastReceiver() {
 }
 
 /** Android kills the app to replace it and never relaunches it; background
- *  activity starts are blocked on 10+. So: one notification to reopen. Fires
- *  after ANY update of Riwaq (ours or a store's), which is fine — it says
- *  what is true. It also frees the update's storage at once: the running
+ *  activity starts are blocked on 10+. So: one notification to reopen — but
+ *  only after Riwaq's OWN update (state.json said "installing"). A store
+ *  (F-Droid, Orion, Obtainium, adb) that replaced us has its own "updated"
+ *  notice, and the emulator showed ours duplicating it on every store
+ *  update. It also frees the update's storage at once: the running
  *  version is now at or past the cached one, so AppUpdater.cleanupAsync
  *  deletes cacheDir/updates/ and abandons any leftover install session.
  *  goAsync keeps this process alive until that cleanup has finished. */
 class PackageReplacedReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        // Read before cleanupAsync: it deletes state.json.
+        val ours = AppUpdater.wasInstalling(ctx)
         val pending = goAsync()
         AppUpdater.cleanupAsync(ctx) { pending.finish() }
+        if (!ours) return
         try {
             val version = ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: ""
             val open = PendingIntent.getActivity(

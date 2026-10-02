@@ -562,6 +562,13 @@ object AppUpdater {
         }
     }
 
+    /** Whether Riwaq itself was installing an update: state.json says
+     *  "installing" from the moment a session is committed until the process
+     *  is replaced. PackageReplacedReceiver reads it BEFORE cleanupAsync
+     *  clears the directory, to tell our own update from a store's. */
+    internal fun wasInstalling(ctx: Context): Boolean =
+        read(ctx.applicationContext).optString("state") == "installing"
+
     /** Called by InstallResultReceiver with the session Android answered for.
      *  A failed or aborted session is abandoned at once (its staged copy goes).
      *  ABORTED = the user tapped Cancel on Android's dialog: back to "ready"
