@@ -111,7 +111,9 @@ class UpdateService : Service() {
         private fun build(ctx: Context, title: String, pct: Int, indeterminate: Boolean): Notification =
             NotificationCompat.Builder(ctx, TaskService.CHANNEL_ID)
                 .setContentTitle(title)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                // The monochrome status-bar mark, as on the "installed"
+                // notification; the launcher mipmap draws a plain disc.
+                .setSmallIcon(R.drawable.ic_stat_riwaq)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
