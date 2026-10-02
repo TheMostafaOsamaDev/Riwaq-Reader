@@ -81,4 +81,23 @@ describe("StoryPages", () => {
     await click("Start reading");
     expect(onDone).toHaveBeenCalledTimes(1);
   });
+
+  it("moves focus into the dialog, onto the primary button, on mount", async () => {
+    await mount();
+    expect(document.activeElement).toBe(button("Next"));
+    expect(
+      document
+        .querySelector('[role="dialog"]')
+        ?.contains(document.activeElement),
+    ).toBe(true);
+  });
+
+  it("Skip, Next and Start reading are 44 px touch targets", async () => {
+    await mount();
+    expect(button("Skip")?.style.minHeight).toBe("44px");
+    expect(button("Next")?.style.minHeight).toBe("44px");
+    await wait(1000);
+    await click("Next");
+    expect(button("Start reading")?.style.minHeight).toBe("44px");
+  });
 });

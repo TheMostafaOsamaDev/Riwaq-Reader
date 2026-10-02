@@ -1,11 +1,11 @@
 // Full-screen, one feature per page, shown once after a BIG release (one
 // whose notes define `stories`). Small releases never get here — see
 // WhatsNewAfterUpdate.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
 import { pick, type ReleaseNotes } from "../../store/releaseNotes";
-import { type Theme, Z } from "../../styles/tokens";
+import { type Theme, TOUCH_TARGET_MIN, Z } from "../../styles/tokens";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { KindTag } from "./NotesView";
@@ -39,6 +39,13 @@ export function StoryPages({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onDone]);
+  // Focus into the dialog on mount, onto the primary button: a keyboard or
+  // screen-reader user starts inside the tour, not behind it. A key press
+  // there is still held off by the arming delay above.
+  const primaryRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    primaryRef.current?.focus();
+  }, []);
   const page = pages[i];
   if (!page) return null;
   const last = i === pages.length - 1;
@@ -83,6 +90,7 @@ export function StoryPages({
           variant="ghost"
           size="sm"
           aria-disabled={!armed || undefined}
+          style={{ minHeight: TOUCH_TARGET_MIN }}
           onClick={guard(onDone)}
         >
           {tr("whatsNew.skip")}
@@ -162,10 +170,12 @@ export function StoryPages({
         ))}
       </div>
       <Button
+        ref={primaryRef}
         theme={theme}
         variant="primary"
         fullWidth
         aria-disabled={!armed || undefined}
+        style={{ minHeight: TOUCH_TARGET_MIN }}
         onClick={guard(() => (last ? onDone() : setI(i + 1)))}
       >
         {last ? tr("whatsNew.done") : tr("whatsNew.next")}
