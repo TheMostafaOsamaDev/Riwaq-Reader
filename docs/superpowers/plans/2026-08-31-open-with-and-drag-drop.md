@@ -1,7 +1,5 @@
 # Open-with file associations + desktop drag-and-drop — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Let the OS hand a book to Riwaq — via "Open with", the Android share sheet, or a drag-and-drop onto the desktop window — instead of the in-app file picker being the only way in.
 
 **Architecture:** Four native sources (macOS `RunEvent::Opened`, Windows/Linux argv + single-instance, Android VIEW/SEND intents, desktop drop) push paths into one Rust-side buffered queue and emit a payload-less wake-up event. The frontend drains that queue on mount and on every event, so a file double-clicked at cold start cannot race the webview's listener. Drained paths go through a new `importPaths()` that reuses the existing `stagePaths` pipeline unchanged.

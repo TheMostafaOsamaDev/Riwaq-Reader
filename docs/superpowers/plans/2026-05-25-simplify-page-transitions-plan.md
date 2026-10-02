@@ -1,7 +1,5 @@
 # Simplify Page-Transition Animations Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Collapse three page-level animation keyframe pairs (`leaflet-view`, `leaflet-dialog`, `leaflet-fullscreen`) to pure cross-fade, and realign one timer in `AnimatedSwap` to match the new 240 ms enter duration.
 
 **Architecture:** Two source files change. `global.css` keyframe pair bodies become opacity-only; the matching `.leaflet-*-enter` class declarations switch from the spring easing (`cubic-bezier(0.32, 0.72, 0, 1)`) to plain `ease-out`, and one duration (`view-enter`) shortens 280→240 ms while `view-exit` shortens 200→180 ms. `AnimatedSwap.tsx` swaps `MOTION.slow` → `MOTION.med` in the timer that drops the enter class. Class names, component APIs, and call sites stay identical.

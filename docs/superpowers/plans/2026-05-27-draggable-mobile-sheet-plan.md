@@ -1,7 +1,5 @@
 # Draggable Mobile Sheet Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make `MobileSheet` (used by TOC, Settings, Highlights, Progress on mobile) draggable with three snap points — full / default / dismissed — using hand-rolled `PointerEvent` gestures and no new dependencies.
 
 **Architecture:** All gesture math is extracted to a small pure module (`src/components/sheetSnap.ts`); React/DOM concerns stay in `MobileSheet.tsx`. The sheet element is rendered at the full-snap height and positioned by `translateY` so expansion is a transform-only animation with no relayout. The existing CSS-class–based enter/exit keyframes are replaced by the same state-driven `transform` transitions used for snap settles, so an exit from the full snap slides directly off-screen instead of jumping back to default first.

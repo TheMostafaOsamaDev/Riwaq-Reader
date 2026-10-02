@@ -1,7 +1,5 @@
 # Android In-App Updates and "What's New" Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Sideloaded Android installs download, verify and install updates
 inside the app (pill → "What's new" sheet → progress → Android's installer).
 Every platform shows hand-written, bilingual release notes before and after

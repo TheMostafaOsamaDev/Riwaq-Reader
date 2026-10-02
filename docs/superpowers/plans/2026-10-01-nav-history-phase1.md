@@ -1,7 +1,5 @@
 # Navigation history phase 1 — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Remove the sidebar back/forward arrows completely, route every
 back/forward input (keyboard, mouse side buttons) through one module, and close
 the history gaps (Store pages, A→B→A loops, a stuck Back).

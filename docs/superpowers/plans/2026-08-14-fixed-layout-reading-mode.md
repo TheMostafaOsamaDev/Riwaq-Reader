@@ -1,7 +1,5 @@
 # Fixed-Layout Reading Mode (PDF + DOCX) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add a fixed-page reading mode that serves **PDF** (pdf.js canvas) and **DOCX** (mammoth→HTML paginated into page-cards, real selectable text) through the **same reader shell** as EPUB — differing only in the center viewer — and remove the old DOCX→EPUB conversion + curation/editing feature.
 
 **Architecture:** One shared reader shell (top bar, Contents/Highlights/Progress/Settings panels, gestures) with a viewer slot chosen by `BookIndexEntry.kind`. Reflowable books (`epub`/`source`) keep the existing `DesktopReader`/`MobileReader`. Fixed books (`pdf`/`docx`) render a new `FixedPageReader` that reuses `PanelShell` + the panels fed **normalized** data (`TocEntry`, `ReaderProgress`, page-based `ReaderLocation`), and a `FixedPageViewer` driven by a `FixedPageSource` abstraction (`PdfPageSource` | `DocxPageSource`). Import, storage, settings, theming, i18n and RTL are reused.

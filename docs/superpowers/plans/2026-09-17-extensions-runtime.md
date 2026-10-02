@@ -1,7 +1,5 @@
 # Extensions Runtime Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace the reader's three compiled-in sources with a runtime extension system that installs, updates and removes extensions individually from user-managed repos.
 
 **Architecture:** Extensions are ESM bundles downloaded from a repo's `index.min.json`, verified by SHA-256, written under `$APPDATA/riwaq/extensions/`, and loaded via blob-URL dynamic `import()`. `registry.ts` keeps its five existing public signatures so none of the nine call sites change; a new `initExtensions()` populates it asynchronously at startup. A Cloudflare challenge is handled inside `host.fetch` by retrying through the existing desktop session webview, so extensions never know it happened.

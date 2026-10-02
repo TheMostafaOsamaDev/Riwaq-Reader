@@ -1,7 +1,5 @@
 # KolNovel Pro — HTML chapters + live search + dialog back — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make KolNovel Pro read chapters from page HTML (PDF kept as a fallback), drive search off the site's live autocomplete API, and add a "Back to novel" action to the chapter-load error dialog.
 
 **Architecture:** Lift the free source's chapter-body extractor into the shared theme module (`parseChapterContent`, parameterized by base URL, with `.epcontent` added to the root preference) so both sources share it. Pro's `getChapterContent` tries HTML first and falls back to the existing PDF token flow only when the HTML body is empty. Pro's `search`/`searchSuggest` call `admin-ajax.php?action=ts_ac_do_search` (JSON). A secondary button in `ChapterErrorOverlay` calls the reader's `onClose`, which reveals the novel detail page underneath.

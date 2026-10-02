@@ -1,7 +1,5 @@
 # App UI i18n (Arabic + RTL) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Give the app's own UI an Arabic language option (auto-detected, overridable in Settings) that mirrors the entire chrome to RTL, while book-content direction stays independently derived per book.
 
 **Architecture:** A dependency-free, typed i18n layer under `src/i18n/` (English catalog is the source of truth; Arabic is `Record<MsgKey,string>` so missing keys are compile errors). A React context (`I18nProvider`) exposes `{ locale, dir, tr }`; the resolved locale is computed at the app root from a new `Tweaks.uiLang` preference (mirrors the existing `theme:"system"` pattern) and drives `document.documentElement.dir`/`lang` and the shell `dir`. Chrome components consume `tr(...)` for text and are converted from physical CSS (`left`/`marginLeft`/`textAlign:"left"`) to logical properties (`insetInlineStart`/`marginInlineStart`/`textAlign:"start"`) so they mirror under RTL.

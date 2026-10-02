@@ -1,7 +1,5 @@
 # Reader within-chapter progress bar + exact resume — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add a thin within-chapter progress bar to the reader's top header (all readers, desktop + mobile) and upgrade "Continue reading" to restore the exact sub-paragraph scroll position.
 
 **Architecture:** Keep the existing paragraph-index model as the cross-mode anchor. Layer two decoupled signals on top: (1) a live "chapter fraction" computed per-mode and written to a 2px bar imperatively (no React re-render per scroll frame); (2) a normalized `paragraphOffset` (0–1) captured/restored in scroll mode for exact resume. Pure math lives in an isolated, side-effect-free helper module.

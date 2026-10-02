@@ -1,7 +1,5 @@
 # Phone focus mode — implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make the phone reader's focus mode a deliberate mode: entered from a
 header button, left by a double-tap or by tapping its own indicator, announced
 on entry, and remembered between sessions.

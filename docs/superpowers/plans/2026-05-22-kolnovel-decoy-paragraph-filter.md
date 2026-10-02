@@ -1,7 +1,5 @@
 # KolNovel Decoy-Paragraph Filter Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Stop emitting KolNovel's hidden decoy paragraphs and inline ad strings when scraping chapter bodies.
 
 **Architecture:** Stay on the existing static-HTML fetch path. Read the rotating set of hidden hex-class names from the page's inline `<style>` block at parse time, filter `<p>` elements whose class set intersects that set, and strengthen the existing ad-pattern check from whole-line match to substring strip.

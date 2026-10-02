@@ -1,7 +1,5 @@
 # Store polish follow-ups — implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Land three fixes from the spec at `docs/superpowers/specs/2026-05-13-store-polish-followups-design.md` onto the open `feat/store-convert-to-epub` branch — conversion pre-loads every volume, notification channel + unicode progress bar, mobile inner pages drop the Library header.
 
 **Architecture:** Three independent edits to existing modules. No new files for issues 1-2; one tiny local component for issue 3. All work stays within `src/`, no Rust changes.

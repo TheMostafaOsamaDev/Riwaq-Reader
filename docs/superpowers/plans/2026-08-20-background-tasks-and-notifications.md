@@ -1,7 +1,5 @@
 # Background tasks + unified progress notifications — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Keep chapter downloads, book imports, and offline-book conversions running on Android when the app is switched away / screen off, and surface all in-flight work as one accurate, grouped progress notification (with a proper desktop experience too).
 
 **Architecture:** Reuse the existing JavaScript task engines (`downloadQueue.ts`, `storeConversion.ts`, import flow). Add an Android **foreground service** (`TaskService`) + partial wake lock that keeps the app process — and therefore the WebView JS loop — alive while any background-eligible task runs. A small JS coordinator starts/stops the service as the aggregate active-task count crosses zero. The existing notifier is extended to fold in imports and to render a smooth aggregate; desktop gains start/end-only notifications plus a taskbar/dock progress bar.
