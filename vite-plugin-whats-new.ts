@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
+import { IMAGE_NAME } from "./scripts/release-notes.mjs";
 
 const ID = "virtual:whats-new";
 const RESOLVED = `\0${ID}`;
@@ -21,10 +22,20 @@ export function whatsNew(): Plugin {
       if (!existsSync(file)) return `${head}export const images = {};\nexport default null;\n`;
       this.addWatchFile(file);
       const notes = JSON.parse(readFileSync(file, "utf8"));
+      // Each image once (a story may reuse the highlight's), and only a plain
+      // file name: the validator checks this too, but a name that reaches an
+      // import path here is never allowed to climb out of release-notes/img.
       const names: string[] = [
-        notes.highlight?.image,
-        ...(notes.stories ?? []).map((s: { image?: string }) => s.image),
-      ].filter((n): n is string => typeof n === "string");
+        ...new Set(
+          [
+            notes.highlight?.image,
+            ...(notes.stories ?? []).map((s: { image?: string }) => s.image),
+          ].filter((n): n is string => typeof n === "string"),
+        ),
+      ];
+      for (const n of names) {
+        if (!IMAGE_NAME.test(n)) this.error(`release-notes/${version}.json: bad image name ${JSON.stringify(n)}`);
+      }
       const imports = names
         .map((n, i) => `import img${i} from ${JSON.stringify(resolve("release-notes/img", n))};`)
         .join("\n");

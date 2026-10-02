@@ -6,7 +6,7 @@
 export const IMAGE_CAP = 150 * 1024;
 const KINDS = ["new", "improved", "fixed"];
 const ARABIC = /[؀-ۿ]/;
-const IMAGE_NAME = /^[A-Za-z0-9_.-]+\.webp$/;
+export const IMAGE_NAME = /^[A-Za-z0-9_.-]+\.webp$/;
 
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
