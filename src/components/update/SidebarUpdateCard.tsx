@@ -314,10 +314,10 @@ function CardBody({ theme, card }: { theme: Theme; card: NonNullable<Card> }) {
   );
 }
 
-/** "Restart now", the one action that ends the session. It ignores clicks
- *  for ARM_MS after it appears: it appears the moment a download ends,
- *  often where Update or Try again was a second earlier, so a double-click
- *  or a window-activating click must not land on it. It stays visible and
+/** "Restart now", the one action that ends the session. It is its own
+ *  element, placed apart from Update / Try again, and it ignores clicks for
+ *  ARM_MS after it appears (useArmed explains the unexplained restart this
+ *  guards against; the store's restart() guards too). It stays visible and
  *  focusable meanwhile (aria-disabled, dimmed), and brightens once live. */
 export function RestartNowButton({
   theme,

@@ -19,6 +19,7 @@
 // network: the plugin and the fetch_release_notes command do.
 
 import { useSyncExternalStore } from "react";
+import { ARM_MS } from "../hooks/useArmed";
 import { fetchNotes } from "./fetchNotes";
 import type { ReleaseNotes } from "./releaseNotes";
 import { clearSkip } from "./updateFlow";
@@ -100,6 +101,8 @@ let pending: PluginUpdate | null = null;
 let generation = 0;
 /** A download or an install is between its first await and its end. */
 let busy = false;
+/** When the phase last became "ready" (Date.now()). */
+let readyAt = 0;
 
 /** Let go of the downloaded Update, releasing the plugin's resource. */
 function dropPending() {
@@ -365,6 +368,7 @@ export async function update(): Promise<void> {
     }
     if (pending !== u) dropPending();
     pending = u;
+    readyAt = Date.now();
     setState({
       phase: "ready",
       bytes: counted,
@@ -383,6 +387,10 @@ export async function restart(): Promise<void> {
   if (state.offer?.channel !== "auto" || state.phase !== "ready" || busy) {
     return;
   }
+  // Defence in depth, behind the armed buttons: a restart asked for within
+  // ARM_MS of the download finishing is taken as stray input, not a
+  // decision (see useArmed for the unexplained restart this guards).
+  if (Date.now() - readyAt < ARM_MS) return;
   busy = true;
   setState({ phase: "installing" });
   try {
@@ -426,10 +434,12 @@ export function __resetForTests(): void {
   generation = 0;
   busy = false;
   counted = 0;
+  readyAt = 0;
 }
 
 /** Test-only: a "ready" state whose Update object is gone (a reload). */
 export function __setReadyWithoutUpdateForTests(): void {
   pending = null;
+  readyAt = Date.now();
   setState({ phase: "ready" });
 }

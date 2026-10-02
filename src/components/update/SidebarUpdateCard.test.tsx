@@ -119,8 +119,8 @@ async function click(b: Element | undefined) {
   });
 }
 
-// Only setTimeout is faked: the arming delay is a timer, and promises
-// (the mocked plugins) must still resolve on their own.
+// Only timers and the clock are faked: the arming delay is a timer, and
+// promises (the mocked plugins) must still resolve on their own.
 const ARM = 1000;
 async function arm() {
   await act(async () => {
@@ -129,7 +129,8 @@ async function arm() {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  // Date too: the store's own restart guard reads the clock.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   store.__resetForTests();
   saved.length = 0;
   document.body.innerHTML = "";
@@ -362,9 +363,9 @@ describe("SidebarUpdateCard", () => {
     await act(async () => open());
   });
 
-  // From the Task 14 macOS run: the button that said Update said Restart now
-  // a second later, in the same place, so a double-click (or the click that
-  // only activates an inactive window, then the real one) restarted Riwaq.
+  // The Task 14 macOS run restarted ~2 s after a download, unexplained; a
+  // second click or stray input on the old Update spot is suspected. These
+  // pin the protection, whatever the cause was.
   it("Settings: a click on the old spot right after the download does not restart", async () => {
     const u = fakeUpdate();
     h.check.mockResolvedValue(u);
@@ -426,6 +427,31 @@ describe("SidebarUpdateCard", () => {
     await arm();
     await act(async () => store.openDialog("notes"));
     await click(button("Restart now", dialog()!));
+    expect(u.install).not.toHaveBeenCalled();
+    await arm();
+    await click(button("Restart now", dialog()!));
+    expect(u.install).toHaveBeenCalledTimes(1);
+  });
+
+  it("notes dialog: close and reopen within a second re-arms Restart now", async () => {
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    await arm();
+    await act(async () => store.openDialog("notes"));
+    await arm();
+    await act(async () => store.closeDialog());
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    await act(async () => store.openDialog("notes"));
+    const btn = button("Restart now", dialog()!);
+    expect(btn?.getAttribute("aria-disabled")).toBe("true");
+    await click(btn);
     expect(u.install).not.toHaveBeenCalled();
     await arm();
     await click(button("Restart now", dialog()!));

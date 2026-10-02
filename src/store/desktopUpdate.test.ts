@@ -64,7 +64,17 @@ function setup(over: { skipped?: string; running?: string } = {}) {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+/** A Restart now press that comes after the arming delay, as a person's
+ *  would: the store ignores restart() within ARM_MS of becoming ready. */
+async function deliberateRestart() {
+  vi.setSystemTime(Date.now() + 1100);
+  await store.restart();
+}
+
 beforeEach(() => {
+  // Only the clock is faked (restart()'s guard reads Date.now()); timers
+  // and promises run for real.
+  vi.useFakeTimers({ toFake: ["Date"] });
   store.__resetForTests();
   saved.length = 0;
   h.check.mockReset();
@@ -75,7 +85,10 @@ beforeEach(() => {
   });
   h.calls = [];
 });
-afterEach(() => store.__resetForTests());
+afterEach(() => {
+  store.__resetForTests();
+  vi.useRealTimers();
+});
 
 describe("desktop update store: card and dot", () => {
   it("offers a card for a newer version; nothing for Flatpak (no info)", async () => {
@@ -199,7 +212,7 @@ describe("desktop update store: auto channel", () => {
     const u = fakeUpdate();
     h.check.mockResolvedValue(u);
     await store.update();
-    await store.restart();
+    await deliberateRestart();
     expect(u.install).toHaveBeenCalledTimes(1);
     expect(h.relaunch).toHaveBeenCalledTimes(1);
     expect(u.install.mock.invocationCallOrder[0]).toBeLessThan(
@@ -215,7 +228,7 @@ describe("desktop update store: auto channel", () => {
     const u = fakeUpdate();
     h.check.mockResolvedValue(u);
     store.__setReadyWithoutUpdateForTests();
-    await store.restart();
+    await deliberateRestart();
     expect(h.check).toHaveBeenCalledTimes(1);
     expect(u.downloadAndInstall).toHaveBeenCalledTimes(1);
     expect(h.relaunch).toHaveBeenCalledTimes(1);
@@ -243,7 +256,7 @@ describe("desktop update store: auto channel", () => {
     await store.offer({ version: "0.6.0", channel: "auto" });
     h.check.mockResolvedValue(fakeUpdate({ installFails: true }));
     await store.update();
-    await store.restart();
+    await deliberateRestart();
     expect(store.getState().phase).toBe("failed");
     expect(h.relaunch).not.toHaveBeenCalled();
   });
@@ -280,7 +293,7 @@ describe("desktop update store: manual channel", () => {
   it("restart() on the manual channel does nothing", async () => {
     setup();
     await store.offer({ version: "0.6.0", channel: "manual" });
-    await store.restart();
+    await deliberateRestart();
     expect(h.check).not.toHaveBeenCalled();
     expect(h.relaunch).not.toHaveBeenCalled();
   });
@@ -311,7 +324,7 @@ describe("desktop update store: fix round 1", () => {
     await store.update();
     s = store.getState();
     expect(s.phase).toBe("ready");
-    await store.restart();
+    await deliberateRestart();
     expect(b.install).toHaveBeenCalled();
   });
 
@@ -340,7 +353,7 @@ describe("desktop update store: fix round 1", () => {
     h.relaunch.mockImplementationOnce(async () => {
       throw new Error("no relaunch");
     });
-    await store.restart();
+    await deliberateRestart();
     const s = store.getState();
     expect(s.phase).toBe("installed");
     expect(store.cardFor(s)).toEqual({ kind: "installed" });
@@ -352,7 +365,7 @@ describe("desktop update store: fix round 1", () => {
     const u = fakeUpdate({ installFails: true });
     h.check.mockResolvedValue(u);
     await store.update();
-    await store.restart();
+    await deliberateRestart();
     expect(u.close).toHaveBeenCalled();
   });
 
@@ -362,12 +375,32 @@ describe("desktop update store: fix round 1", () => {
     const first = fakeUpdate({ installFails: true });
     h.check.mockResolvedValueOnce(first);
     await store.update();
-    await store.restart();
+    await deliberateRestart();
     const second = fakeUpdate();
     h.check.mockResolvedValueOnce(second);
     await store.update();
     expect(first.close).toHaveBeenCalled();
     expect(second.close).not.toHaveBeenCalled();
     expect(store.getState().phase).toBe("ready");
+  });
+});
+
+describe("desktop update store: restart guard (defence in depth)", () => {
+  it("restart() within ARM_MS of ready does nothing; after it, installs and relaunches", async () => {
+    setup();
+    await store.offer({ version: "0.6.0", channel: "auto" });
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await store.update();
+    expect(store.getState().phase).toBe("ready");
+    vi.setSystemTime(Date.now() + 500);
+    await store.restart();
+    expect(u.install).not.toHaveBeenCalled();
+    expect(h.relaunch).not.toHaveBeenCalled();
+    expect(store.getState().phase).toBe("ready");
+    vi.setSystemTime(Date.now() + 600);
+    await store.restart();
+    expect(u.install).toHaveBeenCalledTimes(1);
+    expect(h.relaunch).toHaveBeenCalledTimes(1);
   });
 });

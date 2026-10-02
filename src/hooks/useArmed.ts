@@ -1,26 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** How long a button that just changed what it does ignores clicks. */
 export const ARM_MS = 1000;
 
-const UNARMED = Symbol("unarmed");
-
-/** False for `ms` after `key` changes (and after mount), then true.
+/** False for `ms` after every transition into `key` (and after mount),
+ *  then true.
  *
- *  For a button whose action changes in place: Update becomes Restart now
- *  the moment a fast download ends, Next becomes Start reading. A
- *  double-click, or the first click on an inactive macOS window (which only
- *  activates it) followed by the real one, would otherwise land on the new
- *  action. Seen in the Task 14 macOS run: Riwaq restarted about 2 s after
- *  the download with nobody pressing Restart now.
+ *  For a button whose action changes in place, or that appears where
+ *  another one just was: Update becomes Restart now when a fast download
+ *  ends, Next becomes Start reading. In the Task 14 macOS run Riwaq
+ *  restarted about 2 s after a download finished, which nobody can explain
+ *  yet. The suspicion is a second click or some other stray input landing
+ *  on the old Update spot. Restart now is protected three ways: it is a
+ *  separate element in a different place, it waits out this delay, and the
+ *  store's restart() refuses a call within ARM_MS of becoming ready.
  *
- *  The answer is false in the very render where `key` changes, not one
- *  effect later, so there is no frame where the new action is live. */
+ *  Every change of `key` counts, including a return to an earlier value
+ *  (A → B → A re-arms), and the answer is false in the very render where
+ *  `key` changes, so there is no frame where the new action is live. */
 export function useArmed(key: unknown, ms: number = ARM_MS): boolean {
-  const [armedFor, setArmedFor] = useState<unknown>(UNARMED);
+  // Bumped, during render, on every change of key. Comparing against the
+  // last key seen (not the last key armed) is what makes A → B → A re-arm.
+  const seen = useRef<{ key: unknown; n: number }>({ key, n: 0 });
+  if (!Object.is(seen.current.key, key)) {
+    seen.current = { key, n: seen.current.n + 1 };
+  }
+  const n = seen.current.n;
+  const [armedN, setArmedN] = useState(-1);
   useEffect(() => {
-    const t = setTimeout(() => setArmedFor(() => key), ms);
+    const t = setTimeout(() => setArmedN(n), ms);
     return () => clearTimeout(t);
-  }, [key, ms]);
-  return Object.is(armedFor, key);
+  }, [n, ms]);
+  return armedN === n;
 }
