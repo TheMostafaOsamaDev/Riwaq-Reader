@@ -849,6 +849,17 @@ export const ar: Messages = {
   "update.fail.install": "تعذّر على Android تثبيت التحديث.",
   "update.fail.resume": "استأنف التنزيل",
   "update.fail.again": "حاول مجددًا",
+  "update.card.available": "الإصدار {v} من رواق متاح",
+  "update.card.ready": "رواق {v} جاهز",
+  "update.card.failed": "لم يكتمل التحديث",
+  "update.restart": "أعد التشغيل الآن",
+  "update.restartBody":
+    "أعد تشغيل رواق لإكمال التحديث. تبقى كتبك وتقدّمك كما هي تمامًا.",
+  "update.failDesktop":
+    "لم يتغيّر شيء. تحقّق من اتصالك وحاول مجددًا، أو نزّله من GitHub.",
+  "update.manualBody":
+    "هذه النسخة (\u2066.deb/.rpm\u2069) لا تستطيع تحديث نفسها. نزّل الحزمة الجديدة وثبّتها كالمعتاد.",
+  "update.keepReading": "تابع القراءة؛ سيخبرك رواق عندما يجهز.",
   "settings.updates.overMobile": "عبر بيانات الجوال",
   "settings.updates.mobileAsk": "اسأل أولًا",
   "settings.updates.mobileAlways": "دائمًا",

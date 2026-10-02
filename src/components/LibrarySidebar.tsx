@@ -33,6 +33,8 @@ import type { Shelf } from "../store/shelves";
 import type { LibraryTab } from "./library/tabs";
 import { useI18n } from "../i18n/useI18n";
 import type { Dir, MsgKey, Tr } from "../i18n";
+import { dotFor, useDesktopUpdate } from "../store/desktopUpdate";
+import { SidebarUpdateCard } from "./update/SidebarUpdateCard";
 
 interface Props {
   theme: Theme;
@@ -112,6 +114,9 @@ export function LibrarySidebar({
   const goldSoft = dark ? "rgba(212,168,74,0.22)" : "rgba(201,162,74,0.18)";
   const markSrc = dark ? "/brand/mark-cream.webp" : "/brand/mark-ink.webp";
   const dl = useDownloadSummary();
+  // A waiting update the user put off with Later (the desktop store; empty
+  // on Android, which never feeds it).
+  const updateDot = dotFor(useDesktopUpdate());
   // Reads the shared import store, so a Store import shows here too and a
   // click during a run re-opens the stepper instead of the file picker.
   const ind = useImportIndicator(importing);
@@ -440,12 +445,15 @@ export function LibrarySidebar({
             label={tr("sidebar.settings")}
             active={false}
             onClick={onOpenSettings}
+            dot={updateDot}
+            ariaLabel={updateDot ? tr("sidebar.settingsUpdate") : undefined}
           />
         </nav>
       </div>
 
-      {/* Bottom: primary Import */}
+      {/* Bottom: the update card (desktop), then primary Import */}
       <div style={{ padding: "10px 4px 0" }}>
+        <SidebarUpdateCard theme={theme} />
         <div ref={importRef} style={{ position: "relative" }}>
           <div style={{ display: "flex" }}>
             <button
@@ -877,16 +885,23 @@ function NavRow({
   label,
   active,
   onClick,
+  dot,
+  ariaLabel,
 }: {
   theme: Theme;
   icon: IconProps["name"];
   label: string;
   active: boolean;
   onClick: () => void;
+  /** A small attention dot at the row's end. The words are in ariaLabel;
+   *  the dot only repeats them. */
+  dot?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      aria-label={ariaLabel}
       style={{
         position: "relative",
         display: "flex",
@@ -922,6 +937,20 @@ function NavRow({
         <Icon name={icon} size={18} />
       </span>
       {label}
+      {dot && (
+        <span
+          data-update-dot
+          aria-hidden="true"
+          style={{
+            marginInlineStart: "auto",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: theme.danger,
+            flex: "none",
+          }}
+        />
+      )}
     </button>
   );
 }

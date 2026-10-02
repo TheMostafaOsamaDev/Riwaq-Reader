@@ -98,7 +98,7 @@ import type { ActivePanel } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
-import { UpdateBanner } from "./components/UpdateBanner";
+import { DesktopUpdateLayer } from "./components/update/DesktopUpdateLayer";
 import { ManualUpdateBanner, UpdatePill } from "./components/update/UpdatePill";
 import { UpdateSheet, UpdateToasts } from "./components/update/UpdateSheet";
 import {
@@ -106,6 +106,10 @@ import {
   loadChannel as loadAndroidChannel,
   offer as offerAndroidUpdate,
 } from "./store/androidUpdate";
+import {
+  configure as configureDesktopUpdate,
+  offer as offerDesktopUpdate,
+} from "./store/desktopUpdate";
 import {
   WhatsNewAfterUpdate,
   bundledNotes,
@@ -321,8 +325,9 @@ function App() {
     }
   });
   useFileDrop(dropCapable);
-  // The in-app update flow (pill, sheet, Settings card) is Android's; desktop
-  // keeps UpdateBanner. Same defensive platform() read as dropCapable.
+  // The in-app update flow: Android has the pill, sheet and Settings card;
+  // desktop (dropCapable: not android, not ios) has the sidebar card and its
+  // dialogs. Same defensive platform() read as dropCapable.
   const [isAndroid] = useState(() => {
     try {
       return platform() === "android";
@@ -348,6 +353,18 @@ function App() {
   useEffect(() => {
     if (isAndroid && update.info) void offerAndroidUpdate(update.info);
   }, [isAndroid, update.info]);
+  // Desktop: the same skip tweak and clear-skip rule, fed after paint.
+  useEffect(() => {
+    if (!dropCapable) return;
+    configureDesktopUpdate({
+      running: appVersion,
+      skipped: t.skippedUpdateVersion,
+      saveSkipped: (v) => setTweak("skippedUpdateVersion", v),
+    });
+  }, [dropCapable, t.skippedUpdateVersion, setTweak]);
+  useEffect(() => {
+    if (dropCapable && update.info) void offerDesktopUpdate(update.info);
+  }, [dropCapable, update.info]);
   const dropState = useDropOverlayState();
   // "system" resolves to light/dark from the OS setting; useMediaQuery
   // re-renders when the user flips OS appearance, so the whole app
@@ -1074,17 +1091,12 @@ function App() {
             )}
           </>
         ) : null}
-        {!isAndroid && update.info && (
-          <UpdateBanner
-            info={update.info}
-            theme={theme}
-            onDismiss={update.dismiss}
-          />
-        )}
+        {dropCapable && <DesktopUpdateLayer theme={theme} />}
         <WhatsNewAfterUpdate
           theme={theme}
           open={whatsNewOpen}
           onClose={closeWhatsNew}
+          layout={isMobile ? "mobile" : "desktop"}
         />
         {loading && (
           <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />
@@ -1174,6 +1186,7 @@ function App() {
                 bundledNotes ? () => setWhatsNewOpen(true) : undefined
               }
               android={isAndroid}
+              desktopUpdates={dropCapable}
             />
           ) : base.screen === "library" ? (
             <Library

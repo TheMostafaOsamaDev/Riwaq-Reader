@@ -47,6 +47,7 @@ import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import type { CheckResult } from "../store/updates";
 import { SettingsUpdateCard } from "./update/SettingsUpdateCard";
+import { DesktopSettingsUpdateCard } from "./update/DesktopSettingsUpdateCard";
 
 const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 const LICENSE_URL =
@@ -72,6 +73,8 @@ interface Props {
   onOpenWhatsNew?: () => void;
   /** Android: the in-app update card and the "Over mobile data" row. */
   android?: boolean;
+  /** Desktop: Settings → About shows the desktop update card. */
+  desktopUpdates?: boolean;
 }
 
 export function SettingsPage({
@@ -87,6 +90,7 @@ export function SettingsPage({
   updateResult,
   onOpenWhatsNew,
   android = false,
+  desktopUpdates = false,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -643,6 +647,7 @@ export function SettingsPage({
                 onOpenUrl={(url) => void openExternal(url)}
               />
             )}
+            {desktopUpdates && <DesktopSettingsUpdateCard theme={theme} />}
           </Field>
         ),
       },

@@ -6,6 +6,7 @@ import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
+  TOUCH_TARGET_MIN,
 } from "../../styles/tokens";
 import { AnimatedDialog } from "../AnimatedDialog";
 import { Button } from "../Button";
@@ -19,9 +20,14 @@ async function tauriInvoke(cmd: string, args: Record<string, unknown>) {
   return invoke(cmd, args);
 }
 
-/** The next version's notes, opened from the update banner. The primary
- *  button is the banner's own action, passed in, so install/download logic
- *  lives in exactly one place. */
+type Notes = { notes: ReleaseNotes | null; highlightImage?: string };
+
+/** The next version's notes, opened from the update banner or the desktop
+ *  sidebar card. The primary button is the caller's own action, passed in,
+ *  so install/download logic lives in exactly one place.
+ *
+ *  With `onLater` the footer is the desktop flow's: Skip this version,
+ *  Later, and the action. Without it, Close and the action, as before. */
 export function DesktopNotesDialog({
   open,
   version,
@@ -30,6 +36,10 @@ export function DesktopNotesDialog({
   actionBusy,
   onAction,
   onClose,
+  onLater,
+  onSkip,
+  body,
+  preloaded,
   invokeImpl = tauriInvoke,
 }: {
   open: boolean;
@@ -39,6 +49,14 @@ export function DesktopNotesDialog({
   actionBusy: boolean;
   onAction: () => void;
   onClose: () => void;
+  onLater?: () => void;
+  onSkip?: () => void;
+  /** A sentence above the notes (the manual channel's "can't update
+   *  itself"). */
+  body?: string;
+  /** Notes someone already fetched: undefined fetches them here, null is
+   *  still loading. */
+  preloaded?: Notes | null;
   invokeImpl?: Invoke;
 }) {
   const { tr } = useI18n();
@@ -49,7 +67,7 @@ export function DesktopNotesDialog({
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || preloaded !== undefined) return;
     let live = true;
     setState(null);
     void fetchNotes(invokeImpl, version).then((r) => {
@@ -58,7 +76,14 @@ export function DesktopNotesDialog({
     return () => {
       live = false;
     };
-  }, [open, version, invokeImpl]);
+  }, [open, version, invokeImpl, preloaded]);
+  const shown =
+    preloaded === undefined
+      ? state
+      : preloaded && {
+          notes: preloaded.notes,
+          image: preloaded.highlightImage,
+        };
 
   useEffect(() => {
     if (!open) return;
@@ -110,7 +135,19 @@ export function DesktopNotesDialog({
             flex: "1 1 auto",
           }}
         >
-          {state === null ? (
+          {body && (
+            <p
+              style={{
+                margin: "0 0 12px",
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: theme.ink,
+              }}
+            >
+              {body}
+            </p>
+          )}
+          {shown === null ? (
             <div
               style={{
                 display: "flex",
@@ -123,11 +160,11 @@ export function DesktopNotesDialog({
             </div>
           ) : (
             <NotesView
-              notes={state.notes}
+              notes={shown.notes}
               theme={theme}
               fallbackVersion={version}
               imageUrl={(n) =>
-                n === state.notes?.highlight?.image ? state.image : undefined
+                n === shown.notes?.highlight?.image ? shown.image : undefined
               }
             />
           )}
@@ -137,23 +174,38 @@ export function DesktopNotesDialog({
             padding: "12px 22px 16px",
             display: "flex",
             justifyContent: "flex-end",
+            alignItems: "center",
+            flexWrap: "wrap",
             gap: 8,
             flex: "none",
           }}
         >
+          {onSkip && (
+            <Button
+              theme={theme}
+              variant="ghost"
+              size="sm"
+              style={{ minHeight: TOUCH_TARGET_MIN, marginInlineEnd: "auto" }}
+              onClick={onSkip}
+            >
+              {tr("update.sheet.skip")}
+            </Button>
+          )}
           <Button
             ref={closeRef}
             theme={theme}
             variant="outline"
             size="sm"
-            onClick={onClose}
+            style={onLater ? { minHeight: TOUCH_TARGET_MIN } : undefined}
+            onClick={onLater ?? onClose}
           >
-            {tr("common.close")}
+            {onLater ? tr("update.action.later") : tr("common.close")}
           </Button>
           <Button
             theme={theme}
             variant="primary"
             size="sm"
+            style={onLater ? { minHeight: TOUCH_TARGET_MIN } : undefined}
             loading={actionBusy}
             disabled={actionBusy}
             onClick={onAction}

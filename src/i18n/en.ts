@@ -1024,6 +1024,17 @@ export const en = {
   "update.fail.install": "Android couldn't install the update.",
   "update.fail.resume": "Resume download",
   "update.fail.again": "Try again",
+  "update.card.available": "Riwaq {v} is available",
+  "update.card.ready": "Riwaq {v} is ready",
+  "update.card.failed": "The update didn't finish",
+  "update.restart": "Restart now",
+  "update.restartBody":
+    "Restart Riwaq to finish. Your books and progress stay exactly where they are.",
+  "update.failDesktop":
+    "Nothing was changed. Check your connection and try again, or download it from GitHub.",
+  "update.manualBody":
+    "This install (.deb/.rpm) can't update itself. Download the new package and install it as usual.",
+  "update.keepReading": "Keep reading. Riwaq tells you when it's ready.",
   "settings.updates.overMobile": "Over mobile data",
   "settings.updates.mobileAsk": "Ask first",
   "settings.updates.mobileAlways": "Always",
