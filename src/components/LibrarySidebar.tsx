@@ -39,7 +39,7 @@ import type { Shelf } from "../store/shelves";
 import type { LibraryTab } from "./library/tabs";
 import { useI18n } from "../i18n/useI18n";
 import type { Dir, MsgKey, Tr } from "../i18n";
-import { dotFor, useDesktopUpdate } from "../store/desktopUpdate";
+import { dotFor, useDesktopUpdateSelect } from "../store/desktopUpdate";
 import { SidebarUpdateCard } from "./update/SidebarUpdateCard";
 
 interface Props {
@@ -121,8 +121,9 @@ export function LibrarySidebar({
   const markSrc = dark ? "/brand/mark-cream.webp" : "/brand/mark-ink.webp";
   const dl = useDownloadSummary();
   // A waiting update the user put off with Later (the desktop store; empty
-  // on Android, which never feeds it).
-  const updateDot = dotFor(useDesktopUpdate());
+  // on Android, which never feeds it). Selected, so a download's progress
+  // ticks re-render the card, not the whole sidebar.
+  const updateDot = useDesktopUpdateSelect(dotFor);
   // Reads the shared import store, so a Store import shows here too and a
   // click during a run re-opens the stepper instead of the file picker.
   const ind = useImportIndicator(importing);

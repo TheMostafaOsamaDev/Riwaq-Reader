@@ -9,7 +9,7 @@ import { useImportIndicator } from "../../store/importIndicator";
 import { setMinimized } from "../../store/importProgress";
 import type { Theme } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
-import { flowInput, useAndroidUpdate } from "../../store/androidUpdate";
+import { flowInput, useAndroidUpdateSelect } from "../../store/androidUpdate";
 import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
 
@@ -39,7 +39,9 @@ export function MobileBottomNav({
   const { tr } = useI18n();
   // Read here, not passed down: the update store is app-wide, and the dot is
   // this bar's business alone.
-  const updateDot = attentionDot(flowInput(useAndroidUpdate()));
+  // Selected: the 500 ms status polls re-render the bar only if the dot
+  // changes.
+  const updateDot = useAndroidUpdateSelect((s) => attentionDot(flowInput(s)));
   return (
     <div
       style={{

@@ -55,7 +55,7 @@ import { Button } from "./Button";
 import type { CheckResult } from "../store/updates";
 import { SettingsUpdateCard } from "./update/SettingsUpdateCard";
 import { DesktopSettingsUpdateCard } from "./update/DesktopSettingsUpdateCard";
-import { useAndroidUpdate } from "../store/androidUpdate";
+import { useAndroidUpdateSelect } from "../store/androidUpdate";
 import { showsMobileDataSetting } from "../store/updateFlow";
 import { SIDEBAR_ROW_PAD_INLINE, sidebarFrame } from "./sidebarFrame";
 
@@ -243,7 +243,8 @@ export function SettingsPage({
   };
 
   // Who updates this install (Android); empty and unused on desktop.
-  const androidChannel = useAndroidUpdate().channel;
+  // Selected, so a download's status polls do not re-render all of Settings.
+  const androidChannel = useAndroidUpdateSelect((s) => s.channel);
 
   const openExternal = async (url: string) => {
     try {
