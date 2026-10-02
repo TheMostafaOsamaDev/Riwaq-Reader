@@ -766,7 +766,17 @@ jobs:
             exit 0
           fi
           cp "release-notes/${v}.json" whats-new.json
-          imgs=$(node -e 'const n=require("./whats-new.json");for(const i of [n.highlight?.image,...(n.stories??[]).map(s=>s.image)])if(i)console.log("release-notes/img/"+i)' | sort -u)
+          # ONLY the highlight image. It is the one picture anything fetches
+          # from the release: src-tauri/src/updates.rs reads /highlight/image
+          # so a copy being offered an update can show the new version's
+          # picture, which by definition it cannot have bundled.
+          #
+          # Story images are different — they are shown by the build they
+          # shipped in, from its own bundle (vite-plugin-whats-new embeds
+          # them), so uploading them here only put files on the release that
+          # nothing ever reads. 0.6.0 attached three of them, 86 KB, and every
+          # fetch of all three was zero.
+          imgs=$(node -e 'const n=require("./whats-new.json");if(n.highlight?.image)console.log("release-notes/img/"+n.highlight.image)')
           # The build jobs have finished, so the draft exists; a few short
           # retries only absorb API lag.
           for _ in 1 2 3 4 5; do gh release view "$TAG" >/dev/null 2>&1 && break; sleep 5; done
