@@ -23,7 +23,12 @@ asked to, because that cannot be undone.
 
 1. Add `fastlane/metadata/android/{en-US,ar}/changelogs/<versionCode>.txt`,
    500 characters at most. The name is the **versionCode**, not the version:
-   `major*1000000 + minor*1000 + patch`, so 0.5.4 is `5004`.
+   `major*1000000 + minor*1000 + patch`, so 0.6.0 is `6000`.
+   Then bump the recipe's `versionName`, `versionCode`, `commit`,
+   `CurrentVersion` and `CurrentVersionCode` to the release being cut.
+   `scripts/verify-release-config.sh <tag>` checks both and fails the
+   preflight — the recipe sat on `0.5.4`, a version that never shipped, until
+   it did.
 2. Tag and let the Release workflow build the draft. `F-Droid verify` then runs
    on its own against that build. **Don't publish a release whose F-Droid
    verify failed:** F-Droid would build it, fail to match, and skip it.

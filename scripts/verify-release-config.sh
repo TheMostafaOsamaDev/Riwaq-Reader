@@ -143,6 +143,78 @@ check_config() {
     done
   fi
 
+  # ...and the recipe must name the release being cut.
+  #
+  # Its Builds entry is the copy fdroiddata carries, and F-Droid's checkupdates
+  # only adds LATER tags on top of it, so a stale entry is the floor for every
+  # version after it. Nothing else here reports one: fdroid-verify.yml rewrites
+  # these three fields for its test build, so the reproducibility check passes
+  # green against a recipe that would be wrong the moment it reached fdroiddata.
+  # That is how `versionName: 0.5.4` — a version that was never released — sat
+  # in this file while 0.5.3 was the published build.
+  # The same arithmetic Android applies to tauri.conf.json's version.
+  local want_code=""
+  [ -n "$tag" ] && want_code="$(printf '%s' "$tag" | awk -F. '{printf "%d", $1*1000000 + $2*1000 + $3}')"
+
+  if [ -f "$recipe" ] && [ -n "$tag" ]; then
+    local rec_name rec_code rec_commit cur_name cur_code
+    rec_name="$(sed -n 's/^[[:space:]]*-[[:space:]]*versionName:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
+    rec_code="$(sed -n 's/^[[:space:]]*versionCode:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
+    rec_commit="$(sed -n 's/^[[:space:]]*commit:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
+    cur_name="$(sed -n 's/^CurrentVersion:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
+    cur_code="$(sed -n 's/^CurrentVersionCode:[[:space:]]*\(.*\)/\1/p' "$recipe" | head -n1)"
+    # fdroiddata requires the FULL commit hash, not a tag: "The `commit` field
+    # should be the full hash. Please don't use tag or branch in commit."
+    # A tag can be moved or deleted after review, and this repository has in
+    # fact deleted release tags, so F-Droid would be building something other
+    # than what was reviewed. Resolve the tag here when it exists locally; when
+    # it does not (the preflight runs BEFORE the tag is pushed), still insist
+    # it is a hash rather than letting `v0.6.0` through.
+    local want_commit
+    want_commit="$(git -C "$root" rev-list -n1 "v$tag" 2>/dev/null || true)"
+    if [ -z "$want_commit" ]; then
+      if ! printf '%s' "$rec_commit" | grep -Eq '^[0-9a-f]{40}$'; then
+        echo "docs/fdroid recipe says commit '$rec_commit' — fdroiddata requires the full 40-character hash, never a tag"
+        problems=$((problems + 1))
+      fi
+      want_commit="$rec_commit"   # nothing to compare against; shape was checked
+    fi
+
+    local pair
+    for pair in "versionName:$rec_name:$tag" "commit:$rec_commit:$want_commit" \
+                "versionCode:$rec_code:$want_code" \
+                "CurrentVersion:$cur_name:$tag" "CurrentVersionCode:$cur_code:$want_code"; do
+      local field="${pair%%:*}" rest="${pair#*:}"
+      local got="${rest%%:*}" want="${rest#*:}"
+      if [ "$got" != "$want" ]; then
+        echo "docs/fdroid recipe says $field '$got' but this release is '$want'"
+        problems=$((problems + 1))
+      fi
+    done
+  fi
+
+  # F-Droid reads the release notes it shows from a file named after the
+  # versionCode, so a missing one publishes the update with a blank changelog
+  # in both languages — and the file can only be added by cutting ANOTHER
+  # release, because the name is the code. Over 500 characters it is truncated
+  # mid-sentence in the client.
+  if [ -n "$tag" ] && [ -d "$root/fastlane/metadata/android" ]; then
+    local lang notes chars
+    for lang in en-US ar; do
+      notes="$root/fastlane/metadata/android/$lang/changelogs/$want_code.txt"
+      if [ ! -s "$notes" ]; then
+        echo "${notes#"$root"/} is missing or empty — F-Droid would publish $tag with no changelog in $lang"
+        problems=$((problems + 1))
+      else
+        chars="$(wc -m < "$notes" | tr -d ' ')"
+        if [ "$chars" -gt 500 ]; then
+          echo "${notes#"$root"/} is $chars characters — F-Droid truncates at 500"
+          problems=$((problems + 1))
+        fi
+      fi
+    done
+  fi
+
   [ "$problems" -eq 0 ]
 }
 
@@ -190,12 +262,23 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 1 "no rust-toolchain.toml at all"              "$(mktc tcnone "" 1.97.1)"    v0.2.0
 
   # F-Droid recipe in step with release.yml
-  mkfd() { # dir recipe-ndk recipe-rust recipe-flags release-ndk release-flags
+  # A recipe carries the release's version as well as its toolchain, so the
+  # fixture writes both and the version half defaults to the tag under test.
+  mkfd() { # dir recipe-ndk recipe-rust recipe-flags release-ndk release-flags [name] [code] [commit]
     local d; d="$(mktc "$1" 1.97.1 1.97.1)"; mkdir -p "$d/docs/fdroid"
+    local name="${7:-0.2.0}" code="${8:-2000}"
+    printf 'Builds:\n  - versionName: %s\n    versionCode: %s\n    commit: %s\n' \
+      "$name" "$code" "${9:-0123456789abcdef0123456789abcdef01234567}" > "$d/docs/fdroid/com.riwaq.reader.yml"
     printf '    build:\n      - x --default-toolchain %s\n      - %s\n    ndk: %s\n' \
-      "$3" "$4" "$2" > "$d/docs/fdroid/com.riwaq.reader.yml"
+      "$3" "$4" "$2" >> "$d/docs/fdroid/com.riwaq.reader.yml"
+    printf 'CurrentVersion: %s\nCurrentVersionCode: %s\n' "$name" "$code" \
+      >> "$d/docs/fdroid/com.riwaq.reader.yml"
     printf 'run: sdkmanager "ndk;%s"\nrun: %s\n' "$5" "$6" \
       > "$d/.github/workflows/release.yml"
+    mkdir -p "$d/fastlane/metadata/android/en-US/changelogs" \
+             "$d/fastlane/metadata/android/ar/changelogs"
+    echo "notes" > "$d/fastlane/metadata/android/en-US/changelogs/2000.txt"
+    echo "ملاحظات" > "$d/fastlane/metadata/android/ar/changelogs/2000.txt"
     echo "$d"
   }
   ok='RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build'
@@ -209,6 +292,29 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 0 "an NDK set through ndk= in release.yml"   "$d3"                                               v0.2.0
   printf '        run: |\n          ndk=29.0.2\n          sdkmanager "ndk;$ndk"\nrun: %s\n' "$ok" > "$d3/.github/workflows/release.yml"
   expect 1 "ndk= in release.yml that disagrees"       "$d3"                                               v0.2.0
+
+  # the recipe's own version — the 0.5.4 case
+  expect 1 "a recipe left on an older release"   "$(mkfd fdold 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.1.0 1000)" v0.2.0
+  expect 1 "a recipe whose versionCode is wrong" "$(mkfd fdcode 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.2.0 2)"   v0.2.0
+  d4="$(mkfd fdcommit 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"
+  sed -i.bak 's/^    commit: .*/    commit: main/' "$d4/docs/fdroid/com.riwaq.reader.yml"
+  expect 1 "a recipe building a branch, not a hash"  "$d4"                                                   v0.2.0
+  # fdroiddata refuses a tag here: tags move, and this repo has deleted some.
+  d4b="$(mkfd fdtag 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.2.0 2000 v0.2.0)"
+  expect 1 "a recipe pinning the TAG rather than the hash" "$d4b"                                            v0.2.0
+  d4c="$(mkfd fdshort 26.1.1 1.97.1 "$ok" 26.1.1 "$ok" 0.2.0 2000 56e20c5)"
+  expect 1 "an abbreviated hash is not the full hash"  "$d4c"                                                v0.2.0
+  d5="$(mkfd fdcur 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"
+  sed -i.bak 's/^CurrentVersion: .*/CurrentVersion: 0.1.0/' "$d5/docs/fdroid/com.riwaq.reader.yml"
+  expect 1 "a stale CurrentVersion"                  "$d5"                                                   v0.2.0
+
+  # the F-Droid changelog, which is named after the versionCode
+  d6="$(mkfd fdnotes 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"
+  rm "$d6/fastlane/metadata/android/ar/changelogs/2000.txt"
+  expect 1 "a missing Arabic changelog"              "$d6"                                                   v0.2.0
+  d7="$(mkfd fdlong 26.1.1 1.97.1 "$ok" 26.1.1 "$ok")"
+  head -c 501 /dev/zero | tr '\0' 'x' > "$d7/fastlane/metadata/android/en-US/changelogs/2000.txt"
+  expect 1 "a changelog past F-Droid's 500 chars"    "$d7"                                                   v0.2.0
   [ "$fails" -eq 0 ] || die "$fails self-test failure(s) — the guard itself is broken"
   echo "verify-release-config: self-test passed"
   exit 0

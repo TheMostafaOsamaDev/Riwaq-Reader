@@ -55,6 +55,34 @@ describe("validateReleaseNotes", () => {
     expect(errs).toMatch(/kind/);
     expect(errs).toMatch(/extra/);
   });
+  describe("installNote", () => {
+    // The one-time "install this one by hand" line. It is optional, it is
+    // rendered only into the GitHub release body, and it still has to be
+    // written in both languages like everything else.
+    it("is optional", () => {
+      expect(run(ok())).toEqual([]);
+    });
+    it("is accepted when both languages are there", () => {
+      const n = {
+        ...ok(),
+        installNote: { en: "Install by hand.", ar: "ثبّت يدويًا." },
+      };
+      expect(run(n)).toEqual([]);
+    });
+    it("is rejected when a language is missing", () => {
+      const n = { ...ok(), installNote: { en: "Install by hand." } };
+      expect(run(n).join()).toMatch(/installNote\.ar/);
+    });
+    it("is rejected when English was pasted into the Arabic", () => {
+      const n = { ...ok(), installNote: { en: "By hand.", ar: "By hand." } };
+      expect(run(n).join()).toMatch(/installNote\.ar/);
+    });
+    it("is rejected when it is a bare string", () => {
+      expect(run({ ...ok(), installNote: "by hand" }).join()).toMatch(
+        /installNote/,
+      );
+    });
+  });
   it("rejects a missing or oversized image", () => {
     expect(run(ok(), {}).join()).toMatch(/0\.6\.0-cards\.webp.*missing/);
     expect(run(ok(), { "0.6.0-cards.webp": IMAGE_CAP + 1 }).join()).toMatch(

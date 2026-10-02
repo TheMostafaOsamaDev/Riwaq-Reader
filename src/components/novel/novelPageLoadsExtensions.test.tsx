@@ -199,16 +199,36 @@ async function mount() {
       </I18nProvider>,
     );
   });
-  // Long enough for the registry load (listInstalled → evaluate → commit)
-  // AND the page's own snapshot read to settle and re-render. A macrotask
-  // between passes because the registry commit lands in a listener, whose
-  // re-render then restarts the page's snapshot effect.
-  for (let pass = 0; pass < 4; pass++) {
+  // Settle until the page has actually rendered its chapter rows, rather than
+  // for a fixed number of passes.
+  //
+  // It used to be four passes, which is a guess at how long the registry load
+  // (listInstalled → evaluate → commit) plus the page's own snapshot re-render
+  // takes. In CI, under load, four was sometimes not enough and the run died
+  // on `rows[1]` being undefined.
+  //
+  // Flakiness was the lesser problem. Two of the three cases here assert that
+  // a sentence is ABSENT, and a page that has not rendered contains no
+  // sentences at all — so a short settle passed them without the thing under
+  // test ever having happened. Waiting for a positive signal fixes both, and
+  // throwing when it never arrives means a page that genuinely stops loading
+  // is a failure rather than a pass.
+  //
+  // The rows are the right signal: every case renders them (all three go on to
+  // read a download button out of one), and no case asserts on their number,
+  // so this cannot become the assertion it is meant to be waiting for.
+  // A macrotask between passes because the registry commit lands in a
+  // listener, whose re-render then restarts the page's snapshot effect.
+  for (let pass = 0; pass < 200; pass++) {
     await act(async () => {
       for (let i = 0; i < 16; i++) await Promise.resolve();
       await new Promise((r) => setTimeout(r, 0));
     });
+    if (host.querySelectorAll('[role="listitem"]').length >= 2) return;
   }
+  throw new Error(
+    "the novel page never rendered its chapter rows — settled 200 passes",
+  );
 }
 
 /** The undownloaded chapter's trailing download button. */

@@ -74,6 +74,12 @@ set after the first signed Android release:
    bash scripts/verify-release-config.sh v0.2.0
    ```
 
+   The same check covers what the Android stores read per release:
+   `fastlane/metadata/android/{en-US,ar}/changelogs/<versionCode>.txt` (500
+   characters at most) and the five version fields in
+   `docs/fdroid/com.riwaq.reader.yml`. Both are named after the release, so a
+   stale one can only be corrected by cutting another.
+
    **1b.** Write `release-notes/<version>.json`: English and Arabic, in the
    product's voice (see `release-notes/README.md`). Then run
    `pnpm verify:notes --require <version>`. The release **fails in
@@ -93,6 +99,15 @@ set after the first signed Android release:
 3. The build fails rather than shipping something broken if: the Android APK
    is debug-signed, `latest.json` is missing a platform, a signature is empty,
    or the manifest version disagrees with the tag.
+
+   One of those repairs itself first. The five build jobs each rewrite
+   `latest.json` on the same draft release — read, add their platform, upload —
+   with no lock between them, so two finishing together can drop a platform.
+   It is a dice roll: 0.4.1, 0.5.0 and 0.5.1 came out whole, 0.6.0 lost **both**
+   Linux jobs. The `manifest` job now rebuilds any missing entry from the
+   release's own `<artifact>.sig` (`scripts/repair-update-manifest.sh`), logs a
+   warning saying it did, and only then runs the check — which still has the
+   last word and still refuses to publish a manifest with a hole in it.
 4. Download the binaries and check them.
 5. **Press Publish.** Nothing reaches any user before this — `latest.json` is
    served from `/releases/latest/`, which ignores drafts.
