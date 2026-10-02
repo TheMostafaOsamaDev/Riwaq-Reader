@@ -258,10 +258,11 @@ function App() {
       lastSeen: t.lastSeenWhatsNew,
     }),
   );
-  const closeWhatsNew = () => {
+  // Stable, so the dialogs' Escape listeners are not re-added every render.
+  const closeWhatsNew = useCallback(() => {
     setWhatsNewOpen(false);
     setTweak("lastSeenWhatsNew", appVersion);
-  };
+  }, [setTweak]);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
