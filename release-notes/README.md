@@ -54,6 +54,22 @@ The app doing the thing, cropped tight. A reader should recognise the screen
 they are about to see. Avoid full-window screenshots at this size — by the
 time they are scaled into a phone sheet, nothing in them is legible.
 
+## Where each language goes
+
+The notes file is written in **both** languages, always. Where they end up
+differs, and this is settled — do not re-decide it per release:
+
+| Artifact | Languages |
+|---|---|
+| The **GitHub release body** (`render-release-notes.mjs`) | **English only.** |
+| The in-app What's new sheet (`whats-new.json`) | English and Arabic. |
+| `fastlane/.../changelogs/<versionCode>.txt` | One file per language, as the stores expect. |
+
+The release page is not where an Arabic reader reads the notes — the app is,
+in an interface already in their language. A second copy of every line on
+GitHub only made the body twice as long to scroll. So `ar` stays required in
+the JSON: dropping it would take Arabic out of the app, which is not the point.
+
 ## The file
 
 - **`version`** — must match the filename.
