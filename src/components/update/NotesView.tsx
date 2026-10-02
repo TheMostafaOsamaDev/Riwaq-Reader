@@ -146,11 +146,12 @@ export function NotesView({
         </section>
       )}
       {showStories &&
-        notes.stories?.map((st) => {
+        notes.stories?.map((st, i) => {
           const img = st.image ? imageUrl?.(st.image) : undefined;
           return (
             <section
-              key={st.title.en}
+              // Two stories may share a title; the index keeps keys unique.
+              key={`${i}:${st.title.en}`}
               data-story
               style={{
                 display: "flex",
@@ -202,9 +203,9 @@ export function NotesView({
           );
         })}
       <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-        {notes.items.map((it) => (
+        {notes.items.map((it, i) => (
           <li
-            key={`${it.kind}:${it.en}`}
+            key={`${i}:${it.kind}:${it.en}`}
             style={{
               display: "flex",
               gap: 10,

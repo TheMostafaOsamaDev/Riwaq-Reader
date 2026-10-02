@@ -151,7 +151,7 @@ export function StoryPages({
       >
         {pages.map((p, k) => (
           <i
-            key={p.title.en}
+            key={`${k}:${p.title.en}`}
             style={{
               width: k === i ? 20 : 7,
               height: 7,
