@@ -53,9 +53,13 @@ export function MobileBottomNav({
         // registers cleanly against the upward shadow rather than
         // bleeding into the shadow gradient.
         borderTop: `1px solid ${theme.ruleStrong}`,
-        // Soft upward shadow so the bar reads as a floating surface
-        // hovering over the shelf, not a flush edge of the page.
-        boxShadow: "0 -2px 8px rgba(0,0,0,0.06)",
+        // A barely-there upward shadow: enough that the bar reads as a
+        // surface over the shelf, not so much that it sits on the page like
+        // a slab. It is deliberately black and faint rather than themed —
+        // on light and sepia it is the only thing lifting the bar, and on
+        // dark and OLED it is invisible against the background, where the
+        // themed border above carries the separation on its own.
+        boxShadow: "0 -1px 10px rgba(0,0,0,0.04)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
