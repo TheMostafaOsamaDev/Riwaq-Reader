@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReleaseNotes, pick } from "./releaseNotes";
+import { parseReleaseNotes, pick, summaryOf } from "./releaseNotes";
 
 const item = (kind: string, en = "a", ar = "ب") => ({ kind, en, ar });
 
@@ -36,5 +36,16 @@ describe("pick", () => {
   it("falls back to English when the locale's string is empty", () => {
     expect(pick({ en: "Hi", ar: "" }, "ar")).toBe("Hi");
     expect(pick({ en: "Hi", ar: "أهلا" }, "ar")).toBe("أهلا");
+  });
+});
+
+describe("summaryOf", () => {
+  const base = { version: "0.6.0", items: [item("new", "first", "الأول")] };
+  it("is the highlight's title, else the first item, else empty", () => {
+    const t = { en: "Big", ar: "كبير" };
+    const hl = { ...base, highlight: { title: t, body: t } };
+    expect(summaryOf(hl as never, "ar")).toBe("كبير");
+    expect(summaryOf(base as never, "en")).toBe("first");
+    expect(summaryOf(null, "en")).toBe("");
   });
 });

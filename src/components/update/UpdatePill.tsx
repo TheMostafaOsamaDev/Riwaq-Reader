@@ -40,7 +40,11 @@ export function ManualUpdateBanner({
   return <UpdateBanner info={info} theme={theme} onDismiss={onDismiss} />;
 }
 
-const SHEET_FOR: Record<NonNullable<Pill>["kind"], Exclude<Sheet, "closed">> = {
+/** The sheet each pill state opens. */
+export const SHEET_FOR: Record<
+  NonNullable<Pill>["kind"],
+  Exclude<Sheet, "closed">
+> = {
   available: "notes",
   progress: "progress",
   waiting: "progress",

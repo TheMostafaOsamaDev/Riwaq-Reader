@@ -80,3 +80,14 @@ export function parseReleaseNotes(v: unknown): ReleaseNotes | null {
 export function pick(l: Localized, locale: "en" | "ar"): string {
   return l[locale] || l.en;
 }
+
+/** A release in one line, for a card: the highlight's title, else the
+ *  first item, else nothing. */
+export function summaryOf(
+  notes: ReleaseNotes | null,
+  locale: "en" | "ar",
+): string {
+  if (!notes) return "";
+  if (notes.highlight) return pick(notes.highlight.title, locale);
+  return notes.items[0] ? pick(notes.items[0], locale) : "";
+}
