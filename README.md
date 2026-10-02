@@ -199,6 +199,10 @@ it to Android's installer. Your books, highlights and reading positions stay whe
 they are. The first time, Android asks you to allow Riwaq to install apps
 ("Allow from this source"); that is a one-time switch.
 
+Versions 0.5.3 and older can't see the update. If you have one of those,
+download the new APK from this page and install it by hand once; updates arrive
+in the app from then on.
+
 Installed through a store, the store stays in charge, and Riwaq never installs over it:
 
 - **[Obtainium](https://github.com/ImranR98/Obtainium)** and **Orion Store**
@@ -292,6 +296,9 @@ How the update is installed depends on how you installed Riwaq:
 | Obtainium, Orion Store | Riwaq tells you; the store installs it. |
 | F-Droid, Flathub | The store updates Riwaq. No prompt in the app. |
 | Linux `.deb` / `.rpm` | Riwaq tells you and opens the download page; a system package can't replace itself. |
+
+Versions 0.5.3 and older, on desktop and Android, can't see an update. Install
+the new version by hand once; after that, updates arrive in the app.
 
 ---
 
