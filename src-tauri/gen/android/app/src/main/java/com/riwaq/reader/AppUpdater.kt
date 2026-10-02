@@ -137,14 +137,34 @@ object AppUpdater {
         // A dialog that never appeared is recovered by tapping Install again
         // (install() accepts "installing").
         val state = o.optString("state")
-        // The process died mid-download (or while parked for Wi-Fi): the file
-        // still says "downloading" but nothing is. Report it as an
-        // interrupted download, so the UI offers a retry, which resumes.
-        val stale = (state == "downloading" || state == "verifying") && !isWorking() ||
-            state == "waiting" && netCallback == null
-        if (stale) {
-            o.put("state", "failed").put("error", "offline")
-            write(app, o)
+        val version = o.optString("version")
+        val url = o.optString("url")
+        val sha = o.optString("sha256")
+        val hasJob = version.isNotEmpty() && url.isNotEmpty() && sha.isNotEmpty()
+        when (staleDecision(state, isWorking(), netCallback != null, hasJob)) {
+            // The process died mid-download: the file still says
+            // "downloading" but nothing is. Report it as an interrupted
+            // download, so the UI offers a retry, which resumes.
+            "fail" -> {
+                o.put("state", "failed").put("error", "offline")
+                write(app, o)
+            }
+            // The process died while parked for Wi-Fi (swiped away): the
+            // callback went with it, but nothing failed. Park the same job
+            // again through the start path — still under [lock], so nothing
+            // interleaves — with waitForUnmetered: on a metered network it
+            // only re-registers the wait; on Wi-Fi it starts the download the
+            // callback would have started. Then report what that wrote.
+            "repark" -> {
+                try {
+                    startLocked(app, version, url, sha, o.optLong("total", 0L), true)
+                } catch (_: Exception) {
+                    // No callback could be registered: an honest retry.
+                    unpark(app)
+                    write(app, o.put("state", "failed").put("error", "offline"))
+                }
+                o = read(app)
+            }
         }
         // The system may purge cacheDir under storage pressure. A "ready" whose
         // APK is gone would offer an Install that cannot work: start over.
@@ -427,6 +447,15 @@ object AppUpdater {
         Regex("""^(\d+)\.(\d+)\.(\d+)$""").find(v)?.destructured?.let { (a, b, c) ->
             a.toLong() * 1_000_000 + b.toLong() * 1_000 + c.toLong()
         } ?: -1
+
+    /** Mirrors staleStatusDecision() in src/store/updateFlow.ts, which is the
+     *  tested specification: what [status] does with a state.json this
+     *  process may have outlived — "keep", "fail" or "repark". */
+    private fun staleDecision(state: String, working: Boolean, parked: Boolean, hasJob: Boolean): String = when {
+        state == "downloading" || state == "verifying" -> if (working) "keep" else "fail"
+        state == "waiting" && !parked -> if (hasJob) "repark" else "fail"
+        else -> "keep"
+    }
 
     /** Mirrors cleanupDecision() in src/store/updateFlow.ts, which is the
      *  tested specification: once the running version is at or past the

@@ -112,6 +112,30 @@ export function cleanupDecision(
   return versionCode(running) >= versionCode(cached) ? "delete" : "keep";
 }
 
+/** What AppUpdater.status() does with a state.json the process may have
+ *  outlived. Kotlin mirrors this exactly; this copy is the tested
+ *  specification.
+ *  - "downloading"/"verifying" with no live worker: the download was
+ *    interrupted — "fail" (offline), so the UI offers a retry that resumes.
+ *  - "waiting" with no parked network callback: the process died while
+ *    waiting for Wi-Fi (swiped away). Nothing failed; the wait resumes —
+ *    "repark" from the job state.json holds (the start path with
+ *    waitForUnmetered, which never downloads on a metered network). Only a
+ *    file that no longer holds the job (version, url, sha256) is a "fail".
+ *  - anything else: "keep". */
+export function staleStatusDecision(s: {
+  state: string;
+  working: boolean;
+  parked: boolean;
+  hasJob: boolean;
+}): "keep" | "fail" | "repark" {
+  if (s.state === "downloading" || s.state === "verifying") {
+    return s.working ? "keep" : "fail";
+  }
+  if (s.state === "waiting" && !s.parked) return s.hasJob ? "repark" : "fail";
+  return "keep";
+}
+
 export type Pill =
   | { kind: "available" }
   | { kind: "progress"; pct: number }

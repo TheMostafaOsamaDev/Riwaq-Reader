@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  showsMobileDataSetting,
   androidChannel,
   attentionDot,
   cleanupDecision,
@@ -8,6 +7,8 @@ import {
   decideStart,
   parseNativeStatus,
   pillFor,
+  showsMobileDataSetting,
+  staleStatusDecision,
   versionCode,
 } from "./updateFlow";
 
@@ -67,6 +68,44 @@ describe("cleanupDecision", () => {
     expect(cleanupDecision("0.6.1", "0.6.0")).toBe("delete");
     expect(cleanupDecision("0.5.3", "0.6.0")).toBe("keep");
     expect(cleanupDecision("0.5.3", undefined)).toBe("keep");
+  });
+});
+
+describe("staleStatusDecision", () => {
+  const job = { working: false, parked: false, hasJob: true };
+  it("re-parks a Wi-Fi wait the process lost, instead of reporting a failure", () => {
+    // Swiped away while waiting: state.json still says "waiting", but the
+    // network callback died with the process. Nothing failed.
+    expect(staleStatusDecision({ ...job, state: "waiting" })).toBe("repark");
+  });
+  it("fails a lost wait only when state.json no longer holds the job", () => {
+    expect(
+      staleStatusDecision({ ...job, state: "waiting", hasJob: false }),
+    ).toBe("fail");
+  });
+  it("leaves a wait that is still parked alone", () => {
+    expect(
+      staleStatusDecision({ ...job, state: "waiting", parked: true }),
+    ).toBe("keep");
+  });
+  it("reports a download the process lost as interrupted", () => {
+    for (const state of ["downloading", "verifying"] as const) {
+      expect(staleStatusDecision({ ...job, state })).toBe("fail");
+      expect(staleStatusDecision({ ...job, state, working: true })).toBe(
+        "keep",
+      );
+    }
+  });
+  it("never touches any other state", () => {
+    for (const state of [
+      "idle",
+      "ready",
+      "installing",
+      "failed",
+      "something",
+    ]) {
+      expect(staleStatusDecision({ ...job, state })).toBe("keep");
+    }
   });
 });
 
