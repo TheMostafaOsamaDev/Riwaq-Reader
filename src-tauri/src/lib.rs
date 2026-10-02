@@ -5,6 +5,7 @@ mod legacy_identity;
 mod notify;
 mod opened;
 mod sources;
+mod update_leftovers;
 mod updates;
 
 // Only needed to call `get_webview_window` from the desktop-only open-path
@@ -149,6 +150,22 @@ pub fn run() {
                     .map(|a| a.to_string_lossy().into_owned())
                     .collect();
                 opened::push_silent(book_paths_from_argv(&argv));
+
+                // Windows' updater leaves each downloaded installer in %TEMP%
+                // and exits, so clear the ones for this version or older. Off
+                // the main thread, never awaited: it must not gate first paint.
+                let product = app
+                    .config()
+                    .product_name
+                    .clone()
+                    .unwrap_or_else(|| "Riwaq".to_string());
+                let version = app.package_info().version.to_string();
+                std::thread::spawn(move || {
+                    let n = update_leftovers::sweep(&std::env::temp_dir(), &product, &version);
+                    if n > 0 {
+                        println!("[updater] removed {n} leftover installer folder(s)");
+                    }
+                });
             }
 
             // Dev harness for the session-webview transport. Off unless
