@@ -298,8 +298,10 @@ describe("SidebarUpdateCard", () => {
     ).toContain(body);
   });
 
-  it("ready: the sidebar note is clamped to two lines, its full text in the title", async () => {
-    // At an 800 px window the unclamped note pushed Settings half out of view.
+  it("ready: the sidebar note is clamped to one line, its full text in the title", async () => {
+    // At an 800 px window the unclamped (then two-line) note pushed Settings
+    // half out of view. One line now; the full text is in the title, the
+    // Settings card and the notes dialog.
     h.check.mockResolvedValue(fakeUpdate());
     await mount();
     await offer();
@@ -322,7 +324,7 @@ describe("SidebarUpdateCard", () => {
       html,
     )?.[1];
     expect(style).toMatch(/display:\s*-webkit-box/);
-    expect(style).toMatch(/line-clamp:\s*2/);
+    expect(style).toMatch(/line-clamp:\s*1/);
     expect(style).toMatch(/box-orient:\s*vertical/);
     expect(style).toMatch(/overflow:\s*hidden/);
   });
@@ -486,6 +488,75 @@ describe("SidebarUpdateCard", () => {
     expect(u.install).not.toHaveBeenCalled();
     await arm();
     await click(button("Restart now", dialog()!));
+    expect(u.install).toHaveBeenCalledTimes(1);
+  });
+
+  // Final verification on a Mac: the ready card (a full-width 44 px button
+  // under a two-line note) was ~130 px tall and cut Settings off at 800 px.
+  it("ready: a compact card, Restart now its own armed element and not full width", async () => {
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    const c = card()!;
+    const btns = [...c.querySelectorAll("button")];
+    // Only Restart now: ready has no head button to re-label.
+    expect(btns.map((b) => b.textContent?.trim())).toEqual(["Restart now"]);
+    const restartBtn = btns[0];
+    expect(restartBtn.hasAttribute("data-compact")).toBe(true);
+    expect(restartBtn.style.width).not.toBe("100%");
+    for (const b of btns) expect(b.style.width).not.toBe("100%");
+    // Title and button share the first row.
+    const row = c.querySelector("[data-update-row]");
+    expect(row?.contains(restartBtn)).toBe(true);
+    expect(row?.textContent).toContain("Riwaq 0.6.0 is ready");
+    // Still armed.
+    expect(restartBtn.getAttribute("aria-disabled")).toBe("true");
+    await click(restartBtn);
+    expect(u.install).not.toHaveBeenCalled();
+    await arm();
+    await click(button("Restart now", card()!));
+    expect(u.install).toHaveBeenCalledTimes(1);
+  });
+
+  it("failed: compact too; Try again is not full width and the title still opens the dialog", async () => {
+    h.check.mockResolvedValue(fakeUpdate({ downloadFails: true }));
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    const c = card()!;
+    const tryAgain = button("Try again", c)!;
+    expect(tryAgain.style.width).not.toBe("100%");
+    expect(c.querySelector("[data-update-row]")?.contains(tryAgain)).toBe(true);
+    await click(c.querySelector("button[data-update-head]") ?? undefined);
+    expect(store.getState().dialog).toBe("failed");
+  });
+
+  // The button's own arming, apart from the store's guard: long after ready
+  // (store armed), a Restart now that has only just appeared (the sidebar
+  // remounted, e.g. back from Settings) still ignores a click at once.
+  it("a freshly shown Restart now arms on its own, even when the store already allows a restart", async () => {
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    await arm();
+    await arm();
+    await act(async () => root?.unmount());
+    document.body.innerHTML = "";
+    await mount();
+    await click(button("Restart now", card()!));
+    expect(u.install).not.toHaveBeenCalled();
+    await arm();
+    await click(button("Restart now", card()!));
     expect(u.install).toHaveBeenCalledTimes(1);
   });
 });
