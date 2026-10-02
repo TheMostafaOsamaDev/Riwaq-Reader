@@ -48,6 +48,8 @@ import { Button } from "./Button";
 import type { CheckResult } from "../store/updates";
 import { SettingsUpdateCard } from "./update/SettingsUpdateCard";
 import { DesktopSettingsUpdateCard } from "./update/DesktopSettingsUpdateCard";
+import { useAndroidUpdate } from "../store/androidUpdate";
+import { showsMobileDataSetting } from "../store/updateFlow";
 
 const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 const LICENSE_URL =
@@ -231,6 +233,9 @@ export function SettingsPage({
       setDiagBusy(null);
     }
   };
+
+  // Who updates this install (Android); empty and unused on desktop.
+  const androidChannel = useAndroidUpdate().channel;
 
   const openExternal = async (url: string) => {
     try {
@@ -651,7 +656,7 @@ export function SettingsPage({
           </Field>
         ),
       },
-      ...(android
+      ...(android && showsMobileDataSetting(androidChannel)
         ? [
             {
               id: "updateOverMobile",

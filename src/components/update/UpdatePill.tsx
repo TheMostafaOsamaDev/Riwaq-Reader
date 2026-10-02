@@ -130,11 +130,18 @@ export function UpdatePill({
           layout === "mobile"
             ? "calc(76px + env(safe-area-inset-bottom, 0px))"
             : "calc(24px + env(safe-area-inset-bottom, 0px))",
-        left: "50%",
-        transform: "translateX(-50%)",
+        // Phone: centred over the bottom bar. Wide layout: the sidebar takes
+        // the inline-start side, so centring on the window would sit
+        // off-centre over the content; anchor to the inline-end edge.
+        ...(layout === "mobile"
+          ? { left: "50%", transform: "translateX(-50%)" }
+          : { insetInlineEnd: 24 }),
         zIndex: Z.banner,
         minHeight: TOUCH_TARGET_MIN,
-        maxWidth: "calc(100vw - 32px)",
+        maxWidth:
+          layout === "mobile"
+            ? "calc(100vw - 32px)"
+            : "min(360px, calc(100vw - 48px))",
         display: "inline-flex",
         alignItems: "center",
         gap: 8,

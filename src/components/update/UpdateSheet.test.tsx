@@ -305,6 +305,23 @@ describe("UpdatePill", () => {
     expect(document.querySelector("button")?.dataset.layout).toBe("desktop");
   });
 
+  // Task 14: on the tablet layout the pill was centred on the WINDOW, so it
+  // sat off-centre over the content pane beside the sidebar. It is anchored
+  // to the inline-end edge instead (logical, so RTL puts it on the left).
+  it("on a wide layout, anchors to the inline-end edge, not the window centre", async () => {
+    await setup();
+    await render(<UpdatePill theme={THEMES.sepia} layout="desktop" />);
+    const st = (document.querySelector("button") as HTMLElement).style;
+    expect(st.insetInlineEnd).toBe("24px");
+    expect(st.left).toBe("");
+    expect(st.transform).toBe("");
+    await act(async () => root?.unmount());
+    document.body.innerHTML = "";
+    await render(<UpdatePill theme={THEMES.sepia} />);
+    const phone = (document.querySelector("button") as HTMLElement).style;
+    expect(phone.left).toBe("50%");
+  });
+
   it("is absent for a store-managed install", async () => {
     await setup({
       installer: "org.fdroid.fdroid",

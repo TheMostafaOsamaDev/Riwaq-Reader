@@ -200,3 +200,10 @@ export function clearSkip(
     versionCode(running) >= s || (offered !== null && versionCode(offered) > s)
   );
 }
+
+/** Settings' "Over mobile data" row: only an in-app install downloads the
+ *  APK itself, so only it has anything for that setting to govern. Unknown
+ *  (the lookup still out) hides it rather than showing and then pulling it. */
+export function showsMobileDataSetting(c: AndroidChannel | null): boolean {
+  return c?.kind === "in-app";
+}

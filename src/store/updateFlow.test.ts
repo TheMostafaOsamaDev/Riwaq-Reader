@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  showsMobileDataSetting,
   androidChannel,
   attentionDot,
   cleanupDecision,
@@ -182,5 +183,32 @@ describe("clearSkip", () => {
     expect(clearSkip("0.6.0", "0.6.1", "0.5.3")).toBe(true);
     expect(clearSkip("0.6.0", "0.6.0", "0.5.3")).toBe(false);
     expect(clearSkip("0.6.0", null, "0.6.0")).toBe(true);
+  });
+});
+
+describe("showsMobileDataSetting", () => {
+  // Task 14: an F-Droid install still showed "Over mobile data", a setting
+  // for a download it never makes.
+  it("only an in-app install downloads, so only it gets the row", () => {
+    expect(showsMobileDataSetting({ kind: "in-app" })).toBe(true);
+    expect(
+      showsMobileDataSetting({
+        kind: "managed",
+        pkg: "org.fdroid.fdroid",
+        label: "F-Droid",
+        storeInstalled: true,
+      }),
+    ).toBe(false);
+    expect(
+      showsMobileDataSetting({
+        kind: "store-assisted",
+        store: "orion",
+        pkg: "com.orion.store",
+        label: "Orion Store",
+      }),
+    ).toBe(false);
+    expect(showsMobileDataSetting({ kind: "manual" })).toBe(false);
+    // Not known yet: hidden rather than shown and then pulled away.
+    expect(showsMobileDataSetting(null)).toBe(false);
   });
 });
