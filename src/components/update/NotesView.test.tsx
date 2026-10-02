@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import type { ReleaseNotes } from "../../store/releaseNotes";
 import { THEMES } from "../../styles/tokens";
@@ -65,6 +65,9 @@ describe("NotesView", () => {
 
 describe("StoryPages", () => {
   it("steps through pages and finishes with onDone", () => {
+    // Each page ignores clicks for ARM_MS (see useArmed): wait it out.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const settle = () => act(() => vi.advanceTimersByTime(1000));
     let done = 0;
     const h = render(
       <StoryPages
@@ -82,11 +85,14 @@ describe("StoryPages", () => {
         h.querySelectorAll("button").length - 1
       ] as HTMLButtonElement;
     expect(primary().textContent).toBe("Next");
+    settle();
     act(() => primary().click());
     expect(h.textContent).toContain("Page two");
     expect(primary().textContent).toBe("Start reading");
+    settle();
     act(() => primary().click());
     expect(done).toBe(1);
+    vi.useRealTimers();
   });
   it("renders Arabic page text", () => {
     const h = render(

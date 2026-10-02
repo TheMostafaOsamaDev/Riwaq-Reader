@@ -119,7 +119,17 @@ async function click(b: Element | undefined) {
   });
 }
 
+// Only setTimeout is faked: the arming delay is a timer, and promises
+// (the mocked plugins) must still resolve on their own.
+const ARM = 1000;
+async function arm() {
+  await act(async () => {
+    vi.advanceTimersByTime(ARM);
+  });
+}
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   store.__resetForTests();
   saved.length = 0;
   document.body.innerHTML = "";
@@ -128,6 +138,7 @@ beforeEach(() => {
   h.openUrl.mockClear();
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await act(async () => root?.unmount());
   root = null;
   store.__resetForTests();
@@ -190,6 +201,7 @@ describe("SidebarUpdateCard", () => {
     await click(button("Update", dialog()!));
     expect(card()?.textContent).toContain("Riwaq 0.6.0 is ready");
     expect(h.relaunch).not.toHaveBeenCalled();
+    await arm();
     await click(button("Restart now", card()!));
     expect(u.install).toHaveBeenCalledTimes(1);
     expect(h.relaunch).toHaveBeenCalledTimes(1);
@@ -293,6 +305,7 @@ describe("SidebarUpdateCard", () => {
     await act(async () => {
       await store.update();
     });
+    await arm();
     await click(button("Restart now", card()!));
     expect(card()?.textContent).toContain(
       "The update is installed. Quit and reopen Riwaq to finish.",
@@ -322,6 +335,7 @@ describe("SidebarUpdateCard", () => {
     await act(async () => store.openDialog("notes"));
     const d = dialog()!;
     expect(button("Update", d)).toBeUndefined();
+    await arm();
     await click(button("Restart now", d));
     expect(u.install).toHaveBeenCalled();
   });
@@ -346,5 +360,75 @@ describe("SidebarUpdateCard", () => {
     expect(button("Update", d)).toBeUndefined();
     expect(button("Downloading…", d)?.disabled).toBe(true);
     await act(async () => open());
+  });
+
+  // From the Task 14 macOS run: the button that said Update said Restart now
+  // a second later, in the same place, so a double-click (or the click that
+  // only activates an inactive window, then the real one) restarted Riwaq.
+  it("Settings: a click on the old spot right after the download does not restart", async () => {
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await mount();
+    await offer();
+    const settings = () => document.querySelector("[data-settings-update]")!;
+    const updateBtn = button("Update", settings());
+    await click(updateBtn);
+    // The download has resolved: the card is ready.
+    expect(store.getState().phase).toBe("ready");
+    // Whatever now sits where Update was, and Restart now itself, ignore a
+    // click inside the arming delay.
+    const restartBtn = button("Restart now", settings());
+    expect(restartBtn).toBeTruthy();
+    expect(restartBtn).not.toBe(updateBtn);
+    expect(restartBtn?.getAttribute("aria-disabled")).toBe("true");
+    await click(restartBtn);
+    await click(updateBtn?.isConnected ? updateBtn : restartBtn);
+    expect(u.install).not.toHaveBeenCalled();
+    expect(h.relaunch).not.toHaveBeenCalled();
+    await arm();
+    expect(
+      button("Restart now", settings())?.getAttribute("aria-disabled"),
+    ).not.toBe("true");
+    await click(button("Restart now", settings()));
+    expect(u.install).toHaveBeenCalledTimes(1);
+    expect(h.relaunch).toHaveBeenCalledTimes(1);
+  });
+
+  it("sidebar: Try again then an immediate second click does not restart", async () => {
+    const bad = fakeUpdate({ downloadFails: true });
+    const good = fakeUpdate();
+    h.check.mockResolvedValueOnce(bad).mockResolvedValueOnce(good);
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    const tryAgain = button("Try again", card()!);
+    await click(tryAgain);
+    expect(store.getState().phase).toBe("ready");
+    const restartBtn = button("Restart now", card()!);
+    expect(restartBtn).not.toBe(tryAgain);
+    await click(restartBtn);
+    expect(good.install).not.toHaveBeenCalled();
+    await arm();
+    await click(button("Restart now", card()!));
+    expect(good.install).toHaveBeenCalledTimes(1);
+  });
+
+  it("notes dialog opened when ready: Restart now waits out the arming delay", async () => {
+    const u = fakeUpdate();
+    h.check.mockResolvedValue(u);
+    await mount();
+    await offer();
+    await act(async () => {
+      await store.update();
+    });
+    await arm();
+    await act(async () => store.openDialog("notes"));
+    await click(button("Restart now", dialog()!));
+    expect(u.install).not.toHaveBeenCalled();
+    await arm();
+    await click(button("Restart now", dialog()!));
+    expect(u.install).toHaveBeenCalledTimes(1);
   });
 });

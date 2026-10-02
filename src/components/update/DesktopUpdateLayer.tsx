@@ -228,6 +228,11 @@ export function DesktopUpdateLayer({ theme }: { theme: Theme }) {
           actionLabel={notesAction.label}
           actionBusy={s.phase === "installing"}
           actionDisabled={notesAction.disabled}
+          actionArmKey={
+            s.phase === "ready" || s.phase === "installing"
+              ? "restart"
+              : undefined
+          }
           onAction={notesAction.run}
           onClose={onClose}
           // Later and Skip are for an offer nobody has acted on yet.

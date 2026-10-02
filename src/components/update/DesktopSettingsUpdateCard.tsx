@@ -7,7 +7,6 @@ import { useI18n } from "../../i18n/useI18n";
 import {
   cardFor,
   openDialog,
-  restart,
   settingsCardFor,
   update,
   useDesktopUpdate,
@@ -16,6 +15,7 @@ import { pick } from "../../store/releaseNotes";
 import { type Theme, TOUCH_TARGET_MIN } from "../../styles/tokens";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { RestartNowButton } from "./SidebarUpdateCard";
 
 export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
   const { tr, locale } = useI18n();
@@ -40,8 +40,9 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
       onPrimary = () => openDialog("progress");
       break;
     case "ready":
-      primary = tr("update.restart");
-      onPrimary = () => void restart();
+      // Not in this row: Restart now gets its own armed button below, so a
+      // repeated click where Update was cannot reach it.
+      primary = null;
       break;
     case "installed":
       // Installed; only the user can restart now.
@@ -180,6 +181,11 @@ export function DesktopSettingsUpdateCard({ theme }: { theme: Theme }) {
           </Button>
         )}
       </div>
+      {card?.kind === "ready" && (
+        <div key="restart" style={{ marginTop: 8 }}>
+          <RestartNowButton theme={theme} fullWidth />
+        </div>
+      )}
     </section>
   );
 }

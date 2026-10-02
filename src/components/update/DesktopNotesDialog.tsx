@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
 import { fetchNotes } from "../../store/fetchNotes";
 import type { ReleaseNotes } from "../../store/releaseNotes";
@@ -35,6 +36,7 @@ export function DesktopNotesDialog({
   actionLabel,
   actionBusy,
   actionDisabled = false,
+  actionArmKey,
   onAction,
   onClose,
   onLater,
@@ -51,6 +53,10 @@ export function DesktopNotesDialog({
   /** Shown but not pressable (with no spinner): the state it names is
    *  under way somewhere else, e.g. "Downloading…". */
   actionDisabled?: boolean;
+  /** Set for an action that must not take a stray click (Restart now): the
+   *  action ignores clicks for ARM_MS after the dialog opens or this key
+   *  changes. Omitted, the action is live at once. */
+  actionArmKey?: string;
   onAction: () => void;
   onClose: () => void;
   onLater?: () => void;
@@ -69,6 +75,8 @@ export function DesktopNotesDialog({
     image?: string;
   } | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const armedNow = useArmed(open ? actionArmKey : null);
+  const armed = actionArmKey === undefined || armedNow;
 
   useEffect(() => {
     if (!open || preloaded !== undefined) return;
@@ -206,13 +214,24 @@ export function DesktopNotesDialog({
             {onLater ? tr("update.action.later") : tr("common.close")}
           </Button>
           <Button
+            // A new element when the action changes, never the old one
+            // re-labelled.
+            key={actionArmKey ?? "action"}
             theme={theme}
             variant="primary"
             size="sm"
-            style={onLater ? { minHeight: TOUCH_TARGET_MIN } : undefined}
+            style={{
+              ...(onLater || actionArmKey
+                ? { minHeight: TOUCH_TARGET_MIN }
+                : {}),
+              ...(armed ? {} : { opacity: 0.6 }),
+            }}
             loading={actionBusy}
             disabled={actionBusy || actionDisabled}
-            onClick={onAction}
+            aria-disabled={!armed || undefined}
+            onClick={() => {
+              if (armed) onAction();
+            }}
           >
             {actionLabel}
           </Button>

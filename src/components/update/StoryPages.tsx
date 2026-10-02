@@ -2,6 +2,7 @@
 // whose notes define `stories`). Small releases never get here — see
 // WhatsNewAfterUpdate.
 import { useEffect, useState } from "react";
+import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
 import { pick, type ReleaseNotes } from "../../store/releaseNotes";
 import { type Theme, Z } from "../../styles/tokens";
@@ -23,6 +24,13 @@ export function StoryPages({
   const { tr, locale } = useI18n();
   const pages = notes.stories ?? [];
   const [i, setI] = useState(0);
+  // Each page ignores clicks for a moment: a click carried over from before
+  // the relaunch, or a double-click on Next, must not end the tour (Next
+  // turns into Start reading in place on the last page).
+  const armed = useArmed(i);
+  const guard = (fn: () => void) => () => {
+    if (armed) fn();
+  };
   // Escape leaves the tour, like it leaves any dialog.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -70,7 +78,13 @@ export function StoryPages({
         >
           {tr("whatsNew.title", { v: notes.version })}
         </span>
-        <Button theme={theme} variant="ghost" size="sm" onClick={onDone}>
+        <Button
+          theme={theme}
+          variant="ghost"
+          size="sm"
+          aria-disabled={!armed || undefined}
+          onClick={guard(onDone)}
+        >
           {tr("whatsNew.skip")}
         </Button>
       </div>
@@ -151,7 +165,8 @@ export function StoryPages({
         theme={theme}
         variant="primary"
         fullWidth
-        onClick={() => (last ? onDone() : setI(i + 1))}
+        aria-disabled={!armed || undefined}
+        onClick={guard(() => (last ? onDone() : setI(i + 1)))}
       >
         {last ? tr("whatsNew.done") : tr("whatsNew.next")}
       </Button>

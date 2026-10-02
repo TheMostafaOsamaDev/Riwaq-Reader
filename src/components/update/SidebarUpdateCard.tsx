@@ -3,6 +3,7 @@
 // the desktop store; the dialogs it opens live in DesktopUpdateLayer, which
 // App mounts once so Settings can open them too.
 
+import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
 import {
   type Card,
@@ -289,24 +290,65 @@ function CardBody({ theme, card }: { theme: Theme; card: NonNullable<Card> }) {
           />
         </div>
       )}
-      {(card.kind === "ready" || card.kind === "failed") && (
-        <div style={{ padding: "0 10px 10px" }}>
+      {card.kind === "failed" && (
+        <div key="retry" style={{ padding: "0 10px 10px" }}>
           <Button
             theme={theme}
             variant="primary"
             size="sm"
             fullWidth
-            loading={s.phase === "installing"}
-            disabled={s.phase === "installing"}
             style={{ minHeight: TOUCH_TARGET_MIN }}
-            onClick={() => void (card.kind === "ready" ? restart() : update())}
+            onClick={() => void update()}
           >
-            {card.kind === "ready"
-              ? tr("update.restart")
-              : tr("update.fail.again")}
+            {tr("update.fail.again")}
           </Button>
         </div>
       )}
+      {/* Its own element, below the note, never Try again re-labelled. */}
+      {card.kind === "ready" && (
+        <div key="restart" style={{ padding: "0 10px 10px" }}>
+          <RestartNowButton theme={theme} fullWidth />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** "Restart now", the one action that ends the session. It ignores clicks
+ *  for ARM_MS after it appears: it appears the moment a download ends,
+ *  often where Update or Try again was a second earlier, so a double-click
+ *  or a window-activating click must not land on it. It stays visible and
+ *  focusable meanwhile (aria-disabled, dimmed), and brightens once live. */
+export function RestartNowButton({
+  theme,
+  fullWidth,
+}: {
+  theme: Theme;
+  fullWidth?: boolean;
+}) {
+  const { tr } = useI18n();
+  const s = useDesktopUpdate();
+  const armed = useArmed("restart");
+  const installing = s.phase === "installing";
+  return (
+    <Button
+      theme={theme}
+      variant="primary"
+      size="sm"
+      fullWidth={fullWidth}
+      loading={installing}
+      disabled={installing}
+      aria-disabled={!armed || undefined}
+      style={{
+        minHeight: TOUCH_TARGET_MIN,
+        opacity: armed ? 1 : 0.6,
+        transition: "opacity 200ms ease",
+      }}
+      onClick={() => {
+        if (armed) void restart();
+      }}
+    >
+      {tr("update.restart")}
+    </Button>
   );
 }
