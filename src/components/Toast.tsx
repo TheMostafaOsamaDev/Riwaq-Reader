@@ -23,9 +23,18 @@ interface Props {
   onDismiss: () => void;
   /** Auto-dismiss timeout in ms. Default 3500. */
   ttl?: number;
+  /** CSS `bottom`. Default 24px; the phone library lifts it over its
+   *  bottom bar. */
+  bottom?: string;
 }
 
-export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
+export function Toast({
+  theme,
+  toast,
+  onDismiss,
+  ttl = 3500,
+  bottom = "24px",
+}: Props) {
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(onDismiss, ttl);
@@ -47,7 +56,7 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
       aria-live="polite"
       style={{
         position: "fixed",
-        bottom: 24,
+        bottom,
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: Z.toast,
@@ -63,7 +72,12 @@ export function Toast({ theme, toast, onDismiss, ttl = 3500 }: Props) {
         fontFamily: FONT_STACKS.sans,
         fontSize: 13,
         lineHeight: 1.4,
-        maxWidth: 420,
+        // max-content, capped: with left:50% a shrink-to-fit box only gets
+        // half the viewport, which on a phone wrapped a sentence into a
+        // narrow column.
+        width: "max-content",
+        maxWidth: "min(420px, calc(100vw - 32px))",
+        boxSizing: "border-box",
         boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
       }}
     >

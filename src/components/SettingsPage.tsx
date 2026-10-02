@@ -46,6 +46,7 @@ import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
 import { Button } from "./Button";
 import type { CheckResult } from "../store/updates";
+import { SettingsUpdateCard } from "./update/SettingsUpdateCard";
 
 const REPO_URL = "https://github.com/TheMostafaOsamaDev/Riwaq-Reader";
 const LICENSE_URL =
@@ -69,6 +70,8 @@ interface Props {
   updateResult: CheckResult | null;
   /** Reopen this version's release notes. Omitted when none are bundled. */
   onOpenWhatsNew?: () => void;
+  /** Android: the in-app update card and the "Over mobile data" row. */
+  android?: boolean;
 }
 
 export function SettingsPage({
@@ -83,6 +86,7 @@ export function SettingsPage({
   updateChecking,
   updateResult,
   onOpenWhatsNew,
+  android = false,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -633,9 +637,46 @@ export function SettingsPage({
             >
               {tr("settings.updates.hint")}
             </p>
+            {android && (
+              <SettingsUpdateCard
+                theme={theme}
+                onOpenUrl={(url) => void openExternal(url)}
+              />
+            )}
           </Field>
         ),
       },
+      ...(android
+        ? [
+            {
+              id: "updateOverMobile",
+              label: tr("settings.updates.overMobile"),
+              node: (
+                <Field label={tr("settings.updates.overMobile")} theme={theme}>
+                  <SegRow<Tweaks["updateOverMobile"]>
+                    theme={theme}
+                    value={t.updateOverMobile}
+                    onChange={(v) => setTweak("updateOverMobile", v)}
+                    options={[
+                      {
+                        value: "ask",
+                        label: tr("settings.updates.mobileAsk"),
+                      },
+                      {
+                        value: "always",
+                        label: tr("settings.updates.mobileAlways"),
+                      },
+                      {
+                        value: "wifi",
+                        label: tr("settings.updates.mobileWifi"),
+                      },
+                    ]}
+                  />
+                </Field>
+              ),
+            },
+          ]
+        : []),
       {
         id: "sourceCode",
         label: tr("settings.about.sourceCode"),

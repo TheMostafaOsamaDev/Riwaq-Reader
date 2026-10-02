@@ -99,6 +99,12 @@ import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { UpdatePill } from "./components/update/UpdatePill";
+import { UpdateSheet, UpdateToasts } from "./components/update/UpdateSheet";
+import {
+  configure as configureAndroidUpdate,
+  offer as offerAndroidUpdate,
+} from "./store/androidUpdate";
 import {
   WhatsNewAfterUpdate,
   bundledNotes,
@@ -314,6 +320,28 @@ function App() {
     }
   });
   useFileDrop(dropCapable);
+  // The in-app update flow (pill, sheet, Settings card) is Android's; desktop
+  // keeps UpdateBanner. Same defensive platform() read as dropCapable.
+  const [isAndroid] = useState(() => {
+    try {
+      return platform() === "android";
+    } catch {
+      return false;
+    }
+  });
+  // Fed after paint, never awaited: the store only reacts to these.
+  useEffect(() => {
+    if (!isAndroid) return;
+    configureAndroidUpdate({
+      running: appVersion,
+      skipped: t.skippedUpdateVersion,
+      pref: t.updateOverMobile,
+      saveSkipped: (v) => setTweak("skippedUpdateVersion", v),
+    });
+  }, [isAndroid, t.skippedUpdateVersion, t.updateOverMobile, setTweak]);
+  useEffect(() => {
+    if (isAndroid && update.info) void offerAndroidUpdate(update.info);
+  }, [isAndroid, update.info]);
   const dropState = useDropOverlayState();
   // "system" resolves to light/dark from the OS setting; useMediaQuery
   // re-renders when the user flips OS appearance, so the whole app
@@ -1012,7 +1040,16 @@ function App() {
           overflow: "hidden",
         }}
       >
-        {update.info && (
+        {isAndroid ? (
+          <>
+            {base.screen === "library" && !streaming && (
+              <UpdatePill theme={theme} />
+            )}
+            <UpdateSheet theme={theme} themeKey={themeKey} />
+            <UpdateToasts theme={theme} />
+          </>
+        ) : null}
+        {!isAndroid && update.info && (
           <UpdateBanner
             info={update.info}
             theme={theme}
@@ -1111,6 +1148,7 @@ function App() {
               onOpenWhatsNew={
                 bundledNotes ? () => setWhatsNewOpen(true) : undefined
               }
+              android={isAndroid}
             />
           ) : base.screen === "library" ? (
             <Library

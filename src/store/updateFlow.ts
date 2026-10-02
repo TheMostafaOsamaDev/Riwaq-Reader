@@ -11,7 +11,7 @@ export type AndroidChannel =
       pkg: string;
       label: string;
     }
-  | { kind: "managed"; pkg: string; label: string }
+  | { kind: "managed"; pkg: string; label: string; storeInstalled: boolean }
   | { kind: "manual" };
 
 export interface InstallSource {
@@ -49,7 +49,12 @@ export function androidChannel(src: InstallSource | null): AndroidChannel {
       ? { kind: "store-assisted", store, pkg: src.installer, label: src.label }
       : { kind: "in-app" };
   }
-  return { kind: "managed", pkg: src.installer, label: src.label };
+  return {
+    kind: "managed",
+    pkg: src.installer,
+    label: src.label,
+    storeInstalled: src.storeInstalled,
+  };
 }
 
 const STATES = [
