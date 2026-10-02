@@ -12,7 +12,7 @@
 
 import type { MsgKey } from "../../i18n";
 import { useI18n } from "../../i18n/useI18n";
-import { openExtensionsManager } from "../../store/uiIntents";
+import { goStorePage } from "../../store/navigation";
 import type { Theme } from "../../styles/tokens";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
@@ -121,7 +121,7 @@ export function ExtensionNotice({
       <Button
         theme={theme}
         variant="secondary"
-        onClick={openExtensionsManager}
+        onClick={() => goStorePage({ kind: "extensions" })}
         leadingIcon={<Icon name="layers" size={14} />}
         // 44px: this ships on Android, where the button is a touch target.
         style={{ minHeight: 44, flexShrink: 0, background: theme.bg }}

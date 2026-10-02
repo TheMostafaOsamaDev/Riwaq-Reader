@@ -1,4 +1,5 @@
 import type { BookIndexEntry } from "../../store/library";
+import type { StorePage } from "../../store/navigation";
 import type { Shelf } from "../../store/shelves";
 import type { Theme, ThemeKey } from "../../styles/tokens";
 import type { HeroStyle } from "../../types/reader";
@@ -84,6 +85,8 @@ export interface LayoutProps {
   /** The shelf whose detail view is open, if any — drives the sidebar's
    *  per-shelf active highlight (Task 9). */
   activeShelfId?: string;
+  /** The Store page from nav history, when the Store is the destination. */
+  storePage?: StorePage;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   /** Optional 4th arg: the shelf id, when the card lives in a shelf-scoped

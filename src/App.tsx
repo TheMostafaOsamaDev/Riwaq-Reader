@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { AnimatedSwap } from "./components/AnimatedSwap";
 import { markBoot, readPreviousLaunch } from "./lib/diagnostics/breadcrumbs";
@@ -44,6 +45,7 @@ import {
 } from "./store/downloadQueue";
 import type { EpubBook } from "./epub/types";
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useReseedOnChange } from "./hooks/useReseedOnChange";
 import { useTweaks } from "./hooks/useTweaks";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { close as closeLightbox, useLightbox } from "./store/lightbox";
@@ -53,8 +55,8 @@ import {
   goSettings,
   openOverlay,
   back,
-  forward,
 } from "./store/navigation";
+import { installNavInput } from "./store/navInput";
 import {
   deleteHighlights,
   getEntry,
@@ -294,8 +296,13 @@ function App() {
   // Phones in landscape exceed 720px wide but still need the mobile reader
   // (tap-to-toggle chrome, single-column layout). Treat any coarse-pointer
   // device with a short viewport as mobile too.
+  //
+  // 719.98, not 720: the desktop window's minWidth is 720 (tauri.conf.json),
+  // and an inclusive 720 meant dragging the window to its narrowest flipped
+  // the whole app into the phone UI — bottom tab bar, remounted sidebar — and
+  // back again one pixel wider. A desktop window now never reaches it.
   const isMobile = useMediaQuery(
-    "(max-width: 720px), (pointer: coarse) and (max-height: 480px)",
+    "(max-width: 719.98px), (pointer: coarse) and (max-height: 480px)",
   );
   // Drag-and-drop is desktop-only: Android has no pointer drag onto the
   // window, and Tauri emits no drag events there. Gate on the actual OS via
@@ -421,7 +428,18 @@ function App() {
       darkIcons,
       background: theme.bg,
     }).catch(() => {});
-  }, [theme.bg, theme.ink, theme.muted, themeKey]);
+    // Desktop: paint the native window itself in the theme's background.
+    // Whenever the webview does not cover the window — a frame of a
+    // maximize or full-screen animation, a resize the webview has not caught
+    // up with — that bare window shows through, and the OS default is a grey
+    // that reads as a broken band across the app. `dropCapable` is the
+    // desktop-OS check (see above).
+    if (dropCapable) {
+      void getCurrentWindow()
+        .setBackgroundColor(theme.bg)
+        .catch(() => {});
+    }
+  }, [theme.bg, theme.ink, theme.muted, themeKey, dropCapable]);
 
   // Overlay scrollbars for every scroll area in the app: a slim, translucent
   // bar that floats over the content while scrolling and fades once it stops.
@@ -455,28 +473,9 @@ function App() {
     setReduceMotionOverride(t.reduceMotion);
   }, [t.reduceMotion]);
 
-  // Desktop back/forward, routed through nav history. Alt+←/→ and (on macOS)
-  // ⌘[ / ⌘] mirror the browser convention (Alt+Left = back in every locale,
-  // independent of text direction). Mouse side-buttons are left to the
-  // webview, which emits `popstate` — already handled by the nav store.
-  // preventDefault stops any native key mapping so each press navigates once.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const isBack =
-        (e.altKey && e.key === "ArrowLeft") || (e.metaKey && e.key === "[");
-      const isForward =
-        (e.altKey && e.key === "ArrowRight") || (e.metaKey && e.key === "]");
-      if (isBack) {
-        e.preventDefault();
-        back();
-      } else if (isForward) {
-        e.preventDefault();
-        forward();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Keyboard and mouse back/forward (see navInput.ts for the side-button
+  // story). Android's hardware Back arrives as popstate instead.
+  useEffect(() => installNavInput(), []);
 
   // Push download-queue runtime config from the tweaks.
   useEffect(() => {
@@ -776,7 +775,32 @@ function App() {
 
   // Debounce paragraph saves so we don't hammer disk on every scroll event.
   const paragraphSaveTimer = useRef<number | null>(null);
+  // Where the reader is right now, ahead of the debounced save. A layout flip
+  // mounts a fresh reader, and it has to start here — see the reseed below.
+  // Stamped with the book, chapter and jump it was reported under: opening a
+  // book, changing chapter or jumping to a highlight sets a new resume hint,
+  // and a position reported before that no longer applies. The stamp retires
+  // it without every one of those paths having to clear it by hand.
+  const livePara = useRef<{
+    bookId: string;
+    chapter: number;
+    jumpNonce: number;
+    idx: number;
+    off: number;
+  } | null>(null);
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
   const onParagraphChange = useCallback((idx: number, offset?: number) => {
+    const l = loadedRef.current;
+    if (l) {
+      livePara.current = {
+        bookId: l.book.id,
+        chapter: l.currentChapter,
+        jumpNonce: l.jumpNonce,
+        idx,
+        off: offset ?? 0,
+      };
+    }
     if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
     paragraphSaveTimer.current = window.setTimeout(() => {
       paragraphSaveTimer.current = null;
@@ -796,6 +820,27 @@ function App() {
       });
     }, 600);
   }, []);
+
+  // Position reports are taken only from the reader of the CURRENT layout.
+  // A layout flip crossfades the two readers, and the outgoing one stays
+  // mounted for that fade at the new window size: its text reflows under an
+  // unchanged scrollTop, and its scroll listener reports whatever paragraph
+  // now sits at its top. Measured: reading at paragraph 35, a mobile -> desktop
+  // flip saved paragraph 115. Read through a ref, so a report that lands after
+  // the flip's render is judged by the layout it lands in.
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
+  const reportFrom = useMemo(
+    () => ({
+      mobile: (idx: number, offset?: number) => {
+        if (isMobileRef.current) onParagraphChange(idx, offset);
+      },
+      desktop: (idx: number, offset?: number) => {
+        if (!isMobileRef.current) onParagraphChange(idx, offset);
+      },
+    }),
+    [onParagraphChange],
+  );
 
   useEffect(() => {
     return () => {
@@ -835,6 +880,24 @@ function App() {
       if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
     };
   }, []);
+
+  // A layout flip (rotation, fold/unfold, split-screen, a desktop window
+  // dragged across 720px) swaps MobileReader for DesktopReader, and a fresh
+  // reader starts at its resume hint — the place the book was OPENED at. Move
+  // the hint to where the reader actually is first, or the flip throws them
+  // back and the new reader saves that over their real position.
+  useReseedOnChange(isMobile, () => {
+    const para = livePara.current;
+    if (!para) return;
+    setLoaded((prev) =>
+      prev &&
+      para.bookId === prev.book.id &&
+      para.chapter === prev.currentChapter &&
+      para.jumpNonce === prev.jumpNonce
+        ? { ...prev, resumeParagraph: para.idx, resumeOffset: para.off }
+        : prev,
+    );
+  });
 
   const createHighlight = useCallback(
     async (input: {
@@ -1164,9 +1227,16 @@ function App() {
             base.screen === "settings"
               ? "settings"
               : base.screen === "reader"
-                ? isMobile
-                  ? "reader-mobile"
-                  : "reader-desktop"
+                ? // The fixed reader is one component for both layouts and
+                  // takes `layout` as a prop, so it keeps its key and is NOT
+                  // remounted by a flip — it keeps its page and its decoded
+                  // pages. The flowing readers are two components; their key
+                  // has to change, and useReseedOnChange carries the position.
+                  loadedFixed?.book.id === base.bookId
+                  ? "reader-fixed"
+                  : isMobile
+                    ? "reader-mobile"
+                    : "reader-desktop"
                 : "library"
           }
         >
@@ -1269,7 +1339,7 @@ function App() {
                   resumeOffset={loaded.resumeOffset}
                   jumpNonce={loaded.jumpNonce}
                   onChapterChange={changeChapter}
-                  onParagraphChange={onParagraphChange}
+                  onParagraphChange={reportFrom.mobile}
                   onCreateHighlight={createHighlight}
                   onDeleteHighlight={removeHighlight}
                   onUpdateHighlightNote={editHighlightNote}
@@ -1297,7 +1367,7 @@ function App() {
                   resumeOffset={loaded.resumeOffset}
                   jumpNonce={loaded.jumpNonce}
                   onChapterChange={changeChapter}
-                  onParagraphChange={onParagraphChange}
+                  onParagraphChange={reportFrom.desktop}
                   onCreateHighlight={createHighlight}
                   onDeleteHighlight={removeHighlight}
                   onUpdateHighlightNote={editHighlightNote}

@@ -7,7 +7,7 @@ import { LibrarySidebar } from "../LibrarySidebar";
 import { SearchOverlay } from "../SearchOverlay";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
 import { AnimatedSwap } from "../AnimatedSwap";
-import { openStoreSource } from "../../store/uiIntents";
+import { goStorePage } from "../../store/navigation";
 import { booksOnShelf } from "../../store/shelfLogic";
 import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
@@ -55,6 +55,7 @@ export function DesktopLibrary({
   activeShelfId,
   // Both live in the hero's "more" menu now, which is the shelf cards'
   // context menu.
+  storePage,
   onDelete: _onDelete,
   onEdit: _onEdit,
   onCardContextMenu,
@@ -236,6 +237,7 @@ export function DesktopLibrary({
                 <Store
                   theme={theme}
                   layout="desktop"
+                  page={storePage}
                   onStreamRead={onStreamRead}
                   onImportComplete={onSourceImportComplete}
                 />
@@ -467,10 +469,9 @@ export function DesktopLibrary({
           setQuery={setQuery}
           onOpenSettings={onOpenSettings}
           onOpenQueue={onOpenQueue}
-          onOpenStoreSource={(sourceId) => {
-            openStoreSource(sourceId);
-            setTab("store");
-          }}
+          onOpenStoreSource={(sourceId) =>
+            goStorePage({ kind: "source", sourceId })
+          }
           onClose={() => setSearchOpen(false)}
         />
       )}

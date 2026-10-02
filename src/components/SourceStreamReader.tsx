@@ -65,6 +65,7 @@ import type { HighlightColor } from "../styles/tokens";
 import { migrateStorageKey } from "../lib/legacyStorage";
 import { chapterOverlay } from "./sourceChapterStatus";
 import { log as devLog } from "../lib/devLog";
+import { useReseedOnChange } from "../hooks/useReseedOnChange";
 
 interface Props {
   theme: Theme;
@@ -144,6 +145,13 @@ export function SourceStreamReader({
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [resumeParagraph, setResumeParagraph] = useState(0);
   const [resumeOffset, setResumeOffset] = useState(0);
+  // The layout prop swaps MobileReader for DesktopReader below, and the fresh
+  // one starts at the resume hint. Hand it the live position, not the place
+  // this chapter was opened at (see useReseedOnChange).
+  useReseedOnChange(layout, () => {
+    setResumeParagraph(paragraphIndex);
+    setResumeOffset(paragraphOffset);
+  });
   const [jumpNonce, setJumpNonce] = useState(0);
   // Per-chapter-index, not a shared flag: the effect below fetches the chapter
   // being read AND prefetches the next one at the same time, so a single

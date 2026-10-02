@@ -4,8 +4,7 @@
 // This is a BUFFER, not just a pub-sub, and that is the whole point. A cold
 // launch delivers its file before the importer (store/backgroundImport.ts,
 // wired by App on mount) is listening; paths pushed with nobody listening
-// are held here until someone drains them. Mirrors the `pendingStoreSource`
-// idiom in uiIntents.ts.
+// are held here until someone drains them.
 
 type Listener = () => void;
 

@@ -30,7 +30,6 @@ import { AnimatedFullScreen } from "../AnimatedFullScreen";
 import {
   onEditBook,
   onOpenDownloadQueue,
-  onOpenExtensionsManager,
   takePendingEditBook,
 } from "../../store/uiIntents";
 import { onLibraryChanged } from "../../store/backgroundImport";
@@ -44,6 +43,7 @@ import {
   useNav,
   goLibrary,
   goShelf,
+  goStorePage,
   openOverlay,
   back,
   type LibraryView,
@@ -165,6 +165,9 @@ function useBooks() {
   return { books, covers, loading, error, refresh, setError };
 }
 
+/** The shelves the Library last read this session — see `shelves` below. */
+let lastShelves: Shelf[] = [];
+
 export function Library({
   theme,
   themeKey,
@@ -264,6 +267,7 @@ export function Library({
   // The shelf whose detail view is open, if any — drives the sidebar's
   // per-shelf active highlight (Task 9).
   const activeShelfId = view.kind === "shelfDetail" ? view.shelfId : undefined;
+  const storePage = view.kind === "store" ? view.page : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
 
@@ -277,11 +281,23 @@ export function Library({
   // shared by both layouts so the mobile Shelves page and the desktop
   // sidebar agree. listShelves() seeds the two defaults on first run and is
   // the source of truth thereafter.
-  const [shelves, setShelves] = useState<Shelf[]>([]);
+  //
+  // Starts from the last list this session read, then refreshes from disk.
+  // The Library unmounts while Settings or the reader is open; starting
+  // from [] made the sidebar's Shelves tree draw empty on every return and
+  // grow a moment later, shoving the rows below it down the panel.
+  const [shelves, setShelvesState] = useState<Shelf[]>(() => lastShelves);
+  const setShelves = useCallback((next: Shelf[]) => {
+    lastShelves = next;
+    setShelvesState(next);
+  }, []);
   useEffect(() => {
     listShelves().then(setShelves);
-  }, []);
-  const reloadShelves = useCallback(() => listShelves().then(setShelves), []);
+  }, [setShelves]);
+  const reloadShelves = useCallback(
+    () => listShelves().then(setShelves),
+    [setShelves],
+  );
   const [newShelfOpen, setNewShelfOpen] = useState(false);
   // Rename dialog is the same NewShelfDialog, prefilled + relabeled — see
   // Task 7. Holds the shelf being renamed (null when closed).
@@ -414,7 +430,7 @@ export function Library({
   const onSelectTab = useCallback(
     (next: LibraryTab) => {
       if (next === "store") {
-        goLibrary({ kind: "store" });
+        goStorePage();
         return;
       }
       setFilter(next);
@@ -898,17 +914,6 @@ export function Library({
     [],
   );
 
-  // "Open Extensions", asked for by the notice a saved novel shows when its
-  // source extension is gone. Our half is getting the user to the Store
-  // destination — which unmounts that novel page and mounts the Store, and
-  // the Store selects its extensions view from the same request. A no-op
-  // when the Store is already the destination (navigate() drops a move to
-  // the snapshot it is already on), which is exactly the Store-side case.
-  useEffect(
-    () => onOpenExtensionsManager(() => goLibrary({ kind: "store" })),
-    [],
-  );
-
   // Files handed to us from outside (Open with, Android share, drag-drop)
   // import in the background (store/backgroundImport.ts), not here — this
   // component unmounts behind the reader, which is exactly when they arrive.
@@ -1048,6 +1053,7 @@ export function Library({
     onAddToShelf,
     onOpenShelf: (id: string) => goShelf(id),
     activeShelfId,
+    storePage,
     onDelete: (id: string) => {
       const b = books.find((x) => x.id === id);
       if (b) requestDelete(b.id, b.title);

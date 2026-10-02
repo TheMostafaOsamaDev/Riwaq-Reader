@@ -1,13 +1,11 @@
 // App-wide navigation history, backed by the browser History API.
 //
 // Why the History API and not a hand-rolled stack: the platform already
-// maintains a back/forward stack that the *webview* wires to the things we
-// want to honor for free — the Android hardware back button, desktop mouse
-// side-buttons (BrowserBack/BrowserForward), and Alt+←/→. We push one
-// history entry per "major destination" and listen for `popstate`; a single
-// listener then drives back AND forward across every one of those triggers.
-// (The alternative — our own array + index — would force us to re-wire each
-// of those input sources by hand.)
+// maintains a back/forward stack and wires the Android hardware back button
+// to it for free. We push one history entry per "major destination" and
+// listen for `popstate`, so a single listener drives back AND forward for
+// every trigger. The desktop triggers (Alt+←/→, ⌘[ / ⌘], mouse side
+// buttons) are routed in by navInput.ts, which calls back()/forward().
 //
 // The unit of navigation is a *snapshot* of the app's destination-level state,
 // split into two orthogonal dimensions so overlays keep rendering the way
@@ -28,12 +26,18 @@
 
 import { useSyncExternalStore } from "react";
 
+/** A page inside the Store. No page means the sources list. */
+export type StorePage =
+  | { kind: "extensions" }
+  | { kind: "source"; sourceId: string }
+  | { kind: "novel"; sourceId: string; novelUrl: string };
+
 /** The book-status filter (Reading/Finished/Wishlist/All) is deliberately NOT
  *  part of navigation history — flipping a filter pill is not a "back" step
  *  (see the design note in Library). It stays ephemeral in the Library. */
 export type LibraryView =
   | { kind: "shelf" }
-  | { kind: "store" }
+  | { kind: "store"; page?: StorePage }
   | { kind: "shelves" }
   | { kind: "shelfDetail"; shelfId: string }
   | {
@@ -63,12 +67,6 @@ export interface NavSnapshot {
 
 export interface NavState {
   snapshot: NavSnapshot;
-  /** True when there is an earlier entry to pop to (drives the desktop Back
-   *  button's enabled state; on Android the OS supplies the affordance). */
-  canBack: boolean;
-  /** True when a forward entry exists (i.e. the user has gone back and not
-   *  yet pushed a new destination over the top). */
-  canForward: boolean;
 }
 
 const ROOT: NavSnapshot = {
@@ -76,14 +74,16 @@ const ROOT: NavSnapshot = {
   overlay: null,
 };
 
-// `index` is our position in the history stack; `maxIndex` is the furthest
-// forward entry that still exists. canForward = index < maxIndex. The History
-// API tracks the stack itself, but doesn't tell us whether forward entries
-// exist, so we mirror just enough (two integers, stamped into each entry's
-// state) to answer that.
+// `index` is our position in the history stack, stamped into each entry's
+// state so a popstate tells us where we landed. `entries` mirrors the
+// snapshots of the entries we know, by index: forward() checks it for
+// anything ahead (the History API doesn't say), and navigate() checks the
+// entry directly behind to turn A→B→A into a back step rather than a third
+// entry. After a full reload only the current entry is known, so the
+// collapse finds nothing behind and pushes as before.
 let snapshot: NavSnapshot = ROOT;
 let index = 0;
-let maxIndex = 0;
+let entries: NavSnapshot[] = [];
 let state: NavState = compute();
 const listeners = new Set<() => void>();
 
@@ -99,11 +99,7 @@ function isStamped(s: unknown): s is StampedState {
 }
 
 function compute(): NavState {
-  return {
-    snapshot,
-    canBack: index > 0,
-    canForward: index < maxIndex,
-  };
+  return { snapshot };
 }
 
 function commit(): void {
@@ -121,15 +117,16 @@ function init(): void {
     // A full reload (e.g. Vite dev refresh) landed us back on an entry we
     // already stamped — trust it rather than clobbering the user's position.
     index = existing.navIndex;
-    maxIndex = Math.max(maxIndex, index);
     snapshot = existing.snapshot;
+    entries = [];
+    entries[index] = snapshot;
   } else {
     // Fresh launch: stamp the current (root) entry as index 0 so a later
     // popstate back to it is recognized instead of read as "unknown".
     window.history.replaceState({ navIndex: 0, snapshot: ROOT }, "");
     index = 0;
-    maxIndex = 0;
     snapshot = ROOT;
+    entries = [ROOT];
   }
   window.addEventListener("popstate", onPopState);
   commit();
@@ -146,7 +143,8 @@ function onPopState(e: PopStateEvent): void {
     index = 0;
     snapshot = ROOT;
   }
-  // maxIndex is left untouched: forward entries still exist above us.
+  // Entries above us are untouched: forward still reaches them.
+  entries[index] = snapshot;
   commit();
 }
 
@@ -157,7 +155,11 @@ function snapshotsEqual(a: NavSnapshot, b: NavSnapshot): boolean {
 /** Navigate to a new destination. Pushes a history entry (so it becomes a
  *  back step) unless `replace` is set, in which case it swaps the current
  *  entry in place — used for redirects that shouldn't be independently
- *  back-navigable. A no-op when the target equals the current snapshot. */
+ *  back-navigable. A no-op when the target equals the current snapshot.
+ *
+ *  Going to the entry directly behind is a back step, which settles when
+ *  `popstate` arrives (asynchronously in a real webview): until then the
+ *  store still reports the entry being left. */
 export function navigate(
   next: NavSnapshot,
   opts?: { replace?: boolean },
@@ -167,9 +169,18 @@ export function navigate(
   if (opts?.replace) {
     window.history.replaceState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
+    entries[index] = next;
   } else {
+    const behind = entries[index - 1];
+    if (behind && snapshotsEqual(next, behind)) {
+      // Going to where we just came from: step back instead, so the forward
+      // entry survives and the stack doesn't grow A→B→A→B…
+      back();
+      return;
+    }
     index += 1;
-    maxIndex = index; // pushing a new entry truncates any forward history
+    entries.length = index; // a new entry truncates any forward history
+    entries[index] = next;
     window.history.pushState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
   }
@@ -178,15 +189,18 @@ export function navigate(
 
 /** Step back one entry (the platform fires `popstate`, which updates us). At
  *  the root this is a no-op on desktop; on Android the OS then handles the
- *  back press itself (backgrounding/closing the app), which is what we want. */
+ *  back press itself (backgrounding/closing the app), which is what we want.
+ *  If the first entry is somehow not the root, Back goes to the root rather
+ *  than doing nothing, so a close button can never be dead. */
 export function back(): void {
   init();
   if (index > 0) window.history.back();
+  else if (!snapshotsEqual(snapshot, ROOT)) navigate(ROOT, { replace: true });
 }
 
 export function forward(): void {
   init();
-  if (index < maxIndex) window.history.forward();
+  if (index < entries.length - 1) window.history.forward();
 }
 
 // --- Convenience navigators (keep call-sites in App/Library declarative) ---
@@ -205,6 +219,11 @@ export function goLibrary(
 
 export function goShelf(shelfId: string, opts?: { replace?: boolean }): void {
   goLibrary({ kind: "shelfDetail", shelfId }, opts);
+}
+
+/** Go to the Store, optionally at one of its pages. */
+export function goStorePage(page?: StorePage): void {
+  goLibrary({ kind: "store", page });
 }
 
 export function goReader(bookId: string, opts?: { replace?: boolean }): void {

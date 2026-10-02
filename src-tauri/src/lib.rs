@@ -7,6 +7,8 @@ mod opened;
 mod sources;
 mod update_leftovers;
 mod updates;
+#[cfg(target_os = "macos")]
+mod webview_frame;
 
 // Only needed to call `get_webview_window` from the desktop-only open-path
 // handlers below (single-instance callback, RunEvent::Opened) — gated so it
@@ -258,6 +260,22 @@ pub fn run() {
                 if let Some(window) = _app.get_webview_window("main") {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
+                }
+            }
+
+            // macOS can leave the webview shorter than its window after a
+            // full-screen or maximize transition — see webview_frame.rs.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Resized(_),
+                ..
+            } = &_event
+            {
+                if label == "main" {
+                    if let Some(window) = _app.get_webview_window("main") {
+                        webview_frame::on_resized(window);
+                    }
                 }
             }
 

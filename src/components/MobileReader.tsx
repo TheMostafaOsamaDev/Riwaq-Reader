@@ -751,7 +751,11 @@ export function MobileReader({
   // does not cancel a scroll. A drag that goes vertical after the long-press
   // is taken by the browser (pointercancel), which ends the selection drag.
   useEffect(() => {
-    const bodyEl = document.querySelector<HTMLElement>("[data-book-body]");
+    // Our OWN body, not the document's first: during a layout-flip crossfade
+    // the outgoing DesktopReader is still mounted, earlier in the DOM, and
+    // this effect runs once — bound to that, nothing here ever selects.
+    const bodyEl =
+      rootRef.current?.querySelector<HTMLElement>("[data-book-body]") ?? null;
     if (!bodyEl) return;
 
     let pointerId: number | null = null;

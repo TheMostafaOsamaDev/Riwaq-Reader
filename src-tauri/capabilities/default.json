@@ -19,6 +19,7 @@
     "fs:allow-appdata-write-recursive",
     "fs:allow-appdata-meta-recursive",
     "core:window:allow-set-progress-bar",
+    "core:window:allow-set-background-color",
     {
       "identifier": "fs:scope",
       "allow": [
