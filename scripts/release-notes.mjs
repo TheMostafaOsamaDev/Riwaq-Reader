@@ -73,10 +73,18 @@ export function validateReleaseNotes(notes, { version, imageBytes }) {
   if (!isObj(notes)) return ["the file must hold one JSON object"];
   onlyKeys(
     notes,
-    ["version", "date", "highlight", "stories", "items"],
+    ["version", "date", "installNote", "highlight", "stories", "items"],
     "notes",
     errs,
   );
+  // Goes at the top of the GitHub release body and nowhere else. The one
+  // thing it is for is telling people whose copy CANNOT reach this release
+  // that they have to install it by hand — and those people are, by
+  // definition, reading the releases page rather than the in-app sheet.
+  // Showing it in the app would only nag the people who already updated.
+  if (notes.installNote !== undefined) {
+    localized(notes.installNote, "installNote", errs);
+  }
   if (notes.version !== version) {
     errs.push(`version: "${notes.version}" but the file is for ${version}`);
   }

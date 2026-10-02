@@ -14,6 +14,20 @@ describe("parseReleaseNotes", () => {
     });
     expect(n?.items.map((i) => i.kind)).toEqual(["new", "fixed"]);
   });
+  it("ignores installNote, so the in-app sheet never shows it", () => {
+    // It exists for the GitHub release body: it tells people whose copy
+    // cannot reach this release to install it by hand. Anyone seeing the
+    // in-app sheet has already updated, so showing it there would be noise.
+    const n = parseReleaseNotes({
+      version: "0.6.0",
+      date: "2026-10-15",
+      installNote: { en: "Install by hand.", ar: "ثبّت يدويًا." },
+      items: [item("new")],
+    });
+    expect(n).not.toBeNull();
+    expect(Object.keys(n as object)).not.toContain("installNote");
+    expect(JSON.stringify(n)).not.toContain("by hand");
+  });
   it("is null with no usable items or no version", () => {
     expect(parseReleaseNotes({ version: "0.6.0", items: [] })).toBeNull();
     expect(parseReleaseNotes({ items: [item("new")] })).toBeNull();

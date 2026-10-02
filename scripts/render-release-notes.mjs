@@ -11,6 +11,9 @@ const label = {
 };
 const section = (lang, idx) => {
   const out = [];
+  // First, above everything: the release body is the only place a copy that
+  // cannot reach this release will ever be read from.
+  if (n.installNote) out.push(`> ⚠️ ${n.installNote[lang]}`, "");
   if (n.highlight)
     out.push(`**${n.highlight.title[lang]}**: ${n.highlight.body[lang]}`, "");
   for (const k of ["new", "improved", "fixed"]) {

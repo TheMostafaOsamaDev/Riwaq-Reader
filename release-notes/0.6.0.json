@@ -1,6 +1,10 @@
 {
   "version": "0.6.0",
   "date": "2026-10-02",
+  "installNote": {
+    "en": "Already have Riwaq? Download and install this one by hand. Every build up to 0.5.1 has a broken update check and will never offer it to you — this is the release that fixes that, so it is the last time you need to. Your books, highlights and places are kept.",
+    "ar": "هل لديك رواق بالفعل؟ نزّل هذا الإصدار وثبّته يدويًا. كل الإصدارات حتى 0.5.1 بها خلل في فحص التحديثات ولن تعرضه عليك أبدًا — وهذا هو الإصدار الذي يصلح ذلك، فهي آخر مرة تحتاج فيها إلى ذلك. تبقى كتبك وتظليلاتك ومواضعك كما هي."
+  },
   "highlight": {
     "title": {
       "en": "Riwaq updates itself",

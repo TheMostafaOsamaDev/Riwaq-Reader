@@ -63,8 +63,22 @@ time they are scaled into a phone sheet, nothing in them is legible.
   entirely rather than passing an empty array.
 - **`items`** — at least one `{ kind, en, ar }`.
 - **`kind`** — `new`, `improved` or `fixed`.
+- **`installNote`** *(optional, and rare)* — `{ en, ar }`. Goes at the top of
+  the GitHub release body, above everything, and **nowhere else**: the app's
+  parser ignores it.
 
 `title` and `body` are both `{ en, ar }`.
+
+### `installNote`, and when to use it
+
+Only when a copy people already have **cannot reach this release on its own**,
+so the only way they find out is by reading the releases page. 0.6.0 is the
+case it was added for: every build up to 0.5.1 has an update check broken by
+CORS and will never offer anything, so those users have to install one release
+by hand before updates start working.
+
+It is deliberately not shown in the app. Everyone who sees the in-app sheet has
+already updated — telling them to install by hand is noise at best.
 
 ### Images
 
