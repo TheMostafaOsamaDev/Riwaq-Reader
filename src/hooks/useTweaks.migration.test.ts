@@ -50,6 +50,17 @@ describe("updateOverMobile", () => {
     expect(t.updateOverMobile).toBe("ask");
     expect(t.fontSize).toBe(19);
   });
+  it("opens a book in scroll mode on a fresh install", () => {
+    // A reader meeting the app for the first time gets the continuous scroll,
+    // not the two-column spread. Anyone who already chose a mode keeps it —
+    // the stored value wins over the default (the control below).
+    expect(loadTweaks().readingMode).toBe("scroll");
+    localStorage.setItem(
+      "riwaq:tweaks:v1",
+      JSON.stringify({ readingMode: "paginated-2" }),
+    );
+    expect(loadTweaks().readingMode).toBe("paginated-2");
+  });
   it("Import Settings accepts only ask | always | wifi", () => {
     for (const v of ["ask", "always", "wifi"]) {
       expect(acceptsTweak("updateOverMobile", v)).toBe(true);

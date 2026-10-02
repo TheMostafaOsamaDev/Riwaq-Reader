@@ -10,6 +10,7 @@ export type ActivePanel = null | "toc" | "highlights" | "settings" | "progress";
  *    No vertical scroll; left/right arrows flip pages.
  *  - `paginated-1`: single column filling the page, paginated.
  *  - `scroll`: classic vertical scroll, the entire chapter in one column.
+ *    The default a book opens in.
  *
  * Position is preserved across modes via the persisted paragraph index —
  * switching modes lands the reader on the same paragraph it was last

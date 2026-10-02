@@ -20,7 +20,7 @@ export const DEFAULT_TWEAKS: Tweaks = {
   lineHeight: 1.6,
   letterSpacing: 0,
   textAlign: "auto",
-  readingMode: "paginated-2",
+  readingMode: "scroll",
   focusMode: false,
   contentWidth: 100,
   uiFont: "readex",

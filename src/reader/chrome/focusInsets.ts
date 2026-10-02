@@ -12,7 +12,7 @@
  *  reading margin — which is what left a blank band at each edge once the bars
  *  had slid away. In SCROLL mode that band is at least self-correcting: it is
  *  padding, so it scrolls off and text reaches the edge by the second screen.
- *  In the paginated modes (the default is `paginated-2`) it never does: the
+ *  In the paginated modes it never does: the
  *  page is fitted to the padded box, so the band is blank paper on every page
  *  for the whole book.
  *
