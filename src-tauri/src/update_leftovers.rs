@@ -7,8 +7,10 @@
 
 use std::path::Path;
 
-/// `a.b.c` as a single comparable number.
-fn version_code(v: &str) -> Option<u64> {
+/// `a.b.c` as a tuple, compared field by field (no packing, so no overflow
+/// and no two versions that compare equal). A prerelease suffix such as
+/// `0.6.0-beta.1` does not parse, so such folders are never swept.
+fn version_code(v: &str) -> Option<(u64, u64, u64)> {
     let mut parts = v.split('.');
     let a: u64 = parts.next()?.parse().ok()?;
     let b: u64 = parts.next()?.parse().ok()?;
@@ -16,7 +18,7 @@ fn version_code(v: &str) -> Option<u64> {
     if parts.next().is_some() {
         return None;
     }
-    Some(a * 1_000_000 + b * 1_000 + c)
+    Some((a, b, c))
 }
 
 /// True for `<product>-<a>.<b>.<c>-updater-<rest>` with a version at or below
@@ -95,6 +97,18 @@ mod tests {
             "0.6.0"
         ));
         assert!(!is_stale_leftover("Riwaq-x.y-updater-zz", "Riwaq", "0.6.0"));
+        // Compared as tuples: 1.0.0 is newer than 0.1000.0 (they packed to
+        // the same number), and a huge major cannot overflow.
+        assert!(!is_stale_leftover(
+            "Riwaq-1.0.0-updater-zz",
+            "Riwaq",
+            "0.1000.0"
+        ));
+        assert!(!is_stale_leftover(
+            "Riwaq-18446744073709551615.0.0-updater-zz",
+            "Riwaq",
+            "0.6.0"
+        ));
     }
     #[test]
     fn sweep_removes_stale_dirs_and_keeps_the_rest() {
