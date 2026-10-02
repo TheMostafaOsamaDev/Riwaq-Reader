@@ -35,18 +35,15 @@ fn with_updater<T>(
     res.map_err(|e| e.to_string())
 }
 
+/// Call a static `name(ctx) -> String` and read the string; null is an Err.
 #[cfg(target_os = "android")]
-fn android_install_source() -> Result<String, String> {
+fn call_string(name: &str, sig: &str) -> Result<String, String> {
     with_updater(|env, activity, class| {
-        let v = env.call_static_method(
-            class,
-            "installSource",
-            "(Landroid/content/Context;)Ljava/lang/String;",
-            &[JValue::Object(activity)],
-        )?;
-        let obj: JObject = v.l()?;
+        let obj = env
+            .call_static_method(class, name, sig, &[JValue::Object(activity)])?
+            .l()?;
         if obj.is_null() {
-            return Err("installSource returned null".into());
+            return Err(format!("{name} returned null").into());
         }
         let jstr: JString = obj.into();
         let s: String = env.get_string(&jstr)?.into();
@@ -54,129 +51,21 @@ fn android_install_source() -> Result<String, String> {
     })
 }
 
+/// Call a static `name(ctx) -> boolean`.
 #[cfg(target_os = "android")]
-fn android_open_store(pkg: String) -> Result<(), String> {
+fn call_bool(name: &str, sig: &str) -> Result<bool, String> {
     with_updater(|env, activity, class| {
-        let pkg_j = env.new_string(pkg)?;
-        env.call_static_method(
-            class,
-            "openStore",
-            "(Landroid/app/Activity;Ljava/lang/String;)V",
-            &[JValue::Object(activity), JValue::Object(&pkg_j)],
-        )?;
-        Ok(())
+        Ok(env
+            .call_static_method(class, name, sig, &[JValue::Object(activity)])?
+            .z()?)
     })
 }
 
+/// Call a static `name(ctx)` that returns nothing.
 #[cfg(target_os = "android")]
-fn android_update_start_impl(
-    version: String,
-    url: String,
-    sha256: String,
-    size: u64,
-    wait_for_unmetered: bool,
-) -> Result<(), String> {
+fn call_void(name: &str, sig: &str) -> Result<(), String> {
     with_updater(|env, activity, class| {
-        let version_j = env.new_string(version)?;
-        let url_j = env.new_string(url)?;
-        let sha_j = env.new_string(sha256)?;
-        env.call_static_method(
-            class,
-            "start",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZ)V",
-            &[
-                JValue::Object(activity),
-                JValue::Object(&version_j),
-                JValue::Object(&url_j),
-                JValue::Object(&sha_j),
-                JValue::Long(size as i64),
-                JValue::Bool(u8::from(wait_for_unmetered)),
-            ],
-        )?;
-        Ok(())
-    })
-}
-
-#[cfg(target_os = "android")]
-fn android_update_status_impl() -> Result<String, String> {
-    with_updater(|env, activity, class| {
-        let v = env.call_static_method(
-            class,
-            "status",
-            "(Landroid/content/Context;)Ljava/lang/String;",
-            &[JValue::Object(activity)],
-        )?;
-        let obj: JObject = v.l()?;
-        if obj.is_null() {
-            return Err("status returned null".into());
-        }
-        let jstr: JString = obj.into();
-        let s: String = env.get_string(&jstr)?.into();
-        Ok(s)
-    })
-}
-
-#[cfg(target_os = "android")]
-fn android_update_cancel_impl() -> Result<(), String> {
-    with_updater(|env, activity, class| {
-        env.call_static_method(
-            class,
-            "cancel",
-            "(Landroid/content/Context;)V",
-            &[JValue::Object(activity)],
-        )?;
-        Ok(())
-    })
-}
-
-#[cfg(target_os = "android")]
-fn android_network_metered_impl() -> Result<bool, String> {
-    with_updater(|env, activity, class| {
-        let v = env.call_static_method(
-            class,
-            "isMetered",
-            "(Landroid/content/Context;)Z",
-            &[JValue::Object(activity)],
-        )?;
-        Ok(v.z()?)
-    })
-}
-
-#[cfg(target_os = "android")]
-fn android_update_can_install_impl() -> Result<bool, String> {
-    with_updater(|env, activity, class| {
-        let v = env.call_static_method(
-            class,
-            "canInstall",
-            "(Landroid/content/Context;)Z",
-            &[JValue::Object(activity)],
-        )?;
-        Ok(v.z()?)
-    })
-}
-
-#[cfg(target_os = "android")]
-fn android_update_open_permission_impl() -> Result<(), String> {
-    with_updater(|env, activity, class| {
-        env.call_static_method(
-            class,
-            "openInstallPermission",
-            "(Landroid/app/Activity;)V",
-            &[JValue::Object(activity)],
-        )?;
-        Ok(())
-    })
-}
-
-#[cfg(target_os = "android")]
-fn android_update_install_impl() -> Result<(), String> {
-    with_updater(|env, activity, class| {
-        env.call_static_method(
-            class,
-            "install",
-            "(Landroid/app/Activity;)V",
-            &[JValue::Object(activity)],
-        )?;
+        env.call_static_method(class, name, sig, &[JValue::Object(activity)])?;
         Ok(())
     })
 }
@@ -188,7 +77,10 @@ fn android_update_install_impl() -> Result<(), String> {
 pub async fn install_source() -> Result<String, String> {
     #[cfg(target_os = "android")]
     {
-        android_install_source()
+        call_string(
+            "installSource",
+            "(Landroid/content/Context;)Ljava/lang/String;",
+        )
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -201,7 +93,16 @@ pub async fn install_source() -> Result<String, String> {
 pub async fn open_store(pkg: String) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android_open_store(pkg)
+        with_updater(|env, activity, class| {
+            let pkg_j = env.new_string(pkg)?;
+            env.call_static_method(
+                class,
+                "openStore",
+                "(Landroid/app/Activity;Ljava/lang/String;)V",
+                &[JValue::Object(activity), JValue::Object(&pkg_j)],
+            )?;
+            Ok(())
+        })
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -223,7 +124,25 @@ pub async fn android_update_start(
 ) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android_update_start_impl(version, url, sha256, size, wait_for_unmetered)
+        with_updater(|env, activity, class| {
+            let version_j = env.new_string(version)?;
+            let url_j = env.new_string(url)?;
+            let sha_j = env.new_string(sha256)?;
+            env.call_static_method(
+                class,
+                "start",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZ)V",
+                &[
+                    JValue::Object(activity),
+                    JValue::Object(&version_j),
+                    JValue::Object(&url_j),
+                    JValue::Object(&sha_j),
+                    JValue::Long(size as i64),
+                    JValue::Bool(u8::from(wait_for_unmetered)),
+                ],
+            )?;
+            Ok(())
+        })
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -237,7 +156,7 @@ pub async fn android_update_start(
 pub async fn android_update_status() -> Result<String, String> {
     #[cfg(target_os = "android")]
     {
-        android_update_status_impl()
+        call_string("status", "(Landroid/content/Context;)Ljava/lang/String;")
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -250,7 +169,7 @@ pub async fn android_update_status() -> Result<String, String> {
 pub async fn android_update_cancel() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android_update_cancel_impl()
+        call_void("cancel", "(Landroid/content/Context;)V")
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -263,7 +182,7 @@ pub async fn android_update_cancel() -> Result<(), String> {
 pub async fn android_network_metered() -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
-        android_network_metered_impl()
+        call_bool("isMetered", "(Landroid/content/Context;)Z")
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -277,7 +196,7 @@ pub async fn android_network_metered() -> Result<bool, String> {
 pub async fn android_update_can_install() -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
-        android_update_can_install_impl()
+        call_bool("canInstall", "(Landroid/content/Context;)Z")
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -290,7 +209,7 @@ pub async fn android_update_can_install() -> Result<bool, String> {
 pub async fn android_update_open_permission() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android_update_open_permission_impl()
+        call_void("openInstallPermission", "(Landroid/app/Activity;)V")
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -306,7 +225,7 @@ pub async fn android_update_open_permission() -> Result<(), String> {
 pub async fn android_update_install() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android_update_install_impl()
+        call_void("install", "(Landroid/app/Activity;)V")
     }
     #[cfg(not(target_os = "android"))]
     {
