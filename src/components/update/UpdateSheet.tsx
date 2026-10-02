@@ -5,7 +5,7 @@
 // store re-reads the native status after each, so nothing here assumes an
 // action took effect.
 
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { Tr } from "../../i18n";
 import { useI18n } from "../../i18n/useI18n";
 import {
@@ -37,15 +37,15 @@ import { BrandMark } from "../BrandMark";
 import { Button } from "../Button";
 import { Icon, type IconProps } from "../Icon";
 import { MobileSheet } from "../MobileSheet";
-import { Spinner } from "../Spinner";
-import { Toast, type ToastMessage } from "../Toast";
 import { NotesView } from "./NotesView";
-import { VISUALLY_HIDDEN } from "./UpdatePill";
-
-/** Bytes as MB with one decimal: 19230841 → "18.3". */
-export function mb(bytes: number): string {
-  return (bytes / 1_048_576).toFixed(1);
-}
+import {
+  IconBadge,
+  mb,
+  NotesLoading,
+  ProgressBar,
+  UpdateToast,
+  VISUALLY_HIDDEN,
+} from "./parts";
 
 /** The failed sheet's sentence for a native (or fetch) error code. */
 function failText(
@@ -94,6 +94,7 @@ function viewFor(s: AndroidUpdateState): Sheet {
 }
 
 const btn = { minHeight: TOUCH_TARGET_MIN } as const;
+const showNotes = () => openSheet("notes");
 
 function Head({
   theme,
@@ -122,22 +123,15 @@ function Head({
     >
       {lead ??
         (icon && (
-          <span
-            aria-hidden="true"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              flex: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: theme.hover,
-              color: iconColor ?? theme.ink,
-            }}
-          >
-            <Icon name={icon} size={19} stroke={2} />
-          </span>
+          <IconBadge
+            theme={theme}
+            icon={icon}
+            size={40}
+            radius={12}
+            iconSize={19}
+            stroke={2}
+            color={iconColor}
+          />
         ))}
       <div style={{ minWidth: 0 }}>
         <h2
@@ -205,6 +199,22 @@ function Row({ children }: { children: ReactNode }) {
   return <div style={{ display: "flex", gap: 8 }}>{children}</div>;
 }
 
+/** The quiet "Hide" every in-flight sheet ends with: the work goes on. */
+function HideButton({ theme }: { theme: Theme }) {
+  const { tr } = useI18n();
+  return (
+    <Button
+      theme={theme}
+      variant="ghost"
+      fullWidth
+      style={btn}
+      onClick={closeSheet}
+    >
+      {tr("update.dl.hide")}
+    </Button>
+  );
+}
+
 export function UpdateSheet({
   theme,
   themeKey,
@@ -269,16 +279,7 @@ export function UpdateSheet({
           }}
         >
           {s.notes === null ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                padding: "28px 0",
-                color: theme.muted,
-              }}
-            >
-              <Spinner size={22} />
-            </div>
+            <NotesLoading theme={theme} />
           ) : (
             <NotesView
               notes={s.notes.notes}
@@ -389,7 +390,6 @@ export function UpdateSheet({
     const { bytes, state } = s.native;
     const total = s.native.total || s.apk?.size || 0;
     const waiting = state === "waiting";
-    const pct = total ? Math.min(100, (bytes / total) * 100) : 0;
     title = tr("update.dl.title", { v });
     content = (
       <>
@@ -399,32 +399,15 @@ export function UpdateSheet({
           title={title}
         />
         <Body>
-          <div
-            role="progressbar"
-            aria-label={title}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.floor(pct)}
-            style={{
-              height: 6,
-              borderRadius: 3,
-              background: theme.hover,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: "100%",
-                borderRadius: 3,
-                background: theme.ink,
-                // A scale, not a width: no relayout on every poll.
-                transform: `scaleX(${pct / 100})`,
-                transformOrigin: dir === "rtl" ? "right" : "left",
-                transition: "transform 300ms ease-out",
-              }}
-            />
-          </div>
+          <ProgressBar
+            theme={theme}
+            bytes={bytes}
+            total={total}
+            label={title}
+            dir={dir}
+            height={6}
+            track={theme.hover}
+          />
           {/* The state for screen readers; the figures below change on every
               poll, so they are not live (the progressbar carries the value). */}
           <span aria-live="polite" style={VISUALLY_HIDDEN}>
@@ -493,15 +476,7 @@ export function UpdateSheet({
           >
             {tr("update.perm.open")}
           </Button>
-          <Button
-            theme={theme}
-            variant="ghost"
-            fullWidth
-            style={btn}
-            onClick={closeSheet}
-          >
-            {tr("update.dl.hide")}
-          </Button>
+          <HideButton theme={theme} />
         </Foot>
       </>
     );
@@ -527,15 +502,7 @@ export function UpdateSheet({
           >
             {tr("update.ready.install")}
           </Button>
-          <Button
-            theme={theme}
-            variant="ghost"
-            fullWidth
-            style={btn}
-            onClick={closeSheet}
-          >
-            {tr("update.dl.hide")}
-          </Button>
+          <HideButton theme={theme} />
         </Foot>
       </>
     );
@@ -569,15 +536,7 @@ export function UpdateSheet({
           >
             {f.resumable ? tr("update.fail.resume") : tr("update.fail.again")}
           </Button>
-          <Button
-            theme={theme}
-            variant="ghost"
-            fullWidth
-            style={btn}
-            onClick={closeSheet}
-          >
-            {tr("update.dl.hide")}
-          </Button>
+          <HideButton theme={theme} />
         </Foot>
       </>
     );
@@ -630,43 +589,16 @@ export function UpdateToasts({
    *  ordinary toast position. */
   layout?: "mobile" | "desktop";
 }) {
-  const { tr } = useI18n();
   const s = useAndroidUpdate();
-  const v = s.offer?.version ?? "";
-  const kind = s.toast;
-  // One object per toast shown: Toast restarts its timer on a new identity.
-  const toast = useMemo<ToastMessage | null>(() => {
-    if (kind === "later") {
-      return {
-        id: Date.now(),
-        kind: "info",
-        text: tr("update.toast.later"),
-        action: {
-          label: tr("update.toast.show"),
-          onClick: () => {
-            dismissToast();
-            openSheet("notes");
-          },
-        },
-      };
-    }
-    if (kind === "skipped") {
-      return {
-        id: Date.now(),
-        kind: "info",
-        text: tr("update.toast.skipped", { v }),
-        action: { label: tr("update.toast.undo"), onClick: undoSkip },
-      };
-    }
-    return null;
-  }, [kind]);
-  const onDismiss = useCallback(() => dismissToast(), []);
   return (
-    <Toast
+    <UpdateToast
       theme={theme}
-      toast={toast}
-      onDismiss={onDismiss}
-      ttl={6000}
+      kind={s.toast}
+      seq={s.toastSeq}
+      version={s.offer?.version ?? ""}
+      onShow={showNotes}
+      onUndo={undoSkip}
+      onDismiss={dismissToast}
       bottom={
         layout === "mobile"
           ? "calc(84px + env(safe-area-inset-bottom, 0px))"

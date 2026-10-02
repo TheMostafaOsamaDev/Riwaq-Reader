@@ -4,6 +4,7 @@
 // App mounts once so Settings can open them too.
 
 import { useArmed } from "../../hooks/useArmed";
+import type { Tr } from "../../i18n";
 import { useI18n } from "../../i18n/useI18n";
 import {
   type Card,
@@ -16,74 +17,13 @@ import {
 import { FONT_STACKS, type Theme, TOUCH_TARGET_MIN } from "../../styles/tokens";
 import { Button } from "../Button";
 import { Icon, type IconProps } from "../Icon";
-import { VISUALLY_HIDDEN } from "./UpdatePill";
-import { mb } from "./UpdateSheet";
+import { IconBadge, ProgressBar, progressText, VISUALLY_HIDDEN } from "./parts";
 
 const TRANSITION = "background-color 150ms ease, border-color 150ms ease";
 
-/** A determinate bar, scaled rather than resized so a progress tick never
- *  relayouts the sidebar. */
-export function ProgressBar({
-  theme,
-  bytes,
-  total,
-  label,
-  dir,
-}: {
-  theme: Theme;
-  bytes: number;
-  total: number;
-  label: string;
-  dir: "ltr" | "rtl";
-}) {
-  const pct = total ? Math.min(100, (bytes / total) * 100) : 0;
-  return (
-    <div
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.floor(pct)}
-      style={{
-        height: 4,
-        borderRadius: 2,
-        background: theme.rule,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          height: "100%",
-          width: "100%",
-          borderRadius: 2,
-          background: theme.ink,
-          transform: `scaleX(${pct / 100})`,
-          transformOrigin: dir === "rtl" ? "right" : "left",
-          transition: "transform 300ms ease-out",
-        }}
-      />
-    </div>
-  );
-}
-
-/** "5.1 of 12.0 MB", or just "Downloading…" before the size is known. */
-export function progressText(
-  tr: ReturnType<typeof useI18n>["tr"],
-  bytes: number,
-  total: number,
-): string {
-  return total
-    ? tr("update.dl.of", { a: mb(bytes), b: mb(total) })
-    : tr("update.downloading");
-}
-
 /** What a screen reader hears when the card changes: the state, never the
  *  byte count (that would talk over the book on every tick). */
-function announcement(
-  card: Card,
-  v: string,
-  tr: ReturnType<typeof useI18n>["tr"],
-): string {
+function announcement(card: Card, v: string, tr: Tr): string {
   if (!card) return "";
   switch (card.kind) {
     case "available":
@@ -151,23 +91,15 @@ function CardBody({ theme, card }: { theme: Theme; card: NonNullable<Card> }) {
 
   const head = (
     <>
-      <span
-        aria-hidden="true"
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          flex: "none",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: failed ? "transparent" : theme.hover,
-          border: failed ? `1px solid ${theme.danger}` : "none",
-          color: failed ? theme.danger : theme.ink,
-        }}
-      >
-        <Icon name={icon} size={15} stroke={2.2} />
-      </span>
+      <IconBadge
+        theme={theme}
+        icon={icon}
+        size={28}
+        radius={8}
+        iconSize={15}
+        color={failed ? theme.danger : undefined}
+        ring={failed ? theme.danger : undefined}
+      />
       <span style={{ minWidth: 0, flex: 1 }}>
         <span
           style={{

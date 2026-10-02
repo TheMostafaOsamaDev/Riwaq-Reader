@@ -1,5 +1,5 @@
 import rawNotes, { appVersion, images } from "virtual:whats-new";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useRef } from "react";
 import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
 import { parseReleaseNotes } from "../../store/releaseNotes";
@@ -8,6 +8,7 @@ import { AnimatedDialog } from "../AnimatedDialog";
 import { Button } from "../Button";
 import { MobileSheet } from "../MobileSheet";
 import { NotesView } from "./NotesView";
+import { useDialogKeys } from "./parts";
 import { StoryPages } from "./StoryPages";
 
 // The bundled value is raw JSON: validate it once, and only trust it when it
@@ -110,15 +111,7 @@ export function WhatsNewDialog({
   // It opens at launch: a click carried over from before the relaunch must
   // not dismiss it unread.
   const armed = useArmed(open);
-  useEffect(() => {
-    if (!open) return;
-    doneRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useDialogKeys(open, onClose, doneRef);
   return (
     <AnimatedDialog open={open} onScrimClick={onClose}>
       <div

@@ -17,7 +17,7 @@ import { RELEASES_PAGE_URL } from "../../store/updates";
 import { type Theme, TOUCH_TARGET_MIN } from "../../styles/tokens";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
-import { mb } from "./UpdateSheet";
+import { mb } from "./parts";
 
 const SHEET_FOR: Partial<
   Record<NonNullable<Pill>["kind"], Exclude<Sheet, "closed">>

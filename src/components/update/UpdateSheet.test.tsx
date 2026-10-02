@@ -347,6 +347,25 @@ describe("UpdateToasts", () => {
     await act(async () => button("Undo")?.click());
     expect(store.getState().skipped).toBeUndefined();
   });
+
+  it("a second Later restarts the toast's timer", async () => {
+    await setup();
+    await render(<UpdateToasts theme={THEMES.sepia} />);
+    vi.useFakeTimers();
+    try {
+      const later = "It'll wait for you in Settings → About.";
+      await act(async () => store.later());
+      await act(async () => vi.advanceTimersByTime(4000));
+      // Same kind again (Show → Later): a new toast, not "no change".
+      await act(async () => store.later());
+      await act(async () => vi.advanceTimersByTime(4000));
+      expect(text()).toContain(later);
+      await act(async () => vi.advanceTimersByTime(2500));
+      expect(text()).not.toContain(later);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("MobileBottomNav settings dot", () => {

@@ -5,7 +5,7 @@
 //   progress → the download, with Hide only (the plugin cannot abort)
 //   failed   → Try again, Download from GitHub
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useId, useRef } from "react";
 import { useI18n } from "../../i18n/useI18n";
 import {
   closeDialog,
@@ -28,11 +28,17 @@ import {
 import { AnimatedDialog } from "../AnimatedDialog";
 import { Button } from "../Button";
 import { Icon, type IconProps } from "../Icon";
-import { Toast, type ToastMessage } from "../Toast";
 import { DesktopNotesDialog } from "./DesktopNotesDialog";
-import { ProgressBar, progressText } from "./SidebarUpdateCard";
+import {
+  IconBadge,
+  ProgressBar,
+  progressText,
+  UpdateToast,
+  useDialogKeys,
+} from "./parts";
 
 const BTN = { minHeight: TOUCH_TARGET_MIN };
+const showNotes = () => openDialog("notes");
 
 /** A centred card, built like DesktopNotesDialog. Escape and the scrim
  *  close it; the first button is focused when it opens. */
@@ -56,21 +62,16 @@ function Frame({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useDialogKeys(open, onClose, ref);
+  // One per Frame: two Frames can be mounted at once (one leaving while the
+  // other opens), and a shared id would label both with one title.
+  const titleId = useId();
   return (
     <AnimatedDialog open={open} onScrimClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="desktop-update-title"
+        aria-labelledby={titleId}
         style={{
           width: "min(440px, calc(100vw - 32px))",
           background: theme.bg,
@@ -83,25 +84,17 @@ function Frame({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            aria-hidden="true"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 10,
-              flex: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: danger ? "transparent" : theme.hover,
-              border: danger ? `1px solid ${theme.danger}` : "none",
-              color: danger ? theme.danger : theme.ink,
-            }}
-          >
-            <Icon name={icon} size={16} stroke={2.2} />
-          </span>
+          <IconBadge
+            theme={theme}
+            icon={icon}
+            size={32}
+            radius={10}
+            iconSize={16}
+            color={danger ? theme.danger : undefined}
+            ring={danger ? theme.danger : undefined}
+          />
           <div
-            id="desktop-update-title"
+            id={titleId}
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
               fontSize: 19,
@@ -135,35 +128,6 @@ export function DesktopUpdateLayer({ theme }: { theme: Theme }) {
   const v = s.offer?.version ?? "";
   const manual = s.offer?.channel === "manual";
   const onClose = useCallback(() => closeDialog(), []);
-
-  const kind = s.toast;
-  // One object per toast shown: Toast restarts its timer on a new identity.
-  const toast = useMemo<ToastMessage | null>(() => {
-    if (kind === "later") {
-      return {
-        id: Date.now(),
-        kind: "info",
-        text: tr("update.toast.later"),
-        action: {
-          label: tr("update.toast.show"),
-          onClick: () => {
-            dismissToast();
-            openDialog("notes");
-          },
-        },
-      };
-    }
-    if (kind === "skipped") {
-      return {
-        id: Date.now(),
-        kind: "info",
-        text: tr("update.toast.skipped", { v }),
-        action: { label: tr("update.toast.undo"), onClick: undoSkip },
-      };
-    }
-    return null;
-  }, [kind]);
-  const onDismissToast = useCallback(() => dismissToast(), []);
 
   const progressTitle = tr("update.dl.title", { v });
 
@@ -322,11 +286,14 @@ export function DesktopUpdateLayer({ theme }: { theme: Theme }) {
           {tr("update.failDesktop")}
         </p>
       </Frame>
-      <Toast
+      <UpdateToast
         theme={theme}
-        toast={toast}
-        onDismiss={onDismissToast}
-        ttl={6000}
+        kind={s.toast}
+        seq={s.toastSeq}
+        version={v}
+        onShow={showNotes}
+        onUndo={undoSkip}
+        onDismiss={dismissToast}
       />
     </>
   );

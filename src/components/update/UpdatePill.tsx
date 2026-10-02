@@ -17,23 +17,10 @@ import {
   TOUCH_TARGET_MIN,
   Z,
 } from "../../styles/tokens";
-import type { CSSProperties } from "react";
 import type { UpdateInfo } from "../../store/updates";
 import { Icon } from "../Icon";
 import { UpdateBanner } from "../UpdateBanner";
-
-/** Read by screen readers, never drawn. */
-export const VISUALLY_HIDDEN: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  margin: -1,
-  padding: 0,
-  overflow: "hidden",
-  clipPath: "inset(50%)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
+import { VISUALLY_HIDDEN } from "./parts";
 
 /** Android, when install_source could not be read (the manual channel):
  *  the old behaviour, the release-page banner. Nothing while the lookup is

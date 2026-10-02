@@ -11,8 +11,8 @@ import {
 } from "../../styles/tokens";
 import { AnimatedDialog } from "../AnimatedDialog";
 import { Button } from "../Button";
-import { Spinner } from "../Spinner";
 import { NotesView } from "./NotesView";
+import { NotesLoading, useDialogKeys } from "./parts";
 
 type Invoke = (cmd: string, args: Record<string, unknown>) => Promise<unknown>;
 
@@ -97,15 +97,7 @@ export function DesktopNotesDialog({
           image: preloaded.highlightImage,
         };
 
-  useEffect(() => {
-    if (!open) return;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useDialogKeys(open, onClose, closeRef);
 
   return (
     <AnimatedDialog open={open} onScrimClick={onClose}>
@@ -160,16 +152,7 @@ export function DesktopNotesDialog({
             </p>
           )}
           {shown === null ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                padding: "28px 0",
-                color: theme.muted,
-              }}
-            >
-              <Spinner size={22} />
-            </div>
+            <NotesLoading theme={theme} />
           ) : (
             <NotesView
               notes={shown.notes}
