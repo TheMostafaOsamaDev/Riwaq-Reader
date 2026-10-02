@@ -6,7 +6,9 @@
 export const IMAGE_CAP = 150 * 1024;
 const KINDS = ["new", "improved", "fixed"];
 const ARABIC = /[؀-ۿ]/;
-export const IMAGE_NAME = /^[A-Za-z0-9_.-]+\.webp$/;
+// A bare .webp file name, never starting with a dot: the same rule as
+// valid_image_name in src-tauri/src/updates.rs, which fetches the picture.
+export const IMAGE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.webp$/;
 
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 

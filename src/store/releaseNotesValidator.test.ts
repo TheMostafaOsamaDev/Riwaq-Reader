@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   IMAGE_CAP,
+  IMAGE_NAME,
   validateReleaseNotes,
 } from "../../scripts/release-notes.mjs";
 
@@ -59,6 +60,17 @@ describe("validateReleaseNotes", () => {
     expect(run(ok(), { "0.6.0-cards.webp": IMAGE_CAP + 1 }).join()).toMatch(
       /150 KB/,
     );
+  });
+  it("rejects an image name with a leading dot, as the app does", () => {
+    // updates.rs valid_image_name never fetches one, so a release must not
+    // ship one: the picture would silently never show.
+    for (const name of [".webp", ".hidden.webp", "../x.webp"]) {
+      const n = ok();
+      n.highlight.image = name;
+      expect(run(n, { [name]: 1000 }).join()).toMatch(/\.webp file name/);
+    }
+    expect(IMAGE_NAME.test("0.6.0-cards.webp")).toBe(true);
+    expect(IMAGE_NAME.test(".x.webp")).toBe(false);
   });
   it("rejects an empty items list and a bad date", () => {
     expect(run({ ...ok(), items: [] }).join()).toMatch(/items/);

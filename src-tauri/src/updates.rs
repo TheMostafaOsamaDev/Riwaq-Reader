@@ -378,6 +378,9 @@ mod tests {
         assert!(valid_image_name("0.6.0-cards.webp"));
         assert!(!valid_image_name("../secret.webp"));
         assert!(!valid_image_name("x.png"));
+        // The same rule as IMAGE_NAME in scripts/release-notes.mjs.
+        assert!(!valid_image_name(".hidden.webp"));
+        assert!(!valid_image_name(".webp"));
     }
 
     #[test]
