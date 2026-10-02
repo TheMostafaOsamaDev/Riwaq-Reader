@@ -516,4 +516,7 @@ final verification):
   end.
 - The desktop proof covers WKWebView (macOS) only: WebKitGTK (Linux) and WebView2
   (Windows) were not exercised.
-- On the tablet layout the pill is centred on the window, not on the content pane.
+- On the tablet layout the pill was centred on the window, not on the content pane.
+  2416110 anchors it to the inline-end edge; not yet re-checked on the tablet AVD.
+- The "installed · Open" notification now has a default-importance channel and a
+  monochrome icon (4694a1d); not yet re-checked on a device.
