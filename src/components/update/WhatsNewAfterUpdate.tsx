@@ -1,5 +1,6 @@
 import rawNotes, { appVersion, images } from "virtual:whats-new";
 import { type ReactNode, useEffect, useRef } from "react";
+import { useArmed } from "../../hooks/useArmed";
 import { useI18n } from "../../i18n/useI18n";
 import { parseReleaseNotes } from "../../store/releaseNotes";
 import { FONT_STACKS, type Theme, TOUCH_TARGET_MIN } from "../../styles/tokens";
@@ -17,8 +18,10 @@ export const bundledNotes =
 
 const imageUrl = (n: string) => images[n];
 
-/** Big release (stories) → full-screen pages; otherwise → a short sheet on
- *  a phone, a centred dialog at desktop width. */
+/** On a phone: a big release (stories) gets full-screen pages, a small one
+ *  a short sheet. On desktop (the user's rule, 2026-10-02): never story
+ *  pages. Every release gets the centred dialog, big ones with their
+ *  stories as cards, and the dialog's body scrolls when it is long. */
 export function WhatsNewAfterUpdate({
   theme,
   open,
@@ -33,6 +36,23 @@ export function WhatsNewAfterUpdate({
   const { tr } = useI18n();
   const notes = bundledNotes;
   if (!notes) return null;
+  if (layout === "desktop") {
+    return (
+      <WhatsNewDialog
+        theme={theme}
+        open={open}
+        onClose={onClose}
+        version={notes.version}
+      >
+        <NotesView
+          notes={notes}
+          theme={theme}
+          imageUrl={imageUrl}
+          showStories
+        />
+      </WhatsNewDialog>
+    );
+  }
   if (notes.stories?.length) {
     return open ? (
       <StoryPages
@@ -42,18 +62,6 @@ export function WhatsNewAfterUpdate({
         onDone={onClose}
       />
     ) : null;
-  }
-  if (layout === "desktop") {
-    return (
-      <WhatsNewDialog
-        theme={theme}
-        open={open}
-        onClose={onClose}
-        version={notes.version}
-      >
-        <NotesView notes={notes} theme={theme} imageUrl={imageUrl} />
-      </WhatsNewDialog>
-    );
   }
   return (
     <MobileSheet
@@ -81,7 +89,9 @@ export function WhatsNewAfterUpdate({
   );
 }
 
-/** The desktop frame: built like DesktopNotesDialog, with Got it to close. */
+/** The desktop frame: built like DesktopNotesDialog. The header and Got it
+ *  are fixed; only the body scrolls, so a long release can never push the
+ *  button off a small window. */
 export function WhatsNewDialog({
   theme,
   open,
@@ -97,6 +107,9 @@ export function WhatsNewDialog({
 }) {
   const { tr } = useI18n();
   const doneRef = useRef<HTMLButtonElement>(null);
+  // It opens at launch: a click carried over from before the relaunch must
+  // not dismiss it unread.
+  const armed = useArmed(open);
   useEffect(() => {
     if (!open) return;
     doneRef.current?.focus();
@@ -113,8 +126,8 @@ export function WhatsNewDialog({
         aria-modal="true"
         aria-labelledby="whats-new-title"
         style={{
-          width: "min(520px, calc(100vw - 32px))",
-          maxHeight: "calc(100vh - 32px)",
+          width: "min(560px, calc(100vw - 32px))",
+          maxHeight: "min(80vh, 720px)",
           display: "flex",
           flexDirection: "column",
           background: theme.bg,
@@ -138,7 +151,22 @@ export function WhatsNewDialog({
           </p>
         </div>
         <div
-          style={{ padding: "0 22px 8px", overflowY: "auto", flex: "1 1 auto" }}
+          data-whats-new-body
+          role="region"
+          aria-label={tr("whatsNew.title", { v: version })}
+          // A scrolling region has to be reachable by keyboard so the arrow
+          // keys and Page Down can scroll it (WCAG 2.1.1). WebKit, which the
+          // macOS app runs in, does not make scrollers focusable by itself.
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a focusable scroll region is the accessible pattern here
+          tabIndex={0}
+          style={{
+            padding: "4px 22px 8px",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            flex: "1 1 auto",
+            minHeight: 0,
+            borderBlock: `0.5px solid ${theme.rule}`,
+          }}
         >
           {children}
         </div>
@@ -155,8 +183,15 @@ export function WhatsNewDialog({
             theme={theme}
             variant="primary"
             size="sm"
-            style={{ minHeight: TOUCH_TARGET_MIN }}
-            onClick={onClose}
+            aria-disabled={!armed || undefined}
+            style={{
+              minHeight: TOUCH_TARGET_MIN,
+              opacity: armed ? 1 : 0.6,
+              transition: "opacity 200ms ease",
+            }}
+            onClick={() => {
+              if (armed) onClose();
+            }}
           >
             {tr("whatsNew.gotIt")}
           </Button>

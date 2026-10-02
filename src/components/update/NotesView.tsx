@@ -51,11 +51,16 @@ export function NotesView({
   theme,
   imageUrl,
   fallbackVersion,
+  showStories = false,
 }: {
   notes: ReleaseNotes | null;
   theme: Theme;
   imageUrl?: (name: string) => string | undefined;
   fallbackVersion?: string;
+  /** Render the release's `stories` as compact cards between the highlight
+   *  and the list: desktop's whole big release in one scrolling dialog,
+   *  where the phone pages through them instead (StoryPages). */
+  showStories?: boolean;
 }): ReactNode {
   const { tr, locale } = useI18n();
   if (!notes) {
@@ -140,6 +145,62 @@ export function NotesView({
           </p>
         </section>
       )}
+      {showStories &&
+        notes.stories?.map((st) => {
+          const img = st.image ? imageUrl?.(st.image) : undefined;
+          return (
+            <section
+              key={st.title.en}
+              data-story
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "flex-start",
+                borderRadius: 14,
+                border: `0.5px solid ${theme.rule}`,
+                padding: 12,
+                marginBottom: 10,
+              }}
+            >
+              {img && (
+                <img
+                  src={img}
+                  alt=""
+                  style={{
+                    width: 72,
+                    height: 72,
+                    flex: "none",
+                    objectFit: "cover",
+                    borderRadius: 10,
+                    background: theme.chrome,
+                  }}
+                />
+              )}
+              <div style={{ minWidth: 0 }}>
+                {st.kind && <KindTag kind={st.kind} theme={theme} />}
+                <h3
+                  style={{
+                    margin: st.kind ? "6px 0 3px" : "0 0 3px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  {pick(st.title, locale)}
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    color: theme.muted,
+                  }}
+                >
+                  {pick(st.body, locale)}
+                </p>
+              </div>
+            </section>
+          );
+        })}
       <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {notes.items.map((it) => (
           <li

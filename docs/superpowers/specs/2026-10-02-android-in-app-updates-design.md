@@ -93,7 +93,11 @@ restart happens when the user chooses it:
   is **Download** and opens the release page.
 - Flatpak (managed) shows nothing.
 
-**Reused pieces.** `NotesView`, `StoryPages`, `fetchNotes`, the after-update
+**Desktop never shows story pages** (user, 2026-10-02): every release,
+big releases included, gets the centred after-update dialog, with the
+stories as cards and a scrolling body.
+
+**Reused pieces.** `NotesView`, `StoryPages` (phone only), `fetchNotes`, the after-update
 screen, and the `skippedUpdateVersion` / `lastSeenWhatsNew` tweaks. The card
 lives in the sidebar, so it is not visible in the reader or focus mode. The
 Settings dot stays until the update is handled.
