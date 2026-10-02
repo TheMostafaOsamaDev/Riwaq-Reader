@@ -172,10 +172,10 @@ you chose too, at a fixed ratio to the body.
     <td align="center" width="25%"><img src="docs/screenshots/mobile/08-settings.png" alt="Settings"/><br/><b>Settings</b></td>
   </tr>
   <tr>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/11-docx-layout.png" alt="A Word file set to flowing text"/><br/><b>Word · flowing</b></td>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/12-docx-pages.png" alt="The same Word file page-for-page"/><br/><b>Word · pages</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode"/><br/><b>Focus, entering</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus at rest"/><br/><b>Focus, at rest</b></td>
-    <td align="center" width="25%"></td>
-    <td align="center" width="25%"></td>
   </tr>
 </table>
 </details>
