@@ -20,7 +20,7 @@ import {
 import type { UpdateInfo } from "../../store/updates";
 import { Icon } from "../Icon";
 import { UpdateBanner } from "../UpdateBanner";
-import { VISUALLY_HIDDEN } from "./parts";
+import { PILL_BOTTOM_PX, PILL_FACE_HEIGHT, VISUALLY_HIDDEN } from "./parts";
 
 /** Android, when install_source could not be read (the manual channel):
  *  the old behaviour, the release-page banner. Nothing while the lookup is
@@ -60,8 +60,8 @@ function Ring({ pct, theme }: { pct: number; theme: Theme }) {
       aria-hidden="true"
       style={{
         position: "relative",
-        width: 16,
-        height: 16,
+        width: 14,
+        height: 14,
         borderRadius: "50%",
         flex: "none",
         background: `conic-gradient(currentColor ${pct}%, ${theme.rule} 0)`,
@@ -70,7 +70,7 @@ function Ring({ pct, theme }: { pct: number; theme: Theme }) {
       <span
         style={{
           position: "absolute",
-          inset: 3,
+          inset: 2.5,
           borderRadius: "50%",
           background: theme.chrome,
         }}
@@ -115,11 +115,14 @@ export function UpdatePill({
       onClick={() => openSheet(SHEET_FOR[pill.kind])}
       className="riwaq-update-pill"
       data-layout={layout}
+      // The button is the 44px tap area and draws nothing; the visible pill
+      // is the face inside it, which also carries the focus ring
+      // (global.css .riwaq-update-pill).
       style={{
         position: "fixed",
         bottom:
           layout === "mobile"
-            ? "calc(76px + env(safe-area-inset-bottom, 0px))"
+            ? `calc(${PILL_BOTTOM_PX}px + env(safe-area-inset-bottom, 0px))`
             : "calc(24px + env(safe-area-inset-bottom, 0px))",
         // Phone: centred over the bottom bar. Wide layout: the sidebar takes
         // the inline-start side, so centring on the window would sit
@@ -135,57 +138,72 @@ export function UpdatePill({
             : "min(360px, calc(100vw - 48px))",
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
-        padding: "0 14px 0 12px",
-        borderRadius: 22,
-        border: `0.5px solid ${failed ? theme.danger : theme.ruleStrong}`,
-        background: theme.chrome,
+        padding: 0,
+        border: 0,
+        background: "transparent",
         color: failed ? theme.danger : quiet ? theme.muted : theme.ink,
-        boxShadow: "0 6px 20px rgba(0,0,0,0.16)",
         fontFamily: FONT_STACKS.sans,
-        fontSize: 13,
-        fontWeight: 600,
         cursor: "pointer",
         touchAction: "manipulation",
         whiteSpace: "nowrap",
       }}
     >
-      {pill.kind === "progress" ? (
-        <Ring pct={pill.pct} theme={theme} />
-      ) : (
-        <Icon
-          name={
-            pill.kind === "waiting"
-              ? "wifi"
-              : pill.kind === "failed"
-                ? "alert"
-                : pill.kind === "ready"
-                  ? "check"
-                  : "arrowUp"
-          }
-          size={15}
-          stroke={2.2}
-        />
-      )}
-      <span aria-live="polite" style={VISUALLY_HIDDEN}>
-        {announce}
-      </span>
       <span
-        aria-hidden="true"
+        data-pill-face
+        className="riwaq-update-pill-face"
         style={{
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          fontVariantNumeric: "tabular-nums",
+          height: PILL_FACE_HEIGHT,
+          maxWidth: "100%",
+          boxSizing: "border-box",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "0 12px 0 10px",
+          borderRadius: 18,
+          border: `0.5px solid ${failed ? theme.danger : theme.ruleStrong}`,
+          background: theme.chrome,
+          boxShadow: "0 3px 10px rgba(0,0,0,0.12)",
+          fontSize: 12.5,
+          fontWeight: 600,
         }}
       >
-        {label}
+        {pill.kind === "progress" ? (
+          <Ring pct={pill.pct} theme={theme} />
+        ) : (
+          <Icon
+            name={
+              pill.kind === "waiting"
+                ? "wifi"
+                : pill.kind === "failed"
+                  ? "alert"
+                  : pill.kind === "ready"
+                    ? "check"
+                    : "arrowUp"
+            }
+            size={14}
+            stroke={2.2}
+          />
+        )}
+        <span aria-live="polite" style={VISUALLY_HIDDEN}>
+          {announce}
+        </span>
+        <span
+          aria-hidden="true"
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {label}
+        </span>
+        <Icon
+          name="chevronR"
+          size={13}
+          className="rtl-flip-x"
+          style={{ opacity: 0.55, flex: "none" }}
+        />
       </span>
-      <Icon
-        name="chevronR"
-        size={14}
-        className="rtl-flip-x"
-        style={{ opacity: 0.55, flex: "none" }}
-      />
     </button>
   );
 }

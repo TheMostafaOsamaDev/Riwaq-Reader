@@ -20,6 +20,12 @@ import * as store from "../../store/androidUpdate";
 import { THEMES } from "../../styles/tokens";
 import { MobileBottomNav } from "../library/MobileBottomNav";
 import { SettingsUpdateCard } from "./SettingsUpdateCard";
+import {
+  PILL_BOTTOM_PX,
+  PILL_FACE_BOTTOM_PX,
+  PILL_FACE_HEIGHT,
+  UPDATE_TOAST_BOTTOM,
+} from "./parts";
 import { ManualUpdateBanner, UpdatePill } from "./UpdatePill";
 import { UpdateSheet, UpdateToasts } from "./UpdateSheet";
 
@@ -320,6 +326,31 @@ describe("UpdatePill", () => {
     await render(<UpdatePill theme={THEMES.sepia} />);
     const phone = (document.querySelector("button") as HTMLElement).style;
     expect(phone.left).toBe("50%");
+  });
+
+  // User request: smaller visible pill, lifted clear of the bottom bar, with
+  // the tap area unchanged and the update toasts at the same height.
+  it("phone: a 44px hit area around a 36px face, lifted clear of the bar, toasts level", async () => {
+    await setup();
+    await render(<UpdatePill theme={THEMES.sepia} />);
+    const btn = document.querySelector("button") as HTMLElement;
+    expect(parseFloat(btn.style.minHeight)).toBeGreaterThanOrEqual(44);
+    const face = btn.querySelector("[data-pill-face]") as HTMLElement;
+    expect(face.style.height).toBe(`${PILL_FACE_HEIGHT}px`);
+    expect(PILL_FACE_HEIGHT).toBeLessThan(44);
+    expect(btn.style.background).toBe("transparent");
+    expect(btn.style.boxShadow).toBe("");
+    // happy-dom drops env() from inline styles: the offsets are pinned by
+    // the constants the component and the toast both read.
+    // MobileBottomNav renders 75px tall; the face's bottom edge sits 20px
+    // above it (measured in the browser pass).
+    expect(PILL_FACE_BOTTOM_PX).toBe(75 + 20);
+    expect(PILL_FACE_BOTTOM_PX).toBe(
+      PILL_BOTTOM_PX + (44 - PILL_FACE_HEIGHT) / 2,
+    );
+    expect(UPDATE_TOAST_BOTTOM).toBe(
+      `calc(${PILL_FACE_BOTTOM_PX}px + env(safe-area-inset-bottom, 0px))`,
+    );
   });
 
   it("is absent for a store-managed install", async () => {

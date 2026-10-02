@@ -55,7 +55,7 @@ export function MobileBottomNav({
         borderTop: `1px solid ${theme.ruleStrong}`,
         // Soft upward shadow so the bar reads as a floating surface
         // hovering over the shelf, not a flush edge of the page.
-        boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+        boxShadow: "0 -2px 8px rgba(0,0,0,0.06)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",

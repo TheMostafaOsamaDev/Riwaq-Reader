@@ -43,6 +43,7 @@ import {
   mb,
   NotesLoading,
   ProgressBar,
+  UPDATE_TOAST_BOTTOM,
   UpdateToast,
   VISUALLY_HIDDEN,
 } from "./parts";
@@ -599,11 +600,7 @@ export function UpdateToasts({
       onShow={showNotes}
       onUndo={undoSkip}
       onDismiss={dismissToast}
-      bottom={
-        layout === "mobile"
-          ? "calc(84px + env(safe-area-inset-bottom, 0px))"
-          : undefined
-      }
+      bottom={layout === "mobile" ? UPDATE_TOAST_BOTTOM : undefined}
     />
   );
 }

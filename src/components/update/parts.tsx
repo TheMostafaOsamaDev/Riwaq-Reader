@@ -20,6 +20,19 @@ import { Spinner } from "../Spinner";
 import { Toast, type ToastMessage } from "../Toast";
 
 /** Read by screen readers, never drawn. */
+/** The phone pill's geometry. The button is a TOUCH_TARGET_MIN (44px) tall
+ *  hit area; the visible face inside it is shorter, centred vertically. */
+export const PILL_FACE_HEIGHT = 36;
+/** The button's bottom offset (plus the safe area). MobileBottomNav is 75px
+ *  tall as rendered (10 + 14 padding, the 50px import button, a 1px top
+ *  border), so this puts the face's bottom edge 20px above the bar. */
+export const PILL_BOTTOM_PX = 91;
+/** Where the visible face's bottom edge lands: the hit area's spare height
+ *  is split above and below the face. */
+export const PILL_FACE_BOTTOM_PX = PILL_BOTTOM_PX + (44 - PILL_FACE_HEIGHT) / 2;
+/** The update toasts sit level with the pill's visible bottom edge. */
+export const UPDATE_TOAST_BOTTOM = `calc(${PILL_FACE_BOTTOM_PX}px + env(safe-area-inset-bottom, 0px))`;
+
 export const VISUALLY_HIDDEN: CSSProperties = {
   position: "absolute",
   width: 1,

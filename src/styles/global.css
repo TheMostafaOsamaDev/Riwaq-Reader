@@ -659,6 +659,16 @@ input:focus-visible,
   outline-offset: 2px;
 }
 
+/* The Android update pill: the button is an invisible 44px tap area, so the
+   ring goes on the visible face inside it, not around empty space. */
+.riwaq-update-pill:focus-visible {
+  outline: none;
+}
+.riwaq-update-pill:focus-visible > .riwaq-update-pill-face {
+  outline: 2px solid rgba(201, 100, 66, 0.55);
+  outline-offset: 2px;
+}
+
 /* Chapter-mount transition. Used by the reader to mark a chapter swap so
    the user gets a tiny visual cue that they've moved between chapters —
    the content fades in and rises a few pixels. */
