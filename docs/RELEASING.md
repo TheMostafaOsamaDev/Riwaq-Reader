@@ -92,6 +92,19 @@ set after the first signed Android release:
    in its notes file and its release body, that desktop and Android users on
    0.5.3 or older need to download and install it once by hand (their update
    check was broken). After that release, updates arrive in the app.
+   **1c.** The recipe's `commit` cannot be filled in yet, and the preflight
+   does not ask it to. fdroiddata wants the full hash of the tagged commit,
+   and a file cannot contain the hash of the commit containing it — so the
+   preflight only checks the shape. **After tagging**, set it for real:
+
+   ```bash
+   git rev-list -n1 v0.6.1   # paste into docs/fdroid/com.riwaq.reader.yml
+   ```
+
+   That lands one commit after the tag, which is fine: F-Droid builds the
+   commit the recipe names, and fdroiddata's own copy is what finally carries
+   it. Do it before submitting or updating the F-Droid merge request.
+
 2. Push a `v*` tag. `preflight` re-runs the config check in seconds, then the
    pipeline builds seven targets into a **draft** release. A tag containing a
    hyphen (`v0.2.0-rc1`) is published as a prerelease, so it is not served to
