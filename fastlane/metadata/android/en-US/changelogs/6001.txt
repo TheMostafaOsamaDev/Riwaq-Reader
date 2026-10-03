@@ -1,0 +1,1 @@
+Packaging only: nothing changes inside the app. Riwaq now ships its Linux desktop entry and app metadata with the source, so Linux app stores pick them up directly.
