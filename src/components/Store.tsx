@@ -228,6 +228,7 @@ export function Store({
           <MobilePageSwap
             viewKey={storePageKey(view)}
             group="store"
+            background={theme.bg}
             move={nav.move}
             rtl={dir === "rtl"}
           >

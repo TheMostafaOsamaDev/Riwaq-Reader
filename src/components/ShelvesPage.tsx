@@ -23,6 +23,10 @@ import { paletteForId } from "../store/palette";
 
 interface Props {
   theme: Theme;
+  /** "mobile": the phone's Shelves page sits under a header that already
+   *  names it (MobileLibrary's BackHeader), so the big title goes, the
+   *  gutters are a phone's, and "New shelf" is a compact one-line pill. */
+  layout?: "desktop" | "mobile";
   shelves: Shelf[];
   books: BookIndexEntry[];
   covers: Record<string, string>;
@@ -52,14 +56,16 @@ export function ShelvesPage({
   onRequestDeleteShelf,
   onNewShelf,
   onRemoveFromShelf,
+  layout = "desktop",
 }: Props) {
   const { tr, dir } = useI18n();
+  const isMobile = layout === "mobile";
   return (
     <div
       style={{
         flex: 1,
         overflowY: "auto",
-        padding: "32px 40px 48px",
+        padding: isMobile ? "14px 18px 48px" : "32px 40px 48px",
         // Clear of the phone's floating bottom bar (0 outside its shell).
         paddingBottom: `calc(48px + var(--home-bar-inset, 0px))`,
         fontFamily: FONT_STACKS.sans,
@@ -69,25 +75,34 @@ export function ShelvesPage({
       <div
         style={{
           display: "flex",
-          alignItems: "flex-end",
+          alignItems: isMobile ? "center" : "flex-end",
           justifyContent: "space-between",
-          marginBottom: 28,
+          gap: 12,
+          marginBottom: isMobile ? 18 : 28,
         }}
       >
-        <div>
-          <h1
+        <div style={{ minWidth: 0 }}>
+          {!isMobile && (
+            <h1
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontWeight: 400,
+                fontSize: 30,
+                margin: 0,
+                letterSpacing: "-0.01em",
+                color: theme.ink,
+              }}
+            >
+              {tr("shelves.title")}
+            </h1>
+          )}
+          <div
             style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontWeight: 400,
-              fontSize: 30,
-              margin: 0,
-              letterSpacing: "-0.01em",
-              color: theme.ink,
+              fontSize: 13,
+              color: theme.muted,
+              marginTop: isMobile ? 0 : 4,
             }}
           >
-            {tr("shelves.title")}
-          </h1>
-          <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
             {tr(
               shelves.length === 1 ? "shelves.countOne" : "shelves.countOther",
               { n: shelves.length },
@@ -103,10 +118,13 @@ export function ShelvesPage({
             border: 0,
             background: theme.ink,
             color: theme.paper,
-            borderRadius: 10,
-            padding: "10px 16px",
+            borderRadius: isMobile ? 18 : 10,
+            padding: isMobile ? "0 14px" : "10px 16px",
+            height: isMobile ? 36 : undefined,
+            flexShrink: 0,
+            whiteSpace: "nowrap",
             font: "inherit",
-            fontSize: 13.5,
+            fontSize: isMobile ? 13 : 13.5,
             fontWeight: 600,
             cursor: "pointer",
           }}
@@ -147,6 +165,7 @@ export function ShelvesPage({
             <ShelfSection
               key={s.id}
               theme={theme}
+              compact={isMobile}
               shelf={s}
               books={booksOnShelf(books, s.id)}
               covers={covers}
@@ -210,6 +229,8 @@ export function AddTile({
 }
 
 interface ShelfSectionProps {
+  /** Phone: a smaller shelf name, to sit with the phone's type sizes. */
+  compact?: boolean;
   theme: Theme;
   shelf: Shelf;
   books: BookIndexEntry[];
@@ -235,6 +256,7 @@ function ShelfSection({
   onRequestRenameShelf,
   onRequestDeleteShelf,
   onRemoveFromShelf,
+  compact = false,
 }: ShelfSectionProps) {
   const { tr } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -281,7 +303,7 @@ function ShelfSection({
             style={{
               fontFamily: FONT_SERIF_DISPLAY,
               fontWeight: 400,
-              fontSize: 20,
+              fontSize: compact ? 17 : 20,
               margin: 0,
               color: "inherit",
             }}

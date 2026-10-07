@@ -191,6 +191,7 @@ export function MobileLibrary({
         move={nav.move}
         rtl={dir === "rtl"}
         fade={(from, to) => from.startsWith("tab:") && to.startsWith("tab:")}
+        background={theme.bg}
       >
         {settingsTab ? (
           settingsTab
@@ -218,6 +219,7 @@ export function MobileLibrary({
             />
             <ShelvesPage
               theme={theme}
+              layout="mobile"
               shelves={shelves}
               books={books}
               covers={covers}

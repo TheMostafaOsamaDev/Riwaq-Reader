@@ -60,6 +60,7 @@ export function MobilePageSwap({
   move,
   rtl,
   fade,
+  background,
   children,
 }: {
   /** Identity of the page on screen. A change animates; the same key just
@@ -72,6 +73,11 @@ export function MobilePageSwap({
   /** Changes between these two keys fade even within a tab — the library's
    *  filter pills, which swap the page in place rather than going deeper. */
   fade?: (fromKey: string, toKey: string) => boolean;
+  /** The page colour. Every slot is painted with it: a page that brings no
+   *  background of its own (the Shelves page, the Store's pages) would
+   *  otherwise be see-through while it slides in, and the page it is
+   *  covering showed through it — two pages' text on top of each other. */
+  background: string;
   children: ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -170,12 +176,15 @@ export function MobilePageSwap({
         <div
           key={`from:${swap.id}:${swap.from.key}`}
           aria-hidden
-          style={{ ...slotBase, ...styles.from }}
+          style={{ ...slotBase, background, ...styles.from }}
         >
           {swap.from.node}
         </div>
       )}
-      <div key={state.key} style={{ ...slotBase, ...(styles?.to ?? null) }}>
+      <div
+        key={state.key}
+        style={{ ...slotBase, background, ...(styles?.to ?? null) }}
+      >
         {children}
       </div>
     </div>
