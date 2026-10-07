@@ -51,6 +51,7 @@ function render(style: HomeBarStyle, tab: LibraryTab = "all") {
           tab={tab}
           shelvesActive={false}
           style={style}
+          current={tab === "store" ? "store" : "library"}
           {...fns}
         />
       </I18nProvider>,

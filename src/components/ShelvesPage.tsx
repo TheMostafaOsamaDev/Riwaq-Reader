@@ -8,8 +8,9 @@ import { useEffect, useRef, useState, memo } from "react";
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
-  titleFontFor,
+  homeBarInset,
   type Theme,
+  titleFontFor,
   Z,
 } from "../styles/tokens";
 import { Icon, type IconProps } from "./Icon";
@@ -67,7 +68,7 @@ export function ShelvesPage({
         overflowY: "auto",
         padding: isMobile ? "14px 18px 48px" : "32px 40px 48px",
         // Clear of the phone's floating bottom bar (0 outside its shell).
-        paddingBottom: `calc(48px + var(--home-bar-inset, 0px))`,
+        paddingBottom: homeBarInset(48),
         fontFamily: FONT_STACKS.sans,
       }}
     >

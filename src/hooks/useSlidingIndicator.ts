@@ -1,15 +1,26 @@
-import { useLayoutEffect, useRef } from "react";
-import { isReducedMotion } from "../styles/motion";
+import { type CSSProperties, useLayoutEffect, useRef } from "react";
+import { EASE, isReducedMotion, MOTION } from "../styles/motion";
 
-const EMPHASIZED = "cubic-bezier(0.4, 0.0, 0.2, 1)";
+/** The library filter pills' curve (MobileTabRow): "this one is selected"
+ *  moves alike wherever it slides. */
+const STANDARD = "cubic-bezier(0.4, 0.0, 0.2, 1)";
 const props = (dur: number, curve: string) =>
   ["left", "top", "width", "height"]
     .map((p) => `${p} ${dur}ms ${curve}`)
     .join(", ");
+const SLIDE_TRANSITION = props(MOTION.med, STANDARD);
 
-/** The library filter pills' motion (MobileTabRow), shared: same duration,
- *  same curve, so "this one is selected" moves alike wherever it slides. */
-export const SLIDE_TRANSITION = props(240, EMPHASIZED);
+/** Where an indicator starts: unplaced, invisible, out of the way of taps.
+ *  The hook positions it; the caller adds its colour and shape. */
+export const indicatorBaseStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
+  opacity: 0,
+  pointerEvents: "none",
+};
 
 /**
  * How the indicator travels to the next item.
@@ -49,11 +60,11 @@ interface Box {
  * A resize re-places it without easing (a rotation, the keyboard), since
  * that is the layout moving, not the selection.
  */
-export function useSlidingIndicator<K extends string>(
-  active: K | null,
-  motion: IndicatorMotion = "slide",
-) {
-  const containerRef = useRef<HTMLElement | null>(null);
+export function useSlidingIndicator<
+  K extends string,
+  C extends HTMLElement = HTMLElement,
+>(active: K | null, motion: IndicatorMotion = "slide") {
+  const containerRef = useRef<C | null>(null);
   const indicatorRef = useRef<HTMLDivElement | null>(null);
   const items = useRef(new Map<K, HTMLElement>());
   /** Where the indicator is now, or null before the first placement. */
@@ -66,15 +77,12 @@ export function useSlidingIndicator<K extends string>(
     else items.current.delete(k);
   };
 
-  const activeRef = useRef(active);
-  activeRef.current = active;
-  const motionRef = useRef(motion);
-  motionRef.current = motion;
-
   const place = (animate: boolean) => {
     const ind = indicatorRef.current;
     const box = containerRef.current;
-    const k = activeRef.current;
+    // `place` is rebuilt every render and only ever called through
+    // placeRef, so it always sees this render's `active` and `motion`.
+    const k = active;
     const target = k ? items.current.get(k) : undefined;
     if (!ind || !box) return;
     const cancelSettle = () => {
@@ -119,14 +127,14 @@ export function useSlidingIndicator<K extends string>(
     cancelSettle();
     if (!ease || !from) {
       write(next, "none");
-    } else if (motionRef.current === "spring") {
+    } else if (motion === "spring") {
       write(next, props(320, "cubic-bezier(0.34, 1.45, 0.64, 1)"));
-    } else if (motionRef.current === "stretch") {
+    } else if (motion === "stretch") {
       const left = Math.min(from.left, next.left);
       const right = Math.max(from.left + from.width, next.left + next.width);
       write(
         { left, top: next.top, width: right - left, height: next.height },
-        props(REACH_MS, "cubic-bezier(0.4, 0, 1, 1)"),
+        props(REACH_MS, EASE.exit),
       );
       settleTimer.current = window.setTimeout(() => {
         settleTimer.current = null;

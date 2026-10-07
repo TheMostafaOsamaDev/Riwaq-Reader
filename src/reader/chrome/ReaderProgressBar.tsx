@@ -11,16 +11,11 @@
 // Position is a 0..1 `fraction` in reading order: 0 is the start of the book in
 // both LTR and RTL.
 
-import {
-  useCallback,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useRef, type CSSProperties } from "react";
+import { clamp01 } from "../../components/readerProgress";
 import { ACCENT, type Theme, Z_LOCAL } from "../../styles/tokens";
-import { gestureAxis } from "../gestureAxis";
 import { ReaderIconButton } from "./ReaderIconButton";
+import { useScrubGesture } from "./useScrubGesture";
 
 /** Centre an element on a logical position.
  *
@@ -40,10 +35,6 @@ function centreOn(rtl: boolean): string {
  *  cost 2370 absolutely-positioned nodes rebuilt on every frame of a drag. At
  *  the cap the dots are still ~8px apart and readable as structure. */
 export const MAX_TICKS = 24;
-
-function clamp01(n: number): number {
-  return Number.isNaN(n) ? 0 : n < 0 ? 0 : n > 1 ? 1 : n;
-}
 
 /** The scrub handle: an outlined ring at rest, a solid accent dot while held.
  *
@@ -241,72 +232,16 @@ export function ReaderProgressBar({
   labelWidth = 104,
 }: ReaderProgressBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
-  const active = useRef(false);
-  /** Where a TOUCH gesture started, until it has picked an axis. A mouse
-   *  scrubs in any direction, so it never sets this. */
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
-  // Where the finger is, while the parent's `fraction` may still be behind —
-  // callers without `onScrub` deliberately don't move until release.
-  const [preview, setPreview] = useState<number | null>(null);
-
-  const ratioFrom = useCallback(
-    (clientX: number): number | null => {
-      const el = trackRef.current;
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      if (r.width === 0) return null;
-      const raw = (clientX - r.left) / r.width;
-      return clamp01(rtl ? 1 - raw : raw); // 0 = start of the book either way
-    },
-    [rtl],
-  );
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    active.current = true;
-    touchStart.current =
-      e.pointerType === "touch" ? { x: e.clientX, y: e.clientY } : null;
-    const f = ratioFrom(e.clientX);
-    if (f === null) return;
-    setPreview(f);
-    onScrub?.(f);
-  };
-  /** End the drag and hand the pointer back. */
-  const letGo = (e: ReactPointerEvent<HTMLDivElement>) => {
-    active.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-  };
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!active.current) return;
-    // The bar sits where a thumb starts an upward flick. A touch that goes
-    // vertical before it goes sideways was never a scrub: let go without
-    // seeking, and leave the gesture to the page. Seeking on its release used
-    // to jump a long serial several chapters per pixel.
-    const start = touchStart.current;
-    if (start) {
-      const axis = gestureAxis(e.clientX - start.x, e.clientY - start.y);
-      if (axis === "y") {
-        letGo(e);
-        setPreview(null);
-        return;
-      }
-      if (axis === "x") touchStart.current = null; // a scrub from here on
-    }
-    const f = ratioFrom(e.clientX);
-    if (f === null) return;
-    setPreview(f);
-    onScrub?.(f);
-  };
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!active.current) return;
-    letGo(e);
-    setPreview((f) => {
-      if (f !== null) onSeek(f);
-      return null;
-    });
-  };
+  // The drag itself — preview under the finger, commit on release, and a
+  // touch that turns vertical handed back to the page — is shared with the
+  // status bar's seek line. A cancelled pointer commits here, as it always has.
+  const { preview, handlers } = useScrubGesture({
+    trackRef,
+    rtl,
+    onSeek,
+    onScrub,
+    commitOnCancel: true,
+  });
 
   const dragging = preview !== null;
   const shown = preview ?? clamp01(fraction);
@@ -362,10 +297,7 @@ export function ReaderProgressBar({
         aria-valuenow={valueNow}
         aria-valuetext={valueText}
         tabIndex={0}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        {...handlers}
         style={{
           flex: 1,
           minWidth: 0,

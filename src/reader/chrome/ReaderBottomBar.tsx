@@ -16,10 +16,8 @@
 
 import {
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -28,9 +26,10 @@ import { Icon } from "../../components/Icon";
 import { useI18n } from "../../i18n/useI18n";
 import type { Theme } from "../../styles/tokens";
 import type { ReaderBarStyle } from "../../types/reader";
-import { gestureAxis } from "../gestureAxis";
-import { glassBar } from "./glass";
-import { panelsOnBar } from "./barStyles";
+import { glassBar, glassPill } from "./glass";
+import { PANEL_ARIA, PANEL_ICON, PANEL_LABEL, panelsOnBar } from "./barStyles";
+import { useScrubGesture } from "./useScrubGesture";
+import { clamp01 } from "../../components/readerProgress";
 import { type ReaderPanel, ReaderTabBar, readerTabStyle } from "./ReaderTabBar";
 
 /** Where the reader is, in words the bar can show. */
@@ -278,7 +277,9 @@ function FloatingBar({
     if (hidden) setSliderOpen(false);
   }, [hidden]);
 
-  const surface = floatingGlass(theme);
+  const surface = glassPill(theme);
+  /** The bar is up and its controls take taps; the strip itself never does. */
+  const live = frame.pointerEvents !== "none";
   const placeLabel = tr("reader.bar.showSlider");
 
   return (
@@ -299,26 +300,12 @@ function FloatingBar({
       {style === "corners" && (
         // How far through the book, as a hairline along the very bottom
         // edge — the one piece of progress this style keeps on screen.
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            insetInline: 0,
-            bottom: 0,
-            height: 2,
-            background: theme.rule,
-          }}
-        >
-          <span
-            style={{
-              position: "absolute",
-              insetBlock: 0,
-              insetInlineStart: 0,
-              width: `${clamp01(place.fraction) * 100}%`,
-              background: theme.chromeInk,
-            }}
-          />
-        </span>
+        <ThinTrack
+          theme={theme}
+          fraction={place.fraction}
+          height={2}
+          style={{ position: "absolute", insetInline: 0, bottom: 0 }}
+        />
       )}
       <div style={{ position: "relative" }}>
         {sliderOpen && (
@@ -333,7 +320,7 @@ function FloatingBar({
               bottom: "calc(100% + 10px)",
               borderRadius: 20,
               padding: "10px 6px 4px",
-              pointerEvents: frame.pointerEvents === "none" ? "none" : "auto",
+              pointerEvents: live ? "auto" : "none",
             }}
           >
             {slider}
@@ -350,7 +337,7 @@ function FloatingBar({
               gap: 4,
               padding: 5,
               borderRadius: 28,
-              pointerEvents: frame.pointerEvents === "none" ? "none" : "auto",
+              pointerEvents: live ? "auto" : "none",
             }}
           >
             <PanelIconButton
@@ -417,7 +404,7 @@ function FloatingBar({
               panel="toc"
               active={active === "toc"}
               onOpen={onOpen}
-              hidden={frame.pointerEvents === "none"}
+              hidden={!live}
             />
             <button
               type="button"
@@ -436,7 +423,7 @@ function FloatingBar({
                 textAlign: "center",
                 lineHeight: 1.35,
                 fontVariantNumeric: "tabular-nums",
-                pointerEvents: frame.pointerEvents === "none" ? "none" : "auto",
+                pointerEvents: live ? "auto" : "none",
               }}
             >
               <span
@@ -465,7 +452,7 @@ function FloatingBar({
               panel="settings"
               active={active === "settings"}
               onOpen={onOpen}
-              hidden={frame.pointerEvents === "none"}
+              hidden={!live}
             />
           </div>
         )}
@@ -474,46 +461,7 @@ function FloatingBar({
   );
 }
 
-/** Glass for a control that floats on its own: the same frost as the bars,
- *  with a hairline all round and a soft shadow, since nothing else marks
- *  where it ends. */
-function floatingGlass(theme: Theme) {
-  const g = glassBar(theme, "bottom");
-  return {
-    className: g.className,
-    style: {
-      ...g.style,
-      borderTop: undefined,
-      border: `0.5px solid ${theme.ruleStrong}`,
-      boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-    } as CSSProperties,
-  };
-}
-
 // ── Pieces ──────────────────────────────────────────────────────────────────
-
-const PANEL_ICON = {
-  toc: "list",
-  highlights: "highlight",
-  progress: "clock",
-  settings: "type",
-} as const;
-
-/** Short names, for buttons that carry their label. */
-const PANEL_LABEL = {
-  toc: "reader.bar.contents",
-  highlights: "reader.bar.highlights",
-  progress: "reader.bar.progress",
-  settings: "reader.bar.text",
-} as const;
-
-/** Full names, for icon-only buttons (screen readers, long press). */
-const PANEL_ARIA = {
-  toc: "reader.toc",
-  highlights: "reader.highlights",
-  progress: "reader.progress",
-  settings: "reader.settings",
-} as const;
 
 function PanelIconButton({
   theme,
@@ -728,7 +676,7 @@ function CornerButton({
   hidden: boolean;
 }) {
   const { tr } = useI18n();
-  const surface = floatingGlass(theme);
+  const surface = glassPill(theme);
   return (
     <button
       type="button"
@@ -756,16 +704,28 @@ function CornerButton({
 }
 
 /** A 3px track with a fill — where you are, read-only. */
-function ThinTrack({ theme, fraction }: { theme: Theme; fraction: number }) {
+function ThinTrack({
+  theme,
+  fraction,
+  height = 3,
+  style,
+}: {
+  theme: Theme;
+  fraction: number;
+  height?: number;
+  /** Placement, for a track pinned somewhere (the corners' edge line). */
+  style?: CSSProperties;
+}) {
   return (
     <span
       aria-hidden
       style={{
         display: "block",
         position: "relative",
-        height: 3,
+        height,
         borderRadius: 2,
         background: theme.rule,
+        ...style,
       }}
     >
       <span
@@ -799,27 +759,14 @@ function SeekLine({
   seek: BarSeek;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const active = useRef(false);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
-  const [preview, setPreview] = useState<number | null>(null);
-
-  const ratioFrom = useCallback(
-    (clientX: number): number | null => {
-      const el = ref.current;
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      if (r.width === 0) return null;
-      const raw = (clientX - r.left) / r.width;
-      return clamp01(seek.rtl ? 1 - raw : raw);
-    },
-    [seek.rtl],
-  );
-  const letGo = (e: ReactPointerEvent<HTMLDivElement>) => {
-    active.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-  };
+  // The progress slider's own drag (shared hook). A cancelled pointer drops
+  // the preview here: the line is a quick seek, not a careful scrub.
+  const { preview, handlers } = useScrubGesture({
+    trackRef: ref,
+    rtl: seek.rtl,
+    onSeek: seek.onSeek,
+    commitOnCancel: false,
+  });
 
   const shown = preview ?? clamp01(fraction);
   return (
@@ -832,41 +779,7 @@ function SeekLine({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clamp01(fraction) * 100)}
-      onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId);
-        active.current = true;
-        touchStart.current =
-          e.pointerType === "touch" ? { x: e.clientX, y: e.clientY } : null;
-        const f = ratioFrom(e.clientX);
-        if (f !== null) setPreview(f);
-      }}
-      onPointerMove={(e) => {
-        if (!active.current) return;
-        const start = touchStart.current;
-        if (start) {
-          const axis = gestureAxis(e.clientX - start.x, e.clientY - start.y);
-          if (axis === "y") {
-            letGo(e);
-            setPreview(null);
-            return;
-          }
-          if (axis === "x") touchStart.current = null;
-        }
-        const f = ratioFrom(e.clientX);
-        if (f !== null) setPreview(f);
-      }}
-      onPointerUp={(e) => {
-        if (!active.current) return;
-        letGo(e);
-        setPreview((f) => {
-          if (f !== null) seek.onSeek(f);
-          return null;
-        });
-      }}
-      onPointerCancel={(e) => {
-        letGo(e);
-        setPreview(null);
-      }}
+      {...handlers}
       onKeyDown={(e) => {
         const step =
           e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
@@ -942,8 +855,4 @@ function SeekLine({
       )}
     </div>
   );
-}
-
-function clamp01(n: number): number {
-  return Math.min(1, Math.max(0, n));
 }

@@ -3,18 +3,14 @@
 // With them, Contents opens on the chapter list and Highlights and Progress
 // are one tap away inside it, so choosing a lighter bar never hides a panel.
 
-import type { Ref } from "react";
-import { useSlidingIndicator } from "../../hooks/useSlidingIndicator";
+import {
+  indicatorBaseStyle,
+  useSlidingIndicator,
+} from "../../hooks/useSlidingIndicator";
 import { useI18n } from "../../i18n/useI18n";
 import { raisedSurface, type Theme } from "../../styles/tokens";
 import type { ReaderPanel } from "./ReaderTabBar";
-
-const LABEL = {
-  toc: "reader.bar.contents",
-  highlights: "reader.bar.highlights",
-  progress: "reader.bar.progress",
-  settings: "reader.bar.text",
-} as const;
+import { PANEL_LABEL } from "./barStyles";
 
 export function PanelSwitcher({
   theme,
@@ -31,11 +27,13 @@ export function PanelSwitcher({
   const { tr } = useI18n();
   const shown = panels.length >= 2 && !!active && panels.includes(active);
   // The segment slides between tabs, like the library's filter pills.
-  const slide = useSlidingIndicator<ReaderPanel>(shown ? active : null);
+  const slide = useSlidingIndicator<ReaderPanel, HTMLDivElement>(
+    shown ? active : null,
+  );
   if (!shown) return null;
   return (
     <div
-      ref={slide.containerRef as Ref<HTMLDivElement>}
+      ref={slide.containerRef}
       role="tablist"
       style={{
         position: "relative",
@@ -54,16 +52,10 @@ export function PanelSwitcher({
         ref={slide.indicatorRef}
         aria-hidden
         style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: 0,
-          height: 0,
-          opacity: 0,
+          ...indicatorBaseStyle,
           borderRadius: 9,
           background: raisedSurface(theme),
           boxShadow: "0 1px 3px rgba(0,0,0,0.14)",
-          pointerEvents: "none",
         }}
       />
       {panels.map((p) => {
@@ -93,7 +85,7 @@ export function PanelSwitcher({
               textOverflow: "ellipsis",
             }}
           >
-            {tr(LABEL[p])}
+            {tr(PANEL_LABEL[p])}
           </button>
         );
       })}

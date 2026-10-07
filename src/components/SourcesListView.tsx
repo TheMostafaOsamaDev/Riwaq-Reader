@@ -9,7 +9,13 @@ import { useI18n } from "../i18n/useI18n";
 import { pickDescription } from "../sources/description";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  PHONE_TAB_TITLE,
+  type Theme,
+} from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { SourceIcon } from "./SourceIcon";
@@ -63,7 +69,7 @@ export function SourcesListView({
         padding: isMobile ? "16px 22px 40px" : "28px 40px 40px",
         // Room to scroll clear of the phone's floating bottom bar; the
         // variable is only set inside the phone shell, so 0 elsewhere.
-        paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
+        paddingBottom: homeBarInset(40),
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}
@@ -80,11 +86,15 @@ export function SourcesListView({
         <div style={{ minWidth: isMobile ? 0 : 220, flex: 1 }}>
           <h2
             style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontWeight: 400,
-              fontSize: isMobile ? 28 : 26,
+              ...(isMobile
+                ? PHONE_TAB_TITLE
+                : {
+                    fontFamily: FONT_SERIF_DISPLAY,
+                    fontWeight: 400,
+                    fontSize: 26,
+                    letterSpacing: "-0.01em",
+                  }),
               margin: "0 0 6px 0",
-              letterSpacing: isMobile ? "-0.02em" : "-0.01em",
             }}
           >
             {tr("store.title")}

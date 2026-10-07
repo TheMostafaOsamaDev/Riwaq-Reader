@@ -8,12 +8,10 @@
 // state, none of which belongs on a settings page.
 
 import type { CSSProperties, ReactNode } from "react";
-import { Field } from "./SettingsSection";
+import { StylePicker } from "./StylePicker";
 import { HOME_BAR_STYLES, READER_BAR_STYLES } from "../reader/chrome/barStyles";
 import { ACCENT, type Theme } from "../styles/tokens";
 import type { HomeBarStyle, ReaderBarStyle } from "../types/reader";
-import type { MsgKey } from "../i18n";
-import { useI18n } from "../i18n/useI18n";
 
 export function ReaderBarField({
   theme,
@@ -54,89 +52,6 @@ export function HomeBarField({
       onChange={onChange}
       preview={(s) => <HomePreview style={s} theme={theme} />}
     />
-  );
-}
-
-function StylePicker<S extends string>({
-  theme,
-  field,
-  styles,
-  value,
-  onChange,
-  preview,
-}: {
-  theme: Theme;
-  field: "settings.readerBar" | "settings.homeBar";
-  styles: readonly S[];
-  value: S;
-  onChange: (v: S) => void;
-  preview: (s: S) => ReactNode;
-}) {
-  const { tr } = useI18n();
-  return (
-    <Field label={tr(field)} theme={theme}>
-      <p
-        style={{
-          margin: "-4px 0 10px",
-          fontSize: 11.5,
-          lineHeight: 1.5,
-          color: theme.muted,
-        }}
-      >
-        {tr(`${field}.hint` as MsgKey)}
-      </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(132px, 1fr))",
-          gap: 8,
-        }}
-      >
-        {styles.map((s) => {
-          const selected = value === s;
-          return (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={selected}
-              data-bar-style={s}
-              onClick={() => onChange(s)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                padding: 8,
-                borderRadius: 10,
-                cursor: "pointer",
-                textAlign: "start",
-                fontFamily: "inherit",
-                color: theme.ink,
-                background: selected ? theme.hover : "transparent",
-                border: selected
-                  ? `1.5px solid ${theme.ink}`
-                  : `1px solid ${theme.rule}`,
-                margin: selected ? 0 : 0.5,
-                transition: "background 120ms ease, border-color 120ms ease",
-              }}
-            >
-              {preview(s)}
-              <span
-                style={{ display: "flex", flexDirection: "column", gap: 2 }}
-              >
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-                  {tr(`${field}.${s}` as MsgKey)}
-                </span>
-                <span
-                  style={{ fontSize: 11, lineHeight: 1.4, color: theme.muted }}
-                >
-                  {tr(`${field}.${s}.hint` as MsgKey)}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </Field>
   );
 }
 

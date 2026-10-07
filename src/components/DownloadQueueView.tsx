@@ -27,28 +27,28 @@ import {
 } from "../store/downloadQueue";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  PHONE_TAB_TITLE,
+  type Theme,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel, phaseLabel } from "../i18n/statusLabels";
 import type { Tr } from "../i18n";
 
 interface Props {
   theme: Theme;
+  /** Desktop: a card over the library. Phone: the Downloads TAB, a page of
+   *  the home shell — no back arrow (the bottom bar moves between tabs), no
+   *  dialog semantics, no safe-area padding of its own (the shell has it),
+   *  and a title like the other tabs'. */
   layout: "desktop" | "mobile";
   onClose: () => void;
-  /** The phone's Downloads TAB: a page of the home shell rather than a sheet
-   *  over it. No back arrow (it is a tab, the bottom bar moves between
-   *  them), no dialog semantics, no safe-area padding of its own (the shell
-   *  has it), and a title like the other tabs'. */
-  asTab?: boolean;
 }
 
-export function DownloadQueueView({
-  theme,
-  layout,
-  onClose,
-  asTab = false,
-}: Props) {
+export function DownloadQueueView({ theme, layout, onClose }: Props) {
   const { tr } = useI18n();
   // Snapshot the queue once on mount and re-snapshot on every
   // emission. Job objects are mutated in place by the queue, but
@@ -92,12 +92,11 @@ export function DownloadQueueView({
     )
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
-  const isMobile = layout === "mobile";
+  const asTab = layout === "mobile";
 
   return (
-    // The scrim, centering, and enter/exit animation live in
-    // AnimatedFullScreen at the call site. On mobile it slides up
-    // full-bleed; on desktop it fade-pops a centered card.
+    // On desktop the scrim, centering, and fade-pop live in
+    // AnimatedFullScreen at the call site.
     <div
       role={asTab ? "region" : "dialog"}
       aria-modal={asTab ? undefined : "true"}
@@ -106,30 +105,18 @@ export function DownloadQueueView({
         asTab
           ? tabStyle(theme)
           : {
-              width: isMobile ? "100%" : 560,
-              maxHeight: isMobile ? "100%" : "84vh",
-              height: isMobile ? "100%" : "auto",
+              width: 560,
+              maxHeight: "84vh",
+              height: "auto",
               background: theme.bg,
               color: theme.ink,
               border: `0.5px solid ${theme.rule}`,
-              borderRadius: isMobile ? 0 : 14,
+              borderRadius: 14,
               boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
               fontFamily: FONT_STACKS.sans,
-              // Sheet sits at the top of the viewport on mobile (height 100%) —
-              // without explicit safe-area padding the header collides with
-              // the status bar on devices with a notch.
-              ...(isMobile
-                ? {
-                    paddingTop: "env(safe-area-inset-top, 0px)",
-                    paddingBottom: "env(safe-area-inset-bottom, 0px)",
-                    paddingLeft: "env(safe-area-inset-left, 0px)",
-                    paddingRight: "env(safe-area-inset-right, 0px)",
-                    boxSizing: "border-box",
-                  }
-                : null),
             }
       }
     >
@@ -148,7 +135,7 @@ export function DownloadQueueView({
           overflowY: "auto",
           padding: "8px 0 16px",
           // Clear of the phone's floating bottom bar (0 outside its shell).
-          paddingBottom: `calc(16px + var(--home-bar-inset, 0px))`,
+          paddingBottom: homeBarInset(16),
         }}
       >
         {activeCount === 0 &&
@@ -302,12 +289,15 @@ function Header({
         <h2
           id="download-queue-heading"
           style={{
-            fontFamily: FONT_SERIF_DISPLAY,
-            fontWeight: 400,
-            // The tab's title matches the Library's and the Store's.
-            fontSize: asTab ? 28 : 22,
+            ...(asTab
+              ? PHONE_TAB_TITLE
+              : {
+                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontWeight: 400,
+                  fontSize: 22,
+                  letterSpacing: "-0.01em",
+                }),
             margin: 0,
-            letterSpacing: asTab ? "-0.02em" : "-0.01em",
           }}
         >
           {tr("sidebar.downloads")}

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  type Box,
   caretOnLine,
   paragraphAt,
   pointInside,
   snapOffset,
   wordAround,
 } from "./textCaret";
+
+/** A list of boxes as paragraphAt asks for them: a count and a getter. */
+const lazy = (boxes: Box[]) => [boxes.length, (i: number) => boxes[i]] as const;
 
 // Three paragraphs as the phone lays them out: 27px lines, 19px of margin
 // between paragraphs (BookBody's 1.1em at 17px).
@@ -19,31 +23,31 @@ const PARAS = [box(100, 181), box(200, 254), box(273, 381)];
 
 describe("paragraphAt", () => {
   it("is the paragraph a point is inside", () => {
-    expect(paragraphAt(PARAS, 150)).toBe(0);
-    expect(paragraphAt(PARAS, 200)).toBe(1);
-    expect(paragraphAt(PARAS, 300)).toBe(2);
+    expect(paragraphAt(...lazy(PARAS), 150)).toBe(0);
+    expect(paragraphAt(...lazy(PARAS), 200)).toBe(1);
+    expect(paragraphAt(...lazy(PARAS), 300)).toBe(2);
   });
 
   // The bug: a finger just past a paragraph's last line resolved to the
   // NEXT paragraph's first word. Within the first half of the gap it belongs
   // to the paragraph it just left.
   it("keeps a point in the upper half of a gap with the paragraph above", () => {
-    expect(paragraphAt(PARAS, 182)).toBe(0);
-    expect(paragraphAt(PARAS, 190)).toBe(0);
+    expect(paragraphAt(...lazy(PARAS), 182)).toBe(0);
+    expect(paragraphAt(...lazy(PARAS), 190)).toBe(0);
   });
 
   it("hands the lower half of a gap to the paragraph below", () => {
-    expect(paragraphAt(PARAS, 192)).toBe(1);
-    expect(paragraphAt(PARAS, 199)).toBe(1);
+    expect(paragraphAt(...lazy(PARAS), 192)).toBe(1);
+    expect(paragraphAt(...lazy(PARAS), 199)).toBe(1);
   });
 
   it("clamps above the first and below the last", () => {
-    expect(paragraphAt(PARAS, -500)).toBe(0);
-    expect(paragraphAt(PARAS, 5000)).toBe(2);
+    expect(paragraphAt(...lazy(PARAS), -500)).toBe(0);
+    expect(paragraphAt(...lazy(PARAS), 5000)).toBe(2);
   });
 
   it("has nothing to say about no paragraphs", () => {
-    expect(paragraphAt([], 10)).toBe(-1);
+    expect(paragraphAt(...lazy([]), 10)).toBe(-1);
   });
 
   it("agrees with a linear scan across a long chapter", () => {
@@ -63,7 +67,7 @@ describe("paragraphAt", () => {
       return best;
     };
     for (let y = -50; y < 30_100; y += 7) {
-      expect(paragraphAt(many, y)).toBe(linear(y));
+      expect(paragraphAt(...lazy(many), y)).toBe(linear(y));
     }
   });
 });

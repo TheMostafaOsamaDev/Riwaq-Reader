@@ -697,6 +697,26 @@ export const Z_LOCAL = {
   page: 5,
 } as const;
 
+/** The title at the top of each phone tab — Library, Store, Downloads,
+ *  Settings — so moving between them along the bottom bar the heading stays
+ *  put. Colour and margins are the caller's. */
+export const PHONE_TAB_TITLE = {
+  fontFamily: FONT_SERIF_DISPLAY,
+  fontWeight: 400,
+  fontSize: 28,
+  letterSpacing: "-0.02em",
+} as const;
+
+/** Bottom padding that lets a page's last row scroll clear of the phone's
+ *  floating home bar: `extra` px of the page's own, plus the bar. The bar's
+ *  share is a CSS variable the phone shell sets (MobileLibrary) and nothing
+ *  else does, so on desktop this is just `extra`. */
+export function homeBarInset(extra = 0): string {
+  return extra
+    ? `calc(${extra}px + var(--home-bar-inset, 0px))`
+    : "var(--home-bar-inset, 0px)";
+}
+
 export const Z = {
   /** Focus mode's progress rail. Over the page, under the bars, so
    *  a bar sliding back in covers it rather than interleaving with it. */

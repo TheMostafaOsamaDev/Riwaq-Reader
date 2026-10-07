@@ -58,6 +58,30 @@ export function panelsInContents(style: ReaderBarStyle): ReaderPanel[] {
   return sheetPanels.some((p) => !on.includes(p)) ? sheetPanels : [];
 }
 
+/** Each panel's icon, as the reader bars draw it. */
+export const PANEL_ICON = {
+  toc: "list",
+  highlights: "highlight",
+  progress: "clock",
+  settings: "type",
+} as const;
+
+/** Short names, for buttons that carry their label. */
+export const PANEL_LABEL = {
+  toc: "reader.bar.contents",
+  highlights: "reader.bar.highlights",
+  progress: "reader.bar.progress",
+  settings: "reader.bar.text",
+} as const;
+
+/** Full names, for icon-only buttons (screen readers, long press). */
+export const PANEL_ARIA = {
+  toc: "reader.toc",
+  highlights: "reader.highlights",
+  progress: "reader.progress",
+  settings: "reader.settings",
+} as const;
+
 /** Does the home bar carry its own import button? The others put it in the
  *  header next to the title. */
 export function homeBarHasImport(style: HomeBarStyle): boolean {

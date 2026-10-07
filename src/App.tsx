@@ -1120,6 +1120,23 @@ function App() {
     [loaded],
   );
 
+  // Settings is drawn in two places — its own screen on desktop, a tab of
+  // the home shell on the phone — from the same props.
+  const settingsProps = {
+    theme,
+    themeKey,
+    t,
+    setTweak,
+    applyTweaks,
+    onClose: closeSettings,
+    onCheckUpdates: update.check,
+    updateChecking: update.checking,
+    updateResult: update.result,
+    onOpenWhatsNew: bundledNotes ? () => setWhatsNewOpen(true) : undefined,
+    android: isAndroid,
+    desktopUpdates: dropCapable,
+  };
+
   return (
     <I18nProvider locale={uiLocale}>
       <div
@@ -1268,23 +1285,7 @@ function App() {
           }
         >
           {base.screen === "settings" && !isMobile ? (
-            <SettingsPage
-              theme={theme}
-              themeKey={themeKey}
-              t={t}
-              setTweak={setTweak}
-              applyTweaks={applyTweaks}
-              layout={isMobile ? "mobile" : "desktop"}
-              onClose={closeSettings}
-              onCheckUpdates={update.check}
-              updateChecking={update.checking}
-              updateResult={update.result}
-              onOpenWhatsNew={
-                bundledNotes ? () => setWhatsNewOpen(true) : undefined
-              }
-              android={isAndroid}
-              desktopUpdates={dropCapable}
-            />
+            <SettingsPage {...settingsProps} layout="desktop" />
           ) : base.screen === "library" || base.screen === "settings" ? (
             <Library
               theme={theme}
@@ -1294,23 +1295,9 @@ function App() {
               settingsTab={
                 base.screen === "settings" ? (
                   <SettingsPage
-                    theme={theme}
-                    themeKey={themeKey}
-                    t={t}
-                    setTweak={setTweak}
-                    applyTweaks={applyTweaks}
+                    {...settingsProps}
                     layout="mobile"
-                    embedded
                     category={base.category}
-                    onClose={closeSettings}
-                    onCheckUpdates={update.check}
-                    updateChecking={update.checking}
-                    updateResult={update.result}
-                    onOpenWhatsNew={
-                      bundledNotes ? () => setWhatsNewOpen(true) : undefined
-                    }
-                    android={isAndroid}
-                    desktopUpdates={dropCapable}
                   />
                 ) : undefined
               }

@@ -81,6 +81,10 @@ export interface NavState {
    *  gesture), a step back, or an in-place replace. Lets a page transition
    *  slide the right way — deeper in from the side, back out again. */
   move: NavMove;
+  /** Bumped on every navigation. A view whose identity changes while this
+   *  stays put changed WITHOUT navigating (a library filter, a deleted
+   *  shelf) — no direction to slide in, so MobilePageSwap fades it. */
+  seq: number;
 }
 
 export type NavMove = "push" | "pop" | "replace" | "none";
@@ -101,6 +105,7 @@ let snapshot: NavSnapshot = ROOT;
 let index = 0;
 let entries: NavSnapshot[] = [];
 let move: NavMove = "none";
+let seq = 0;
 let state: NavState = compute();
 const listeners = new Set<() => void>();
 
@@ -116,10 +121,11 @@ function isStamped(s: unknown): s is StampedState {
 }
 
 function compute(): NavState {
-  return { snapshot, move };
+  return { snapshot, move, seq };
 }
 
 function commit(): void {
+  seq += 1;
   state = compute();
   for (const l of listeners) l();
 }

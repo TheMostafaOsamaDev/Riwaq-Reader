@@ -28,6 +28,7 @@
  *     simply arrives instead of teleporting.
  */
 
+import { isReducedMotion } from "../../styles/motion";
 import { wheelDeltaToPixels } from "./turnGate";
 
 /** Time constant of the exponential approach, in ms. */
@@ -57,11 +58,12 @@ export function attachSmoothWheel(
   options: {
     /** Which device sent this event. Injected for the tests. */
     isMouse?: () => boolean;
+    /** Read per event; defaults to the app's reduced-motion setting. */
     reducedMotion?: () => boolean;
   } = {},
 ): () => void {
   const isMouse = options.isMouse ?? wheelIsMouse;
-  const reducedMotion = options.reducedMotion ?? (() => false);
+  const reducedMotion = options.reducedMotion ?? isReducedMotion;
 
   /** Unrounded position being driven, and where it is heading. */
   let pos = 0;

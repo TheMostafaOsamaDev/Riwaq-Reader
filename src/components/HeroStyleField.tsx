@@ -6,12 +6,10 @@
 // only job is to tell the four apart at a glance.
 
 import type { CSSProperties, ReactNode } from "react";
-import { Field } from "./SettingsSection";
+import { StylePicker } from "./StylePicker";
 import { HERO_STYLES } from "./library/heroModel";
 import { ACCENT, type Theme } from "../styles/tokens";
 import type { HeroStyle } from "../types/reader";
-import type { MsgKey } from "../i18n";
-import { useI18n } from "../i18n/useI18n";
 
 export function HeroStyleField({
   theme,
@@ -22,73 +20,15 @@ export function HeroStyleField({
   value: HeroStyle;
   onChange: (v: HeroStyle) => void;
 }) {
-  const { tr } = useI18n();
   return (
-    <Field label={tr("settings.heroStyle")} theme={theme}>
-      <p
-        style={{
-          margin: "-4px 0 10px",
-          fontSize: 11.5,
-          lineHeight: 1.5,
-          color: theme.muted,
-        }}
-      >
-        {tr("settings.heroStyle.hint")}
-      </p>
-      <div
-        style={{
-          display: "grid",
-          // Two across on a phone, four across on a wide pane.
-          gridTemplateColumns: "repeat(auto-fill, minmax(132px, 1fr))",
-          gap: 8,
-        }}
-      >
-        {HERO_STYLES.map((s) => {
-          const selected = value === s;
-          return (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(s)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                padding: 8,
-                borderRadius: 10,
-                cursor: "pointer",
-                textAlign: "start",
-                fontFamily: "inherit",
-                color: theme.ink,
-                background: selected ? theme.hover : "transparent",
-                // Width stays fixed across states (1.5 vs 1 + 0.5 padding)
-                // so picking a card does not nudge its neighbours.
-                border: selected
-                  ? `1.5px solid ${theme.ink}`
-                  : `1px solid ${theme.rule}`,
-                margin: selected ? 0 : 0.5,
-                transition: "background 120ms ease, border-color 120ms ease",
-              }}
-            >
-              <Preview style={s} theme={theme} />
-              <span
-                style={{ display: "flex", flexDirection: "column", gap: 2 }}
-              >
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-                  {tr(`settings.heroStyle.${s}` as MsgKey)}
-                </span>
-                <span
-                  style={{ fontSize: 11, lineHeight: 1.4, color: theme.muted }}
-                >
-                  {tr(`settings.heroStyle.${s}.hint` as MsgKey)}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </Field>
+    <StylePicker
+      theme={theme}
+      field="settings.heroStyle"
+      styles={HERO_STYLES}
+      value={value}
+      onChange={onChange}
+      preview={(s) => <Preview style={s} theme={theme} />}
+    />
   );
 }
 

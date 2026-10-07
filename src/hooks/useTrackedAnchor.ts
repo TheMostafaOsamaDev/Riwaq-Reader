@@ -95,7 +95,7 @@ export function useTrackedAnchor({
 
   /** Commit a placement, skipping the re-render when nothing moved.
    *
-   *  Both effects below end this way, and the equality check has to
+   *  Every placement path ends this way, and the equality check has to
    *  stay identical between them: a scroll frame that re-places to the
    *  same pixel must not re-render the toolbar.
    *
@@ -113,6 +113,18 @@ export function useTrackedAnchor({
         : { ...next, ease },
     );
   };
+
+  /** Where the toolbar goes for `anchor`, from the latest size and bounds. */
+  const placeFor = (anchor: AnchorBox) =>
+    placePopover({
+      anchor,
+      size: sizeRef.current,
+      bounds: boundsNow(),
+      placement,
+      margin: MARGIN,
+      gap: gapRef.current,
+      lockedSide: sideRef.current,
+    });
 
   const boundsNow = (): PlacementInput["bounds"] => ({
     top: insetsRef.current.top,
@@ -168,15 +180,7 @@ export function useTrackedAnchor({
         );
         return;
       }
-      const next = placePopover({
-        anchor,
-        size: sizeRef.current,
-        bounds: boundsNow(),
-        placement,
-        margin: MARGIN,
-        gap: gapRef.current,
-        lockedSide: sideRef.current,
-      });
+      const next = placeFor(anchor);
       const ease = easeNext;
       easeNext = false;
       commit(next, ease);
@@ -243,44 +247,16 @@ export function useTrackedAnchor({
   // by the listeners above, the toolbar stayed against the single word the
   // long-press began on while the selection grew three lines past it, and
   // opened over the very text it was about. So it re-places after every
-  // render; an unchanged position commits nothing, so this cannot loop.
+  // render — which also covers the toolbar changing size (the note editor
+  // opening), a render of its own. An unchanged position commits nothing,
+  // so this cannot loop. Never eased: the surface changing shape around a
+  // fixed anchor must not appear to drift.
   useLayoutEffect(() => {
     if (sizeRef.current.width === 0 || sizeRef.current.height === 0) return;
     const anchor = getAnchorRef.current();
     if (!anchor) return;
-    commit(
-      placePopover({
-        anchor,
-        size: sizeRef.current,
-        bounds: boundsNow(),
-        placement,
-        margin: MARGIN,
-        gap: gapRef.current,
-        lockedSide: sideRef.current,
-      }),
-      false,
-    );
+    commit(placeFor(anchor), false);
   });
-
-  // Re-place when our own size changes, without re-subscribing above.
-  useLayoutEffect(() => {
-    if (size.width === 0 || size.height === 0) return;
-    const anchor = getAnchorRef.current();
-    if (!anchor) return;
-    const next = placePopover({
-      anchor,
-      size,
-      bounds: boundsNow(),
-      placement,
-      margin: MARGIN,
-      gap: gapRef.current,
-      lockedSide: sideRef.current,
-    });
-    // The toolbar growing (the note editor opening) re-places it, but
-    // that is the surface changing shape around a fixed anchor, not the
-    // anchor moving — easing it would make the panel appear to drift.
-    commit(next, false);
-  }, [size, placement]);
 
   // Until the first placement lands, the toolbar has no honest position
   // to be drawn at — it has not been measured, so it does not yet know

@@ -84,7 +84,7 @@ import {
 } from "../reader/chrome/dockContents";
 import { useI18n } from "../i18n/useI18n";
 import { formatNum } from "../i18n";
-import { isReducedMotion, useReducedMotion } from "../styles/motion";
+import { useReducedMotion } from "../styles/motion";
 import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
@@ -507,7 +507,7 @@ export function DesktopReader({
     if (mode !== "scroll") return;
     const el = scrollRef.current;
     if (!el) return;
-    return attachSmoothWheel(el, { reducedMotion: isReducedMotion });
+    return attachSmoothWheel(el);
   }, [mode]);
 
   // Imperative handle on the paginated view so the keyboard handler and

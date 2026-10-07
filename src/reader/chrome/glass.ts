@@ -54,6 +54,23 @@ export function glassBar(theme: Theme, edge: GlassEdge): GlassBar {
   };
 }
 
+/** The glass for a control that floats on its own rather than spanning an
+ *  edge — the phone reader's capsule and corner buttons, the home dock. The
+ *  same frost as the bars, with a hairline all round and a soft shadow,
+ *  since nothing else marks where it ends. `fill` overrides the frost's
+ *  colour (the home bar frosts more heavily, see homeBarGlass). */
+export function glassPill(theme: Theme, fill?: string): GlassBar {
+  return {
+    className: GLASS_CLASS,
+    style: {
+      background: fill ?? theme.chromeGlass,
+      "--riwaq-chrome-opaque": theme.chrome,
+      border: `0.5px solid ${theme.ruleStrong}`,
+      boxShadow: "0 8px 22px rgba(0,0,0,0.14)",
+    },
+  };
+}
+
 /** How much of the home bar's own colour sits over the blur. The reader's
  *  bars use the themes' `chromeGlass`, about half, which suits a bar laid
  *  over flat text. Over the library's covers — large blocks of saturated

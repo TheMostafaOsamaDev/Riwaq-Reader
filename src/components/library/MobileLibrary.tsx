@@ -9,7 +9,13 @@ import { MobilePageSwap } from "../MobilePageSwap";
 import { DownloadQueueView } from "../DownloadQueueView";
 import { back, goStorePage, useNav } from "../../store/navigation";
 import { booksOnShelf } from "../../store/shelfLogic";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, Z } from "../../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  PHONE_TAB_TITLE,
+  Z,
+} from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { BackHeader } from "./BackHeader";
 import { EmptyState, FilteredEmptyState } from "./EmptyState";
@@ -18,6 +24,7 @@ import {
   HOME_BAR_HEIGHT,
   MobileBottomNav,
   NavFabButton,
+  type NavKey,
 } from "./MobileBottomNav";
 import { glassBar, homeBarGlass } from "../../reader/chrome/glass";
 import {
@@ -123,36 +130,28 @@ export function MobileLibrary({
     return () => window.clearTimeout(t);
   }, []);
 
-  // Which page the body shows, and which tab it belongs to.
+  // Which page the body shows, and which tab it belongs to — the tab the
+  // bottom bar marks as current.
   const nav = useNav();
-  const pageKey = settingsTab
-    ? `settings:${nav.snapshot.base.screen === "settings" ? (nav.snapshot.base.category ?? "") : ""}`
+  const [pageKey, pageGroup]: [string, NavKey] = settingsTab
+    ? [
+        `settings:${nav.snapshot.base.screen === "settings" ? (nav.snapshot.base.category ?? "") : ""}`,
+        "settings",
+      ]
     : downloadsTab
-      ? "downloads"
+      ? ["downloads", "downloads"]
       : activeShelf
-        ? `shelf:${activeShelf.id}`
+        ? [`shelf:${activeShelf.id}`, "library"]
         : shelvesActive
-          ? "shelves"
+          ? ["shelves", "library"]
           : sourceDetailView
-            ? `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`
+            ? [
+                `novel:${sourceDetailView.libraryEntryId ?? sourceDetailView.novelUrl}`,
+                "library",
+              ]
             : tab === "store"
-              ? "store"
-              : `tab:${tab}`;
-  const pageGroup = settingsTab
-    ? "settings"
-    : downloadsTab
-      ? "downloads"
-      : tab === "store" && !activeShelf && !shelvesActive && !sourceDetailView
-        ? "store"
-        : "library";
-  /** The tab the bottom bar marks as current. */
-  const currentTab = settingsTab
-    ? "settings"
-    : downloadsTab
-      ? "downloads"
-      : pageGroup === "store"
-        ? "store"
-        : "library";
+              ? ["store", "store"]
+              : [`tab:${tab}`, "library"];
 
   return (
     <div
@@ -198,7 +197,7 @@ export function MobileLibrary({
         group={pageGroup}
         move={nav.move}
         rtl={dir === "rtl"}
-        fade={(from, to) => from.startsWith("tab:") && to.startsWith("tab:")}
+        seq={nav.seq}
         background={theme.bg}
       >
         {settingsTab ? (
@@ -207,7 +206,6 @@ export function MobileLibrary({
           <DownloadQueueView
             theme={theme}
             layout="mobile"
-            asTab
             onClose={() => back()}
           />
         ) : shelvesActive ? (
@@ -326,7 +324,7 @@ export function MobileLibrary({
                 flex: 1,
                 overflowY: "auto",
                 padding: "16px 22px 40px",
-                paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
+                paddingBottom: homeBarInset(40),
               }}
             >
               <div
@@ -452,13 +450,10 @@ export function MobileLibrary({
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <h1
                   style={{
+                    ...PHONE_TAB_TITLE,
                     flex: 1,
                     minWidth: 0,
-                    fontFamily: FONT_SERIF_DISPLAY,
-                    fontWeight: 400,
-                    fontSize: 28,
                     margin: 0,
-                    letterSpacing: "-0.02em",
                     color: theme.ink,
                   }}
                 >
@@ -502,7 +497,7 @@ export function MobileLibrary({
                 overflowY: "auto",
                 padding: "16px 22px 40px",
                 // Room to scroll the last row up clear of the floating bar.
-                paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
+                paddingBottom: homeBarInset(40),
               }}
             >
               {error && <ErrorBanner theme={theme} message={error} />}
@@ -675,7 +670,7 @@ export function MobileLibrary({
             onImport={onImport}
             onOpenSettings={onOpenSettings}
             style={homeBar}
-            current={currentTab}
+            current={pageGroup}
             onGoLibrary={onGoLibrary}
           />
         </div>

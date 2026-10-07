@@ -21,6 +21,7 @@ import type {
 import {
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
+  homeBarInset,
   type Theme,
   Z_LOCAL,
 } from "../styles/tokens";
@@ -229,7 +230,7 @@ export function SourceHomeView({
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
         // Clear of the phone's floating bottom bar (0 outside its shell).
-        paddingBottom: "var(--home-bar-inset, 0px)",
+        paddingBottom: homeBarInset(),
       }}
     >
       <HomeHeader

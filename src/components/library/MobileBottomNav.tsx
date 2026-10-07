@@ -19,8 +19,11 @@ import { flowInput, useAndroidUpdateSelect } from "../../store/androidUpdate";
 import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
 import type { HomeBarStyle } from "../../types/reader";
-import { useSlidingIndicator } from "../../hooks/useSlidingIndicator";
-import { GLASS_CLASS, homeBarGlass } from "../../reader/chrome/glass";
+import {
+  indicatorBaseStyle,
+  useSlidingIndicator,
+} from "../../hooks/useSlidingIndicator";
+import { glassPill, homeBarGlass } from "../../reader/chrome/glass";
 import { useReducedMotion } from "../../styles/motion";
 import { ACCENT, Z_LOCAL } from "../../styles/tokens";
 
@@ -36,13 +39,11 @@ export interface MobileBottomNavProps {
   onOpenSettings: () => void;
   /** Which bar to draw (Settings ▸ Appearance). Classic when omitted. */
   style?: HomeBarStyle;
-  /** Back to the library shelf, from the Store or Shelves. The styles that
-   *  have a Library tab use it; classic toggles the Store instead. */
-  onGoLibrary?: () => void;
-  /** The tab on screen, when the caller knows it — the phone shell does,
-   *  and Downloads and Settings are tabs there. Without it the bar works it
-   *  out from `tab` and `shelvesActive`, as before. */
-  current?: "library" | "store" | "downloads" | "settings";
+  /** The Library tab: the whole library, from any other tab. */
+  onGoLibrary: () => void;
+  /** The tab on screen. Downloads and Settings are tabs of the phone shell
+   *  too, so this cannot be worked out from `tab` alone. */
+  current: NavKey;
 }
 
 /** Every style is exactly this tall. The update pill and its toasts float a
@@ -108,7 +109,7 @@ function ClassicNav({
         theme={theme}
         icon="layers"
         ariaLabel={tr("shelves.title")}
-        active={shelvesActive && (!current || current === "library")}
+        active={shelvesActive && current === "library"}
         onClick={onOpenShelves}
       />
       <NavIconButton
@@ -119,7 +120,7 @@ function ClassicNav({
             ? tr("library.backToLibrary")
             : tr("library.openStore")
         }
-        active={current ? current === "store" : tab === "store"}
+        active={current === "store"}
         onClick={onSetStore}
       />
       <NavFabButton theme={theme} importing={importing} onClick={onImport} />
@@ -168,14 +169,7 @@ export function NavIconButton({
   showUpdateDot,
   onClick,
 }: NavIconButtonProps) {
-  const [activeCount, setActiveCount] = useState(() =>
-    activeJobCount(getQueueState()),
-  );
-  useEffect(() => {
-    if (!showQueueBadge) return;
-    const off = subscribeToQueue((s) => setActiveCount(activeJobCount(s)));
-    return off;
-  }, [showQueueBadge]);
+  const activeCount = useQueuedCount(!!showQueueBadge);
   const showBadge = !!showQueueBadge && activeCount > 0;
   const reduced = useReducedMotion();
   return (
@@ -360,7 +354,14 @@ export function activeJobCount(s: { jobs: { status: string }[] }): number {
 // is the same NavFabButton, wherever it sits). The styles without an import
 // button here put it in the header instead — see MobileLibrary.
 
-type NavKey = "library" | "store" | "downloads" | "settings";
+export type NavKey = "library" | "store" | "downloads" | "settings";
+/** The four destinations, in bar order. */
+const NAV_KEYS: readonly NavKey[] = [
+  "library",
+  "store",
+  "downloads",
+  "settings",
+];
 const NAV_ICON = {
   library: "book",
   store: "globe",
@@ -374,34 +375,32 @@ const NAV_LABEL = {
   settings: "sidebar.settings",
 } as const;
 
+type HomeBarNav = ReturnType<typeof useHomeBarNav>;
+
+/** How many downloads want attention, kept current. `enabled` false skips
+ *  the subscription (a button that shows no count). */
+function useQueuedCount(enabled = true): number {
+  const [n, setN] = useState(() => activeJobCount(getQueueState()));
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeToQueue((s) => setN(activeJobCount(s)));
+  }, [enabled]);
+  return n;
+}
+
 /** What the bar needs to know and do, the same for every style. */
-function useNav(p: MobileBottomNavProps) {
-  const storeActive = p.current ? p.current === "store" : p.tab === "store";
-  const libraryActive = p.current
-    ? p.current === "library"
-    : !storeActive && !p.shelvesActive;
-  const downloadsActive = p.current === "downloads";
-  const settingsActive = p.current === "settings";
+function useHomeBarNav(p: MobileBottomNavProps) {
   const updateDot = useAndroidUpdateSelect((s) => attentionDot(flowInput(s)));
-  const [queued, setQueued] = useState(() => activeJobCount(getQueueState()));
-  useEffect(() => subscribeToQueue((s) => setQueued(activeJobCount(s))), []);
+  const queued = useQueuedCount();
+  const isActive = (k: NavKey) => p.current === k;
   const act = (k: NavKey) => {
-    if (k === "library") {
-      if (p.onGoLibrary) p.onGoLibrary();
-      else if (storeActive) p.onSetStore();
-    } else if (k === "store") {
-      if (!storeActive) p.onSetStore();
+    if (k === "library") p.onGoLibrary();
+    // Not the classic globe's toggle: tapping the tab you are on stays.
+    else if (k === "store") {
+      if (p.current !== "store") p.onSetStore();
     } else if (k === "downloads") p.onOpenQueue();
     else p.onOpenSettings();
   };
-  const isActive = (k: NavKey) =>
-    k === "library"
-      ? libraryActive
-      : k === "store"
-        ? storeActive
-        : k === "downloads"
-          ? downloadsActive
-          : settingsActive;
   const { tr } = useI18n();
   /** The button's accessible name; Settings says when an update waits. */
   const aria = (k: NavKey) =>
@@ -414,13 +413,13 @@ function useNav(p: MobileBottomNavProps) {
 /** Every style's frame. Transparent: the bar floats over the page on the
  *  phone shell's frosted glass (MobileLibrary), which also draws the top
  *  hairline, the same glass as the reader's bars. */
-const barBase = (_theme: Theme): CSSProperties => ({
+const BAR_BASE: CSSProperties = {
   flexShrink: 0,
   position: "relative",
   height: HOME_BAR_HEIGHT,
   boxSizing: "border-box",
   background: "transparent",
-});
+};
 
 /** The downloads count, or the update dot, pinned to an icon's corner. */
 function Marks({
@@ -490,7 +489,7 @@ function NavGlyph({
 }: {
   theme: Theme;
   k: NavKey;
-  nav: ReturnType<typeof useNav>;
+  nav: HomeBarNav;
   size?: number;
 }) {
   return (
@@ -507,9 +506,8 @@ function NavGlyph({
 }
 
 /** Which item the sliding indicator sits under. */
-function activeKey(nav: ReturnType<typeof useNav>): NavKey | null {
-  const keys: NavKey[] = ["library", "store", "downloads", "settings"];
-  return keys.find((k) => nav.isActive(k)) ?? null;
+function activeKey(nav: HomeBarNav): NavKey | null {
+  return NAV_KEYS.find((k) => nav.isActive(k)) ?? null;
 }
 
 /** The travelling indicator: under the items, never in the way of a tap.
@@ -518,24 +516,14 @@ function Indicator({
   slide,
   style,
 }: {
-  slide: ReturnType<typeof useSlidingIndicator<NavKey>>;
+  slide: { indicatorRef: Ref<HTMLDivElement> };
   style: CSSProperties;
 }) {
   return (
     <div
       ref={slide.indicatorRef}
       aria-hidden
-      style={{
-        position: "absolute",
-        left: 0,
-        top: 0,
-        width: 0,
-        height: 0,
-        opacity: 0,
-        pointerEvents: "none",
-        zIndex: Z_LOCAL.under,
-        ...style,
-      }}
+      style={{ ...indicatorBaseStyle, zIndex: Z_LOCAL.under, ...style }}
     />
   );
 }
@@ -544,7 +532,7 @@ function Indicator({
  *  same 200ms the filter pills use. */
 const inkTransition = "color 200ms ease";
 /** Material's emphasized-decelerate: fast out of the gate, gentle landing. */
-const EMPHASIZED = "cubic-bezier(0.05, 0.7, 0.1, 1)";
+const EMPHASIZED_DECEL = "cubic-bezier(0.05, 0.7, 0.1, 1)";
 
 // Each style moves its selection its own way:
 //   classic   — the circle pops (NavIconButton)
@@ -559,21 +547,20 @@ const EMPHASIZED = "cubic-bezier(0.05, 0.7, 0.1, 1)";
  *  Import lives in the header. */
 function LabelledNav(p: MobileBottomNavProps) {
   const { theme } = p;
-  const nav = useNav(p);
+  const nav = useHomeBarNav(p);
   const reduced = useReducedMotion();
-  const keys: NavKey[] = ["library", "store", "downloads", "settings"];
   return (
     <nav
       data-home-bar="labelled"
       style={{
-        ...barBase(theme),
+        ...BAR_BASE,
         display: "grid",
         gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
         alignItems: "center",
         padding: "0 6px",
       }}
     >
-      {keys.map((k) => (
+      {NAV_KEYS.map((k) => (
         <TabWithLabel key={k} k={k} nav={nav} theme={theme}>
           <span
             aria-hidden
@@ -587,7 +574,7 @@ function LabelledNav(p: MobileBottomNavProps) {
               opacity: nav.isActive(k) ? 1 : 0,
               transition: reduced
                 ? "none"
-                : `transform 300ms ${EMPHASIZED}, opacity 160ms ease`,
+                : `transform 300ms ${EMPHASIZED_DECEL}, opacity 160ms ease`,
             }}
           />
         </TabWithLabel>
@@ -611,7 +598,7 @@ function TabWithLabel({
   labelRef,
 }: {
   k: NavKey;
-  nav: ReturnType<typeof useNav>;
+  nav: HomeBarNav;
   theme: Theme;
   children?: ReactNode;
   lift?: boolean;
@@ -660,7 +647,9 @@ function TabWithLabel({
             position: "relative",
             display: "inline-flex",
             transform: lift && on ? "translateY(-3px)" : "none",
-            transition: reduced ? "none" : `transform 280ms ${EMPHASIZED}`,
+            transition: reduced
+              ? "none"
+              : `transform 280ms ${EMPHASIZED_DECEL}`,
           }}
         >
           <NavGlyph theme={theme} k={k} nav={nav} />
@@ -694,14 +683,17 @@ const DOCK_INSET = (DOCK_H - DOCK_ITEM) / 2;
  *  old. */
 function DockNav(p: MobileBottomNavProps) {
   const { theme } = p;
-  const nav = useNav(p);
-  const slide = useSlidingIndicator<NavKey>(activeKey(nav), "stretch");
-  const keys: NavKey[] = ["library", "store", "downloads", "settings"];
+  const nav = useHomeBarNav(p);
+  const slide = useSlidingIndicator<NavKey, HTMLDivElement>(
+    activeKey(nav),
+    "stretch",
+  );
+  const dockGlass = glassPill(theme, homeBarGlass(theme));
   return (
     <nav
       data-home-bar="dock"
       style={{
-        ...barBase(theme),
+        ...BAR_BASE,
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -709,7 +701,7 @@ function DockNav(p: MobileBottomNavProps) {
       }}
     >
       <div
-        ref={slide.containerRef as Ref<HTMLDivElement>}
+        ref={slide.containerRef}
         style={{
           position: "relative",
           flex: 1,
@@ -726,18 +718,15 @@ function DockNav(p: MobileBottomNavProps) {
           borderRadius: DOCK_H / 2,
           // The dock's own frosted glass: the strip around it is clear, so
           // the books show on either side and blur through the pill.
-          background: homeBarGlass(theme),
-          ["--riwaq-chrome-opaque" as string]: theme.chrome,
-          border: `0.5px solid ${theme.ruleStrong}`,
-          boxShadow: "0 8px 22px rgba(0,0,0,0.12)",
+          ...dockGlass.style,
         }}
-        className={GLASS_CLASS}
+        className={dockGlass.className}
       >
         <Indicator
           slide={slide}
           style={{ borderRadius: DOCK_ITEM / 2, background: theme.ink }}
         />
-        {keys.map((k) => {
+        {NAV_KEYS.map((k) => {
           const on = nav.isActive(k);
           return (
             <button
@@ -786,7 +775,7 @@ function DockNav(p: MobileBottomNavProps) {
 function RaisedNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const { tr } = useI18n();
-  const nav = useNav(p);
+  const nav = useHomeBarNav(p);
   const slide = useSlidingIndicator<NavKey>(activeKey(nav));
   const tab = (k: NavKey) => (
     <TabWithLabel k={k} nav={nav} theme={theme} lift>
@@ -811,7 +800,7 @@ function RaisedNav(p: MobileBottomNavProps) {
       ref={slide.containerRef}
       data-home-bar="raised"
       style={{
-        ...barBase(theme),
+        ...BAR_BASE,
         display: "grid",
         gridTemplateColumns: "1fr 1fr 72px 1fr 1fr",
         alignItems: "center",
@@ -875,8 +864,11 @@ function RaisedNav(p: MobileBottomNavProps) {
 function SwitchNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const { tr } = useI18n();
-  const nav = useNav(p);
-  const slide = useSlidingIndicator<NavKey>(activeKey(nav), "spring");
+  const nav = useHomeBarNav(p);
+  const slide = useSlidingIndicator<NavKey, HTMLDivElement>(
+    activeKey(nav),
+    "spring",
+  );
   const side = (k: NavKey) => (
     <button
       type="button"
@@ -903,7 +895,7 @@ function SwitchNav(p: MobileBottomNavProps) {
     <nav
       data-home-bar="switch"
       style={{
-        ...barBase(theme),
+        ...BAR_BASE,
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -912,7 +904,7 @@ function SwitchNav(p: MobileBottomNavProps) {
     >
       {side("downloads")}
       <div
-        ref={slide.containerRef as Ref<HTMLDivElement>}
+        ref={slide.containerRef}
         style={{
           position: "relative",
           flex: 1,
@@ -994,28 +986,27 @@ const EXPAND_LABEL_MAX = 110;
 function ExpandingNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const { tr } = useI18n();
-  const nav = useNav(p);
+  const nav = useHomeBarNav(p);
   const reduced = useReducedMotion();
-  const keys: NavKey[] = ["library", "store", "downloads", "settings"];
   const t = (props: string, ms: number) =>
     reduced
       ? "none"
       : props
           .split(",")
-          .map((x) => `${x.trim()} ${ms}ms ${EMPHASIZED}`)
+          .map((x) => `${x.trim()} ${ms}ms ${EMPHASIZED_DECEL}`)
           .join(", ");
   return (
     <nav
       data-home-bar="expanding"
       style={{
-        ...barBase(theme),
+        ...BAR_BASE,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         padding: "0 12px",
       }}
     >
-      {keys.map((k) => {
+      {NAV_KEYS.map((k) => {
         const on = nav.isActive(k);
         return (
           <button

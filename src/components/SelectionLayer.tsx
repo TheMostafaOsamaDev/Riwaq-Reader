@@ -16,7 +16,7 @@ const TINT = "rgba(120, 180, 220, 0.32)";
 const HANDLE_COLOR = "rgba(110, 200, 220, 0.95)";
 const BAR_WIDTH = 2;
 /** The visible dot. */
-export const HANDLE_DOT = 16;
+const HANDLE_DOT = 16;
 /** The touch target around it. 44px is the platform minimum; the dot itself
  *  is far too small to find with a thumb. */
 const HANDLE_HIT = 44;

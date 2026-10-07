@@ -49,8 +49,9 @@ import { buildBundle, bundleFileName } from "../lib/diagnostics/bundle";
 import { flushSession, listSessions } from "../lib/diagnostics/store";
 import { useReducedMotion } from "../styles/motion";
 import {
-  FONT_SERIF_DISPLAY,
   FONT_STACKS,
+  homeBarInset,
+  PHONE_TAB_TITLE,
   type Theme,
   type ThemeKey,
   Z,
@@ -93,11 +94,10 @@ interface Props {
   android?: boolean;
   /** Desktop: Settings → About shows the desktop update card. */
   desktopUpdates?: boolean;
-  /** Phone: drawn as the Settings TAB of the home shell, under its bottom
-   *  bar. The list has a tab title and no back arrow; a section is a
-   *  history entry (`category`), with a back arrow to the list. */
-  embedded?: boolean;
-  /** The open section, from the navigation history (embedded only). */
+  /** Phone: the open section, from the navigation history. The phone draws
+   *  Settings as a tab of the home shell, under its bottom bar: the list has
+   *  a tab title and no back arrow, and a section is a history entry with a
+   *  back arrow to the list. */
   category?: string;
 }
 
@@ -115,7 +115,6 @@ export function SettingsPage({
   onOpenWhatsNew,
   android = false,
   desktopUpdates = false,
-  embedded = false,
   category,
 }: Props) {
   const { tr, locale } = useI18n();
@@ -124,22 +123,20 @@ export function SettingsPage({
   const reduced = useReducedMotion();
   const slideFrom = isAr ? "-10px" : "10px";
 
-  // null = the mobile category list (level 0). Desktop always shows a category.
-  const [ownCategory, setOwnCategory] = useState<CategoryKey | null>(
-    isMobile ? null : "appearance",
-  );
-  // Embedded in the phone's home shell, the open section lives in the
-  // navigation history instead, so the back gesture steps from a section to
-  // the list (and the shell can slide between them) rather than leaving
-  // Settings. Desktop, and the stand-alone phone page, keep their own state.
+  // Desktop always shows a category, kept here. On the phone the open
+  // section lives in the navigation history instead (null = the category
+  // list), so the back gesture steps from a section to the list — and the
+  // home shell slides between them — rather than leaving Settings.
+  const [ownCategory, setOwnCategory] = useState<CategoryKey>("appearance");
   const navCategory: CategoryKey | null =
     category && (CATEGORY_ORDER as readonly string[]).includes(category)
       ? (category as CategoryKey)
       : null;
-  const activeCategory = embedded && isMobile ? navCategory : ownCategory;
+  const activeCategory = isMobile ? navCategory : ownCategory;
   const setActiveCategory = (c: CategoryKey | null) => {
-    if (!(embedded && isMobile)) setOwnCategory(c);
-    else if (c === null) back();
+    if (!isMobile) {
+      if (c !== null) setOwnCategory(c);
+    } else if (c === null) back();
     else goSettingsCategory(c);
   };
   const [query, setQuery] = useState("");
@@ -899,8 +896,8 @@ export function SettingsPage({
   if (isMobile) {
     const inCategory = activeCategory !== null;
     return (
-      <Shell theme={theme} isMobile isAr={isAr} embedded={embedded}>
-        {embedded && !inCategory ? (
+      <Shell theme={theme} isAr={isAr}>
+        {!inCategory ? (
           // The tab's root: a title like the Library's and the Store's, and
           // no back arrow — the bottom bar is how you leave a tab.
           <div
@@ -912,11 +909,8 @@ export function SettingsPage({
           >
             <h1
               style={{
-                fontFamily: FONT_SERIF_DISPLAY,
-                fontWeight: 400,
-                fontSize: 28,
+                ...PHONE_TAB_TITLE,
                 margin: 0,
-                letterSpacing: "-0.02em",
                 color: theme.ink,
               }}
             >
@@ -927,12 +921,8 @@ export function SettingsPage({
           <Header
             theme={theme}
             isAr={isAr}
-            title={
-              inCategory
-                ? tr(CATEGORY_META[activeCategory].labelKey)
-                : tr("sidebar.settings")
-            }
-            onBack={inCategory ? () => setActiveCategory(null) : onClose}
+            title={tr(CATEGORY_META[activeCategory].labelKey)}
+            onBack={() => setActiveCategory(null)}
           />
         )}
         <div
@@ -941,21 +931,15 @@ export function SettingsPage({
             flex: 1,
             minHeight: 0,
             overflowY: "auto",
-            // Clear of the phone shell's floating bottom bar when embedded.
-            paddingBottom: "var(--home-bar-inset, 0px)",
+            // Clear of the phone shell's floating bottom bar.
+            paddingBottom: homeBarInset(),
           }}
         >
           <div style={{ padding: "16px 14px 48px" }}>
             {inCategory ? (
-              <div
-                key={activeCategory}
-                // Embedded, the shell slides the whole page in; this would
-                // be a second, smaller slide inside it.
-                className={
-                  reduced || embedded ? undefined : "riwaq-settings-slide-in"
-                }
-                style={embedded ? undefined : slideStyle}
-              >
+              // No slide of its own: the shell slides the whole page in, and
+              // this would be a second, smaller slide inside it.
+              <div key={activeCategory}>
                 {card(renderEntries(entriesByCat[activeCategory]))}
               </div>
             ) : (
@@ -1154,20 +1138,15 @@ export function SettingsPage({
   }
 }
 
-/** Full-viewport settings shell (theme + RTL + safe-area on mobile). */
+/** Full-viewport settings shell (theme + RTL). On the phone it sits inside
+ *  the home shell, which already keeps clear of the system bars. */
 function Shell({
   theme,
-  isMobile = false,
   isAr,
-  embedded = false,
   children,
 }: {
   theme: Theme;
-  isMobile?: boolean;
   isAr: boolean;
-  /** Inside the phone's home shell, which already keeps clear of the
-   *  system bars: no safe-area padding of its own. */
-  embedded?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -1182,15 +1161,6 @@ function Shell({
         flexDirection: "column",
         overflow: "hidden",
         fontFamily: FONT_STACKS.sans,
-        ...(isMobile && !embedded
-          ? {
-              paddingTop: "env(safe-area-inset-top, 0px)",
-              paddingBottom: "env(safe-area-inset-bottom, 0px)",
-              paddingLeft: "env(safe-area-inset-left, 0px)",
-              paddingRight: "env(safe-area-inset-right, 0px)",
-              boxSizing: "border-box",
-            }
-          : null),
       }}
     >
       {children}

@@ -638,15 +638,14 @@ export function SourceStreamReader({
   // moment after loading ends so each fades out over the page instead of
   // vanishing — see LoadingRing.
   const paneLoading = !loadError && (!book || !novel);
-  const chapterLoading =
-    !!book &&
-    !!novel &&
-    chapterOverlay(
-      currentChapter,
-      book.chapters[currentChapter]?.paragraphs.length ?? 0,
-      inFlight,
-      chapterErrors,
-    ).kind === "loading";
+  const currentItems = book?.chapters[currentChapter]?.paragraphs ?? [];
+  const overlay = chapterOverlay(
+    currentChapter,
+    currentItems.length,
+    inFlight,
+    chapterErrors,
+  );
+  const chapterLoading = !!book && !!novel && overlay.kind === "loading";
   const paneRing = usePresence(paneLoading);
   const chapterRing = usePresence(chapterLoading);
   const paneLabel =
@@ -693,14 +692,6 @@ export function SourceStreamReader({
     paragraphIndex,
     highlights,
   };
-
-  const currentItems = book.chapters[currentChapter]?.paragraphs ?? [];
-  const overlay = chapterOverlay(
-    currentChapter,
-    currentItems.length,
-    inFlight,
-    chapterErrors,
-  );
 
   return (
     <>

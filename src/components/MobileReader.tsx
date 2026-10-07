@@ -65,12 +65,7 @@ import {
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import { type EpubBook, isImageItem } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
-import {
-  EASE,
-  isReducedMotion,
-  MOTION,
-  useReducedMotion,
-} from "../styles/motion";
+import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import {
   FONT_STACKS,
   isRtlLanguage,
@@ -87,6 +82,7 @@ import {
   rectForMark,
   rectForSegments,
   type SelectionAnchor,
+  sameAnchor,
 } from "../lib/selectionAnchor";
 import { copySelection } from "../lib/clipboard";
 import { useI18n } from "../i18n/useI18n";
@@ -621,15 +617,18 @@ export function MobileReader({
   // "8 min left" for the status bar, which is the only style that shows it.
   // Recomputed as the page scrolls, but it only re-renders when the whole
   // number of minutes changes — a few times a chapter, not per frame.
+  const wantsMinLeft = t.readerBar === "status";
+  // Counted only for that style: a whole chapter's text per chapter change.
   const chapterWords = useMemo(
     () =>
-      wordCount(
-        chapter.paragraphs.flatMap((p) => (isImageItem(p) ? [] : [p.text])),
-      ),
-    [chapter],
+      wantsMinLeft
+        ? wordCount(
+            chapter.paragraphs.flatMap((p) => (isImageItem(p) ? [] : [p.text])),
+          )
+        : 0,
+    [chapter, wantsMinLeft],
   );
   const [minLeft, setMinLeft] = useState<number | null>(null);
-  const wantsMinLeft = t.readerBar === "status";
   useEffect(() => {
     const el = scrollRef.current;
     if (!wantsMinLeft || !el) {
@@ -760,7 +759,7 @@ export function MobileReader({
     const select = (range: Range) => {
       const anchor = anchorFromRange(range);
       if (!anchor) return;
-      setSelAnchor(anchor);
+      setSelAnchor((prev) => (sameAnchor(prev, anchor) ? prev : anchor));
       setActiveHl(null);
     };
 
@@ -896,7 +895,7 @@ export function MobileReader({
   useEffect(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
-    return attachSmoothWheel(scroller, { reducedMotion: isReducedMotion });
+    return attachSmoothWheel(scroller);
   }, []);
 
   // Scrolling the page takes the bars with it. Reading is the gesture; the
@@ -970,7 +969,8 @@ export function MobileReader({
       const range = buildRange(drag.fixed, moving);
       if (range.collapsed) return;
       const anchor = anchorFromRange(range);
-      if (anchor) setSelAnchor(anchor);
+      if (anchor)
+        setSelAnchor((prev) => (sameAnchor(prev, anchor) ? prev : anchor));
     };
 
     // A handle held near the top or bottom of the reading region scrolls

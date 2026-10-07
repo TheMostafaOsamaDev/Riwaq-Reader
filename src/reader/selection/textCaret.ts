@@ -43,25 +43,30 @@ export interface Box {
  *  finger is past the middle of the gap, not the instant it leaves a line.
  *  Above the first or below the last, the end one.
  *
- *  `boxes` must be in document order, which for a single column is also top
- *  to bottom. -1 only for an empty list. */
-export function paragraphAt(boxes: Box[], y: number): number {
-  if (boxes.length === 0) return -1;
+ *  Boxes are asked for by index, in document order — which for a single
+ *  column is also top to bottom — and only the few the search visits: a
+ *  chapter runs to hundreds of paragraphs, this runs per pointermove, and
+ *  each box is a layout read. -1 only for an empty list. */
+export function paragraphAt(
+  count: number,
+  boxAt: (i: number) => Box,
+  y: number,
+): number {
+  if (count === 0) return -1;
   // Binary search for the first paragraph whose bottom is at or below y: the
-  // one containing y, or the one just after the gap y is in. A chapter runs
-  // to hundreds of paragraphs and this runs per pointermove.
+  // one containing y, or the one just after the gap y is in.
   let lo = 0;
-  let hi = boxes.length - 1;
+  let hi = count - 1;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (boxes[mid].bottom < y) lo = mid + 1;
+    if (boxAt(mid).bottom < y) lo = mid + 1;
     else hi = mid;
   }
   const after = lo;
-  if (y >= boxes[after].top || after === 0) return after;
+  if (y >= boxAt(after).top || after === 0) return after;
   // y is in the gap above `after`.
   const before = after - 1;
-  return y - boxes[before].bottom <= boxes[after].top - y ? before : after;
+  return y - boxAt(before).bottom <= boxAt(after).top - y ? before : after;
 }
 
 /** The point moved inside `box`, one pixel in from each edge — the edges
@@ -81,7 +86,7 @@ export function pointInside(
  *  symbol. Arabic letters and their diacritics are all word characters. */
 const BOUNDARY = /[\s\p{P}\p{S}]/u;
 
-export function isBoundary(ch: string | undefined): boolean {
+function isBoundary(ch: string | undefined): boolean {
   return ch === undefined || BOUNDARY.test(ch);
 }
 
@@ -117,7 +122,7 @@ export function snapOffset(
 }
 
 /** The browser's own "which character is at this point". */
-export function caretFromPoint(x: number, y: number): TextEndpoint | null {
+function caretFromPoint(x: number, y: number): TextEndpoint | null {
   const doc = document as Document & {
     caretPositionFromPoint?: (
       x: number,
@@ -137,7 +142,7 @@ export function caretFromPoint(x: number, y: number): TextEndpoint | null {
 
 /** The text paragraphs of a book body, in document order. Figures carry a
  *  paragraph index too, but have no text to put a caret in. */
-export function textParagraphs(body: HTMLElement): HTMLElement[] {
+function textParagraphs(body: HTMLElement): HTMLElement[] {
   return Array.from(body.querySelectorAll<HTMLElement>("p[data-p-index]"));
 }
 
@@ -172,11 +177,19 @@ export function caretInBody(
   y: number,
 ): TextEndpoint | null {
   const paragraphs = textParagraphs(body);
-  const boxes = paragraphs.map((p) => p.getBoundingClientRect());
-  const i = paragraphAt(boxes, y);
+  const boxes = new Map<number, DOMRect>();
+  const boxAt = (i: number) => {
+    let box = boxes.get(i);
+    if (!box) {
+      box = paragraphs[i].getBoundingClientRect();
+      boxes.set(i, box);
+    }
+    return box;
+  };
+  const i = paragraphAt(paragraphs.length, boxAt, y);
   if (i < 0) return null;
   const p = paragraphs[i];
-  const box = boxes[i];
+  const box = boxAt(i);
   const point = pointInside(box, x, y);
   const hit = caretFromPoint(point.x, point.y);
   if (hit && p.contains(hit.node)) return hit;

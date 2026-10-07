@@ -233,6 +233,7 @@ export function Store({
             group="store"
             background={theme.bg}
             move={nav.move}
+            seq={nav.seq}
             rtl={dir === "rtl"}
           >
             {pages}

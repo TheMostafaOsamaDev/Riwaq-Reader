@@ -15,6 +15,7 @@
  * a font change.
  */
 
+import { dirOf } from "../../lib/selectionAnchor";
 import { type Caret, caretOnLine } from "./textCaret";
 
 export interface Rect {
@@ -52,14 +53,6 @@ function collapsedCaret(node: Node, offset: number): Caret | null {
   return { x: b.left, top: b.top, height: b.height };
 }
 
-function directionOf(node: Node): "rtl" | "ltr" {
-  const el =
-    node.nodeType === Node.ELEMENT_NODE
-      ? (node as Element)
-      : node.parentElement;
-  return el && getComputedStyle(el).direction === "rtl" ? "rtl" : "ltr";
-}
-
 /** Measure `range` and express it relative to `origin` (see contentOrigin). */
 export function measureSelection(
   range: Range,
@@ -84,7 +77,7 @@ export function measureSelection(
     edge: "start" | "end",
     node: Node,
   ): Caret => {
-    const dir = directionOf(node);
+    const dir = dirOf(node);
     const fallback = { x: 0, top: Number.NaN, height: 0 };
     return caretOnLine(caret ?? fallback, lineBox(line), edge, dir);
   };

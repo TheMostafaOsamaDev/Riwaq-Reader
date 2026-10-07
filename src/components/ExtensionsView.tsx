@@ -47,7 +47,12 @@ import {
   initExtensions as realInit,
   loadCatalog as realLoadCatalog,
 } from "../sources/registry";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  type Theme,
+} from "../styles/tokens";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { Button } from "./Button";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -359,7 +364,7 @@ export function ExtensionsView({
         overflowY: "auto",
         padding: layout === "mobile" ? "16px 18px 40px" : "28px 40px 40px",
         // Clear of the phone's floating bottom bar (0 outside its shell).
-        paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
+        paddingBottom: homeBarInset(40),
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}

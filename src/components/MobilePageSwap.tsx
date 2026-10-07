@@ -29,7 +29,7 @@ import {
 } from "react";
 import type { NavMove } from "../store/navigation";
 import { Z_LOCAL } from "../styles/tokens";
-import { useReducedMotion } from "../styles/motion";
+import { EASE, useReducedMotion } from "../styles/motion";
 
 type Mode = "forward" | "back" | "fade";
 
@@ -48,7 +48,7 @@ interface Swap {
 }
 
 const SLIDE_MS = 320;
-const SLIDE_CURVE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const SLIDE_CURVE = EASE.enter;
 const FADE_IN_MS = 200;
 /** How far the page underneath drifts, as a share of the width. */
 const UNDER_SHIFT = 0.28;
@@ -57,8 +57,8 @@ export function MobilePageSwap({
   viewKey,
   group,
   move,
+  seq,
   rtl,
-  fade,
   background,
   children,
 }: {
@@ -69,9 +69,9 @@ export function MobilePageSwap({
   group: string;
   move: NavMove;
   rtl: boolean;
-  /** Changes between these two keys fade even within a tab — the library's
-   *  filter pills, which swap the page in place rather than going deeper. */
-  fade?: (fromKey: string, toKey: string) => boolean;
+  /** NavState.seq. A key change with no navigation since the last swap
+   *  (the library's filter pills) has no direction, so it fades. */
+  seq: number;
   /** The page colour. Every slot is painted with it: a page that brings no
    *  background of its own (the Shelves page, the Store's pages) would
    *  otherwise be see-through while it slides in, and the page it is
@@ -86,15 +86,16 @@ export function MobilePageSwap({
   const [state, setState] = useState<{
     key: string;
     group: string;
+    seq: number;
     nextId: number;
     swap: Swap | null;
-  }>({ key: viewKey, group, nextId: 1, swap: null });
+  }>({ key: viewKey, group, seq, nextId: 1, swap: null });
 
   // A new key starts a swap. Derived from state alone, so a repeated render
   // (React's development double-invoke) computes the same thing.
   if (viewKey !== state.key) {
     const mode: Mode =
-      group !== state.group || fade?.(state.key, viewKey)
+      group !== state.group || seq === state.seq
         ? "fade"
         : move === "pop"
           ? "back"
@@ -104,6 +105,7 @@ export function MobilePageSwap({
     setState({
       key: viewKey,
       group,
+      seq,
       nextId: state.nextId + 1,
       swap: reduced
         ? null
@@ -173,7 +175,11 @@ export function MobilePageSwap({
     >
       {swap && styles && (
         <div
-          key={`from:${swap.id}:${swap.from.key}`}
+          // Keyed by the page's own key, as it was while current: React keeps
+          // that instance for the exit instead of mounting a second copy —
+          // which re-ran a leaving page's fetches (a novel's scrape) and
+          // dropped its scroll position.
+          key={swap.from.key}
           aria-hidden
           style={{ ...slotBase, background, ...styles.from }}
         >
