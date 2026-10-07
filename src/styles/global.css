@@ -236,6 +236,14 @@
    fallbacks below are the default (sepia) theme so there's no flash before
    that effect runs. See tokens.ts / the App theme effect. */
 :root {
+  /* What everything pinned to the bottom keeps clear of: the gesture bar or
+     the 3-button bar. env() alone answers 0 on Android WebViews before about
+     Chrome 136, so the activity's own measurement stands in for it there
+     (lib/androidInsets.ts). Use this, never env(safe-area-inset-bottom). */
+  --safe-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--android-nav-bottom, 0px)
+  );
   --ph: #6f5a3d; /* placeholder text = theme.muted */
   /* Overlay-scrollbar bar = theme.muted. Must stay a SOLID colour: the bar's
      translucency comes from its own opacity, so an alpha-baked value here

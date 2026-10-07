@@ -122,8 +122,8 @@ export function UpdatePill({
         position: "fixed",
         bottom:
           layout === "mobile"
-            ? `calc(${PILL_BOTTOM_PX}px + env(safe-area-inset-bottom, 0px))`
-            : "calc(24px + env(safe-area-inset-bottom, 0px))",
+            ? `calc(${PILL_BOTTOM_PX}px + var(--safe-bottom))`
+            : "calc(24px + var(--safe-bottom))",
         // Phone: centred over the bottom bar. Wide layout: the sidebar takes
         // the inline-start side, so centring on the window would sit
         // off-centre over the content; anchor to the inline-end edge.

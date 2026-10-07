@@ -83,7 +83,7 @@ export function UpdateBanner({
           position: "absolute",
           insetInlineStart: 16,
           insetInlineEnd: 16,
-          bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+          bottom: "calc(16px + var(--safe-bottom))",
           zIndex: Z.banner,
           display: "flex",
           alignItems: "center",

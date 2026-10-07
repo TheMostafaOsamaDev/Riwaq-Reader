@@ -820,7 +820,7 @@ export function ContextMenu({
             bottom: 0,
             zIndex: Z.menu,
             padding: 10,
-            paddingBottom: `max(10px, env(safe-area-inset-bottom, 10px))`,
+            paddingBottom: `max(10px, var(--safe-bottom))`,
             display: "flex",
             flexDirection: "column",
             gap: 8,

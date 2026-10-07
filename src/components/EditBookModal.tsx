@@ -495,7 +495,7 @@ function MobileEditPage({
             overflowY: "auto",
             WebkitOverflowScrolling: "touch",
             padding: "20px 18px",
-            paddingBottom: `max(28px, env(safe-area-inset-bottom, 28px))`,
+            paddingBottom: `max(28px, var(--safe-bottom))`,
             display: "flex",
             flexDirection: "column",
             gap: 22,

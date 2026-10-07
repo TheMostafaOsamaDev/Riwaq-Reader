@@ -350,7 +350,7 @@ describe("UpdatePill", () => {
       PILL_BOTTOM_PX + (44 - PILL_FACE_HEIGHT) / 2,
     );
     expect(UPDATE_TOAST_BOTTOM).toBe(
-      `calc(${PILL_FACE_BOTTOM_PX}px + env(safe-area-inset-bottom, 0px))`,
+      `calc(${PILL_FACE_BOTTOM_PX}px + var(--safe-bottom))`,
     );
   });
 

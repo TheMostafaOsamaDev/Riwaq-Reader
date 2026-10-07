@@ -329,17 +329,24 @@ export function SettingsPage({
           />
         ),
       },
-      {
-        id: "homeBar",
-        label: tr("settings.homeBar"),
-        node: (
-          <HomeBarField
-            theme={theme}
-            value={t.homeBar}
-            onChange={(v) => setTweak("homeBar", v)}
-          />
-        ),
-      },
+      // The home bar exists only in the phone layout, so on desktop the
+      // picker would change nothing on screen. A desktop window narrowed
+      // into the phone layout gets it back, along with the bar it styles.
+      ...(isMobile
+        ? [
+            {
+              id: "homeBar",
+              label: tr("settings.homeBar"),
+              node: (
+                <HomeBarField
+                  theme={theme}
+                  value={t.homeBar}
+                  onChange={(v) => setTweak("homeBar", v)}
+                />
+              ),
+            },
+          ]
+        : []),
     ],
     reading: readingItems({
       theme,

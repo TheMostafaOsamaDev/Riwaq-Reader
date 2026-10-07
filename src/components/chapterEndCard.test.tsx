@@ -83,7 +83,7 @@ describe("ChapterEndCard — marginal pair", () => {
     // env() matters because the chrome grows by the gesture inset on hardware
     // that has one, and that inset measures 0 on the emulator.
     expect(render()).toContain(
-      "padding:0 20px calc(env(safe-area-inset-bottom, 0px) + 96px)",
+      "padding:0 20px calc(var(--safe-bottom) + 96px)",
     );
   });
 

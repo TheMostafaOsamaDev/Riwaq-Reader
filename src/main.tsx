@@ -4,6 +4,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./styles/global.css";
 import { markBoot } from "./lib/diagnostics/breadcrumbs";
+import { installAndroidInsets } from "./lib/androidInsets";
 import { deferPastPageLoad } from "./lib/deferPastPageLoad";
 import { installSelectAllGuard } from "./lib/selectAllGuard";
 import { migrateLegacyRoot } from "./store/legacyRoot";
@@ -79,6 +80,9 @@ deferPastPageLoad(() => void migrateLegacyRoot());
 // Select-all (⌘A, Ctrl+A, the Edit menu) selects nothing outside a text field.
 // A synchronous listener, no IPC — it cannot hold up the mount.
 installSelectAllGuard();
+// The navigation bar's height on WebViews that report 0 for it — see
+// lib/androidInsets.ts. Synchronous and cheap; never waits on anything.
+installAndroidInsets();
 
 // The boundary wraps App because a throw anywhere outside the two reader views
 // used to unmount the whole tree, leaving the boot background and nothing else

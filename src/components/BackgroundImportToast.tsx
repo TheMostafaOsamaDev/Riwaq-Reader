@@ -179,7 +179,7 @@ function Card({
         position: "fixed",
         insetInline: 0,
         marginInline: "auto",
-        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${
+        bottom: `calc(var(--safe-bottom) + ${
           mobile ? MOBILE_OFFSET : DESKTOP_OFFSET
         }px)`,
         width: mobile ? "calc(100vw - 32px)" : 420,
