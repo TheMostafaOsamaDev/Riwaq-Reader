@@ -56,9 +56,12 @@ jobs:
           # A Release run of a commit differing only in these built the very
           # APK this commit would, so it is just as good to compare against,
           # and changing the checker does not cost a fresh 30-minute release.
+          # verify-release-config.sh is the release preflight's own check; no
+          # build reads it.
           same_apk_inputs() {
             git diff --quiet "$1" HEAD -- . ':!docs' \
-              ':!.github/workflows/fdroid-verify.yml' ':!scripts/fdroid-verify-in-container.sh'
+              ':!.github/workflows/fdroid-verify.yml' ':!scripts/fdroid-verify-in-container.sh' \
+              ':!scripts/verify-release-config.sh'
           }
           id="$GIVEN"
           sha="$(git rev-parse HEAD)"
