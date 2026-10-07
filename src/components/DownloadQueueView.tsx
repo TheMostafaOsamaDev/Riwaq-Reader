@@ -14,7 +14,7 @@
 // header, future Store header, etc.) without worrying about parent
 // stacking-context bugs.
 
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import {
   activeLibraryAddJobs,
   cancel as cancelJob,
@@ -27,13 +27,23 @@ import {
 } from "../store/downloadQueue";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  PHONE_TAB_TITLE,
+  type Theme,
+} from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import { errorLabel, phaseLabel } from "../i18n/statusLabels";
 import type { Tr } from "../i18n";
 
 interface Props {
   theme: Theme;
+  /** Desktop: a card over the library. Phone: the Downloads TAB, a page of
+   *  the home shell — no back arrow (the bottom bar moves between tabs), no
+   *  dialog semantics, no safe-area padding of its own (the shell has it),
+   *  and a title like the other tabs'. */
   layout: "desktop" | "mobile";
   onClose: () => void;
 }
@@ -82,45 +92,37 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
     )
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
-  const isMobile = layout === "mobile";
+  const asTab = layout === "mobile";
 
   return (
-    // The scrim, centering, and enter/exit animation live in
-    // AnimatedFullScreen at the call site. On mobile it slides up
-    // full-bleed; on desktop it fade-pops a centered card.
+    // On desktop the scrim, centering, and fade-pop live in
+    // AnimatedFullScreen at the call site.
     <div
-      role="dialog"
-      aria-modal="true"
+      role={asTab ? "region" : "dialog"}
+      aria-modal={asTab ? undefined : "true"}
       aria-labelledby="download-queue-heading"
-      style={{
-        width: isMobile ? "100%" : 560,
-        maxHeight: isMobile ? "100%" : "84vh",
-        height: isMobile ? "100%" : "auto",
-        background: theme.bg,
-        color: theme.ink,
-        border: `0.5px solid ${theme.rule}`,
-        borderRadius: isMobile ? 0 : 14,
-        boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        fontFamily: FONT_STACKS.sans,
-        // Sheet sits at the top of the viewport on mobile (height 100%) —
-        // without explicit safe-area padding the header collides with
-        // the status bar on devices with a notch.
-        ...(isMobile
-          ? {
-              paddingTop: "env(safe-area-inset-top, 0px)",
-              paddingBottom: "env(safe-area-inset-bottom, 0px)",
-              paddingLeft: "env(safe-area-inset-left, 0px)",
-              paddingRight: "env(safe-area-inset-right, 0px)",
-              boxSizing: "border-box",
+      style={
+        asTab
+          ? tabStyle(theme)
+          : {
+              width: 560,
+              maxHeight: "84vh",
+              height: "auto",
+              background: theme.bg,
+              color: theme.ink,
+              border: `0.5px solid ${theme.rule}`,
+              borderRadius: 14,
+              boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              fontFamily: FONT_STACKS.sans,
             }
-          : null),
-      }}
+      }
     >
       <Header
         theme={theme}
+        asTab={asTab}
         activeCount={activeCount}
         interruptedCount={interrupted.length}
         onClose={onClose}
@@ -132,6 +134,8 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
           minHeight: 0,
           overflowY: "auto",
           padding: "8px 0 16px",
+          // Clear of the phone's floating bottom bar (0 outside its shell).
+          paddingBottom: homeBarInset(16),
         }}
       >
         {activeCount === 0 &&
@@ -211,8 +215,23 @@ export function DownloadQueueView({ theme, layout, onClose }: Props) {
 
 // ── header ────────────────────────────────────────────────────────────────
 
+/** The Downloads tab's page: it fills the shell's body, nothing more. */
+function tabStyle(theme: Theme): CSSProperties {
+  return {
+    flex: 1,
+    minHeight: 0,
+    background: theme.bg,
+    color: theme.ink,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    fontFamily: FONT_STACKS.sans,
+  };
+}
+
 interface HeaderProps {
   theme: Theme;
+  asTab?: boolean;
   activeCount: number;
   interruptedCount: number;
   onClose: () => void;
@@ -223,6 +242,7 @@ interface HeaderProps {
 
 function Header({
   theme,
+  asTab = false,
   activeCount,
   interruptedCount,
   onClose,
@@ -236,41 +256,48 @@ function Header({
         display: "flex",
         alignItems: "center",
         gap: 12,
-        padding: "16px 18px 14px",
+        padding: asTab ? "16px 22px 12px" : "16px 18px 14px",
         borderBottom: `0.5px solid ${theme.rule}`,
       }}
     >
       {/* Side-page convention: the leftmost control is a back arrow.
           Tapping it closes the sheet (returns the user to whatever
-          was underneath). Matches NovelDetailView's header. */}
-      <button
-        onClick={onClose}
-        aria-label={tr("common.back")}
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          border: `0.5px solid ${theme.rule}`,
-          background: theme.bg,
-          color: theme.ink,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon name="arrowL" size={16} className="rtl-flip-x" />
-      </button>
+          was underneath). Matches NovelDetailView's header. A tab has no
+          "back": the bottom bar is how you leave it. */}
+      {!asTab && (
+        <button
+          onClick={onClose}
+          aria-label={tr("common.back")}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            border: `0.5px solid ${theme.rule}`,
+            background: theme.bg,
+            color: theme.ink,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="arrowL" size={16} className="rtl-flip-x" />
+        </button>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <h2
           id="download-queue-heading"
           style={{
-            fontFamily: FONT_SERIF_DISPLAY,
-            fontWeight: 400,
-            fontSize: 22,
+            ...(asTab
+              ? PHONE_TAB_TITLE
+              : {
+                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontWeight: 400,
+                  fontSize: 22,
+                  letterSpacing: "-0.01em",
+                }),
             margin: 0,
-            letterSpacing: "-0.01em",
           }}
         >
           {tr("sidebar.downloads")}

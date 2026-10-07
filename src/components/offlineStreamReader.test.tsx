@@ -10,6 +10,7 @@
 // about what content reaches the reader, not about how the reader paints
 // it. Everything that decides that — the snapshot, the per-chapter content
 // read, the registry's answer — is real or explicitly mocked here.
+import { EXIT_MS } from "./LoadingRing";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -173,8 +174,16 @@ afterEach(() => {
 describe("streaming reader with the source extension gone", () => {
   it("builds the book from the snapshot instead of hanging on the loader", async () => {
     await mount(1);
-    expect(host.textContent ?? "").not.toContain("Loading novel…");
     expect(host.querySelector('[data-testid="reader"]')).not.toBeNull();
+    // The loading ring fades out over the reader (LoadingRing's EXIT_MS)
+    // rather than vanishing: right now it is leaving, then it is gone.
+    const busy = () =>
+      host.querySelector('[role="status"][aria-busy="true"]') !== null;
+    expect(busy()).toBe(false);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, EXIT_MS + 50));
+    });
+    expect(host.textContent ?? "").not.toContain("Loading novel…");
   });
 
   it("reads a downloaded chapter's saved body", async () => {

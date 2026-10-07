@@ -22,6 +22,25 @@ export type ReadingMode = "paginated-2" | "paginated-1" | "scroll";
  *  components/library/HeroContinueCard.tsx for what each one looks like. */
 export type HeroStyle = "ambient" | "refined" | "bookmark" | "stack";
 
+/** The phone reader's bottom bar. See reader/chrome/ReaderBottomBar.tsx. */
+export type ReaderBarStyle =
+  | "classic"
+  | "labelled"
+  | "capsule"
+  | "status"
+  | "slider"
+  | "corners";
+
+/** The phone home screen's navigation bar. See
+ *  components/library/MobileBottomNav.tsx. */
+export type HomeBarStyle =
+  | "classic"
+  | "labelled"
+  | "dock"
+  | "raised"
+  | "switch"
+  | "expanding";
+
 export interface Tweaks {
   /** UI-language preference for the app chrome (NOT book content). "system"
       resolves from the OS/browser locale; "en"/"ar" pin a language. Drives the
@@ -33,6 +52,10 @@ export interface Tweaks {
   theme: ThemePref;
   /** Style of the "continue reading" card at the top of the library. */
   heroStyle: HeroStyle;
+  /** Phone only: the bar that comes up when the reader taps the page. */
+  readerBar: ReaderBarStyle;
+  /** Phone only: the home screen's navigation bar. */
+  homeBar: HomeBarStyle;
   /** Reuses the token union so the reading library has ONE source of truth —
    *  this was a duplicated inline literal and drifted the moment fonts were
    *  added. */

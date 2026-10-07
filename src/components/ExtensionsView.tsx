@@ -47,7 +47,12 @@ import {
   initExtensions as realInit,
   loadCatalog as realLoadCatalog,
 } from "../sources/registry";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  type Theme,
+} from "../styles/tokens";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { Button } from "./Button";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -104,6 +109,8 @@ interface Props {
   theme: Theme;
   onBack: () => void;
   deps?: ExtensionsDeps;
+  /** "mobile": phone gutters instead of the desktop's 40px. */
+  layout?: "desktop" | "mobile";
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -112,6 +119,7 @@ export function ExtensionsView({
   theme,
   onBack,
   deps = DEFAULT_EXTENSIONS_DEPS,
+  layout = "desktop",
 }: Props) {
   const { tr } = useI18n();
   const [data, setData] = useState<CatalogData | null>(null);
@@ -354,7 +362,9 @@ export function ExtensionsView({
       style={{
         flex: 1,
         overflowY: "auto",
-        padding: "28px 40px 40px",
+        padding: layout === "mobile" ? "16px 18px 40px" : "28px 40px 40px",
+        // Clear of the phone's floating bottom bar (0 outside its shell).
+        paddingBottom: homeBarInset(40),
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}

@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
-import { rangeForSegments, rectForMark } from "./selectionAnchor";
+import {
+  rangeForSegments,
+  rectForMark,
+  type SelectionAnchor,
+  sameAnchor,
+} from "./selectionAnchor";
 
 function mountBody(html: string) {
   document.body.innerHTML = `<div data-book-body>${html}</div>`;
@@ -101,5 +106,22 @@ describe("rectForMark", () => {
     const marks = document.querySelectorAll('[data-h-id="g1"]');
     expect(marks.length).toBe(2);
     expect(rectForMark("g1")).not.toBeNull();
+  });
+});
+
+describe("sameAnchor", () => {
+  const anchor = (charEnd: number, top = 10): SelectionAnchor => ({
+    segments: [{ paragraphIndex: 2, charStart: 4, charEnd, text: "x" }],
+    rect: new DOMRect(5, top, 100, 20),
+  });
+
+  it("matches the same text at the same place", () => {
+    expect(sameAnchor(anchor(9), anchor(9))).toBe(true);
+  });
+
+  it("differs when the selection grows, moves on screen, or was empty", () => {
+    expect(sameAnchor(anchor(9), anchor(12))).toBe(false);
+    expect(sameAnchor(anchor(9), anchor(9, 40))).toBe(false);
+    expect(sameAnchor(null, anchor(9))).toBe(false);
   });
 });

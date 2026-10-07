@@ -421,6 +421,8 @@ describe("MobileBottomNav settings dot", () => {
         onOpenQueue={() => {}}
         onImport={() => {}}
         onOpenSettings={() => {}}
+        current="library"
+        onGoLibrary={() => {}}
       />,
     );
 

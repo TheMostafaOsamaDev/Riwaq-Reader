@@ -46,6 +46,9 @@ interface Props {
   /** Open a source's page in the Store (from the Websites results). */
   onOpenStoreSource: (sourceId: string) => void;
   onClose: () => void;
+  /** "mobile" swaps the ESC keycap, which a phone has no key for, for a
+   *  Cancel button sized for a thumb. */
+  layout?: "desktop" | "mobile";
 }
 
 const JUMPS: {
@@ -81,9 +84,11 @@ export function SearchOverlay({
   onOpenQueue,
   onOpenStoreSource,
   onClose,
+  layout = "desktop",
 }: Props) {
   const { tr } = useI18n();
   const dark = themeKey === "dark" || themeKey === "oled";
+  const isMobile = layout === "mobile";
   const [term, setTerm] = useState("");
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -168,7 +173,12 @@ export function SearchOverlay({
         display: "flex",
         justifyContent: "center",
         alignItems: "flex-start",
-        padding: "12vh 20px 20px",
+        // A phone opens it near the top, under the status bar, leaving the
+        // rest of the screen for the keyboard; a desktop window centres it
+        // a little way down.
+        padding: isMobile
+          ? "calc(env(safe-area-inset-top, 0px) + 10px) 10px 10px"
+          : "12vh 20px 20px",
         animation: "riwaqFadeIn 140ms ease",
       }}
     >
@@ -203,14 +213,14 @@ export function SearchOverlay({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 14,
-            padding: "16px 18px",
+            gap: isMobile ? 10 : 14,
+            padding: isMobile ? "10px 14px" : "16px 18px",
             borderBottom: `1px solid ${theme.rule}`,
             flexShrink: 0,
           }}
         >
           <span style={{ color: theme.muted, display: "flex" }}>
-            <Icon name="search" size={22} />
+            <Icon name="search" size={isMobile ? 18 : 22} />
           </span>
           <input
             ref={inputRef}
@@ -233,26 +243,49 @@ export function SearchOverlay({
               outline: "none",
               background: "transparent",
               font: "inherit",
-              fontSize: 19,
+              // 16px on a phone: the size its own text fields use, and the
+              // floor below which a WebView may zoom the page on focus.
+              fontSize: isMobile ? 16 : 19,
               color: theme.ink,
             }}
           />
-          <button
-            onClick={onClose}
-            style={{
-              fontSize: 11,
-              letterSpacing: "0.1em",
-              color: theme.muted,
-              border: `1px solid ${theme.rule}`,
-              borderRadius: 6,
-              padding: "4px 8px",
-              background: "transparent",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            ESC
-          </button>
+          {layout === "mobile" ? (
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                height: 44,
+                padding: "0 4px",
+                marginBlock: -10,
+                fontSize: 14,
+                color: theme.muted,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                flexShrink: 0,
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.1em",
+                color: theme.muted,
+                border: `1px solid ${theme.rule}`,
+                borderRadius: 6,
+                padding: "4px 8px",
+                background: "transparent",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              ESC
+            </button>
+          )}
         </div>
 
         {/* Body */}
@@ -481,8 +514,10 @@ export function SearchOverlay({
                           background: theme.chrome,
                           border: `1px solid ${theme.rule}`,
                           borderRadius: 20,
-                          padding: "6px 7px 6px 12px",
-                          fontSize: 13,
+                          padding: isMobile
+                            ? "5px 6px 5px 11px"
+                            : "6px 7px 6px 12px",
+                          fontSize: isMobile ? 12.5 : 13,
                           color: theme.ink,
                         }}
                       >
@@ -540,10 +575,12 @@ export function SearchOverlay({
                       background: theme.chrome,
                       border: `1px solid ${theme.rule}`,
                       borderRadius: 22,
-                      padding: "9px 15px 9px 13px",
+                      padding: isMobile
+                        ? "7px 13px 7px 11px"
+                        : "9px 15px 9px 13px",
                       cursor: "pointer",
                       font: "inherit",
-                      fontSize: 13.5,
+                      fontSize: isMobile ? 12.5 : 13.5,
                       fontWeight: 500,
                       color: theme.ink,
                       transition:

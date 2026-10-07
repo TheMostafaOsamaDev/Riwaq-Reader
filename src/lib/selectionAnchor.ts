@@ -26,6 +26,32 @@ export interface SelectionAnchor {
   rect: DOMRect;
 }
 
+/** Whether two anchors cover the same text at the same place on screen.
+ *  A handle drag re-derives the anchor on every pointer move, and most
+ *  moves land in the same word; keeping the old object skips the reader's
+ *  re-render for them. */
+export function sameAnchor(a: SelectionAnchor | null, b: SelectionAnchor) {
+  if (!a || a.segments.length !== b.segments.length) return false;
+  const r = a.rect;
+  const q = b.rect;
+  if (
+    r.top !== q.top ||
+    r.left !== q.left ||
+    r.width !== q.width ||
+    r.height !== q.height
+  ) {
+    return false;
+  }
+  return a.segments.every((s, i) => {
+    const o = b.segments[i];
+    return (
+      s.paragraphIndex === o.paragraphIndex &&
+      s.charStart === o.charStart &&
+      s.charEnd === o.charEnd
+    );
+  });
+}
+
 /** Walk up to the nearest `<p data-p-index>` ancestor, or null if the
  *  node isn't inside a rendered paragraph (e.g. selection in chrome). */
 function findParagraph(node: Node | null): HTMLElement | null {
@@ -313,7 +339,7 @@ export function liveSelectionBox(): AnchorBox | null {
  *  Read off the element rather than the document, because a chapter can
  *  hold a quote in the other script and the toolbar should attach to the
  *  end of the line the reader's eye actually starts from. */
-function dirOf(node: Node): "rtl" | "ltr" {
+export function dirOf(node: Node): "rtl" | "ltr" {
   const el =
     node.nodeType === Node.ELEMENT_NODE
       ? (node as Element)

@@ -17,6 +17,8 @@
  *   - `data-pan-zone` on anything outside the scroller whose swipes should
  *     scroll it (the reader's floating bars). global.css gives it
  *     `touch-action: none`, so the browser never claims those gestures.
+ *   - `data-pan-none` on something inside the scroller that owns its own
+ *     drag (a selection handle): never taken, and not "scrolling the page".
  *   - `data-pan-axis="x"` on a control that owns sideways drags (the chapter
  *     slider): a gesture starting there is taken only if it goes vertical.
  *
@@ -43,6 +45,9 @@ import {
  *  — the chrome, which goes away when it happens — and two answers to that
  *  question would disagree on exactly the swipes that start on a bar. */
 export function movesThePage(scroller: HTMLElement, target: Element): boolean {
+  // Something on the page that owns its own drag — a selection handle. It is
+  // inside the scroller, but dragging it moves a selection edge, not the page.
+  if (target.closest("[data-pan-none]")) return false;
   return (
     scroller.contains(target) || target.closest("[data-pan-zone]") !== null
   );

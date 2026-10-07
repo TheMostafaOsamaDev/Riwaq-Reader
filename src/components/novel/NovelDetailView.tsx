@@ -43,7 +43,12 @@ import {
 } from "../../store/library";
 import type { Source, SourceNovel } from "../../sources/types";
 
-import { FONT_STACKS, type Theme } from "../../styles/tokens";
+import {
+  FONT_STACKS,
+  homeBarInset,
+  type Theme,
+  Z_LOCAL,
+} from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { Icon } from "../Icon";
 import { NovelHeaderSkeleton, VolumesSkeleton } from "../Skeleton";
@@ -413,6 +418,8 @@ export function NovelDetailView({
         overflowY: "auto",
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
+        // Clear of the phone's floating bottom bar (0 outside its shell).
+        paddingBottom: homeBarInset(),
       }}
     >
       <div
@@ -421,6 +428,16 @@ export function NovelDetailView({
           alignItems: "center",
           gap: 12,
           padding: layout === "mobile" ? "14px 18px 8px" : "18px 40px 8px",
+          // The phone page's only back button: it stays in reach while the
+          // chapter list scrolls under it.
+          ...(layout === "mobile"
+            ? {
+                position: "sticky" as const,
+                top: 0,
+                zIndex: Z_LOCAL.raised,
+                background: theme.bg,
+              }
+            : null),
         }}
       >
         <button

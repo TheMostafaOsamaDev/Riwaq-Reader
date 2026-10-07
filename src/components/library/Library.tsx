@@ -15,7 +15,13 @@
 // in the split; they were already cleanly separated, which is why it was worth
 // doing before the file grew again.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Toast, type ToastMessage } from "../Toast";
 import { EditBookModal } from "../EditBookModal";
 import { ContextMenu } from "../ContextMenu";
@@ -40,12 +46,17 @@ import {
 } from "../../store/importProgress";
 import { draftDefaultCover } from "../../store/draftDefaults";
 import {
+  loadLibrarySnapshot,
+  saveLibrarySnapshot,
+} from "../../store/libraryCache";
+import {
   useNav,
   goLibrary,
   goShelf,
   goStorePage,
   openOverlay,
   back,
+  getState as getNavState,
   type LibraryView,
 } from "../../store/navigation";
 import {
@@ -94,7 +105,7 @@ import { errorLabel } from "../../i18n/statusLabels";
 import { DesktopLibrary } from "./DesktopLibrary";
 import { MobileLibrary } from "./MobileLibrary";
 import type { LibraryTab } from "./tabs";
-import type { HeroStyle } from "../../types/reader";
+import type { HeroStyle, HomeBarStyle } from "../../types/reader";
 
 interface Props {
   theme: Theme;
@@ -124,24 +135,36 @@ interface Props {
   confirmDelete: boolean;
   /** Style of the "continue reading" card (Settings ▸ Appearance). */
   heroStyle: HeroStyle;
+  /** Style of the phone's bottom navigation (Settings ▸ Appearance). */
+  homeBar: HomeBarStyle;
+  /** Phone only: the Settings page, when Settings is the open tab. It is
+   *  drawn inside the home shell, under the bottom bar. */
+  settingsTab?: ReactNode;
 }
 
 function useBooks() {
   const { tr } = useI18n();
-  const [books, setBooks] = useState<BookIndexEntry[]>([]);
-  const [covers, setCovers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  // The last session's library, drawn at once (store/libraryCache.ts); the
+  // disk read below replaces it a moment later.
+  const [cached] = useState(loadLibrarySnapshot);
+  const [books, setBooks] = useState<BookIndexEntry[]>(cached?.books ?? []);
+  const [covers, setCovers] = useState<Record<string, string>>(
+    cached?.covers ?? {},
+  );
+  // "Loading" only when there is nothing to show yet — a refresh behind a
+  // library already on screen is invisible.
+  const [loading, setLoading] = useState(cached === null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const list = await listBooks();
+      // The list first, so the shelf never waits on covers: each cover's path
+      // is an IPC round trip, and for a large library those used to hold the
+      // whole screen on "Loading…".
       setBooks(list);
-      // Resolve cover URLs in parallel — these are cheap (convertFileSrc is
-      // synchronous after the one-time appDataDir lookup) but awaiting them
-      // up front means no per-card flicker.
+      setLoading(false);
       const entries = await Promise.all(
         list
           .filter((b) => b.coverFile)
@@ -149,7 +172,9 @@ function useBooks() {
       );
       const next: Record<string, string> = {};
       for (const [id, url] of entries) if (url) next[id] = url;
-      setCovers(next);
+      // Unchanged covers keep their identity, so the cards do not re-render.
+      setCovers((prev) => (sameCovers(prev, next) ? prev : next));
+      saveLibrarySnapshot({ books: list, covers: next });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(errorLabel(message, tr));
@@ -163,6 +188,14 @@ function useBooks() {
   }, [refresh]);
 
   return { books, covers, loading, error, refresh, setError };
+}
+
+function sameCovers(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
 }
 
 /** The shelves the Library last read this session — see `shelves` below. */
@@ -179,6 +212,8 @@ export function Library({
   onOpenSettings,
   confirmDelete,
   heroStyle,
+  homeBar,
+  settingsTab,
 }: Props) {
   const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
@@ -270,6 +305,15 @@ export function Library({
   const storePage = view.kind === "store" ? view.page : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
+  // The phone has a Downloads TAB (a library view, under the bottom bar);
+  // the desktop shows downloads over the library. Either way in, each layout
+  // shows them its own way, so a window resized across the breakpoint with
+  // downloads open keeps showing them.
+  const downloadsTab =
+    layout === "mobile" && (queueOpen || view.kind === "downloads");
+  const downloadsOverlay =
+    layout !== "mobile" && (queueOpen || view.kind === "downloads");
+  const searchOpen = navState.snapshot.overlay?.kind === "search";
 
   const [sourceDetailRangeDialog, setSourceDetailRangeDialog] = useState<{
     sourceId: string;
@@ -1019,6 +1063,14 @@ export function Library({
     theme,
     themeKey,
     heroStyle,
+    homeBar,
+    searchOpen,
+    onOpenSearch: () => openOverlay({ kind: "search" }),
+    // Only while search is still the top layer. Picking a result navigates
+    // first (a book, the Store), and stepping back after that would undo it.
+    onCloseSearch: () => {
+      if (getNavState().snapshot.overlay?.kind === "search") back();
+    },
     books,
     covers,
     loading,
@@ -1036,7 +1088,18 @@ export function Library({
     onOpenSourceDetailRangeDialog: () => {
       if (sourceDetailView) setSourceDetailRangeDialog(sourceDetailView);
     },
-    onOpenQueue: () => openOverlay({ kind: "downloads" }),
+    onOpenQueue: () =>
+      layout === "mobile"
+        ? goLibrary({ kind: "downloads" })
+        : openOverlay({ kind: "downloads" }),
+    downloadsTab,
+    settingsTab: settingsTab ?? null,
+    // The phone's Library tab: the whole library, from wherever you are —
+    // a filter, the Store, Downloads, Settings or a shelf.
+    onGoLibrary: () => {
+      setFilter("all");
+      goLibrary({ kind: "shelf" });
+    },
     onOpenSettings,
     shelvesActive,
     onOpenShelves,
@@ -1257,12 +1320,12 @@ export function Library({
         )}
       </AnimatedDialog>
       <AnimatedFullScreen
-        open={queueOpen}
+        open={downloadsOverlay}
         layout={layout}
         onScrimClick={() => back()}
         zIndex={Z.dialog}
       >
-        {queueOpen && (
+        {downloadsOverlay && (
           <DownloadQueueView
             theme={theme}
             layout={layout}

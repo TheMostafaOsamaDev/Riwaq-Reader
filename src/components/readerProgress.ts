@@ -3,7 +3,8 @@
 // math side-effect-free makes it easy to reason about (and to unit-test later,
 // if this repo ever grows a test runner).
 
-function clamp01(n: number): number {
+/** Into 0..1; NaN (a 0/0 from an empty or unlaid-out element) is 0. */
+export function clamp01(n: number): number {
   if (Number.isNaN(n)) return 0;
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }

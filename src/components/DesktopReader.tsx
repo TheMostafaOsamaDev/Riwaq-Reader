@@ -93,6 +93,7 @@ import type { Tap } from "../reader/chrome/focusGesture";
 import { pagedTouchTurn } from "../reader/pagedTouch";
 import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 import { isTextEntry } from "../lib/isTextEntry";
+import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
 
 interface Props {
   theme: Theme;
@@ -499,6 +500,15 @@ export function DesktopReader({
       if (raf) window.cancelAnimationFrame(raf);
     };
   }, [mode, currentChapter, book.id, paintProgress]);
+
+  // A mouse wheel glides instead of jumping a few lines per notch; a
+  // trackpad is left to the browser. See reader/scroll/smoothWheel.ts.
+  useEffect(() => {
+    if (mode !== "scroll") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    return attachSmoothWheel(el);
+  }, [mode]);
 
   // Imperative handle on the paginated view so the keyboard handler and
   // the bottom-bar arrow buttons can flip pages without rebuilding the

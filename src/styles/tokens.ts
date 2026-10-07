@@ -617,6 +617,19 @@ export function inkAlpha(theme: Theme, alpha: number): string {
   return withAlpha(theme.ink, alpha);
 }
 
+/** The fill of a selected segment sitting in a tinted track — a segmented
+ *  control's thumb. It has to read as raised ABOVE the track in every theme.
+ *  On the pale themes the page colour does that (the track is the page under
+ *  a dark tint). On the dark ones the page colour is darker than its own
+ *  track and reads as pressed in, so it is lifted a step toward white. */
+export function raisedSurface(theme: Theme): string {
+  const rgb = parseHexColor(theme.bg);
+  if (!rgb) return theme.bg;
+  const mean = (rgb[0] + rgb[1] + rgb[2]) / 3;
+  if (mean >= 128) return theme.bg;
+  return shade(theme.bg, mean < 24 ? 0.16 : 0.1);
+}
+
 /** How far the surround sits from the page. Small on purpose — enough to read
  *  as a sheet, not so much that it becomes a frame competing with the text. */
 const SURFACE_STEP = 0.06;
@@ -684,12 +697,34 @@ export const Z_LOCAL = {
   page: 5,
 } as const;
 
+/** The title at the top of each phone tab — Library, Store, Downloads,
+ *  Settings — so moving between them along the bottom bar the heading stays
+ *  put. Colour and margins are the caller's. */
+export const PHONE_TAB_TITLE = {
+  fontFamily: FONT_SERIF_DISPLAY,
+  fontWeight: 400,
+  fontSize: 28,
+  letterSpacing: "-0.02em",
+} as const;
+
+/** Bottom padding that lets a page's last row scroll clear of the phone's
+ *  floating home bar: `extra` px of the page's own, plus the bar. The bar's
+ *  share is a CSS variable the phone shell sets (MobileLibrary) and nothing
+ *  else does, so on desktop this is just `extra`. */
+export function homeBarInset(extra = 0): string {
+  return extra
+    ? `calc(${extra}px + var(--home-bar-inset, 0px))`
+    : "var(--home-bar-inset, 0px)";
+}
+
 export const Z = {
   /** Focus mode's progress rail. Over the page, under the bars, so
    *  a bar sliding back in covers it rather than interleaving with it. */
   focusRail: 90,
   /** Reader bars pinned over the page. */
   readerChrome: 100,
+  /** The phone home shell's bottom bar, floating over its pages. */
+  homeBar: 105,
   /** Sidebar, mobile sheet, detail-view header — furniture beside content. */
   panel: 200,
   /** The stream-reader slot, held over the Library through its cross-fade. */

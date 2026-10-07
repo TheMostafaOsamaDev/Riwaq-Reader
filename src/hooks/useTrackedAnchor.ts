@@ -29,6 +29,15 @@ interface Options {
    *  stale: they are resolved against the live viewport on each
    *  reposition. */
   insets: { top: number; bottom: number };
+  /** Distance from the anchor, when wider than the default — see `gap` in
+   *  lib/popoverPlacement. */
+  gap?: number;
+  /** Keep the toolbar out of the way for now: placed and tracking, but
+   *  invisible and untouchable. The phone holds it while the reader drags a
+   *  selection edge or scrolls, as Android's own selection toolbar does —
+   *  it is in the way of both, and a toolbar sliding along under a moving
+   *  page cannot keep up with it. */
+  held?: boolean;
 }
 
 /**
@@ -44,7 +53,13 @@ interface Options {
  * guessing its height as the two popovers used to) and a ready-to-spread
  * style.
  */
-export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
+export function useTrackedAnchor({
+  getAnchor,
+  placement,
+  insets,
+  gap,
+  held = false,
+}: Options) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   /** A placement plus whether getting there should be eased.
@@ -75,10 +90,12 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
   sizeRef.current = size;
   const insetsRef = useRef(insets);
   insetsRef.current = insets;
+  const gapRef = useRef(gap);
+  gapRef.current = gap;
 
   /** Commit a placement, skipping the re-render when nothing moved.
    *
-   *  Both effects below end this way, and the equality check has to
+   *  Every placement path ends this way, and the equality check has to
    *  stay identical between them: a scroll frame that re-places to the
    *  same pixel must not re-render the toolbar.
    *
@@ -96,6 +113,18 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
         : { ...next, ease },
     );
   };
+
+  /** Where the toolbar goes for `anchor`, from the latest size and bounds. */
+  const placeFor = (anchor: AnchorBox) =>
+    placePopover({
+      anchor,
+      size: sizeRef.current,
+      bounds: boundsNow(),
+      placement,
+      margin: MARGIN,
+      gap: gapRef.current,
+      lockedSide: sideRef.current,
+    });
 
   const boundsNow = (): PlacementInput["bounds"] => ({
     top: insetsRef.current.top,
@@ -151,14 +180,7 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
         );
         return;
       }
-      const next = placePopover({
-        anchor,
-        size: sizeRef.current,
-        bounds: boundsNow(),
-        placement,
-        margin: MARGIN,
-        lockedSide: sideRef.current,
-      });
+      const next = placeFor(anchor);
       const ease = easeNext;
       easeNext = false;
       commit(next, ease);
@@ -219,31 +241,29 @@ export function useTrackedAnchor({ getAnchor, placement, insets }: Options) {
     };
   }, [placement]);
 
-  // Re-place when our own size changes, without re-subscribing above.
+  // The anchor can also move with no scroll, no resize and no document
+  // selection change: the phone reader keeps its selection in React state,
+  // and a drag grows it by re-rendering this toolbar's parent. Placed only
+  // by the listeners above, the toolbar stayed against the single word the
+  // long-press began on while the selection grew three lines past it, and
+  // opened over the very text it was about. So it re-places after every
+  // render — which also covers the toolbar changing size (the note editor
+  // opening), a render of its own. An unchanged position commits nothing,
+  // so this cannot loop. Never eased: the surface changing shape around a
+  // fixed anchor must not appear to drift.
   useLayoutEffect(() => {
-    if (size.width === 0 || size.height === 0) return;
+    if (sizeRef.current.width === 0 || sizeRef.current.height === 0) return;
     const anchor = getAnchorRef.current();
     if (!anchor) return;
-    const next = placePopover({
-      anchor,
-      size,
-      bounds: boundsNow(),
-      placement,
-      margin: MARGIN,
-      lockedSide: sideRef.current,
-    });
-    // The toolbar growing (the note editor opening) re-places it, but
-    // that is the surface changing shape around a fixed anchor, not the
-    // anchor moving — easing it would make the panel appear to drift.
-    commit(next, false);
-  }, [size, placement]);
+    commit(placeFor(anchor), false);
+  });
 
   // Until the first placement lands, the toolbar has no honest position
   // to be drawn at — it has not been measured, so it does not yet know
   // its own size, and drawing it anywhere for that frame is the "it
   // appears somewhere strange and then moves" flicker. So it renders,
   // to be measured, but stays invisible until the number is real.
-  const shown = place !== null && place.visible;
+  const shown = place !== null && place.visible && !held;
 
   return {
     ref,

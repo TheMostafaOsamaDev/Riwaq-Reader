@@ -170,7 +170,9 @@ export function NovelHeaderSkeleton({
     >
       <div
         style={{
-          width: layout === "mobile" ? 140 : 200,
+          // The hero's own cover width (NovelHero: 116 on a phone), so the real
+          // cover lands exactly where the placeholder was.
+          width: layout === "mobile" ? 116 : 200,
           flexShrink: 0,
           alignSelf: layout === "mobile" ? "center" : "flex-start",
         }}

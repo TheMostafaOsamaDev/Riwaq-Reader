@@ -9,7 +9,13 @@ import { useI18n } from "../i18n/useI18n";
 import { pickDescription } from "../sources/description";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  homeBarInset,
+  PHONE_TAB_TITLE,
+  type Theme,
+} from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { SourceIcon } from "./SourceIcon";
@@ -21,13 +27,19 @@ interface Props {
    *  manages, so it is reached from here rather than from a tab of its
    *  own. */
   onOpenExtensions: () => void;
+  /** "mobile": the Store is a tab of the phone's home shell, and this page
+   *  is its root — the title is the tab's title, sized and inset like the
+   *  Library's, with no desktop gutters. */
+  layout?: "desktop" | "mobile";
 }
 
 export function SourcesListView({
   theme,
   onOpenSource,
   onOpenExtensions,
+  layout = "desktop",
 }: Props) {
+  const isMobile = layout === "mobile";
   const { locale, tr } = useI18n();
   const sources = useMemo(() => listSources(), []);
   const [query, setQuery] = useState("");
@@ -54,7 +66,10 @@ export function SourcesListView({
       style={{
         flex: 1,
         overflowY: "auto",
-        padding: "28px 40px 40px",
+        padding: isMobile ? "16px 22px 40px" : "28px 40px 40px",
+        // Room to scroll clear of the phone's floating bottom bar; the
+        // variable is only set inside the phone shell, so 0 elsewhere.
+        paddingBottom: homeBarInset(40),
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}
@@ -68,14 +83,18 @@ export function SourcesListView({
           marginBottom: 20,
         }}
       >
-        <div style={{ minWidth: 220, flex: 1 }}>
+        <div style={{ minWidth: isMobile ? 0 : 220, flex: 1 }}>
           <h2
             style={{
-              fontFamily: FONT_SERIF_DISPLAY,
-              fontWeight: 400,
-              fontSize: 26,
+              ...(isMobile
+                ? PHONE_TAB_TITLE
+                : {
+                    fontFamily: FONT_SERIF_DISPLAY,
+                    fontWeight: 400,
+                    fontSize: 26,
+                    letterSpacing: "-0.01em",
+                  }),
               margin: "0 0 6px 0",
-              letterSpacing: "-0.01em",
             }}
           >
             {tr("store.title")}

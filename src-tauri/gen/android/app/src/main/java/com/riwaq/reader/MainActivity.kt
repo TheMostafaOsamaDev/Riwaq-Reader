@@ -240,6 +240,12 @@ class MainActivity : TauriActivity() {
     override fun onWebViewCreate(webView: android.webkit.WebView) {
         super.onWebViewCreate(webView)
         webView.setBackgroundColor(Color.TRANSPARENT)
+        // The app's own type sizes, not the system font scale. A WebView
+        // multiplies every font by Settings > Font size by default, so at
+        // 115% each button, pill and field drew 15% larger than designed and
+        // the whole UI read as zoomed in. Book text has its own size setting
+        // in the reader, which is where a reader adjusts it.
+        webView.settings.textZoom = 100
     }
 
     /** Implemented in Rust (`notify.rs`). Stores this Activity and its JavaVM

@@ -39,6 +39,9 @@ export type LibraryView =
   | { kind: "shelf" }
   | { kind: "store"; page?: StorePage }
   | { kind: "shelves" }
+  // The phone's Downloads tab: a page of the home shell, with the bottom bar.
+  // The desktop shows downloads as an overlay ({ kind: "downloads" } below).
+  | { kind: "downloads" }
   | { kind: "shelfDetail"; shelfId: string }
   | {
       kind: "novel";
@@ -53,12 +56,19 @@ export type LibraryView =
 export type BaseLocation =
   | { screen: "library"; view: LibraryView }
   | { screen: "reader"; bookId: string }
-  | { screen: "settings" };
+  // `category` is the phone's drill-down into one settings section: in
+  // history, so the back gesture steps from a section to the list rather
+  // than out of Settings. The desktop shows every section at once and never
+  // sets it.
+  | { screen: "settings"; category?: string };
 
 /** A layer rendered on top of the base without replacing it. */
 export type Overlay =
   | { kind: "stream"; sourceId: string; novelUrl: string; chapterId?: number }
-  | { kind: "downloads" };
+  | { kind: "downloads" }
+  // The phone library's search. In history so the system back gesture
+  // closes it, as it does every other layer.
+  | { kind: "search" };
 
 export interface NavSnapshot {
   base: BaseLocation;
@@ -67,7 +77,17 @@ export interface NavSnapshot {
 
 export interface NavState {
   snapshot: NavSnapshot;
+  /** How the last change happened: a new entry (forward, or a forward
+   *  gesture), a step back, or an in-place replace. Lets a page transition
+   *  slide the right way — deeper in from the side, back out again. */
+  move: NavMove;
+  /** Bumped on every navigation. A view whose identity changes while this
+   *  stays put changed WITHOUT navigating (a library filter, a deleted
+   *  shelf) — no direction to slide in, so MobilePageSwap fades it. */
+  seq: number;
 }
+
+export type NavMove = "push" | "pop" | "replace" | "none";
 
 const ROOT: NavSnapshot = {
   base: { screen: "library", view: { kind: "shelf" } },
@@ -84,6 +104,8 @@ const ROOT: NavSnapshot = {
 let snapshot: NavSnapshot = ROOT;
 let index = 0;
 let entries: NavSnapshot[] = [];
+let move: NavMove = "none";
+let seq = 0;
 let state: NavState = compute();
 const listeners = new Set<() => void>();
 
@@ -99,10 +121,11 @@ function isStamped(s: unknown): s is StampedState {
 }
 
 function compute(): NavState {
-  return { snapshot };
+  return { snapshot, move, seq };
 }
 
 function commit(): void {
+  seq += 1;
   state = compute();
   for (const l of listeners) l();
 }
@@ -135,11 +158,13 @@ function init(): void {
 function onPopState(e: PopStateEvent): void {
   const s = e.state;
   if (isStamped(s)) {
+    move = s.navIndex < index ? "pop" : "push";
     index = s.navIndex;
     snapshot = s.snapshot;
   } else {
     // Popped past our stamped entries (shouldn't normally happen since the
     // root is stamped) — fall back to the root shelf rather than a blank.
+    move = "pop";
     index = 0;
     snapshot = ROOT;
   }
@@ -170,6 +195,7 @@ export function navigate(
     window.history.replaceState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
     entries[index] = next;
+    move = "replace";
   } else {
     const behind = entries[index - 1];
     if (behind && snapshotsEqual(next, behind)) {
@@ -183,6 +209,7 @@ export function navigate(
     entries[index] = next;
     window.history.pushState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
+    move = "push";
   }
   commit();
 }
@@ -232,6 +259,11 @@ export function goReader(bookId: string, opts?: { replace?: boolean }): void {
 
 export function goSettings(): void {
   goBase({ screen: "settings" });
+}
+
+/** Open one settings section (the phone's drill-down), as a history entry. */
+export function goSettingsCategory(category: string): void {
+  goBase({ screen: "settings", category });
 }
 
 /** Open an overlay on top of the *current* base (so, e.g., the Library stays

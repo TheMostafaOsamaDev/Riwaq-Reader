@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useState,
+} from "react";
 import { Icon } from "../Icon";
 import {
   getState as getQueueState,
@@ -12,6 +18,14 @@ import { useI18n } from "../../i18n/useI18n";
 import { flowInput, useAndroidUpdateSelect } from "../../store/androidUpdate";
 import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
+import type { HomeBarStyle } from "../../types/reader";
+import {
+  indicatorBaseStyle,
+  useSlidingIndicator,
+} from "../../hooks/useSlidingIndicator";
+import { glassPill, homeBarGlass } from "../../reader/chrome/glass";
+import { useReducedMotion } from "../../styles/motion";
+import { ACCENT, Z_LOCAL } from "../../styles/tokens";
 
 export interface MobileBottomNavProps {
   theme: Theme;
@@ -23,13 +37,44 @@ export interface MobileBottomNavProps {
   onOpenQueue: () => void;
   onImport: () => void;
   onOpenSettings: () => void;
+  /** Which bar to draw (Settings ▸ Appearance). Classic when omitted. */
+  style?: HomeBarStyle;
+  /** The Library tab: the whole library, from any other tab. */
+  onGoLibrary: () => void;
+  /** The tab on screen. Downloads and Settings are tabs of the phone shell
+   *  too, so this cannot be worked out from `tab` alone. */
+  current: NavKey;
 }
 
-export function MobileBottomNav({
+/** Every style is exactly this tall. The update pill and its toasts float a
+ *  fixed distance above the bar (components/update/parts.tsx), so a style
+ *  that grew would put the bar under them. */
+export const HOME_BAR_HEIGHT = 75;
+
+/** The phone home screen's navigation, in the style the reader picked. */
+export function MobileBottomNav(props: MobileBottomNavProps) {
+  switch (props.style ?? "classic") {
+    case "classic":
+      return <ClassicNav {...props} />;
+    case "labelled":
+      return <LabelledNav {...props} />;
+    case "dock":
+      return <DockNav {...props} />;
+    case "raised":
+      return <RaisedNav {...props} />;
+    case "switch":
+      return <SwitchNav {...props} />;
+    case "expanding":
+      return <ExpandingNav {...props} />;
+  }
+}
+
+function ClassicNav({
   theme,
   importing,
   tab,
   shelvesActive,
+  current,
   onOpenShelves,
   onSetStore,
   onOpenQueue,
@@ -47,19 +92,13 @@ export function MobileBottomNav({
       style={{
         flexShrink: 0,
         position: "relative",
+        // Exactly HOME_BAR_HEIGHT, as it was with its own 1px top rule: the
+        // update pill floats a fixed distance above it. The frosted glass
+        // it sits on (MobileLibrary) now draws the rule and the surface.
+        height: HOME_BAR_HEIGHT,
+        boxSizing: "border-box",
         padding: "10px 14px 14px",
-        background: theme.bg,
-        // Bolder top edge (theme.ruleStrong) so the bar's boundary
-        // registers cleanly against the upward shadow rather than
-        // bleeding into the shadow gradient.
-        borderTop: `1px solid ${theme.ruleStrong}`,
-        // A barely-there upward shadow: enough that the bar reads as a
-        // surface over the shelf, not so much that it sits on the page like
-        // a slab. It is deliberately black and faint rather than themed —
-        // on light and sepia it is the only thing lifting the bar, and on
-        // dark and OLED it is invisible against the background, where the
-        // themed border above carries the separation on its own.
-        boxShadow: "0 -1px 10px rgba(0,0,0,0.04)",
+        background: "transparent",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
@@ -70,7 +109,7 @@ export function MobileBottomNav({
         theme={theme}
         icon="layers"
         ariaLabel={tr("shelves.title")}
-        active={shelvesActive}
+        active={shelvesActive && current === "library"}
         onClick={onOpenShelves}
       />
       <NavIconButton
@@ -81,7 +120,7 @@ export function MobileBottomNav({
             ? tr("library.backToLibrary")
             : tr("library.openStore")
         }
-        active={tab === "store"}
+        active={current === "store"}
         onClick={onSetStore}
       />
       <NavFabButton theme={theme} importing={importing} onClick={onImport} />
@@ -89,6 +128,7 @@ export function MobileBottomNav({
         theme={theme}
         icon="download"
         ariaLabel={tr("library.openDownloads")}
+        active={current === "downloads"}
         onClick={onOpenQueue}
         showQueueBadge
       />
@@ -98,6 +138,7 @@ export function MobileBottomNav({
         ariaLabel={
           updateDot ? tr("sidebar.settingsUpdate") : tr("sidebar.settings")
         }
+        active={current === "settings"}
         onClick={onOpenSettings}
         showUpdateDot={updateDot}
       />
@@ -128,21 +169,19 @@ export function NavIconButton({
   showUpdateDot,
   onClick,
 }: NavIconButtonProps) {
-  const [activeCount, setActiveCount] = useState(() =>
-    activeJobCount(getQueueState()),
-  );
-  useEffect(() => {
-    if (!showQueueBadge) return;
-    const off = subscribeToQueue((s) => setActiveCount(activeJobCount(s)));
-    return off;
-  }, [showQueueBadge]);
+  const activeCount = useQueuedCount(!!showQueueBadge);
   const showBadge = !!showQueueBadge && activeCount > 0;
+  const reduced = useReducedMotion();
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
       title={ariaLabel}
+      // The classic style's motion: the circle that becomes selected pops.
+      // The class only appears on that change, so it plays once per
+      // selection; see `.riwaq-nav-pop` in global.css.
+      className={active && !reduced ? "riwaq-nav-pop" : undefined}
       style={{
         position: "relative",
         width: 44,
@@ -151,6 +190,9 @@ export function NavIconButton({
         border: active ? "none" : `0.5px solid ${theme.rule}`,
         background: active ? theme.ink : "transparent",
         color: active ? theme.bg : theme.ink,
+        transition: reduced
+          ? "none"
+          : "background 200ms ease, color 200ms ease",
         cursor: disabled ? "not-allowed" : "pointer",
         display: "flex",
         alignItems: "center",
@@ -208,9 +250,22 @@ export interface NavFabButtonProps {
   theme: Theme;
   importing: boolean;
   onClick: () => void;
+  /** Diameter. 50 in the classic bar; the header copy is smaller. */
+  size?: number;
+  /** "ink" is the classic filled button; "accent" the dock's copper one. */
+  tone?: "ink" | "accent";
+  /** A ring in the page colour, for a button raised out of the bar's edge. */
+  ring?: boolean;
 }
 
-export function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
+export function NavFabButton({
+  theme,
+  importing,
+  onClick,
+  size = 50,
+  tone = "ink",
+  ring = false,
+}: NavFabButtonProps) {
   // The focal action — filled + slightly larger than the outlined siblings
   // (50px vs 38px) + a soft drop shadow so it reads as the primary
   // affordance. Sits flush with the bar rather than protruding above it.
@@ -239,17 +294,20 @@ export function NavFabButton({ theme, importing, onClick }: NavFabButtonProps) {
       aria-busy={ind.busy || undefined}
       title={label}
       style={{
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        border: "none",
-        background: theme.ink,
-        color: theme.bg,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        border: ring ? `4px solid ${theme.bg}` : "none",
+        background: tone === "accent" ? ACCENT : theme.ink,
+        color: tone === "accent" ? "#fff" : theme.bg,
         cursor: ind.action === "none" ? "progress" : "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 3px 10px rgba(0,0,0,0.18)",
+        boxShadow:
+          tone === "accent"
+            ? "0 8px 20px rgba(201,100,66,0.38)"
+            : "0 3px 10px rgba(0,0,0,0.18)",
         // Dimmed only while it genuinely can't be pressed. A tappable
         // control at 0.6 reads as disabled.
         opacity: ind.action === "none" ? 0.6 : 1,
@@ -287,4 +345,715 @@ export function activeJobCount(s: { jobs: { status: string }[] }): number {
     }
   }
   return n;
+}
+
+// ── The other styles ────────────────────────────────────────────────────────
+//
+// Each is HOME_BAR_HEIGHT tall, carries the same downloads count and update
+// dot as the classic bar, and keeps the import button's progress state (it
+// is the same NavFabButton, wherever it sits). The styles without an import
+// button here put it in the header instead — see MobileLibrary.
+
+export type NavKey = "library" | "store" | "downloads" | "settings";
+/** The four destinations, in bar order. */
+const NAV_KEYS: readonly NavKey[] = [
+  "library",
+  "store",
+  "downloads",
+  "settings",
+];
+const NAV_ICON = {
+  library: "book",
+  store: "globe",
+  downloads: "download",
+  settings: "settings",
+} as const;
+const NAV_LABEL = {
+  library: "sidebar.library",
+  store: "sidebar.store",
+  downloads: "sidebar.downloads",
+  settings: "sidebar.settings",
+} as const;
+
+type HomeBarNav = ReturnType<typeof useHomeBarNav>;
+
+/** How many downloads want attention, kept current. `enabled` false skips
+ *  the subscription (a button that shows no count). */
+function useQueuedCount(enabled = true): number {
+  const [n, setN] = useState(() => activeJobCount(getQueueState()));
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeToQueue((s) => setN(activeJobCount(s)));
+  }, [enabled]);
+  return n;
+}
+
+/** What the bar needs to know and do, the same for every style. */
+function useHomeBarNav(p: MobileBottomNavProps) {
+  const updateDot = useAndroidUpdateSelect((s) => attentionDot(flowInput(s)));
+  const queued = useQueuedCount();
+  const isActive = (k: NavKey) => p.current === k;
+  const act = (k: NavKey) => {
+    if (k === "library") p.onGoLibrary();
+    // Not the classic globe's toggle: tapping the tab you are on stays.
+    else if (k === "store") {
+      if (p.current !== "store") p.onSetStore();
+    } else if (k === "downloads") p.onOpenQueue();
+    else p.onOpenSettings();
+  };
+  const { tr } = useI18n();
+  /** The button's accessible name; Settings says when an update waits. */
+  const aria = (k: NavKey) =>
+    k === "settings" && updateDot
+      ? tr("sidebar.settingsUpdate")
+      : tr(NAV_LABEL[k]);
+  return { act, isActive, aria, updateDot, queued };
+}
+
+/** Every style's frame. Transparent: the bar floats over the page on the
+ *  phone shell's frosted glass (MobileLibrary), which also draws the top
+ *  hairline, the same glass as the reader's bars. */
+const BAR_BASE: CSSProperties = {
+  flexShrink: 0,
+  position: "relative",
+  height: HOME_BAR_HEIGHT,
+  boxSizing: "border-box",
+  background: "transparent",
+};
+
+/** The downloads count, or the update dot, pinned to an icon's corner. */
+function Marks({
+  theme,
+  k,
+  queued,
+  updateDot,
+}: {
+  theme: Theme;
+  k: NavKey;
+  queued: number;
+  updateDot: boolean;
+}) {
+  if (k === "downloads" && queued > 0) {
+    return (
+      <span
+        style={{
+          position: "absolute",
+          top: -7,
+          insetInlineEnd: -10,
+          minWidth: 17,
+          height: 17,
+          padding: "0 4px",
+          borderRadius: 9,
+          background: theme.ink,
+          color: theme.bg,
+          fontSize: 10,
+          fontWeight: 700,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 1,
+          border: `2px solid ${theme.bg}`,
+        }}
+      >
+        {queued > 99 ? "99+" : queued}
+      </span>
+    );
+  }
+  if (k === "settings" && updateDot) {
+    return (
+      <span
+        data-update-dot
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: -3,
+          insetInlineEnd: -3,
+          width: 9,
+          height: 9,
+          borderRadius: "50%",
+          background: "#c4573a",
+          boxShadow: `0 0 0 2px ${theme.bg}`,
+        }}
+      />
+    );
+  }
+  return null;
+}
+
+/** An icon with its marks, sized for the bar. */
+function NavGlyph({
+  theme,
+  k,
+  nav,
+  size = 19,
+}: {
+  theme: Theme;
+  k: NavKey;
+  nav: HomeBarNav;
+  size?: number;
+}) {
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      <Icon name={NAV_ICON[k]} size={size} />
+      <Marks
+        theme={theme}
+        k={k}
+        queued={nav.queued}
+        updateDot={nav.updateDot}
+      />
+    </span>
+  );
+}
+
+/** Which item the sliding indicator sits under. */
+function activeKey(nav: HomeBarNav): NavKey | null {
+  return NAV_KEYS.find((k) => nav.isActive(k)) ?? null;
+}
+
+/** The travelling indicator: under the items, never in the way of a tap.
+ *  Its colour and shape are the style's; its position is the hook's. */
+function Indicator({
+  slide,
+  style,
+}: {
+  slide: { indicatorRef: Ref<HTMLDivElement> };
+  style: CSSProperties;
+}) {
+  return (
+    <div
+      ref={slide.indicatorRef}
+      aria-hidden
+      style={{ ...indicatorBaseStyle, zIndex: Z_LOCAL.under, ...style }}
+    />
+  );
+}
+
+/** Content colour for an item, eased to match its selection arriving — the
+ *  same 200ms the filter pills use. */
+const inkTransition = "color 200ms ease";
+/** Material's emphasized-decelerate: fast out of the gate, gentle landing. */
+const EMPHASIZED_DECEL = "cubic-bezier(0.05, 0.7, 0.1, 1)";
+
+// Each style moves its selection its own way:
+//   classic   — the circle pops (NavIconButton)
+//   labelled  — the pill grows out of the icon's centre (Material 3)
+//   dock      — the circle flows across, stretching then settling
+//   raised    — the icon lifts and a dot glides under the label
+//   switch    — the thumb springs across, overshooting a touch
+//   expanding — the tab widens and its name unrolls
+
+/** Four tabs with their names under the icons. The selected tab's pill grows
+ *  out from the icon's centre while the old one shrinks back into its own.
+ *  Import lives in the header. */
+function LabelledNav(p: MobileBottomNavProps) {
+  const { theme } = p;
+  const nav = useHomeBarNav(p);
+  const reduced = useReducedMotion();
+  return (
+    <nav
+      data-home-bar="labelled"
+      style={{
+        ...BAR_BASE,
+        display: "grid",
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        alignItems: "center",
+        padding: "0 6px",
+      }}
+    >
+      {NAV_KEYS.map((k) => (
+        <TabWithLabel key={k} k={k} nav={nav} theme={theme}>
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 15,
+              background: theme.hover,
+              boxShadow: `inset 0 0 0 1px ${theme.rule}`,
+              transform: nav.isActive(k) ? "scaleX(1)" : "scaleX(0.3)",
+              opacity: nav.isActive(k) ? 1 : 0,
+              transition: reduced
+                ? "none"
+                : `transform 300ms ${EMPHASIZED_DECEL}, opacity 160ms ease`,
+            }}
+          />
+        </TabWithLabel>
+      ))}
+    </nav>
+  );
+}
+
+/** One line height for every tab label, so a label in a button and one in a
+ *  plain column (Raised's "Add") share a baseline. */
+const LABEL_LINE = "15px";
+
+/** An icon over its name. `children` decorates the 58x30 icon slot (the
+ *  labelled style's pill); `lift` raises the icon a little (raised style). */
+function TabWithLabel({
+  k,
+  nav,
+  theme,
+  children,
+  lift = false,
+  labelRef,
+}: {
+  k: NavKey;
+  nav: HomeBarNav;
+  theme: Theme;
+  children?: ReactNode;
+  lift?: boolean;
+  labelRef?: Ref<HTMLSpanElement>;
+}) {
+  const { tr } = useI18n();
+  const reduced = useReducedMotion();
+  const on = nav.isActive(k);
+  return (
+    <button
+      type="button"
+      onClick={() => nav.act(k)}
+      aria-current={on ? "page" : undefined}
+      aria-label={nav.aria(k)}
+      style={{
+        position: "relative",
+        zIndex: Z_LOCAL.base,
+        border: "none",
+        background: "transparent",
+        cursor: "pointer",
+        display: "grid",
+        justifyItems: "center",
+        gap: 4,
+        padding: "4px 0",
+        fontFamily: "inherit",
+        fontSize: 11.5,
+        lineHeight: LABEL_LINE,
+        fontWeight: on ? 500 : 400,
+        color: on ? theme.ink : theme.chromeInk,
+        transition: inkTransition,
+        minWidth: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "relative",
+          width: 58,
+          height: 30,
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        {children}
+        <span
+          style={{
+            position: "relative",
+            display: "inline-flex",
+            transform: lift && on ? "translateY(-3px)" : "none",
+            transition: reduced
+              ? "none"
+              : `transform 280ms ${EMPHASIZED_DECEL}`,
+          }}
+        >
+          <NavGlyph theme={theme} k={k} nav={nav} />
+        </span>
+      </span>
+      <span
+        ref={labelRef}
+        style={{
+          maxWidth: "100%",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {tr(NAV_LABEL[k])}
+      </span>
+    </button>
+  );
+}
+
+/** Height of the dock pill and of the import button beside it. */
+const DOCK_H = 56;
+/** The dock's items, and the inset that puts them the same distance from
+ *  every edge of the pill: (56 - 44) / 2 on all four sides. */
+const DOCK_ITEM = 44;
+const DOCK_INSET = (DOCK_H - DOCK_ITEM) / 2;
+
+/** A pill of four icons floating over the page, with import beside it as
+ *  the one coloured control on screen. The selected circle flows from item
+ *  to item: it stretches out to reach the new one, then lets go of the
+ *  old. */
+function DockNav(p: MobileBottomNavProps) {
+  const { theme } = p;
+  const nav = useHomeBarNav(p);
+  const slide = useSlidingIndicator<NavKey, HTMLDivElement>(
+    activeKey(nav),
+    "stretch",
+  );
+  const dockGlass = glassPill(theme, homeBarGlass(theme));
+  return (
+    <nav
+      data-home-bar="dock"
+      style={{
+        ...BAR_BASE,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "0 14px",
+      }}
+    >
+      <div
+        ref={slide.containerRef}
+        style={{
+          position: "relative",
+          flex: 1,
+          minWidth: 0,
+          height: DOCK_H,
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          // space-between, not space-around: the end items sit DOCK_INSET
+          // from the pill's ends, exactly as far as from its top and bottom.
+          // space-around added half a gap of empty pill at each end.
+          justifyContent: "space-between",
+          padding: `0 ${DOCK_INSET}px`,
+          borderRadius: DOCK_H / 2,
+          // The dock's own frosted glass: the strip around it is clear, so
+          // the books show on either side and blur through the pill.
+          ...dockGlass.style,
+        }}
+        className={dockGlass.className}
+      >
+        <Indicator
+          slide={slide}
+          style={{ borderRadius: DOCK_ITEM / 2, background: theme.ink }}
+        />
+        {NAV_KEYS.map((k) => {
+          const on = nav.isActive(k);
+          return (
+            <button
+              key={k}
+              ref={slide.register(k)}
+              type="button"
+              onClick={() => nav.act(k)}
+              aria-current={on ? "page" : undefined}
+              aria-label={nav.aria(k)}
+              title={nav.aria(k)}
+              style={{
+                position: "relative",
+                zIndex: Z_LOCAL.base,
+                width: DOCK_ITEM,
+                height: DOCK_ITEM,
+                borderRadius: DOCK_ITEM / 2,
+                border: "none",
+                background: "transparent",
+                color: on ? theme.bg : theme.chromeInk,
+                transition: inkTransition,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <NavGlyph theme={theme} k={k} nav={nav} size={18} />
+            </button>
+          );
+        })}
+      </div>
+      <NavFabButton
+        theme={theme}
+        importing={p.importing}
+        onClick={p.onImport}
+        size={DOCK_H}
+        tone="accent"
+      />
+    </nav>
+  );
+}
+
+/** The classic layout with names, and Add raised out of the middle. The
+ *  selected tab's icon lifts and a small dot glides along under the labels
+ *  to it. */
+function RaisedNav(p: MobileBottomNavProps) {
+  const { theme } = p;
+  const { tr } = useI18n();
+  const nav = useHomeBarNav(p);
+  const slide = useSlidingIndicator<NavKey>(activeKey(nav));
+  const tab = (k: NavKey) => (
+    <TabWithLabel k={k} nav={nav} theme={theme} lift>
+      {/* The dot's anchor: a 4px box centred under the icon slot, which the
+          indicator measures. */}
+      <span
+        ref={slide.register(k)}
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: -27,
+          width: 4,
+          height: 4,
+          marginLeft: -2,
+        }}
+      />
+    </TabWithLabel>
+  );
+  return (
+    <nav
+      ref={slide.containerRef}
+      data-home-bar="raised"
+      style={{
+        ...BAR_BASE,
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 72px 1fr 1fr",
+        alignItems: "center",
+        padding: "0 4px",
+      }}
+    >
+      <Indicator
+        slide={slide}
+        style={{ borderRadius: 2, background: theme.ink }}
+      />
+      {tab("library")}
+      {tab("store")}
+      {/* Laid out exactly like TabWithLabel — 4px, a 30px slot, a 4px gap,
+          the label, 4px — so "Add" shares the other labels' baseline. The
+          button hangs from the slot. */}
+      <span
+        style={{
+          position: "relative",
+          zIndex: Z_LOCAL.base,
+          display: "grid",
+          justifyItems: "center",
+          gap: 4,
+          padding: "4px 0",
+          fontSize: 11.5,
+          lineHeight: LABEL_LINE,
+          color: theme.chromeInk,
+        }}
+      >
+        <span style={{ height: 30 }} />
+        {/* Out of the bar's top edge by only 14px: the update pill floats
+            centred 20px above the bar (update/parts.tsx), and a button
+            raised further would run into it. The bar's top edge sits 8px
+            above this column (75px bar, 59px column, centred). */}
+        <span
+          style={{
+            position: "absolute",
+            top: -14 - 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+          }}
+        >
+          <NavFabButton
+            theme={theme}
+            importing={p.importing}
+            onClick={p.onImport}
+            size={54}
+            ring
+          />
+        </span>
+        <span aria-hidden>{tr("library.nav.add")}</span>
+      </span>
+      {tab("downloads")}
+      {tab("settings")}
+    </nav>
+  );
+}
+
+/** Your books or books to get: one big two-way switch, with Downloads and
+ *  Settings either side. The thumb springs across like a physical switch.
+ *  Import lives in the header. */
+function SwitchNav(p: MobileBottomNavProps) {
+  const { theme } = p;
+  const { tr } = useI18n();
+  const nav = useHomeBarNav(p);
+  const slide = useSlidingIndicator<NavKey, HTMLDivElement>(
+    activeKey(nav),
+    "spring",
+  );
+  const side = (k: NavKey) => (
+    <button
+      type="button"
+      onClick={() => nav.act(k)}
+      aria-label={nav.aria(k)}
+      title={nav.aria(k)}
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 23,
+        flexShrink: 0,
+        border: `0.5px solid ${theme.ruleStrong}`,
+        background: "transparent",
+        color: theme.ink,
+        cursor: "pointer",
+        display: "grid",
+        placeItems: "center",
+      }}
+    >
+      <NavGlyph theme={theme} k={k} nav={nav} size={18} />
+    </button>
+  );
+  return (
+    <nav
+      data-home-bar="switch"
+      style={{
+        ...BAR_BASE,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "0 14px",
+      }}
+    >
+      {side("downloads")}
+      <div
+        ref={slide.containerRef}
+        style={{
+          position: "relative",
+          flex: 1,
+          minWidth: 0,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          padding: 4,
+          borderRadius: 26,
+          background: theme.hover,
+          border: `0.5px solid ${theme.rule}`,
+        }}
+      >
+        <Indicator
+          slide={slide}
+          // The selected half takes the theme's primary fill — the same ink
+          // every other style selects with — not a neutral raised grey.
+          style={{
+            borderRadius: 22,
+            background: theme.ink,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+          }}
+        />
+        {(["library", "store"] as const).map((k) => {
+          const on = nav.isActive(k);
+          return (
+            <button
+              key={k}
+              ref={slide.register(k)}
+              type="button"
+              onClick={() => nav.act(k)}
+              aria-current={on ? "page" : undefined}
+              style={{
+                position: "relative",
+                zIndex: Z_LOCAL.base,
+                height: 42,
+                border: "none",
+                borderRadius: 22,
+                background: "transparent",
+                color: on ? theme.bg : theme.chromeInk,
+                transition: inkTransition,
+                fontFamily: "inherit",
+                fontSize: 13.5,
+                fontWeight: on ? 500 : 400,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                minWidth: 0,
+              }}
+            >
+              <Icon name={NAV_ICON[k]} size={17} />
+              <span
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {tr(NAV_LABEL[k])}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {side("settings")}
+    </nav>
+  );
+}
+
+/** How wide a name may unroll to in the expanding style. Generous for the
+ *  longest label in either language ("Downloads", "التنزيلات"). */
+const EXPAND_LABEL_MAX = 110;
+
+/** Icons, except the screen you are on: its tab widens into a filled pill
+ *  and its name unrolls beside the icon, while the tab it left narrows back
+ *  to an icon. Both tabs animate at once, so the bar trades width between
+ *  them. Import lives in the header. */
+function ExpandingNav(p: MobileBottomNavProps) {
+  const { theme } = p;
+  const { tr } = useI18n();
+  const nav = useHomeBarNav(p);
+  const reduced = useReducedMotion();
+  const t = (props: string, ms: number) =>
+    reduced
+      ? "none"
+      : props
+          .split(",")
+          .map((x) => `${x.trim()} ${ms}ms ${EMPHASIZED_DECEL}`)
+          .join(", ");
+  return (
+    <nav
+      data-home-bar="expanding"
+      style={{
+        ...BAR_BASE,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 12px",
+      }}
+    >
+      {NAV_KEYS.map((k) => {
+        const on = nav.isActive(k);
+        return (
+          <button
+            key={k}
+            type="button"
+            onClick={() => nav.act(k)}
+            aria-current={on ? "page" : undefined}
+            aria-label={nav.aria(k)}
+            style={{
+              height: 46,
+              minWidth: 46,
+              padding: on ? "0 18px 0 16px" : "0 13px",
+              borderRadius: 23,
+              border: "none",
+              background: on ? theme.ink : "transparent",
+              color: on ? theme.bg : theme.chromeInk,
+              transition: t("padding, background-color, color", 320),
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "inherit",
+              fontSize: 13.5,
+              fontWeight: 500,
+            }}
+          >
+            <NavGlyph theme={theme} k={k} nav={nav} size={18} />
+            {/* Always rendered, clipped to nothing when not selected: the name
+                unrolls by widening its box, never by mounting — a mount
+                animation is what a webview can skip or freeze. */}
+            <span
+              aria-hidden={!on}
+              style={{
+                display: "inline-block",
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                maxWidth: on ? EXPAND_LABEL_MAX : 0,
+                marginInlineStart: on ? 8 : 0,
+                opacity: on ? 1 : 0,
+                transition: t("max-width, margin, opacity", 320),
+              }}
+            >
+              {tr(NAV_LABEL[k])}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
 }
