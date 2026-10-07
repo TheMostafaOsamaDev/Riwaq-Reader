@@ -61,6 +61,9 @@ export function SourcesListView({
         flex: 1,
         overflowY: "auto",
         padding: isMobile ? "16px 22px 40px" : "28px 40px 40px",
+        // Room to scroll clear of the phone's floating bottom bar; the
+        // variable is only set inside the phone shell, so 0 elsewhere.
+        paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}

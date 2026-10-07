@@ -60,6 +60,8 @@ export function ShelvesPage({
         flex: 1,
         overflowY: "auto",
         padding: "32px 40px 48px",
+        // Clear of the phone's floating bottom bar (0 outside its shell).
+        paddingBottom: `calc(48px + var(--home-bar-inset, 0px))`,
         fontFamily: FONT_STACKS.sans,
       }}
     >

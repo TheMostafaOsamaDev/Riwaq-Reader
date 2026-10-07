@@ -937,7 +937,13 @@ export function SettingsPage({
         )}
         <div
           ref={scrollRef}
-          style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            // Clear of the phone shell's floating bottom bar when embedded.
+            paddingBottom: "var(--home-bar-inset, 0px)",
+          }}
         >
           <div style={{ padding: "16px 14px 48px" }}>
             {inCategory ? (

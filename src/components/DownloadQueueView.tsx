@@ -147,6 +147,8 @@ export function DownloadQueueView({
           minHeight: 0,
           overflowY: "auto",
           padding: "8px 0 16px",
+          // Clear of the phone's floating bottom bar (0 outside its shell).
+          paddingBottom: `calc(16px + var(--home-bar-inset, 0px))`,
         }}
       >
         {activeCount === 0 &&

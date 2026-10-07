@@ -413,6 +413,8 @@ export function NovelDetailView({
         overflowY: "auto",
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
+        // Clear of the phone's floating bottom bar (0 outside its shell).
+        paddingBottom: "var(--home-bar-inset, 0px)",
       }}
     >
       <div

@@ -703,6 +703,8 @@ export const Z = {
   focusRail: 90,
   /** Reader bars pinned over the page. */
   readerChrome: 100,
+  /** The phone home shell's bottom bar, floating over its pages. */
+  homeBar: 105,
   /** Sidebar, mobile sheet, detail-view header — furniture beside content. */
   panel: 200,
   /** The stream-reader slot, held over the Library through its cross-fade. */

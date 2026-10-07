@@ -20,6 +20,7 @@ import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
 import type { HomeBarStyle } from "../../types/reader";
 import { useSlidingIndicator } from "../../hooks/useSlidingIndicator";
+import { GLASS_CLASS } from "../../reader/chrome/glass";
 import { useReducedMotion } from "../../styles/motion";
 import { ACCENT, raisedSurface, Z_LOCAL } from "../../styles/tokens";
 
@@ -90,19 +91,13 @@ function ClassicNav({
       style={{
         flexShrink: 0,
         position: "relative",
+        // Exactly HOME_BAR_HEIGHT, as it was with its own 1px top rule: the
+        // update pill floats a fixed distance above it. The frosted glass
+        // it sits on (MobileLibrary) now draws the rule and the surface.
+        height: HOME_BAR_HEIGHT,
+        boxSizing: "border-box",
         padding: "10px 14px 14px",
-        background: theme.bg,
-        // Bolder top edge (theme.ruleStrong) so the bar's boundary
-        // registers cleanly against the upward shadow rather than
-        // bleeding into the shadow gradient.
-        borderTop: `1px solid ${theme.ruleStrong}`,
-        // A barely-there upward shadow: enough that the bar reads as a
-        // surface over the shelf, not so much that it sits on the page like
-        // a slab. It is deliberately black and faint rather than themed —
-        // on light and sepia it is the only thing lifting the bar, and on
-        // dark and OLED it is invisible against the background, where the
-        // themed border above carries the separation on its own.
-        boxShadow: "0 -1px 10px rgba(0,0,0,0.04)",
+        background: "transparent",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
@@ -416,12 +411,15 @@ function useNav(p: MobileBottomNavProps) {
   return { act, isActive, aria, updateDot, queued };
 }
 
-const barBase = (theme: Theme): CSSProperties => ({
+/** Every style's frame. Transparent: the bar floats over the page on the
+ *  phone shell's frosted glass (MobileLibrary), which also draws the top
+ *  hairline, the same glass as the reader's bars. */
+const barBase = (_theme: Theme): CSSProperties => ({
   flexShrink: 0,
   position: "relative",
   height: HOME_BAR_HEIGHT,
   boxSizing: "border-box",
-  background: theme.bg,
+  background: "transparent",
 });
 
 /** The downloads count, or the update dot, pinned to an icon's corner. */
@@ -569,7 +567,6 @@ function LabelledNav(p: MobileBottomNavProps) {
       data-home-bar="labelled"
       style={{
         ...barBase(theme),
-        borderTop: `1px solid ${theme.ruleStrong}`,
         display: "grid",
         gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
         alignItems: "center",
@@ -727,10 +724,14 @@ function DockNav(p: MobileBottomNavProps) {
           justifyContent: "space-between",
           padding: `0 ${DOCK_INSET}px`,
           borderRadius: DOCK_H / 2,
-          background: theme.chrome,
+          // The dock's own frosted glass: the strip around it is clear, so
+          // the books show on either side and blur through the pill.
+          background: theme.chromeGlass,
+          ["--riwaq-chrome-opaque" as string]: theme.chrome,
           border: `0.5px solid ${theme.ruleStrong}`,
           boxShadow: "0 8px 22px rgba(0,0,0,0.12)",
         }}
+        className={GLASS_CLASS}
       >
         <Indicator
           slide={slide}
@@ -811,7 +812,6 @@ function RaisedNav(p: MobileBottomNavProps) {
       data-home-bar="raised"
       style={{
         ...barBase(theme),
-        borderTop: `1px solid ${theme.ruleStrong}`,
         display: "grid",
         gridTemplateColumns: "1fr 1fr 72px 1fr 1fr",
         alignItems: "center",
@@ -904,7 +904,6 @@ function SwitchNav(p: MobileBottomNavProps) {
       data-home-bar="switch"
       style={{
         ...barBase(theme),
-        borderTop: `1px solid ${theme.ruleStrong}`,
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -1008,7 +1007,6 @@ function ExpandingNav(p: MobileBottomNavProps) {
       data-home-bar="expanding"
       style={{
         ...barBase(theme),
-        borderTop: `1px solid ${theme.ruleStrong}`,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",

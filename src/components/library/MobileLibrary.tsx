@@ -9,12 +9,17 @@ import { MobilePageSwap } from "../MobilePageSwap";
 import { DownloadQueueView } from "../DownloadQueueView";
 import { back, goStorePage, useNav } from "../../store/navigation";
 import { booksOnShelf } from "../../store/shelfLogic";
-import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../../styles/tokens";
+import { FONT_SERIF_DISPLAY, FONT_STACKS, Z } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { BackHeader } from "./BackHeader";
 import { EmptyState, FilteredEmptyState } from "./EmptyState";
 import { ErrorBanner } from "./ErrorBanner";
-import { MobileBottomNav, NavFabButton } from "./MobileBottomNav";
+import {
+  HOME_BAR_HEIGHT,
+  MobileBottomNav,
+  NavFabButton,
+} from "./MobileBottomNav";
+import { glassBar } from "../../reader/chrome/glass";
 import {
   homeBarHasImport,
   homeBarHasShelves,
@@ -77,6 +82,7 @@ export function MobileLibrary({
   onGoLibrary,
 }: LayoutProps) {
   const { tr, locale, dir } = useI18n();
+  const glassBottom = glassBar(theme, "bottom");
   const isAr = locale === "ar";
   // Single-shelf detail page (Task 10) — see DesktopLibrary for the same
   // computation. Resolves the nav view's shelfId (threaded down as
@@ -161,9 +167,18 @@ export function MobileLibrary({
         // so flipping the property name here would silently swap which
         // physical edge gets which inset in RTL.
         paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
+        position: "relative",
+        // No bottom inset here: the bottom bar floats over the pages on
+        // frosted glass that runs to the screen's edge, so the pages run
+        // under it too. Each page's scroller adds this much room at its end
+        // instead, so its last row can scroll up clear of the bar — the
+        // bar's height plus the gesture area, or just the gesture area when
+        // the bar is away (a novel's page).
+        ["--home-bar-inset" as string]: sourceDetailView
+          ? "env(safe-area-inset-bottom, 0px)"
+          : `calc(${HOME_BAR_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))`,
       }}
     >
       {/* The body: one page at a time. Tabs (Library, Store, Downloads,
@@ -301,6 +316,7 @@ export function MobileLibrary({
                 flex: 1,
                 overflowY: "auto",
                 padding: "16px 22px 40px",
+                paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
               }}
             >
               <div
@@ -471,7 +487,13 @@ export function MobileLibrary({
               <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
             </div>
             <div
-              style={{ flex: 1, overflowY: "auto", padding: "16px 22px 40px" }}
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "16px 22px 40px",
+                // Room to scroll the last row up clear of the floating bar.
+                paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
+              }}
             >
               {error && <ErrorBanner theme={theme} message={error} />}
 
@@ -612,20 +634,39 @@ export function MobileLibrary({
           Visible on the shelf and on the Store so the user always
           has the import + queue + store toggle within thumb reach. */}
       {!sourceDetailView && (
-        <MobileBottomNav
-          theme={theme}
-          importing={importing}
-          tab={tab}
-          shelvesActive={shelvesActive || !!activeShelf}
-          onOpenShelves={onOpenShelves}
-          onSetStore={() => setTab(tab === "store" ? "all" : "store")}
-          onOpenQueue={onOpenQueue}
-          onImport={onImport}
-          onOpenSettings={onOpenSettings}
-          style={homeBar}
-          current={currentTab}
-          onGoLibrary={onGoLibrary}
-        />
+        <div
+          className={homeBar === "dock" ? undefined : glassBottom.className}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: Z.homeBar,
+            // The bar sits above the gesture area; the glass runs on under
+            // it to the screen's edge.
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            paddingLeft: "env(safe-area-inset-left, 0px)",
+            paddingRight: "env(safe-area-inset-right, 0px)",
+            // The dock is a pill floating on clear space; every other style
+            // is one full-width sheet of the reader's frosted glass.
+            ...(homeBar === "dock" ? null : glassBottom.style),
+          }}
+        >
+          <MobileBottomNav
+            theme={theme}
+            importing={importing}
+            tab={tab}
+            shelvesActive={shelvesActive || !!activeShelf}
+            onOpenShelves={onOpenShelves}
+            onSetStore={() => setTab(tab === "store" ? "all" : "store")}
+            onOpenQueue={onOpenQueue}
+            onImport={onImport}
+            onOpenSettings={onOpenSettings}
+            style={homeBar}
+            current={currentTab}
+            onGoLibrary={onGoLibrary}
+          />
+        </div>
       )}
       {searchOpen && (
         <SearchOverlay

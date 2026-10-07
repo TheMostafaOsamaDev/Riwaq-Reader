@@ -358,6 +358,8 @@ export function ExtensionsView({
         flex: 1,
         overflowY: "auto",
         padding: layout === "mobile" ? "16px 18px 40px" : "28px 40px 40px",
+        // Clear of the phone's floating bottom bar (0 outside its shell).
+        paddingBottom: `calc(40px + var(--home-bar-inset, 0px))`,
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}
