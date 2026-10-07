@@ -55,7 +55,7 @@ export function FocusPill({
         // Clear of the gesture bar on a phone that has one. The system bars go
         // with the chrome, so on Android this usually resolves to 0 and the
         // 22px is the whole gap.
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 22px)",
+        bottom: "calc(var(--safe-bottom) + 22px)",
         insetInline: 0,
         display: "flex",
         justifyContent: "center",

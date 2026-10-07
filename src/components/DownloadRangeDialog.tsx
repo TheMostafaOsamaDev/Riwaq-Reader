@@ -506,10 +506,9 @@ function DownloadRangeContent({
         </div>
         <div
           style={{
-            // The env() floor is deliberate: this WebView reports
-            // safe-area-inset-bottom as 0 on Android even with a gesture bar
-            // present, so max() supplies the clearance env() won't.
-            padding: "10px 18px max(20px, env(safe-area-inset-bottom, 0px))",
+            // The floor is deliberate: where the gesture inset is unknown or
+            // 0 (desktop), max() still supplies some clearance.
+            padding: "10px 18px max(20px, var(--safe-bottom))",
             flexShrink: 0,
           }}
         >

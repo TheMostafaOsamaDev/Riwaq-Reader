@@ -147,7 +147,7 @@ export function PanelShell({
           // safe-area padding fixes, because the space it needs is below the
           // screen rather than behind the system bar.
           paddingBottom:
-            "calc(var(--sheet-overhang, 0px) + max(40px, calc(env(safe-area-inset-bottom, 0px) + 24px)))",
+            "calc(var(--sheet-overhang, 0px) + max(40px, calc(var(--safe-bottom) + 24px)))",
           // Stop the inner list from chaining its overscroll into the sheet /
           // page, which is what made hitting the end feel like a stutter.
           // MobileSheet's drag handoff reads scrollTop in JS rather than

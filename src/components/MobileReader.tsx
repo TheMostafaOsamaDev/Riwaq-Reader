@@ -1482,7 +1482,7 @@ export function MobileReader({
             left: 0,
             right: 0,
             bottom: 0,
-            height: `max(env(safe-area-inset-bottom, 0px), ${SYSTEM_EDGE_PX}px)`,
+            height: `max(var(--safe-bottom), ${SYSTEM_EDGE_PX}px)`,
             touchAction: "none",
             zIndex: Z.readerChrome + 1,
           }}

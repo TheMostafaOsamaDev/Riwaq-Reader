@@ -227,7 +227,7 @@ export function ReaderProgressBar({
   valueMax,
   valueNow,
   valueText,
-  padding = "6px 14px calc(env(safe-area-inset-bottom, 0px) + 4px)",
+  padding = "6px 14px calc(var(--safe-bottom) + 4px)",
   reducedMotion = false,
   labelWidth = 104,
 }: ReaderProgressBarProps) {

@@ -184,8 +184,8 @@ export function MobileLibrary({
         // bar's height plus the gesture area, or just the gesture area when
         // the bar is away (a novel's page).
         ["--home-bar-inset" as string]: sourceDetailView
-          ? "env(safe-area-inset-bottom, 0px)"
-          : `calc(${HOME_BAR_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))`,
+          ? "var(--safe-bottom)"
+          : `calc(${HOME_BAR_HEIGHT + 12}px + var(--safe-bottom))`,
       }}
     >
       {/* The body: one page at a time. Tabs (Library, Store, Downloads,
@@ -649,7 +649,7 @@ export function MobileLibrary({
             zIndex: Z.homeBar,
             // The bar sits above the gesture area; the glass runs on under
             // it to the screen's edge.
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            paddingBottom: "var(--safe-bottom)",
             paddingLeft: "env(safe-area-inset-left, 0px)",
             paddingRight: "env(safe-area-inset-right, 0px)",
             // The dock is a pill floating on clear space; every other style

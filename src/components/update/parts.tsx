@@ -31,7 +31,7 @@ export const PILL_BOTTOM_PX = 91;
  *  is split above and below the face. */
 export const PILL_FACE_BOTTOM_PX = PILL_BOTTOM_PX + (44 - PILL_FACE_HEIGHT) / 2;
 /** The update toasts sit level with the pill's visible bottom edge. */
-export const UPDATE_TOAST_BOTTOM = `calc(${PILL_FACE_BOTTOM_PX}px + env(safe-area-inset-bottom, 0px))`;
+export const UPDATE_TOAST_BOTTOM = `calc(${PILL_FACE_BOTTOM_PX}px + var(--safe-bottom))`;
 
 export const VISUALLY_HIDDEN: CSSProperties = {
   position: "absolute",

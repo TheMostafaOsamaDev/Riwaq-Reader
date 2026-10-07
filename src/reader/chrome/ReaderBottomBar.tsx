@@ -80,7 +80,7 @@ interface Props {
 }
 
 /** Space under the controls for Android's gesture pill. */
-const SAFE_BOTTOM = "env(safe-area-inset-bottom, 0px)";
+const SAFE_BOTTOM = "var(--safe-bottom)";
 
 export function ReaderBottomBar(props: Props) {
   const { style } = props;

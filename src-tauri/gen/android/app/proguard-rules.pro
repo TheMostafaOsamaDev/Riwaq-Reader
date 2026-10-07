@@ -78,3 +78,12 @@
 # need no rule: they are manifest <receiver>s, which R8 keeps by name, and
 # they reach AppUpdater through ordinary bytecode calls, not JNI.
 -keep class com.riwaq.reader.AppUpdater { *; }
+
+# JS -> Kotlin: the page reads the navigation bar's height through
+# addJavascriptInterface (MainActivity.InsetsBridge, exposed as RiwaqInsets).
+# Reached only by name from JavaScript, so R8 would rename or strip it in a
+# release build and the page would silently fall back to env(), which older
+# WebViews report as 0.
+-keepclassmembers class com.riwaq.reader.MainActivity$InsetsBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

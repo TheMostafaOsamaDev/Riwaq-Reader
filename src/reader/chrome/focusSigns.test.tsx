@@ -43,7 +43,7 @@ describe("the focus-mode pill", () => {
     // It used to be a plate in the middle of the page, over the text the
     // reader had just been given. Down here it covers nothing anyone is
     // reading, and it is out of the way of the double-tap it describes.
-    expect(pill()).toContain("bottom:calc(env(safe-area-inset-bottom");
+    expect(pill()).toContain("bottom:calc(var(--safe-bottom)");
     expect(pill()).not.toContain("top:50%");
   });
 

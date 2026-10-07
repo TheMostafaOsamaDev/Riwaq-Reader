@@ -258,7 +258,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   const padBottom = isMobile
     ? barHeight !== null
       ? `${barHeight}px`
-      : `calc(${8 + (showProgress ? 50 : 0) + 44 + 6}px + env(safe-area-inset-bottom, 0px))`
+      : `calc(${8 + (showProgress ? 50 : 0) + 44 + 6}px + var(--safe-bottom))`
     : `${CHROME_INSET_BOTTOM}px`;
   // What the PAGE reserves, which is the same thing only while the bars are
   // in the layout. In focus mode they are not, and reserving their height
@@ -271,7 +271,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     ? `calc(${FOCUS_INSET}px + env(safe-area-inset-top, 0px))`
     : padTop;
   const pageBottom = focus.floating
-    ? `calc(${FOCUS_INSET}px + env(safe-area-inset-bottom, 0px))`
+    ? `calc(${FOCUS_INSET}px + var(--safe-bottom))`
     : padBottom;
   // Where the floating bars sit relative to an open panel, which differs by
   // platform because the panels do. Desktop keeps `pin`'s default `Z.focusBar`,

@@ -180,14 +180,14 @@ export function ChapterEndCard({
         // controls now, and a control you cannot tap at the exact moment you
         // have scrolled to it is not a control.
         //
-        // 96 + the scroller's 44 clears 124 with 16px to spare. The env() is
+        // 96 + the scroller's 44 clears 124 with 16px to spare. The inset is
         // not decoration: the chrome's own padding is
-        // `calc(env(safe-area-inset-bottom, 0px) + 16px)`, so it grows by the
-        // gesture inset on hardware that has one. It measures 0 on the
-        // emulator, which is exactly why a flat number looks correct there and
-        // would still tuck the links under the bar on a real phone.
+        // `calc(var(--safe-bottom) + 16px)`, so it grows by the
+        // gesture inset on hardware that has one. A flat number would look
+        // correct wherever the inset is 0 and still tuck the links under the
+        // bar on a phone with a gesture bar.
         padding: `0 ${gutter}px ${
-          compact ? "calc(env(safe-area-inset-bottom, 0px) + 96px)" : "96px"
+          compact ? "calc(var(--safe-bottom) + 96px)" : "96px"
         }`,
       }}
     >

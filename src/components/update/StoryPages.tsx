@@ -64,7 +64,7 @@ export function StoryPages({
         display: "flex",
         flexDirection: "column",
         padding:
-          "calc(env(safe-area-inset-top, 0px) + 20px) 22px calc(env(safe-area-inset-bottom, 0px) + 22px)",
+          "calc(env(safe-area-inset-top, 0px) + 20px) 22px calc(var(--safe-bottom) + 22px)",
       }}
     >
       <div

@@ -183,8 +183,7 @@ function Foot({ children }: { children: ReactNode }) {
     <div
       style={{
         marginTop: "auto",
-        padding:
-          "14px 20px max(16px, calc(env(safe-area-inset-bottom, 0px) + 12px))",
+        padding: "14px 20px max(16px, calc(var(--safe-bottom) + 12px))",
         display: "flex",
         flexDirection: "column",
         gap: 8,

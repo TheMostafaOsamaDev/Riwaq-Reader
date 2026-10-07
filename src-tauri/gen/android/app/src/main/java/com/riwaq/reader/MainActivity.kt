@@ -13,8 +13,10 @@ import android.util.Log
 import android.view.ActionMode
 import android.view.Gravity
 import android.view.Window
+import android.webkit.JavascriptInterface
 import androidx.activity.enableEdgeToEdge
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
@@ -246,6 +248,57 @@ class MainActivity : TauriActivity() {
         // the whole UI read as zoomed in. Book text has its own size setting
         // in the reader, which is where a reader adjusts it.
         webView.settings.textZoom = 100
+        reportNavigationBarInset(webView)
+    }
+
+    /** The navigation bar's height, for the page's bottom padding.
+     *
+     *  The app draws edge-to-edge, so everything pinned to the bottom of the
+     *  page has to keep clear of the gesture bar (or the 3-button bar) by
+     *  itself. CSS asks for that with `env(safe-area-inset-bottom)` — but a
+     *  WebView before roughly Chrome 136 reports only the top inset and
+     *  answers 0 for the bottom one. Measured on an API 36 emulator with
+     *  WebView 133: top 52px, bottom 0, and the home bar's labels drew
+     *  straight through the gesture pill. Phones whose WebView never updates
+     *  (no Play services) stay on such versions for good.
+     *
+     *  So the activity measures it and the page takes the larger of the two
+     *  (`--safe-bottom` in global.css, fed by lib/androidInsets.ts). The page
+     *  reads it synchronously through this interface, and is told to read
+     *  again when it changes (rotation, switching navigation modes). */
+    private val insets = InsetsBridge()
+
+    private fun reportNavigationBarInset(webView: android.webkit.WebView) {
+        webView.addJavascriptInterface(insets, "RiwaqInsets")
+        // Listened for on the content container, NOT on the WebView: the
+        // WebView installs its own insets listener and derives every env()
+        // value from it, and a second one there replaces it. Tried first:
+        // the top inset dropped to 0 and every title drew under the status
+        // bar. The container sees the same insets on their way down and
+        // passes them on unchanged.
+        val container = findViewById<android.view.View>(android.R.id.content)
+        ViewCompat.setOnApplyWindowInsetsListener(container) { view, windowInsets ->
+            val px = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val dp = px / view.resources.displayMetrics.density
+            if (dp != insets.bottomDp) {
+                insets.bottomDp = dp
+                webView.evaluateJavascript(
+                    "window.dispatchEvent(new Event('riwaq-insets'))",
+                    null,
+                )
+            }
+            ViewCompat.onApplyWindowInsets(view, windowInsets)
+        }
+        ViewCompat.requestApplyInsets(container)
+    }
+
+    /** Read from the page's JS thread, written on the UI thread. */
+    private class InsetsBridge {
+        @Volatile
+        var bottomDp = 0f
+
+        @JavascriptInterface
+        fun bottom(): Float = bottomDp
     }
 
     /** Implemented in Rust (`notify.rs`). Stores this Activity and its JavaVM
