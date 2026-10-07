@@ -1271,6 +1271,7 @@ function App() {
               onOpenSettings={openSettings}
               confirmDelete={t.confirmDelete}
               heroStyle={t.heroStyle}
+              homeBar={t.homeBar}
             />
           ) : loadedFixed && loadedFixed.book.id === base.bookId ? (
             <Suspense fallback={<LazyViewFallback background={theme.bg} />}>

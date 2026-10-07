@@ -1,18 +1,23 @@
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
+import { SearchOverlay } from "../SearchOverlay";
 import { LazyViewFallback } from "../LazyViewFallback";
 import { NovelDetailView, Store } from "./lazyViews";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
 import { AnimatedSwap } from "../AnimatedSwap";
-import { back } from "../../store/navigation";
+import { back, goStorePage } from "../../store/navigation";
 import { booksOnShelf } from "../../store/shelfLogic";
 import { FONT_SERIF_DISPLAY, FONT_STACKS } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { BackHeader } from "./BackHeader";
 import { EmptyState, FilteredEmptyState } from "./EmptyState";
 import { ErrorBanner } from "./ErrorBanner";
-import { MobileBottomNav } from "./MobileBottomNav";
+import { MobileBottomNav, NavFabButton } from "./MobileBottomNav";
+import {
+  homeBarHasImport,
+  homeBarHasShelves,
+} from "../../reader/chrome/barStyles";
 import { MobileShelfCard } from "./MobileShelfCard";
 import { HeroContinueCard } from "./HeroContinueCard";
 import { MobileTabRow } from "./MobileTabRow";
@@ -21,6 +26,7 @@ import type { LayoutProps } from "./types";
 
 export function MobileLibrary({
   theme,
+  themeKey,
   books,
   covers,
   loading,
@@ -61,6 +67,10 @@ export function MobileLibrary({
   onEdit: _onEdit,
   onCardContextMenu,
   heroStyle,
+  homeBar,
+  searchOpen,
+  onOpenSearch,
+  onCloseSearch,
 }: LayoutProps) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
@@ -74,7 +84,20 @@ export function MobileLibrary({
   // Filter to the selected status tab. "store" is handled separately
   // (a body swap, not a filter); the tab pills exclude it on mobile
   // because Store toggling lives in the bottom nav.
-  const visible = books.filter((b) => matchesTab(b, tab));
+  // The text the search's "filter the shelf" action narrowed the library
+  // to, exactly as on desktop. Shown as a chip above the books so it can be
+  // seen and cleared: on a phone there is no sidebar to hint that a filter
+  // is on, and a library that silently shows two books reads as lost books.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const visible = books
+    .filter((b) => matchesTab(b, tab))
+    .filter(
+      (b) =>
+        !q ||
+        b.title.toLowerCase().includes(q) ||
+        (b.author ?? "").toLowerCase().includes(q),
+    );
   // Hero is the "continue reading" affordance — only meaningful on the
   // full library view. On a filtered tab we render a flat shelf so every
   // match is equally weighted.
@@ -127,18 +150,51 @@ export function MobileLibrary({
               borderBottom: `0.5px solid ${theme.rule}`,
             }}
           >
-            <h1
-              style={{
-                fontFamily: FONT_SERIF_DISPLAY,
-                fontWeight: 400,
-                fontSize: 28,
-                margin: 0,
-                letterSpacing: "-0.02em",
-                color: theme.ink,
-              }}
-            >
-              {tr("sidebar.library")}
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <h1
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontFamily: FONT_SERIF_DISPLAY,
+                  fontWeight: 400,
+                  fontSize: 28,
+                  margin: 0,
+                  letterSpacing: "-0.02em",
+                  color: theme.ink,
+                }}
+              >
+                {tr("sidebar.library")}
+              </h1>
+              {/* Shelves, for the bar styles that have no button for it.
+                  Here rather than at the end of the filter pills, where it
+                  scrolled out of sight behind the row's arrow. */}
+              {!homeBarHasShelves(homeBar) && (
+                <HeaderIconButton
+                  theme={theme}
+                  icon="layers"
+                  label={tr("shelves.title")}
+                  onClick={onOpenShelves}
+                />
+              )}
+              {/* Search, as on desktop: the same overlay as the sidebar's
+                  search and ⌘K, with books, recent searches and shortcuts. */}
+              <HeaderIconButton
+                theme={theme}
+                icon="search"
+                label={tr("sidebar.searchLibrary")}
+                onClick={onOpenSearch}
+              />
+              {/* The bar styles without an import button put it here, beside
+                  the title, where Android apps put "add". */}
+              {!homeBarHasImport(homeBar) && (
+                <NavFabButton
+                  theme={theme}
+                  importing={importing}
+                  onClick={onImport}
+                  size={40}
+                />
+              )}
+            </div>
             <MobileTabRow theme={theme} tab={tab} setTab={setTab} />
           </div>
         )}
@@ -389,6 +445,65 @@ export function MobileLibrary({
             >
               {error && <ErrorBanner theme={theme} message={error} />}
 
+              {q && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 16,
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minWidth: 0,
+                      paddingBlock: 6,
+                      paddingInlineStart: 12,
+                      paddingInlineEnd: 6,
+                      borderRadius: 18,
+                      background: theme.hover,
+                      border: `0.5px solid ${theme.rule}`,
+                      fontSize: 12.5,
+                      color: theme.ink,
+                    }}
+                  >
+                    <Icon name="search" size={13} />
+                    <span
+                      style={{
+                        minWidth: 0,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {tr("library.filterChip", { term: query.trim() })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setQuery("")}
+                      aria-label={tr("library.clearFilter")}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 13,
+                        border: "none",
+                        background: "transparent",
+                        color: theme.muted,
+                        cursor: "pointer",
+                        display: "grid",
+                        placeItems: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon name="close" size={13} />
+                    </button>
+                  </span>
+                </div>
+              )}
+
               {loading && books.length === 0 ? (
                 <div
                   style={{
@@ -477,8 +592,64 @@ export function MobileLibrary({
           onOpenQueue={onOpenQueue}
           onImport={onImport}
           onOpenSettings={onOpenSettings}
+          style={homeBar}
+          onGoLibrary={() => setTab("all")}
+        />
+      )}
+      {searchOpen && (
+        <SearchOverlay
+          theme={theme}
+          themeKey={themeKey}
+          books={books}
+          covers={covers}
+          onOpen={onOpen}
+          setTab={setTab}
+          setQuery={setQuery}
+          onOpenSettings={onOpenSettings}
+          onOpenQueue={onOpenQueue}
+          onOpenStoreSource={(sourceId) =>
+            goStorePage({ kind: "source", sourceId })
+          }
+          onClose={onCloseSearch}
+          layout="mobile"
         />
       )}
     </div>
+  );
+}
+
+/** A round, outlined button beside the "Library" title. */
+function HeaderIconButton({
+  theme,
+  icon,
+  label,
+  onClick,
+}: {
+  theme: LayoutProps["theme"];
+  icon: "search" | "layers";
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        flexShrink: 0,
+        border: `0.5px solid ${theme.rule}`,
+        background: "transparent",
+        color: theme.ink,
+        cursor: "pointer",
+        display: "grid",
+        placeItems: "center",
+      }}
+    >
+      <Icon name={icon} size={18} />
+    </button>
   );
 }

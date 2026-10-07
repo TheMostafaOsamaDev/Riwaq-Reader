@@ -40,6 +40,7 @@ import {
   type SettingEntry,
 } from "./SettingsSection";
 import { HeroStyleField } from "./HeroStyleField";
+import { HomeBarField, ReaderBarField } from "./BarStyleField";
 import { Spinner } from "./Spinner";
 import { DEFAULT_TWEAKS } from "../hooks/useTweaks";
 import { copyText } from "../lib/clipboard";
@@ -288,6 +289,28 @@ export function SettingsPage({
             theme={theme}
             value={t.heroStyle}
             onChange={(v) => setTweak("heroStyle", v)}
+          />
+        ),
+      },
+      {
+        id: "readerBar",
+        label: tr("settings.readerBar"),
+        node: (
+          <ReaderBarField
+            theme={theme}
+            value={t.readerBar}
+            onChange={(v) => setTweak("readerBar", v)}
+          />
+        ),
+      },
+      {
+        id: "homeBar",
+        label: tr("settings.homeBar"),
+        node: (
+          <HomeBarField
+            theme={theme}
+            value={t.homeBar}
+            onChange={(v) => setTweak("homeBar", v)}
           />
         ),
       },

@@ -58,7 +58,10 @@ export type BaseLocation =
 /** A layer rendered on top of the base without replacing it. */
 export type Overlay =
   | { kind: "stream"; sourceId: string; novelUrl: string; chapterId?: number }
-  | { kind: "downloads" };
+  | { kind: "downloads" }
+  // The phone library's search. In history so the system back gesture
+  // closes it, as it does every other layer.
+  | { kind: "search" };
 
 export interface NavSnapshot {
   base: BaseLocation;

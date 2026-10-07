@@ -46,6 +46,9 @@ interface Props {
   /** Open a source's page in the Store (from the Websites results). */
   onOpenStoreSource: (sourceId: string) => void;
   onClose: () => void;
+  /** "mobile" swaps the ESC keycap, which a phone has no key for, for a
+   *  Cancel button sized for a thumb. */
+  layout?: "desktop" | "mobile";
 }
 
 const JUMPS: {
@@ -81,6 +84,7 @@ export function SearchOverlay({
   onOpenQueue,
   onOpenStoreSource,
   onClose,
+  layout = "desktop",
 }: Props) {
   const { tr } = useI18n();
   const dark = themeKey === "dark" || themeKey === "oled";
@@ -237,22 +241,43 @@ export function SearchOverlay({
               color: theme.ink,
             }}
           />
-          <button
-            onClick={onClose}
-            style={{
-              fontSize: 11,
-              letterSpacing: "0.1em",
-              color: theme.muted,
-              border: `1px solid ${theme.rule}`,
-              borderRadius: 6,
-              padding: "4px 8px",
-              background: "transparent",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            ESC
-          </button>
+          {layout === "mobile" ? (
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                height: 44,
+                padding: "0 4px",
+                marginBlock: -10,
+                fontSize: 14,
+                color: theme.muted,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                flexShrink: 0,
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.1em",
+                color: theme.muted,
+                border: `1px solid ${theme.rule}`,
+                borderRadius: 6,
+                padding: "4px 8px",
+                background: "transparent",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              ESC
+            </button>
+          )}
         </div>
 
         {/* Body */}

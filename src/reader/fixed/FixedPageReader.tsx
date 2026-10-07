@@ -46,7 +46,9 @@ import { SideSheet } from "../../components/SideSheet";
 import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
 import { ReaderProgressBar } from "../chrome/ReaderProgressBar";
-import { ReaderTabBar } from "../chrome/ReaderTabBar";
+import { ReaderBottomBar } from "../chrome/ReaderBottomBar";
+import { PanelSwitcher } from "../chrome/PanelSwitcher";
+import { panelsInContents } from "../chrome/barStyles";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
 import { SettingsPanel } from "../../panels/SettingsPanel";
 import {
@@ -215,6 +217,25 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   });
   const glassBottom = focus.glass("bottom");
 
+  // The phone bar's real height, whichever style it is in.
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barHeight, setBarHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!isMobile || !el || typeof ResizeObserver === "undefined") {
+      setBarHeight(null);
+      return;
+    }
+    const read = () => {
+      const h = Math.round(el.getBoundingClientRect().height);
+      setBarHeight((prev) => (prev === h || h === 0 ? prev : h));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isMobile, t.readerBar]);
+
   // How much room the two floating bars take, for the page area to inset
   // itself by. Unlike the reflow reader — where text simply scrolls under the
   // bars — a fitted page has to sit BETWEEN them: at `fit: "page"` the sheet
@@ -228,8 +249,15 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // The phone's bottom bar stacks: 8px of its own padding, the scrubber row
   // when it is showing (a 44px track plus its 6px tail), the 44px tab row,
   // then 6px above the gesture bar. Desktop shows the scrubber alone.
+  //
+  // That arithmetic is the classic bar's. The other bar styles (Settings ▸
+  // Appearance) differ in height, so once the bar has been measured the page
+  // keeps clear of what is really there; the arithmetic covers the first
+  // frame, before the measurement lands.
   const padBottom = isMobile
-    ? `calc(${8 + (showProgress ? 50 : 0) + 44 + 6}px + env(safe-area-inset-bottom, 0px))`
+    ? barHeight !== null
+      ? `${barHeight}px`
+      : `calc(${8 + (showProgress ? 50 : 0) + 44 + 6}px + env(safe-area-inset-bottom, 0px))`
     : `${CHROME_INSET_BOTTOM}px`;
   // What the PAGE reserves, which is the same thing only while the bars are
   // in the layout. In focus mode they are not, and reserving their height
@@ -703,25 +731,36 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           reason the two formats felt like different readers. Desktop keeps the
           tabs up top, where there is room and no thumb involved. */}
       {isMobile ? (
-        <div
-          className={glassBottom.className}
-          style={{
+        // Arranged the way the reader chose (Tweaks.readerBar), the same
+        // component the reflow reader uses. The page keeps clear of it by
+        // its MEASURED height (see barHeight), since the styles differ.
+        <ReaderBottomBar
+          theme={theme}
+          style={t.readerBar}
+          rootRef={barRef}
+          hidden={false}
+          frame={{
             ...focus.pin("bottom"),
             ...barLayer,
-            ...glassBottom.style,
-            color: theme.chromeInk,
-            padding: "8px 14px calc(env(safe-area-inset-bottom, 0px) + 6px)",
           }}
-        >
-          {showProgress && progressBar}
-          <ReaderTabBar
-            theme={theme}
-            active={panel}
-            onOpen={openPanel}
-            showProgress={showProgress}
-            onToggleProgress={() => setShowProgress((v) => !v)}
-          />
-        </div>
+          slider={progressBar}
+          place={{
+            fraction: barFraction,
+            title: progress.label || title,
+            position: pageCounter,
+            percent: `${fmt(Math.round(barFraction * 100))}%`,
+          }}
+          seek={{
+            rtl: uiDir === "rtl",
+            formatLabel: (f) => pageCounterFor(pageAt(f)),
+            onSeek: (f) => viewerRef.current?.goToPage(pageAt(f)),
+            ariaLabel: tr("reader.readingProgress"),
+          }}
+          active={panel}
+          onOpen={openPanel}
+          showProgress={showProgress}
+          onToggleProgress={() => setShowProgress((v) => !v)}
+        />
       ) : (
         <div
           style={
@@ -769,6 +808,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           height="82%"
           label={panelLabel}
         >
+          <PanelSwitcher
+            theme={theme}
+            panels={panelsInContents(t.readerBar)}
+            active={panel}
+            onSelect={setPanel}
+          />
           <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             {renderPanelBody()}
           </div>

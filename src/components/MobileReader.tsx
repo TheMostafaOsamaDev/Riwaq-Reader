@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CSSProperties,
@@ -22,7 +22,13 @@ import {
   MAX_TICKS,
   ReaderProgressBar,
 } from "../reader/chrome/ReaderProgressBar";
-import { ReaderTabBar } from "../reader/chrome/ReaderTabBar";
+import { ReaderBottomBar } from "../reader/chrome/ReaderBottomBar";
+import { PanelSwitcher } from "../reader/chrome/PanelSwitcher";
+import {
+  minutesLeft,
+  panelsInContents,
+  wordCount,
+} from "../reader/chrome/barStyles";
 import { FocusRail } from "../reader/chrome/FocusRail";
 import { useProgressRails } from "../reader/chrome/useProgressRails";
 import {
@@ -57,7 +63,7 @@ import {
   type SelectionGeometry,
 } from "../reader/selection/selectionGeometry";
 import { HighlightActionPopover } from "./HighlightActionPopover";
-import type { EpubBook } from "../epub/types";
+import { type EpubBook, isImageItem } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import {
   EASE,
@@ -380,7 +386,6 @@ export function MobileReader({
     ? "none"
     : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
   const glassTop = glassBar(theme, "top");
-  const glassBottom = glassBar(theme, "bottom");
 
   // Android full screen. The app draws edge-to-edge, so hiding the reader's
   // own bars used to leave the SYSTEM bars painted over the page — the clock
@@ -601,6 +606,57 @@ export function MobileReader({
           (_, i) => (i + 1) / (chapterCount - 1),
         )
       : [];
+
+  /** "Chapter 5 — The Long Night": what a slider position would open. */
+  const chapterLabelAt = (f: number) =>
+    tr("reader.chapterDash", {
+      n: formatNum(chapterAt(f) + 1, locale),
+      title: book.chapters[chapterAt(f)]?.title ?? "",
+    });
+  const seekChapter = (f: number) => {
+    const next = chapterAt(f);
+    if (next !== currentChapter) onChapterChange(next);
+  };
+
+  // "8 min left" for the status bar, which is the only style that shows it.
+  // Recomputed as the page scrolls, but it only re-renders when the whole
+  // number of minutes changes — a few times a chapter, not per frame.
+  const chapterWords = useMemo(
+    () =>
+      wordCount(
+        chapter.paragraphs.flatMap((p) => (isImageItem(p) ? [] : [p.text])),
+      ),
+    [chapter],
+  );
+  const [minLeft, setMinLeft] = useState<number | null>(null);
+  const wantsMinLeft = t.readerBar === "status";
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!wantsMinLeft || !el) {
+      setMinLeft(null);
+      return;
+    }
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const f = chapterScrollFraction(
+        el.scrollTop,
+        el.scrollHeight,
+        el.clientHeight,
+      );
+      const m = minutesLeft(chapterWords, f);
+      setMinLeft((prev) => (prev === m ? prev : m));
+    };
+    const onScroll = () => {
+      if (!raf) raf = window.requestAnimationFrame(update);
+    };
+    update();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, [wantsMinLeft, chapterWords]);
 
   /** Back to this chapter's own opening — the block with its number and
    *  title, not merely scrollTop 0 of whatever is on screen. Smooth, because
@@ -1434,39 +1490,31 @@ export function MobileReader({
       )}
 
       {/* Bottom chrome — same always-mounted pattern as the top bar.
-          Slides down off-screen when hidden and gives up pointer events. */}
-      <div
-        className={glassBottom.className}
-        aria-hidden={chromeHidden}
-        // Right where a thumb starts an upward flick — see the top bar.
-        data-pan-zone
-        style={{
+          Slides down off-screen when hidden and gives up pointer events.
+          Its arrangement is the reader's choice (Tweaks.readerBar); see
+          reader/chrome/ReaderBottomBar.tsx. */}
+      <ReaderBottomBar
+        theme={theme}
+        style={t.readerBar}
+        hidden={chromeHidden}
+        frame={{
           position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
           zIndex: Z.readerChrome,
-          padding: "14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)",
-          color: theme.chromeInk,
-          ...glassBottom.style,
           transform: chromeHidden ? "translateY(100%)" : "translateY(0)",
           opacity: chromeHidden ? 0 : 1,
           transition: chromeTransition,
           pointerEvents: chromeHidden ? "none" : "auto",
         }}
-      >
-        {showProgress && (
+        slider={
           <ReaderProgressBar
             theme={theme}
             rtl={dir === "rtl"}
             fraction={barFraction}
             formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
-            formatLabel={(f) =>
-              tr("reader.chapterDash", {
-                n: formatNum(chapterAt(f) + 1, locale),
-                title: book.chapters[chapterAt(f)]?.title ?? "",
-              })
-            }
+            formatLabel={chapterLabelAt}
             ticks={ticks}
             prevLabel={tr("reader.prevChapter")}
             nextLabel={tr("reader.nextChapter")}
@@ -1477,10 +1525,7 @@ export function MobileReader({
             // No `onScrub`: the reader stays put while the finger moves, so a
             // sweep across the book doesn't load every chapter it crosses.
             // The handle and the chip preview the target; release commits.
-            onSeek={(f) => {
-              const next = chapterAt(f);
-              if (next !== currentChapter) onChapterChange(next);
-            }}
+            onSeek={seekChapter}
             ariaLabel={tr("reader.chapterProgress")}
             valueMin={1}
             valueMax={Math.max(1, chapterCount)}
@@ -1490,22 +1535,38 @@ export function MobileReader({
             labelWidth={0}
             padding="0 6px 6px"
           />
-        )}
-        <ReaderTabBar
-          theme={theme}
-          active={
-            sheet === "toc" ||
-            sheet === "highlights" ||
-            sheet === "progress" ||
-            sheet === "settings"
-              ? sheet
-              : null
-          }
-          onOpen={setSheet}
-          showProgress={showProgress}
-          onToggleProgress={() => setShowProgress((s) => !s)}
-        />
-      </div>
+        }
+        place={{
+          fraction: barFraction,
+          title: chapter.title,
+          position: tr("reader.chapterOfTotal", {
+            n: currentChapter + 1,
+            total: chapterCount,
+          }),
+          percent: `${formatNum(Math.round(barFraction * 100), locale)}%`,
+          detail:
+            minLeft === null
+              ? undefined
+              : tr("reader.bar.minLeft", { n: formatNum(minLeft, locale) }),
+        }}
+        seek={{
+          rtl: dir === "rtl",
+          formatLabel: chapterLabelAt,
+          onSeek: seekChapter,
+          ariaLabel: tr("reader.chapterProgress"),
+        }}
+        active={
+          sheet === "toc" ||
+          sheet === "highlights" ||
+          sheet === "progress" ||
+          sheet === "settings"
+            ? sheet
+            : null
+        }
+        onOpen={setSheet}
+        showProgress={showProgress}
+        onToggleProgress={() => setShowProgress((s) => !s)}
+      />
 
       {/* Sheet stays mounted while it animates out — pass `open` so it
           knows whether to show the enter or exit keyframes. */}
@@ -1526,6 +1587,12 @@ export function MobileReader({
                   : undefined
         }
       >
+        <PanelSwitcher
+          theme={theme}
+          panels={panelsInContents(t.readerBar)}
+          active={sheet}
+          onSelect={setSheet}
+        />
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
           {sheet === "toc" && (
             <TOCPanel

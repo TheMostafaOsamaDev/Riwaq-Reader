@@ -46,6 +46,7 @@ import {
   goStorePage,
   openOverlay,
   back,
+  getState as getNavState,
   type LibraryView,
 } from "../../store/navigation";
 import {
@@ -94,7 +95,7 @@ import { errorLabel } from "../../i18n/statusLabels";
 import { DesktopLibrary } from "./DesktopLibrary";
 import { MobileLibrary } from "./MobileLibrary";
 import type { LibraryTab } from "./tabs";
-import type { HeroStyle } from "../../types/reader";
+import type { HeroStyle, HomeBarStyle } from "../../types/reader";
 
 interface Props {
   theme: Theme;
@@ -124,6 +125,8 @@ interface Props {
   confirmDelete: boolean;
   /** Style of the "continue reading" card (Settings ▸ Appearance). */
   heroStyle: HeroStyle;
+  /** Style of the phone's bottom navigation (Settings ▸ Appearance). */
+  homeBar: HomeBarStyle;
 }
 
 function useBooks() {
@@ -179,6 +182,7 @@ export function Library({
   onOpenSettings,
   confirmDelete,
   heroStyle,
+  homeBar,
 }: Props) {
   const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
@@ -270,6 +274,7 @@ export function Library({
   const storePage = view.kind === "store" ? view.page : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
+  const searchOpen = navState.snapshot.overlay?.kind === "search";
 
   const [sourceDetailRangeDialog, setSourceDetailRangeDialog] = useState<{
     sourceId: string;
@@ -1019,6 +1024,14 @@ export function Library({
     theme,
     themeKey,
     heroStyle,
+    homeBar,
+    searchOpen,
+    onOpenSearch: () => openOverlay({ kind: "search" }),
+    // Only while search is still the top layer. Picking a result navigates
+    // first (a book, the Store), and stepping back after that would undo it.
+    onCloseSearch: () => {
+      if (getNavState().snapshot.overlay?.kind === "search") back();
+    },
     books,
     covers,
     loading,

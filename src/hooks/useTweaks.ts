@@ -8,6 +8,7 @@ import {
 import { appVersion } from "virtual:whats-new";
 import { migrateStorageKey } from "../lib/legacyStorage";
 import { isHeroStyle } from "../components/library/heroModel";
+import { isHomeBarStyle, isReaderBarStyle } from "../reader/chrome/barStyles";
 
 const STORAGE_KEY = "riwaq:tweaks:v1";
 
@@ -15,6 +16,10 @@ export const DEFAULT_TWEAKS: Tweaks = {
   uiLang: "system",
   theme: "sepia",
   heroStyle: "ambient",
+  // Today's bars. A new style is opt-in from Settings ▸ Appearance, so an
+  // update never rearranges the controls a reader already knows.
+  readerBar: "classic",
+  homeBar: "classic",
   fontFamily: "readex",
   fontSize: 17,
   lineHeight: 1.6,
@@ -56,6 +61,8 @@ export function acceptsTweak(k: string, v: unknown): boolean {
     // A string of the right type can still name a value that does not
     // exist (an export from a newer build, or a hand edit).
     !(k === "heroStyle" && !isHeroStyle(v)) &&
+    !(k === "readerBar" && !isReaderBarStyle(v)) &&
+    !(k === "homeBar" && !isHomeBarStyle(v)) &&
     !(k === "updateOverMobile" && !UPDATE_OVER_MOBILE.includes(v))
   );
 }
@@ -123,6 +130,12 @@ export function loadTweaks(): Tweaks {
     if (!(merged.uiFont in UI_FONT_STACKS)) merged.uiFont = "readex";
     if (!isHeroStyle(merged.heroStyle)) {
       merged.heroStyle = DEFAULT_TWEAKS.heroStyle;
+    }
+    if (!isReaderBarStyle(merged.readerBar)) {
+      merged.readerBar = DEFAULT_TWEAKS.readerBar;
+    }
+    if (!isHomeBarStyle(merged.homeBar)) {
+      merged.homeBar = DEFAULT_TWEAKS.homeBar;
     }
     if (!UPDATE_OVER_MOBILE.includes(merged.updateOverMobile)) {
       merged.updateOverMobile = DEFAULT_TWEAKS.updateOverMobile;

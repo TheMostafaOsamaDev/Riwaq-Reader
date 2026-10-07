@@ -2,7 +2,7 @@ import type { BookIndexEntry } from "../../store/library";
 import type { StorePage } from "../../store/navigation";
 import type { Shelf } from "../../store/shelves";
 import type { Theme, ThemeKey } from "../../styles/tokens";
-import type { HeroStyle } from "../../types/reader";
+import type { HeroStyle, HomeBarStyle } from "../../types/reader";
 import type { LibraryTab } from "./tabs";
 
 export interface LayoutProps {
@@ -10,6 +10,13 @@ export interface LayoutProps {
   themeKey: ThemeKey;
   /** Style of the "continue reading" card (Settings ▸ Appearance). */
   heroStyle: HeroStyle;
+  /** Style of the phone's bottom navigation (Settings ▸ Appearance). */
+  homeBar: HomeBarStyle;
+  /** The phone's search overlay is open. A history layer, so back closes
+   *  it; the desktop layout keeps its own state for its ⌘K palette. */
+  searchOpen: boolean;
+  onOpenSearch: () => void;
+  onCloseSearch: () => void;
   books: BookIndexEntry[];
   covers: Record<string, string>;
   loading: boolean;
