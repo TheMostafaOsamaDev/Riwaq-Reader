@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { BookIndexEntry } from "../../store/library";
 import type { StorePage } from "../../store/navigation";
 import type { Shelf } from "../../store/shelves";
@@ -17,6 +18,12 @@ export interface LayoutProps {
   searchOpen: boolean;
   onOpenSearch: () => void;
   onCloseSearch: () => void;
+  /** Phone: the Downloads tab is open (a page of the shell, not a sheet). */
+  downloadsTab: boolean;
+  /** Phone: the Settings page, when Settings is the open tab. */
+  settingsTab: ReactNode;
+  /** Phone: the Library tab — the whole library, from any tab. */
+  onGoLibrary: () => void;
   books: BookIndexEntry[];
   covers: Record<string, string>;
   loading: boolean;

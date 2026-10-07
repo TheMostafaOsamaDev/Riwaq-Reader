@@ -15,7 +15,13 @@
 // in the split; they were already cleanly separated, which is why it was worth
 // doing before the file grew again.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Toast, type ToastMessage } from "../Toast";
 import { EditBookModal } from "../EditBookModal";
 import { ContextMenu } from "../ContextMenu";
@@ -127,6 +133,9 @@ interface Props {
   heroStyle: HeroStyle;
   /** Style of the phone's bottom navigation (Settings ▸ Appearance). */
   homeBar: HomeBarStyle;
+  /** Phone only: the Settings page, when Settings is the open tab. It is
+   *  drawn inside the home shell, under the bottom bar. */
+  settingsTab?: ReactNode;
 }
 
 function useBooks() {
@@ -183,6 +192,7 @@ export function Library({
   confirmDelete,
   heroStyle,
   homeBar,
+  settingsTab,
 }: Props) {
   const { tr, locale } = useI18n();
   const { books, covers, loading, error, refresh, setError } = useBooks();
@@ -274,6 +284,14 @@ export function Library({
   const storePage = view.kind === "store" ? view.page : undefined;
   // Download queue is an overlay layer in nav history (Back closes it).
   const queueOpen = navState.snapshot.overlay?.kind === "downloads";
+  // The phone has a Downloads TAB (a library view, under the bottom bar);
+  // the desktop shows downloads over the library. Either way in, each layout
+  // shows them its own way, so a window resized across the breakpoint with
+  // downloads open keeps showing them.
+  const downloadsTab =
+    layout === "mobile" && (queueOpen || view.kind === "downloads");
+  const downloadsOverlay =
+    layout !== "mobile" && (queueOpen || view.kind === "downloads");
   const searchOpen = navState.snapshot.overlay?.kind === "search";
 
   const [sourceDetailRangeDialog, setSourceDetailRangeDialog] = useState<{
@@ -1049,7 +1067,18 @@ export function Library({
     onOpenSourceDetailRangeDialog: () => {
       if (sourceDetailView) setSourceDetailRangeDialog(sourceDetailView);
     },
-    onOpenQueue: () => openOverlay({ kind: "downloads" }),
+    onOpenQueue: () =>
+      layout === "mobile"
+        ? goLibrary({ kind: "downloads" })
+        : openOverlay({ kind: "downloads" }),
+    downloadsTab,
+    settingsTab: settingsTab ?? null,
+    // The phone's Library tab: the whole library, from wherever you are —
+    // a filter, the Store, Downloads, Settings or a shelf.
+    onGoLibrary: () => {
+      setFilter("all");
+      goLibrary({ kind: "shelf" });
+    },
     onOpenSettings,
     shelvesActive,
     onOpenShelves,
@@ -1270,12 +1299,12 @@ export function Library({
         )}
       </AnimatedDialog>
       <AnimatedFullScreen
-        open={queueOpen}
+        open={downloadsOverlay}
         layout={layout}
         onScrimClick={() => back()}
         zIndex={Z.dialog}
       >
-        {queueOpen && (
+        {downloadsOverlay && (
           <DownloadQueueView
             theme={theme}
             layout={layout}

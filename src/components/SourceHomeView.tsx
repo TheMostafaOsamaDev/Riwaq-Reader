@@ -18,7 +18,12 @@ import type {
   Source,
   SourceSection,
 } from "../sources/types";
-import { FONT_SERIF_DISPLAY, FONT_STACKS, type Theme } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  Z_LOCAL,
+} from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { NovelCard } from "./NovelCard";
@@ -318,6 +323,17 @@ function HomeHeader({
         gap: isMobile ? 10 : 14,
         padding: isMobile ? "16px 18px 12px" : "24px 40px 14px",
         borderBottom: `0.5px solid ${theme.rule}`,
+        // On the phone this is the page's only header — the Store tab's own
+        // title steps aside for it — so it stays put while the results
+        // scroll, keeping its back button in reach.
+        ...(isMobile
+          ? {
+              position: "sticky" as const,
+              top: 0,
+              zIndex: Z_LOCAL.raised,
+              background: theme.bg,
+            }
+          : null),
       }}
     >
       <div

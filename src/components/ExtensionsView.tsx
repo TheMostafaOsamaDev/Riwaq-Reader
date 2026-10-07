@@ -104,6 +104,8 @@ interface Props {
   theme: Theme;
   onBack: () => void;
   deps?: ExtensionsDeps;
+  /** "mobile": phone gutters instead of the desktop's 40px. */
+  layout?: "desktop" | "mobile";
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -112,6 +114,7 @@ export function ExtensionsView({
   theme,
   onBack,
   deps = DEFAULT_EXTENSIONS_DEPS,
+  layout = "desktop",
 }: Props) {
   const { tr } = useI18n();
   const [data, setData] = useState<CatalogData | null>(null);
@@ -354,7 +357,7 @@ export function ExtensionsView({
       style={{
         flex: 1,
         overflowY: "auto",
-        padding: "28px 40px 40px",
+        padding: layout === "mobile" ? "16px 18px 40px" : "28px 40px 40px",
         fontFamily: FONT_STACKS.sans,
         color: theme.ink,
       }}

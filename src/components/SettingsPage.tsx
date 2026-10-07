@@ -48,7 +48,14 @@ import { readPreviousLaunch } from "../lib/diagnostics/breadcrumbs";
 import { buildBundle, bundleFileName } from "../lib/diagnostics/bundle";
 import { flushSession, listSessions } from "../lib/diagnostics/store";
 import { useReducedMotion } from "../styles/motion";
-import { FONT_STACKS, type Theme, type ThemeKey, Z } from "../styles/tokens";
+import {
+  FONT_SERIF_DISPLAY,
+  FONT_STACKS,
+  type Theme,
+  type ThemeKey,
+  Z,
+} from "../styles/tokens";
+import { back, goSettingsCategory } from "../store/navigation";
 import type { Tweaks } from "../types/reader";
 import type { UiLangPref } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
@@ -86,6 +93,12 @@ interface Props {
   android?: boolean;
   /** Desktop: Settings → About shows the desktop update card. */
   desktopUpdates?: boolean;
+  /** Phone: drawn as the Settings TAB of the home shell, under its bottom
+   *  bar. The list has a tab title and no back arrow; a section is a
+   *  history entry (`category`), with a back arrow to the list. */
+  embedded?: boolean;
+  /** The open section, from the navigation history (embedded only). */
+  category?: string;
 }
 
 export function SettingsPage({
@@ -102,6 +115,8 @@ export function SettingsPage({
   onOpenWhatsNew,
   android = false,
   desktopUpdates = false,
+  embedded = false,
+  category,
 }: Props) {
   const { tr, locale } = useI18n();
   const isMobile = layout === "mobile";
@@ -110,9 +125,23 @@ export function SettingsPage({
   const slideFrom = isAr ? "-10px" : "10px";
 
   // null = the mobile category list (level 0). Desktop always shows a category.
-  const [activeCategory, setActiveCategory] = useState<CategoryKey | null>(
+  const [ownCategory, setOwnCategory] = useState<CategoryKey | null>(
     isMobile ? null : "appearance",
   );
+  // Embedded in the phone's home shell, the open section lives in the
+  // navigation history instead, so the back gesture steps from a section to
+  // the list (and the shell can slide between them) rather than leaving
+  // Settings. Desktop, and the stand-alone phone page, keep their own state.
+  const navCategory: CategoryKey | null =
+    category && (CATEGORY_ORDER as readonly string[]).includes(category)
+      ? (category as CategoryKey)
+      : null;
+  const activeCategory = embedded && isMobile ? navCategory : ownCategory;
+  const setActiveCategory = (c: CategoryKey | null) => {
+    if (!(embedded && isMobile)) setOwnCategory(c);
+    else if (c === null) back();
+    else goSettingsCategory(c);
+  };
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -870,17 +899,42 @@ export function SettingsPage({
   if (isMobile) {
     const inCategory = activeCategory !== null;
     return (
-      <Shell theme={theme} isMobile isAr={isAr}>
-        <Header
-          theme={theme}
-          isAr={isAr}
-          title={
-            inCategory
-              ? tr(CATEGORY_META[activeCategory].labelKey)
-              : tr("sidebar.settings")
-          }
-          onBack={inCategory ? () => setActiveCategory(null) : onClose}
-        />
+      <Shell theme={theme} isMobile isAr={isAr} embedded={embedded}>
+        {embedded && !inCategory ? (
+          // The tab's root: a title like the Library's and the Store's, and
+          // no back arrow — the bottom bar is how you leave a tab.
+          <div
+            style={{
+              padding: "16px 22px 12px",
+              borderBottom: `0.5px solid ${theme.rule}`,
+              flexShrink: 0,
+            }}
+          >
+            <h1
+              style={{
+                fontFamily: FONT_SERIF_DISPLAY,
+                fontWeight: 400,
+                fontSize: 28,
+                margin: 0,
+                letterSpacing: "-0.02em",
+                color: theme.ink,
+              }}
+            >
+              {tr("sidebar.settings")}
+            </h1>
+          </div>
+        ) : (
+          <Header
+            theme={theme}
+            isAr={isAr}
+            title={
+              inCategory
+                ? tr(CATEGORY_META[activeCategory].labelKey)
+                : tr("sidebar.settings")
+            }
+            onBack={inCategory ? () => setActiveCategory(null) : onClose}
+          />
+        )}
         <div
           ref={scrollRef}
           style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
@@ -889,8 +943,12 @@ export function SettingsPage({
             {inCategory ? (
               <div
                 key={activeCategory}
-                className={reduced ? undefined : "riwaq-settings-slide-in"}
-                style={slideStyle}
+                // Embedded, the shell slides the whole page in; this would
+                // be a second, smaller slide inside it.
+                className={
+                  reduced || embedded ? undefined : "riwaq-settings-slide-in"
+                }
+                style={embedded ? undefined : slideStyle}
               >
                 {card(renderEntries(entriesByCat[activeCategory]))}
               </div>
@@ -1095,11 +1153,15 @@ function Shell({
   theme,
   isMobile = false,
   isAr,
+  embedded = false,
   children,
 }: {
   theme: Theme;
   isMobile?: boolean;
   isAr: boolean;
+  /** Inside the phone's home shell, which already keeps clear of the
+   *  system bars: no safe-area padding of its own. */
+  embedded?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -1114,7 +1176,7 @@ function Shell({
         flexDirection: "column",
         overflow: "hidden",
         fontFamily: FONT_STACKS.sans,
-        ...(isMobile
+        ...(isMobile && !embedded
           ? {
               paddingTop: "env(safe-area-inset-top, 0px)",
               paddingBottom: "env(safe-area-inset-bottom, 0px)",

@@ -1009,6 +1009,26 @@ input:focus-visible,
   animation: riwaq-panel-exit-left 180ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
+/* Home bar, classic style: the circle that becomes selected pops — dips,
+   overshoots, settles. Scale only, never opacity and no fill-mode, so a
+   webview that skips or holds the keyframe still shows the button whole
+   (see the WebKit mount-animation trap). Added only on a change of
+   selection, and only when motion is allowed (MobileBottomNav). */
+@keyframes riwaq-nav-pop {
+  0% {
+    transform: scale(0.84);
+  }
+  55% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.riwaq-nav-pop {
+  animation: riwaq-nav-pop 280ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

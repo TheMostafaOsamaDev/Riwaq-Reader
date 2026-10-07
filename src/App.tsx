@@ -1134,7 +1134,8 @@ function App() {
                 bottom bar to sit above). */}
             {base.screen === "library" &&
               !overlay &&
-              base.view.kind !== "novel" && (
+              base.view.kind !== "novel" &&
+              base.view.kind !== "downloads" && (
                 <UpdatePill
                   theme={theme}
                   layout={isMobile ? "mobile" : "desktop"}
@@ -1225,7 +1226,11 @@ function App() {
             on mobile-landscape) ALSO crossfades cleanly. */}
         <AnimatedSwap
           viewKey={
-            base.screen === "settings"
+            // On the phone, Settings is a tab of the same home shell as the
+            // Library (with the bottom bar): one key, so moving between
+            // them is the shell's own transition, not a cross-fade of two
+            // screens.
+            base.screen === "settings" && !isMobile
               ? "settings"
               : base.screen === "reader"
                 ? // The fixed reader is one component for both layouts and
@@ -1241,7 +1246,7 @@ function App() {
                 : "library"
           }
         >
-          {base.screen === "settings" ? (
+          {base.screen === "settings" && !isMobile ? (
             <SettingsPage
               theme={theme}
               themeKey={themeKey}
@@ -1259,12 +1264,35 @@ function App() {
               android={isAndroid}
               desktopUpdates={dropCapable}
             />
-          ) : base.screen === "library" ? (
+          ) : base.screen === "library" || base.screen === "settings" ? (
             <Library
               theme={theme}
               themeKey={themeKey}
               layout={isMobile ? "mobile" : "desktop"}
-              view={base.view}
+              view={base.screen === "library" ? base.view : { kind: "shelf" }}
+              settingsTab={
+                base.screen === "settings" ? (
+                  <SettingsPage
+                    theme={theme}
+                    themeKey={themeKey}
+                    t={t}
+                    setTweak={setTweak}
+                    applyTweaks={applyTweaks}
+                    layout="mobile"
+                    embedded
+                    category={base.category}
+                    onClose={closeSettings}
+                    onCheckUpdates={update.check}
+                    updateChecking={update.checking}
+                    updateResult={update.result}
+                    onOpenWhatsNew={
+                      bundledNotes ? () => setWhatsNewOpen(true) : undefined
+                    }
+                    android={isAndroid}
+                    desktopUpdates={dropCapable}
+                  />
+                ) : undefined
+              }
               onOpen={openBook}
               onStreamRead={openStream}
               streamActive={streaming !== null}

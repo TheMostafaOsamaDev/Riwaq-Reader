@@ -56,7 +56,9 @@
 import { useEffect, useState } from "react";
 import { ExtensionsView } from "./ExtensionsView";
 import { SourcesListView } from "./SourcesListView";
-import { back, goStorePage, type StorePage } from "../store/navigation";
+import { back, goStorePage, type StorePage, useNav } from "../store/navigation";
+import { MobilePageSwap } from "./MobilePageSwap";
+import { useI18n } from "../i18n/useI18n";
 import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
@@ -90,6 +92,8 @@ export function Store({
   page,
 }: Props) {
   const view = page ?? ({ kind: "sources" } as const);
+  const nav = useNav();
+  const { dir } = useI18n();
   const [rangeDialog, setRangeDialog] = useState<{
     sourceId: string;
     novelUrl: string;
@@ -143,6 +147,69 @@ export function Store({
     setRangeDialog(null);
   }
 
+  const pages = (
+    <>
+      {view.kind === "sources" &&
+        (extensionsReady ? (
+          <SourcesListView
+            theme={theme}
+            layout={layout}
+            onOpenSource={openSource}
+            onOpenExtensions={openExtensions}
+          />
+        ) : (
+          <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
+        ))}
+      {/* Not gated on `extensionsReady`: the manager loads its own
+            catalogue, and it is the one view that must stay reachable when
+            nothing loaded. Coming back re-mounts SourcesListView, which
+            re-lists the registry — so an install or a removal shows up
+            there without an app restart. */}
+      {view.kind === "extensions" && (
+        <ExtensionsView theme={theme} onBack={back} layout={layout} />
+      )}
+      {/* A source or novel page resolves its source from the registry, so it
+            waits for the registry like the sources list does — a page
+            restored from history can mount before it has loaded. */}
+      {(view.kind === "source" || view.kind === "novel") &&
+        !extensionsReady && (
+          <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
+        )}
+      {view.kind === "source" && extensionsReady && (
+        <SourceHomeView
+          // A new instance per source: its search query, loaded result
+          // pages and in-flight search belong to one source, and Back/
+          // Forward can move straight between two sources' pages.
+          key={view.sourceId}
+          theme={theme}
+          layout={layout}
+          sourceId={view.sourceId}
+          onBack={back}
+          onOpenNovel={(novelUrl) => openNovel(view.sourceId, novelUrl)}
+        />
+      )}
+      {view.kind === "novel" && extensionsReady && (
+        <NovelDetailView
+          theme={theme}
+          layout={layout}
+          sourceId={view.sourceId}
+          novelUrl={view.novelUrl}
+          onBack={back}
+          onStreamRead={(chapterId) =>
+            onStreamRead(view.sourceId, view.novelUrl, chapterId)
+          }
+          onImportComplete={onImportComplete}
+          onOpenRangeDialog={() =>
+            setRangeDialog({
+              sourceId: view.sourceId,
+              novelUrl: view.novelUrl,
+            })
+          }
+        />
+      )}
+    </>
+  );
+
   return (
     <>
       <div
@@ -154,62 +221,20 @@ export function Store({
           flexDirection: "column",
         }}
       >
-        {view.kind === "sources" &&
-          (extensionsReady ? (
-            <SourcesListView
-              theme={theme}
-              onOpenSource={openSource}
-              onOpenExtensions={openExtensions}
-            />
-          ) : (
-            <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
-          ))}
-        {/* Not gated on `extensionsReady`: the manager loads its own
-            catalogue, and it is the one view that must stay reachable when
-            nothing loaded. Coming back re-mounts SourcesListView, which
-            re-lists the registry — so an install or a removal shows up
-            there without an app restart. */}
-        {view.kind === "extensions" && (
-          <ExtensionsView theme={theme} onBack={back} />
-        )}
-        {/* A source or novel page resolves its source from the registry, so it
-            waits for the registry like the sources list does — a page
-            restored from history can mount before it has loaded. */}
-        {(view.kind === "source" || view.kind === "novel") &&
-          !extensionsReady && (
-            <ThemedSkeleton theme={theme} style={{ flex: 1 }} />
-          )}
-        {view.kind === "source" && extensionsReady && (
-          <SourceHomeView
-            // A new instance per source: its search query, loaded result
-            // pages and in-flight search belong to one source, and Back/
-            // Forward can move straight between two sources' pages.
-            key={view.sourceId}
-            theme={theme}
-            layout={layout}
-            sourceId={view.sourceId}
-            onBack={back}
-            onOpenNovel={(novelUrl) => openNovel(view.sourceId, novelUrl)}
-          />
-        )}
-        {view.kind === "novel" && extensionsReady && (
-          <NovelDetailView
-            theme={theme}
-            layout={layout}
-            sourceId={view.sourceId}
-            novelUrl={view.novelUrl}
-            onBack={back}
-            onStreamRead={(chapterId) =>
-              onStreamRead(view.sourceId, view.novelUrl, chapterId)
-            }
-            onImportComplete={onImportComplete}
-            onOpenRangeDialog={() =>
-              setRangeDialog({
-                sourceId: view.sourceId,
-                novelUrl: view.novelUrl,
-              })
-            }
-          />
+        {layout === "mobile" ? (
+          // On the phone each Store page slides in over the last and back
+          // out again, following the navigation history. The Store itself
+          // stays mounted, so the registry is not re-initialised per page.
+          <MobilePageSwap
+            viewKey={storePageKey(view)}
+            group="store"
+            move={nav.move}
+            rtl={dir === "rtl"}
+          >
+            {pages}
+          </MobilePageSwap>
+        ) : (
+          pages
         )}
       </div>
       <DownloadRangeDialog
@@ -224,4 +249,17 @@ export function Store({
       />
     </>
   );
+}
+
+/** One key per Store page, for the phone's page transitions. */
+function storePageKey(view: StorePage | { kind: "sources" }): string {
+  switch (view.kind) {
+    case "sources":
+    case "extensions":
+      return view.kind;
+    case "source":
+      return `source:${view.sourceId}`;
+    case "novel":
+      return `novel:${view.sourceId}:${view.novelUrl}`;
+  }
 }

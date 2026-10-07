@@ -111,7 +111,18 @@ describe("the home bar styles", () => {
     expect(named(en["sidebar.library"])?.getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(host.textContent).toContain(en["sidebar.library"]);
-    expect(host.textContent).not.toContain(en["sidebar.store"]);
+    // Every tab's name is rendered so it can unroll; only the current one
+    // is open. The others are clipped to nothing and hidden from readers.
+    const name = (label: string) =>
+      [...host.querySelectorAll("span")].find(
+        (sp) => sp.textContent === label && sp.children.length === 0,
+      );
+    expect(
+      Number.parseFloat(name(en["sidebar.library"])?.style.maxWidth ?? "0"),
+    ).toBeGreaterThan(0);
+    expect(
+      Number.parseFloat(name(en["sidebar.store"])?.style.maxWidth ?? "1"),
+    ).toBe(0);
+    expect(name(en["sidebar.store"])?.getAttribute("aria-hidden")).toBe("true");
   });
 });
