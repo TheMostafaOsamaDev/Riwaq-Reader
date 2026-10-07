@@ -31,6 +31,7 @@ import { Library } from "./components/library/Library";
 import { Lightbox } from "./components/Lightbox";
 import { MobileReader } from "./components/MobileReader";
 import { LazyViewFallback } from "./components/LazyViewFallback";
+import { LoadingRing, usePresence } from "./components/LoadingRing";
 import { ReaderErrorBoundary } from "./components/ReaderErrorBoundary";
 import { ReaderFallback } from "./components/ReaderFallback";
 import { SettingsPage } from "./components/SettingsPage";
@@ -88,7 +89,6 @@ import { installOverlayScrollbar } from "./styles/overlayScrollbar";
 import type { HighlightColor } from "./styles/tokens";
 import {
   FONT_READING_SANS,
-  FONT_SERIF_DISPLAY,
   FONT_STACKS,
   THEMES,
   UI_FONT_ADJUST,
@@ -265,6 +265,11 @@ function App() {
   }, [setTweak]);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [loading, setLoading] = useState(false);
+  /** The title of the book being opened, for the loading ring. */
+  const [loadingTitle, setLoadingTitle] = useState<string | undefined>();
+  // Kept a moment after the book is ready, so the ring dissolves over the
+  // reader instead of cutting to it (LoadingRing).
+  const openingRing = usePresence(loading);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadedFixed, setLoadedFixed] = useState<LoadedFixed | null>(null);
@@ -571,12 +576,14 @@ function App() {
         loadingTimeoutRef.current = null;
       }
       setLoading(true);
+      setLoadingTitle(undefined);
       setError(null);
       try {
         // Route fixed-layout books (PDF/DOCX) to their own reader; everything
         // else stays on the reflowable EPUB path. Stamp `lastReadAt` on open so
         // the Library's "Continue reading" hero picks the just-opened book.
         const entry = await getEntry(id);
+        setLoadingTitle(entry?.title || undefined);
         await markBookOpened(id);
         // A DOCX the reader has switched to flowing text goes down the
         // reflowable path instead, built from the same content.html the
@@ -1163,8 +1170,22 @@ function App() {
           onClose={closeWhatsNew}
           layout={isMobile ? "mobile" : "desktop"}
         />
-        {loading && (
-          <FullPageSpinner theme={theme} label={tr("app.loadingBook")} />
+        {openingRing.render && (
+          // Opaque from the first frame: it covers the library → reader
+          // cross-fade underneath. The ring itself waits 150ms, so a quick
+          // open shows nothing but the page.
+          <LoadingRing
+            theme={theme}
+            title={loadingTitle}
+            label={tr("app.loadingBook")}
+            leaving={openingRing.leaving}
+            surface={{
+              position: "absolute",
+              inset: 0,
+              background: theme.bg,
+              zIndex: Z.floating,
+            }}
+          />
         )}
         {error && !loading && (
           <div
@@ -1449,33 +1470,6 @@ function App() {
         <DropOverlay state={dropState} theme={theme} />
       </div>
     </I18nProvider>
-  );
-}
-
-function FullPageSpinner({
-  theme,
-  label,
-}: {
-  theme: { bg: string; ink: string; muted: string };
-  label: string;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background: theme.bg,
-        color: theme.ink,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: FONT_SERIF_DISPLAY,
-        fontSize: 20,
-        zIndex: Z.floating,
-      }}
-    >
-      {label}
-    </div>
   );
 }
 

@@ -47,6 +47,7 @@ import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
 import { ReaderProgressBar } from "../chrome/ReaderProgressBar";
 import { ReaderBottomBar } from "../chrome/ReaderBottomBar";
+import { LoadingRing } from "../../components/LoadingRing";
 import { PanelSwitcher } from "../chrome/PanelSwitcher";
 import { panelsInContents } from "../chrome/barStyles";
 import { ReaderIconButton } from "../chrome/ReaderIconButton";
@@ -707,19 +708,13 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               }
             />
           ) : (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "grid",
-                placeItems: "center",
-                color: theme.muted,
-                fontFamily: FONT_SERIF_DISPLAY,
-                fontSize: 18,
-              }}
-            >
-              {tr("app.loadingBook")}
-            </div>
+            // The same ring as every other book and chapter load.
+            <LoadingRing
+              theme={theme}
+              title={book.title || undefined}
+              label={tr("app.loadingBook")}
+              surface={{ position: "absolute", inset: 0 }}
+            />
           )}
         </div>
       </div>

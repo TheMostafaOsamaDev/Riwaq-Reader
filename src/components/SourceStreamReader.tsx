@@ -52,7 +52,6 @@ import type {
   SourceNovel,
 } from "../sources/types";
 import {
-  FONT_SERIF_DISPLAY,
   FONT_STACKS,
   type Theme,
   type ThemeKey,
@@ -62,6 +61,7 @@ import {
 import { useI18n } from "../i18n/useI18n";
 import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 import type { HighlightColor } from "../styles/tokens";
+import { LoadingRing, usePresence } from "./LoadingRing";
 import { migrateStorageKey } from "../lib/legacyStorage";
 import { chapterOverlay } from "./sourceChapterStatus";
 import { log as devLog } from "../lib/devLog";
@@ -633,6 +633,47 @@ export function SourceStreamReader({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // The loading ring for the whole novel, and for one chapter. Worked out
+  // before the early returns below (they are hooks), and kept mounted a
+  // moment after loading ends so each fades out over the page instead of
+  // vanishing — see LoadingRing.
+  const paneLoading = !loadError && (!book || !novel);
+  const chapterLoading =
+    !!book &&
+    !!novel &&
+    chapterOverlay(
+      currentChapter,
+      book.chapters[currentChapter]?.paragraphs.length ?? 0,
+      inFlight,
+      chapterErrors,
+    ).kind === "loading";
+  const paneRing = usePresence(paneLoading);
+  const chapterRing = usePresence(chapterLoading);
+  const paneLabel =
+    volumeProgress && volumeProgress.total > 1
+      ? tr("stream.loadingVolumes", {
+          done: volumeProgress.done,
+          total: volumeProgress.total,
+        })
+      : tr("stream.loadingNovel");
+  // One element in the same place in both returns below (keyed, first child
+  // of a fragment), so it is the SAME ring that fades out once the reader is
+  // there — a new one mounted already "leaving" would just disappear.
+  const paneRingEl = paneRing.render ? (
+    <LoadingRing
+      key="pane-ring"
+      theme={theme}
+      label={paneLabel}
+      leaving={paneRing.leaving}
+      surface={{
+        position: "fixed",
+        inset: 0,
+        zIndex: Z.menu,
+        background: theme.bg,
+      }}
+    />
+  ) : null;
+
   // ── render ──────────────────────────────────────────────────────────────
   if (loadError) {
     return (
@@ -641,15 +682,9 @@ export function SourceStreamReader({
   }
   if (!book || !novel) {
     // A single volume says nothing a count would add; several can take
-    // seconds, and a moving count shows the wait is going somewhere.
-    const label =
-      volumeProgress && volumeProgress.total > 1
-        ? tr("stream.loadingVolumes", {
-            done: volumeProgress.done,
-            total: volumeProgress.total,
-          })
-        : tr("stream.loadingNovel");
-    return <FullPaneLoading theme={theme} label={label} />;
+    // seconds, and a moving count shows the wait is going somewhere (the
+    // ring's label, `paneLabel` above).
+    return <>{paneRingEl}</>;
   }
 
   const state: BookState = {
@@ -668,87 +703,104 @@ export function SourceStreamReader({
   );
 
   return (
-    <div
-      // Reader CHROME (this wrapper, plus the chapter loading/error
-      // overlays below) follows the UI language. DesktopReader /
-      // MobileReader set their own `dir={dir}` on their own root too
-      // (belt-and-suspenders — see their own comments); the scraped
-      // chapter CONTENT they render sets its own direction further down,
-      // independent of this `dir`, from the book's own language.
-      dir={dir}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: Z.menu,
-        background: theme.bg,
-      }}
-    >
-      {layout === "mobile" ? (
-        <MobileReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          book={book}
-          state={state}
-          currentChapter={currentChapter}
-          resumeParagraph={resumeParagraph}
-          resumeOffset={resumeOffset}
-          jumpNonce={jumpNonce}
-          onChapterChange={onChapterChange}
-          onParagraphChange={onParagraphChange}
-          onCreateHighlight={onCreateHighlight}
-          onDeleteHighlight={onDeleteHighlight}
-          onUpdateHighlightNote={onUpdateHighlightNote}
-          onJumpToHighlight={onJumpToHighlight}
-          tocVolumes={tocVolumes}
-          nextChapterAvailability={nextAvailability}
-          onBack={onClose}
-        />
-      ) : (
-        <DesktopReader
-          theme={theme}
-          themeKey={themeKey}
-          t={t}
-          setTweak={setTweak}
-          book={book}
-          state={state}
-          currentChapter={currentChapter}
-          resumeParagraph={resumeParagraph}
-          resumeOffset={resumeOffset}
-          jumpNonce={jumpNonce}
-          onChapterChange={onChapterChange}
-          onParagraphChange={onParagraphChange}
-          onCreateHighlight={onCreateHighlight}
-          onDeleteHighlight={onDeleteHighlight}
-          onUpdateHighlightNote={onUpdateHighlightNote}
-          onJumpToHighlight={onJumpToHighlight}
-          tocVolumes={tocVolumes}
-          nextChapterAvailability={nextAvailability}
-          activePanel={activePanel}
-          setActivePanel={setActivePanel}
-          onBack={onClose}
-        />
-      )}
+    <>
+      {paneRingEl}
+      <div
+        // Reader CHROME (this wrapper, plus the chapter loading/error
+        // overlays below) follows the UI language. DesktopReader /
+        // MobileReader set their own `dir={dir}` on their own root too
+        // (belt-and-suspenders — see their own comments); the scraped
+        // chapter CONTENT they render sets its own direction further down,
+        // independent of this `dir`, from the book's own language.
+        dir={dir}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: Z.menu,
+          background: theme.bg,
+        }}
+      >
+        {layout === "mobile" ? (
+          <MobileReader
+            theme={theme}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
+            book={book}
+            state={state}
+            currentChapter={currentChapter}
+            resumeParagraph={resumeParagraph}
+            resumeOffset={resumeOffset}
+            jumpNonce={jumpNonce}
+            onChapterChange={onChapterChange}
+            onParagraphChange={onParagraphChange}
+            onCreateHighlight={onCreateHighlight}
+            onDeleteHighlight={onDeleteHighlight}
+            onUpdateHighlightNote={onUpdateHighlightNote}
+            onJumpToHighlight={onJumpToHighlight}
+            tocVolumes={tocVolumes}
+            nextChapterAvailability={nextAvailability}
+            onBack={onClose}
+          />
+        ) : (
+          <DesktopReader
+            theme={theme}
+            themeKey={themeKey}
+            t={t}
+            setTweak={setTweak}
+            book={book}
+            state={state}
+            currentChapter={currentChapter}
+            resumeParagraph={resumeParagraph}
+            resumeOffset={resumeOffset}
+            jumpNonce={jumpNonce}
+            onChapterChange={onChapterChange}
+            onParagraphChange={onParagraphChange}
+            onCreateHighlight={onCreateHighlight}
+            onDeleteHighlight={onDeleteHighlight}
+            onUpdateHighlightNote={onUpdateHighlightNote}
+            onJumpToHighlight={onJumpToHighlight}
+            tocVolumes={tocVolumes}
+            nextChapterAvailability={nextAvailability}
+            activePanel={activePanel}
+            setActivePanel={setActivePanel}
+            onBack={onClose}
+          />
+        )}
 
-      {overlay.kind === "loading" && <ChapterLoadingOverlay theme={theme} />}
-      <OverlayLog
-        kind={overlay.kind}
-        chapter={currentChapter}
-        items={currentItems.length}
-      />
-      {overlay.kind === "error" && (
-        <ChapterErrorOverlay
-          theme={theme}
-          message={overlay.message}
-          onRetry={() => {
-            cacheRef.current.delete(currentChapter);
-            void fetchChapter(currentChapter);
-          }}
-          onBack={onClose}
+        {chapterRing.render && (
+          <LoadingRing
+            theme={theme}
+            title={book.chapters[currentChapter]?.title}
+            label={tr("stream.loadingChapter")}
+            leaving={chapterRing.leaving}
+            surface={{
+              position: "absolute",
+              inset: 0,
+              zIndex: Z_LOCAL.base,
+              background: theme.bg,
+              pointerEvents: "none",
+            }}
+          />
+        )}
+        <OverlayLog
+          kind={overlay.kind}
+          chapter={currentChapter}
+          items={currentItems.length}
         />
-      )}
-    </div>
+        {overlay.kind === "error" && (
+          <ChapterErrorOverlay
+            theme={theme}
+            message={overlay.message}
+            onRetry={() => {
+              cacheRef.current.delete(currentChapter);
+              void fetchChapter(currentChapter);
+            }}
+            onBack={onClose}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
@@ -932,36 +984,6 @@ function writePersisted(key: string, state: PersistedState): void {
 
 // ── overlay panes ──────────────────────────────────────────────────────────
 
-function FullPaneLoading({ theme, label }: { theme: Theme; label: string }) {
-  // Standalone chrome root (this pane replaces the whole reader while the
-  // novel is loading) — follows the UI direction, same as the main
-  // wrapper below. There's no book content here yet to decouple from.
-  const { dir } = useI18n();
-  return (
-    <div
-      dir={dir}
-      role="status"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: Z.menu,
-        background: theme.bg,
-        color: theme.ink,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: FONT_SERIF_DISPLAY,
-        fontSize: 20,
-        // The volume count ticks while the label is on screen; equal-width
-        // digits keep the line from shuffling sideways as it does.
-        fontVariantNumeric: "tabular-nums",
-      }}
-    >
-      {label}
-    </div>
-  );
-}
-
 function FullPaneError({
   theme,
   message,
@@ -971,7 +993,7 @@ function FullPaneError({
   message: string;
   onClose: () => void;
 }) {
-  // Standalone chrome root, same reasoning as FullPaneLoading — follows
+  // Standalone chrome root, same reasoning as the loading ring — follows
   // the UI direction. `message` is raw error data (network/parse errors,
   // or e.message) — never passed through tr().
   const { tr, dir } = useI18n();
@@ -1023,35 +1045,6 @@ function FullPaneError({
       <div style={{ maxWidth: 500, textAlign: "center", fontSize: 13 }}>
         {message}
       </div>
-    </div>
-  );
-}
-
-function ChapterLoadingOverlay({ theme }: { theme: Theme }) {
-  // Nested inside the main wrapper (which already sets dir={dir}) — no
-  // dir attribute of its own needed, it inherits the chrome direction.
-  const { tr } = useI18n();
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: Z_LOCAL.base,
-        background: `${theme.bg}`,
-        // Lean on the same backdrop fade the lightbox uses so the
-        // overlay isn't jarring — fades in over 200ms via the
-        // skeleton-shimmer animation defined on the container itself.
-        opacity: 0.92,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: FONT_SERIF_DISPLAY,
-        fontSize: 18,
-        color: theme.muted,
-        pointerEvents: "none",
-      }}
-    >
-      {tr("stream.loadingChapter")}
     </div>
   );
 }
