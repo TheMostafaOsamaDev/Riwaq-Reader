@@ -11,7 +11,14 @@
 // Both readers therefore share one panel surface AND one settings body
 // (panels/SettingsPanel.tsx) — see its `variant` prop.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  cloneElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
@@ -47,6 +54,7 @@ import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
 import { ReaderProgressBar } from "../chrome/ReaderProgressBar";
 import { ReaderBottomBar } from "../chrome/ReaderBottomBar";
+import { DesktopReaderBar } from "../chrome/DesktopReaderBar";
 import { LoadingRing } from "../../components/LoadingRing";
 import { PanelSwitcher } from "../chrome/PanelSwitcher";
 import { panelsInContents } from "../chrome/barStyles";
@@ -216,7 +224,6 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     // A docked Contents panel keeps the floating bars off its own header.
     dockInset: tocDocked ? DOCK_WIDTH : 0,
   });
-  const glassBottom = focus.glass("bottom");
 
   // The phone bar's real height, whichever style it is in.
   const barRef = useRef<HTMLDivElement>(null);
@@ -757,29 +764,52 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           onToggleProgress={() => setShowProgress((v) => !v)}
         />
       ) : (
-        <div
-          style={
+        // Arranged the way the reader chose, as in the reflow reader's
+        // desktop bar (DesktopReaderBar). Pages, not chapters, are the steps.
+        <DesktopReaderBar
+          theme={theme}
+          style={t.readerBar}
+          outer={
             focus.floating
               ? focus.clip("bottom", focus.showBottom)
               : focus.pin("bottom")
           }
-        >
-          <div
-            // The glass sits here, not on ReaderProgressBar: that component is
-            // also used inside the phone bar above and in the panels, where it
-            // is not the floating surface. `backdrop-filter` has to be on the
-            // element carrying the fill, so the two stay together.
-            className={glassBottom.className}
-            style={{
-              ...glassBottom.style,
-              ...(focus.floating
-                ? focus.slide("bottom", focus.showBottom)
-                : null),
-            }}
-          >
-            {progressBar}
-          </div>
-        </div>
+          inner={
+            focus.floating ? focus.slide("bottom", focus.showBottom) : null
+          }
+          slider={progressBar}
+          bigSlider={cloneElement(progressBar, {
+            size: "large",
+            labelWidth: 0,
+            padding: "44px 32px 16px",
+          })}
+          place={{
+            fraction: barFraction,
+            title: progress.label || title,
+            position: pageCounter,
+            percent: `${fmt(Math.round(barFraction * 100))}%`,
+          }}
+          seek={{
+            rtl: uiDir === "rtl",
+            formatLabel: (f) => pageCounterFor(pageAt(f)),
+            onSeek: (f) => viewerRef.current?.goToPage(pageAt(f)),
+            ariaLabel: tr("reader.readingProgress"),
+          }}
+          prev={{
+            label: locale === "ar" ? "الصفحة السابقة" : "Previous page",
+            onClick: () =>
+              viewerRef.current?.goToPage(Math.max(0, progress.page - 1)),
+            disabled: progress.page <= 0,
+          }}
+          next={{
+            label: locale === "ar" ? "الصفحة التالية" : "Next page",
+            onClick: () =>
+              viewerRef.current?.goToPage(
+                Math.min(total - 1, progress.page + 1),
+              ),
+            disabled: progress.page >= total - 1,
+          }}
+        />
       )}
 
       {focus.hintVisible && (

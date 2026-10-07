@@ -53,12 +53,14 @@ function Knob({
   dragging,
   rtl,
   reduced,
+  size = 13,
 }: {
   theme: Theme;
   pct: number;
   dragging: boolean;
   rtl: boolean;
   reduced: boolean;
+  size?: number;
 }) {
   return (
     <div
@@ -67,8 +69,8 @@ function Knob({
         insetInlineStart: `${pct}%`,
         top: "50%",
         transform: `${centreOn(rtl)} scale(${dragging ? 1.3 : 1})`,
-        width: 13,
-        height: 13,
+        width: size,
+        height: size,
         boxSizing: "border-box",
         borderRadius: 999,
         background: dragging ? ACCENT : theme.chrome,
@@ -197,6 +199,10 @@ export interface ReaderProgressBarProps {
    *  gesture pill; desktop callers pass their own. */
   padding?: CSSProperties["padding"];
   reducedMotion?: boolean;
+  /** "large": a 6px track and a bigger handle that names the chapter above
+   *  it at all times, not only mid-drag — the desktop's Slider first bar,
+   *  where the slider is the whole bar. */
+  size?: "regular" | "large";
   /** Width reserved for the trailing label; 0 drops it.
    *
    *  A phone has no room for it. Measured on device, the label's 104px left the
@@ -230,7 +236,9 @@ export function ReaderProgressBar({
   padding = "6px 14px calc(var(--safe-bottom) + 4px)",
   reducedMotion = false,
   labelWidth = 104,
+  size = "regular",
 }: ReaderProgressBarProps) {
+  const large = size === "large";
   const trackRef = useRef<HTMLDivElement>(null);
   // The drag itself — preview under the finger, commit on release, and a
   // touch that turns vertical handed back to the page — is shared with the
@@ -312,7 +320,7 @@ export function ReaderProgressBar({
       >
         <div
           ref={trackRef}
-          style={{ position: "relative", width: "100%", height: 3 }}
+          style={{ position: "relative", width: "100%", height: large ? 6 : 3 }}
         >
           <div
             style={{
@@ -339,8 +347,9 @@ export function ReaderProgressBar({
             dragging={dragging}
             rtl={rtl}
             reduced={reducedMotion}
+            size={large ? 18 : 13}
           />
-          {dragging && (
+          {(dragging || large) && (
             <ScrubChip theme={theme} pct={pct} rtl={rtl}>
               {formatLabel(shown)}
             </ScrubChip>

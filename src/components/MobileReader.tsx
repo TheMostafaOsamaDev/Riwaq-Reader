@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CSSProperties,
@@ -24,11 +24,8 @@ import {
 } from "../reader/chrome/ReaderProgressBar";
 import { ReaderBottomBar } from "../reader/chrome/ReaderBottomBar";
 import { PanelSwitcher } from "../reader/chrome/PanelSwitcher";
-import {
-  minutesLeft,
-  panelsInContents,
-  wordCount,
-} from "../reader/chrome/barStyles";
+import { panelsInContents } from "../reader/chrome/barStyles";
+import { useMinutesLeft } from "../hooks/useMinutesLeft";
 import { FocusRail } from "../reader/chrome/FocusRail";
 import { useProgressRails } from "../reader/chrome/useProgressRails";
 import {
@@ -63,7 +60,7 @@ import {
   type SelectionGeometry,
 } from "../reader/selection/selectionGeometry";
 import { HighlightActionPopover } from "./HighlightActionPopover";
-import { type EpubBook, isImageItem } from "../epub/types";
+import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import {
@@ -614,48 +611,11 @@ export function MobileReader({
     if (next !== currentChapter) onChapterChange(next);
   };
 
-  // "8 min left" for the status bar, which is the only style that shows it.
-  // Recomputed as the page scrolls, but it only re-renders when the whole
-  // number of minutes changes — a few times a chapter, not per frame.
-  const wantsMinLeft = t.readerBar === "status";
-  // Counted only for that style: a whole chapter's text per chapter change.
-  const chapterWords = useMemo(
-    () =>
-      wantsMinLeft
-        ? wordCount(
-            chapter.paragraphs.flatMap((p) => (isImageItem(p) ? [] : [p.text])),
-          )
-        : 0,
-    [chapter, wantsMinLeft],
-  );
-  const [minLeft, setMinLeft] = useState<number | null>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!wantsMinLeft || !el) {
-      setMinLeft(null);
-      return;
-    }
-    let raf = 0;
-    const update = () => {
-      raf = 0;
-      const f = chapterScrollFraction(
-        el.scrollTop,
-        el.scrollHeight,
-        el.clientHeight,
-      );
-      const m = minutesLeft(chapterWords, f);
-      setMinLeft((prev) => (prev === m ? prev : m));
-    };
-    const onScroll = () => {
-      if (!raf) raf = window.requestAnimationFrame(update);
-    };
-    update();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
-  }, [wantsMinLeft, chapterWords]);
+  const minLeft = useMinutesLeft({
+    scrollRef,
+    chapter,
+    enabled: t.readerBar === "status",
+  });
 
   /** Back to this chapter's own opening — the block with its number and
    *  title, not merely scrollTop 0 of whatever is on screen. Smooth, because

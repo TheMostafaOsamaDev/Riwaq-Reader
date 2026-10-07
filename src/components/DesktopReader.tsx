@@ -24,7 +24,10 @@ import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
 import {
   MAX_TICKS,
   ReaderProgressBar,
+  type ReaderProgressBarProps,
 } from "../reader/chrome/ReaderProgressBar";
+import { DesktopReaderBar } from "../reader/chrome/DesktopReaderBar";
+import { useMinutesLeft } from "../hooks/useMinutesLeft";
 import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
 import { BookBody, readingGutter } from "./BookBody";
 import { ChapterEndCard, ChapterStartLink } from "./ChapterEnd";
@@ -227,9 +230,8 @@ export function DesktopReader({
     // A docked Contents panel keeps the floating bars off its own header.
     dockInset: tocDocked ? DOCK_WIDTH : 0,
   });
-  // The top bar frosts itself (ReaderTopBar); the bottom one is assembled here
-  // out of ReaderProgressBar, so its wrapper carries the glass.
-  const glassBottom = focus.glass("bottom");
+  // The top bar frosts itself (ReaderTopBar); the bottom one is
+  // DesktopReaderBar, which frosts whichever style needs a surface.
 
   // Room the reading surface keeps at each edge. Out of focus mode that is a
   // bar plus the margin the text has always had under it — 60px at the head,
@@ -789,6 +791,50 @@ export function DesktopReader({
         )
       : [];
 
+  // "8 min left" for the Status line style, in scroll mode — the paginated
+  // modes have no scroll position inside the chapter to count from.
+  const minLeft = useMinutesLeft({
+    scrollRef,
+    chapter,
+    enabled: t.readerBar === "status" && mode === "scroll",
+    layoutKey: mode,
+  });
+
+  // The chapter slider, shared by the classic bar and the slider-first one.
+  const progressProps: ReaderProgressBarProps = {
+    theme,
+    rtl: dir === "rtl",
+    fraction: barFraction,
+    formatPct: (f) => `${formatNum(Math.round(f * 100), locale)}%`,
+    formatLabel: (f) =>
+      tr("reader.chapterDash", {
+        n: formatNum(chapterAt(f) + 1, locale),
+        title: book.chapters[chapterAt(f)]?.title ?? "",
+      }),
+    ticks,
+    prevLabel: tr("reader.prevChapter"),
+    nextLabel: tr("reader.nextChapter"),
+    onPrev: prevChapter,
+    onNext: nextChapter,
+    prevDisabled: currentChapter === 0,
+    nextDisabled: currentChapter >= chapterCount - 1,
+    // No `onScrub`: a chapter change is a load, and firing one per
+    // pointermove made the reader thrash through every chapter the pointer
+    // crossed. The handle previews; release commits the one jump.
+    onSeek: (f) => {
+      const next = chapterAt(f);
+      if (next !== currentChapter) onChapterChange(next);
+    },
+    ariaLabel: tr("reader.chapterProgress"),
+    valueMin: 1,
+    valueMax: Math.max(1, chapterCount),
+    valueNow: currentChapter + 1,
+    valueText: chapter.title,
+    reducedMotion: reduced,
+    labelWidth: 200,
+    padding: "6px 80px 14px",
+  };
+
   // Two mutually-exclusive popovers:
   //   - selAnchor: shown when the user just finished selecting text
   //   - activeHl: shown when the user clicked an existing highlight
@@ -1316,68 +1362,60 @@ export function DesktopReader({
         </div>
       </div>
 
-      {/* Bottom scrubber spans the whole window, below BOTH the docked
-          panel and the reading column — it reports progress through the
-          book, which is not a property of either pane. Keeping it inside
-          the reading column made it start at the panel's inner edge and
-          left the panel running past it to the window floor. */}
-      <div
-        style={
+      {/* Bottom bar spans the whole window, below BOTH the docked panel
+          and the reading column — it reports progress through the book,
+          which is not a property of either pane. Keeping it inside the
+          reading column made it start at the panel's inner edge and left
+          the panel running past it to the window floor. Arranged the way
+          the reader chose (Tweaks.readerBar), as on the phone. */}
+      <DesktopReaderBar
+        theme={theme}
+        style={t.readerBar}
+        outer={
           focus.floating
             ? focus.clip("bottom", focus.showBottom)
             : focus.pin("bottom")
         }
-      >
-        <div
-          // The frosted fill and its hairline live here rather than on
-          // ReaderProgressBar: that component is also used inside the panels
-          // and the phone reader's bottom bar, where it is NOT the floating
-          // surface. `backdrop-filter` has to sit on the element that carries
-          // the fill, so the two travel together.
-          className={glassBottom.className}
-          style={{
-            ...glassBottom.style,
-            ...(focus.floating
-              ? focus.slide("bottom", focus.showBottom)
-              : null),
-          }}
-        >
+        inner={focus.floating ? focus.slide("bottom", focus.showBottom) : null}
+        slider={<ReaderProgressBar {...progressProps} />}
+        bigSlider={
           <ReaderProgressBar
-            theme={theme}
-            rtl={dir === "rtl"}
-            fraction={barFraction}
-            formatPct={(f) => `${formatNum(Math.round(f * 100), locale)}%`}
-            formatLabel={(f) =>
-              tr("reader.chapterDash", {
-                n: formatNum(chapterAt(f) + 1, locale),
-                title: book.chapters[chapterAt(f)]?.title ?? "",
-              })
-            }
-            ticks={ticks}
-            prevLabel={tr("reader.prevChapter")}
-            nextLabel={tr("reader.nextChapter")}
-            onPrev={prevChapter}
-            onNext={nextChapter}
-            prevDisabled={currentChapter === 0}
-            nextDisabled={currentChapter >= chapterCount - 1}
-            // No `onScrub`: a chapter change is a load, and firing one per
-            // pointermove made the reader thrash through every chapter the finger
-            // crossed. The handle previews; release commits the one jump.
-            onSeek={(f) => {
-              const next = chapterAt(f);
-              if (next !== currentChapter) onChapterChange(next);
-            }}
-            ariaLabel={tr("reader.chapterProgress")}
-            valueMin={1}
-            valueMax={Math.max(1, chapterCount)}
-            valueNow={currentChapter + 1}
-            valueText={chapter.title}
-            reducedMotion={reduced}
-            labelWidth={200}
-            padding="6px 80px 14px"
+            {...progressProps}
+            size="large"
+            labelWidth={0}
+            padding="44px 32px 16px"
           />
-        </div>
-      </div>
+        }
+        place={{
+          fraction: barFraction,
+          title: chapter.title,
+          position: tr("reader.chapterOfTotal", {
+            n: formatNum(currentChapter + 1, locale),
+            total: formatNum(chapterCount, locale),
+          }),
+          percent: progressProps.formatPct(barFraction),
+          detail:
+            minLeft === null
+              ? undefined
+              : tr("reader.bar.minLeft", { n: formatNum(minLeft, locale) }),
+        }}
+        seek={{
+          rtl: dir === "rtl",
+          formatLabel: progressProps.formatLabel,
+          onSeek: progressProps.onSeek,
+          ariaLabel: progressProps.ariaLabel,
+        }}
+        prev={{
+          label: tr("reader.prevChapter"),
+          onClick: prevChapter,
+          disabled: currentChapter === 0,
+        }}
+        next={{
+          label: tr("reader.nextChapter"),
+          onClick: nextChapter,
+          disabled: currentChapter >= chapterCount - 1,
+        }}
+      />
 
       {focus.hintVisible && (
         <FocusHint

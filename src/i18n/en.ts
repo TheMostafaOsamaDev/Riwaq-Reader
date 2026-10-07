@@ -48,9 +48,9 @@ export const en = {
   "settings.heroStyle.stack.hint": "Also lists your other open books",
   "settings.readerBar": "Reader bar",
   "settings.readerBar.hint":
-    "What comes up at the bottom when you tap the page. On phones.",
+    "What sits at the bottom of the page to show and move your place.",
   "settings.readerBar.classic": "Classic",
-  "settings.readerBar.classic.hint": "The slider and five icons",
+  "settings.readerBar.classic.hint": "The slider with all its buttons",
   "settings.readerBar.labelled": "Labelled",
   "settings.readerBar.labelled.hint": "Every button says what it does",
   "settings.readerBar.capsule": "Capsule",

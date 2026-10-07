@@ -704,7 +704,7 @@ function CornerButton({
 }
 
 /** A 3px track with a fill — where you are, read-only. */
-function ThinTrack({
+export function ThinTrack({
   theme,
   fraction,
   height = 3,
@@ -749,7 +749,7 @@ function ThinTrack({
  * before it moves sideways is a page scroll, not a seek — the line sits
  * where a thumb starts an upward flick.
  */
-function SeekLine({
+export function SeekLine({
   theme,
   fraction,
   seek,
