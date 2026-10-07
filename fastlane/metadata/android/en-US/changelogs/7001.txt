@@ -1,0 +1,8 @@
+Fixes
+
+* On phones with an older system WebView, the bottom bars no longer sit under the gesture bar.
+* The home bar choice is only offered where there is a home bar.
+
+New on desktop
+
+* The reader bar style you pick in Appearance applies on desktop too.

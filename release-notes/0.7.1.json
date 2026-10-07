@@ -1,0 +1,27 @@
+{
+  "version": "0.7.1",
+  "date": "2026-10-07",
+  "highlight": {
+    "image": "0.7.1-desktop-bars.webp",
+    "title": {
+      "en": "Your reader bar, on desktop too",
+      "ar": "شريط القراءة الذي تختاره، على سطح المكتب أيضًا"
+    },
+    "body": {
+      "en": "The reader bar you pick in Settings → Appearance now shapes the bottom of the desktop reader as well, from the classic scrubber to a floating capsule or a quiet status line with the minutes left in the chapter.",
+      "ar": "شريط القراءة الذي تختاره من الإعدادات ← المظهر يشكّل الآن أسفل القارئ على سطح المكتب أيضًا، من شريط التنقل الكلاسيكي إلى كبسولة عائمة أو سطر حالة هادئ يعرض الدقائق المتبقية في الفصل."
+    }
+  },
+  "items": [
+    {
+      "kind": "fixed",
+      "en": "On phones with an older system WebView, the bottom bars no longer sit under the gesture bar",
+      "ar": "على الهواتف ذات نسخة WebView الأقدم، لم تعد الأشرطة السفلية تقع تحت شريط الإيماءات"
+    },
+    {
+      "kind": "fixed",
+      "en": "The home bar choice is only offered where there is a home bar, on phones",
+      "ar": "لا يظهر خيار شريط الرئيسية إلا حيث يوجد شريط رئيسية، على الهاتف"
+    }
+  ]
+}

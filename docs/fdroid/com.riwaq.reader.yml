@@ -43,8 +43,8 @@ Repo: https://github.com/TheMostafaOsamaDev/Riwaq-Reader.git
 Binaries: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v%v/app-universal-release.apk
 
 Builds:
-  - versionName: 0.7.0
-    versionCode: 7000
+  - versionName: 0.7.1
+    versionCode: 7001
     commit: a74899cbe608397d68d86010a6c1b63b3b0422e3
     sudo:
       - apt-get update
@@ -74,5 +74,5 @@ AllowedAPKSigningKeys: 83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.7.0
-CurrentVersionCode: 7000
+CurrentVersion: 0.7.1
+CurrentVersionCode: 7001
