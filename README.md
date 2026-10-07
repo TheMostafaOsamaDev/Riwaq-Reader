@@ -32,11 +32,12 @@ moves the sidebar, flips the icons and translates every label.
 |---|---|
 | Read | EPUB 2/3, PDF, `.docx`. A continuous scroll, one page, or two. Word files open either as flowing text or page-for-page, and your highlights follow you between the two. |
 | Library | Shelves, and four styles for the Continue Reading card — pick the one you like in Settings. |
+| Bars | On the phone, six styles for the bar under your book and six for the home screen's tabs, from a full labelled bar to two corner buttons. Settings ▸ Appearance. |
 | Updates | Riwaq tells you what changed and installs it: in the app on Windows, macOS, the Linux AppImage and Android. |
 | Type | 16 bundled faces across Naskh, modern sans, Kufi and display. Size, line height, letter spacing, paragraph spacing, width, alignment, hyphenation. |
 | Themes | Light, Sepia, Dark, and a true black for OLED. Or follow the system. |
 | Focus mode | Everything but the page goes, including Android's system bars. On desktop your progress stays as a thin rail along the top. Double tap, or tap the lock, to come back. |
-| Highlight | Four colours, notes, and a sidebar that collects every one with the chapter it came from. |
+| Highlight | Eight colours, notes, and a sidebar that collects every one with the chapter it came from. |
 | Store | Browse Arabic web novel sites inside the app. Read online, add to the library, download a range of chapters, or bake the lot into one EPUB. |
 | Extensions | Sources install at runtime from a repository. Add your own. Nothing is compiled in. |
 | Languages | English and العربية, mirrored all the way down. |
@@ -156,7 +157,7 @@ you chose too, at a fixed ratio to the body.
 </details>
 
 <details>
-<summary><b>Android</b>: library, reader, sheets, store, focus mode</summary>
+<summary><b>Android</b>: library, reader, highlighting, bar styles, store, focus mode</summary>
 <br/>
 <table>
   <tr>
@@ -176,6 +177,12 @@ you chose too, at a fixed ratio to the body.
     <td align="center" width="25%"><img src="docs/screenshots/mobile/12-docx-pages.png" alt="The same Word file page-for-page"/><br/><b>Word · pages</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/09-focus-entry.png" alt="Entering focus mode"/><br/><b>Focus, entering</b></td>
     <td align="center" width="25%"><img src="docs/screenshots/mobile/10-focus-mode.png" alt="Focus at rest"/><br/><b>Focus, at rest</b></td>
+  </tr>
+  <tr>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/14-highlight.png" alt="Selecting three lines, with the highlight toolbar under them"/><br/><b>Highlighting</b></td>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/15-reader-status.png" alt="The Status line reader bar, with minutes left in the chapter"/><br/><b>Status line bar</b></td>
+    <td align="center" width="25%"><img src="docs/screenshots/mobile/13-appearance-bars.png" alt="Choosing the reader bar and home bar in Appearance"/><br/><b>Bar styles</b></td>
+    <td width="25%"></td>
   </tr>
 </table>
 </details>
