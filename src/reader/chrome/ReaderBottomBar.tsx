@@ -296,6 +296,30 @@ function FloatingBar({
         pointerEvents: "none",
       }}
     >
+      {style === "corners" && (
+        // How far through the book, as a hairline along the very bottom
+        // edge — the one piece of progress this style keeps on screen.
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            insetInline: 0,
+            bottom: 0,
+            height: 2,
+            background: theme.rule,
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              insetBlock: 0,
+              insetInlineStart: 0,
+              width: `${clamp01(place.fraction) * 100}%`,
+              background: theme.chromeInk,
+            }}
+          />
+        </span>
+      )}
       <div style={{ position: "relative" }}>
         {sliderOpen && (
           <div

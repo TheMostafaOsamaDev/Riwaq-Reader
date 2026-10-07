@@ -3,8 +3,10 @@
 // With them, Contents opens on the chapter list and Highlights and Progress
 // are one tap away inside it, so choosing a lighter bar never hides a panel.
 
+import type { Ref } from "react";
+import { useSlidingIndicator } from "../../hooks/useSlidingIndicator";
 import { useI18n } from "../../i18n/useI18n";
-import type { Theme } from "../../styles/tokens";
+import { raisedSurface, type Theme } from "../../styles/tokens";
 import type { ReaderPanel } from "./ReaderTabBar";
 
 const LABEL = {
@@ -27,11 +29,16 @@ export function PanelSwitcher({
   onSelect: (p: ReaderPanel) => void;
 }) {
   const { tr } = useI18n();
-  if (panels.length < 2 || !active || !panels.includes(active)) return null;
+  const shown = panels.length >= 2 && !!active && panels.includes(active);
+  // The segment slides between tabs, like the library's filter pills.
+  const slide = useSlidingIndicator<ReaderPanel>(shown ? active : null);
+  if (!shown) return null;
   return (
     <div
+      ref={slide.containerRef as Ref<HTMLDivElement>}
       role="tablist"
       style={{
+        position: "relative",
         display: "grid",
         gridTemplateColumns: `repeat(${panels.length}, minmax(0, 1fr))`,
         gap: 2,
@@ -43,11 +50,28 @@ export function PanelSwitcher({
         flexShrink: 0,
       }}
     >
+      <div
+        ref={slide.indicatorRef}
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 0,
+          opacity: 0,
+          borderRadius: 9,
+          background: raisedSurface(theme),
+          boxShadow: "0 1px 3px rgba(0,0,0,0.14)",
+          pointerEvents: "none",
+        }}
+      />
       {panels.map((p) => {
         const on = p === active;
         return (
           <button
             key={p}
+            ref={slide.register(p)}
             type="button"
             role="tab"
             aria-selected={on}
@@ -56,13 +80,14 @@ export function PanelSwitcher({
               height: 36,
               border: "none",
               borderRadius: 9,
-              background: on ? theme.bg : "transparent",
+              position: "relative",
+              background: "transparent",
               color: on ? theme.ink : theme.chromeInk,
+              transition: "color 200ms ease",
               fontFamily: "inherit",
               fontSize: 13,
               fontWeight: on ? 500 : 400,
               cursor: "pointer",
-              boxShadow: on ? "0 1px 3px rgba(0,0,0,0.14)" : "none",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",

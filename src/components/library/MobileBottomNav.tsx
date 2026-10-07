@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, type Ref, useEffect, useState } from "react";
 import { Icon } from "../Icon";
 import {
   getState as getQueueState,
@@ -13,7 +13,8 @@ import { flowInput, useAndroidUpdateSelect } from "../../store/androidUpdate";
 import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
 import type { HomeBarStyle } from "../../types/reader";
-import { ACCENT } from "../../styles/tokens";
+import { useSlidingIndicator } from "../../hooks/useSlidingIndicator";
+import { ACCENT, raisedSurface, Z_LOCAL } from "../../styles/tokens";
 
 export interface MobileBottomNavProps {
   theme: Theme;
@@ -475,14 +476,57 @@ function NavGlyph({
   );
 }
 
+/** Which item the sliding indicator sits under. */
+function activeKey(nav: ReturnType<typeof useNav>): NavKey | null {
+  return nav.isActive("library")
+    ? "library"
+    : nav.isActive("store")
+      ? "store"
+      : null;
+}
+
+/** The sliding indicator itself: under the items, never in the way of a
+ *  tap. Its colour and shape are the style's; its position is the hook's. */
+function Indicator({
+  slide,
+  style,
+}: {
+  slide: ReturnType<typeof useSlidingIndicator<NavKey>>;
+  style: CSSProperties;
+}) {
+  return (
+    <div
+      ref={slide.indicatorRef}
+      aria-hidden
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
+        opacity: 0,
+        pointerEvents: "none",
+        zIndex: Z_LOCAL.under,
+        ...style,
+      }}
+    />
+  );
+}
+
+/** Content colour for an item, eased to match the indicator arriving under
+ *  it — the same 200ms the filter pills use. */
+const inkTransition = "color 200ms ease";
+
 /** Four tabs with their names under the icons; the current one sits on a
- *  soft pill. Import lives in the header. */
+ *  soft pill that slides to the next. Import lives in the header. */
 function LabelledNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const nav = useNav(p);
+  const slide = useSlidingIndicator<NavKey>(activeKey(nav));
   const keys: NavKey[] = ["library", "store", "downloads", "settings"];
   return (
     <nav
+      ref={slide.containerRef}
       data-home-bar="labelled"
       style={{
         ...barBase(theme),
@@ -493,21 +537,34 @@ function LabelledNav(p: MobileBottomNavProps) {
         padding: "0 6px",
       }}
     >
+      <Indicator slide={slide} style={pillIndicator(theme)} />
       {keys.map((k) => (
-        <LabelledTab key={k} k={k} nav={nav} theme={theme} />
+        <LabelledTab key={k} k={k} nav={nav} theme={theme} slide={slide} />
       ))}
     </nav>
   );
 }
 
+/** One line height for every tab label, so a label in a button and one in a
+ *  plain column (Raised's "Add") share a baseline. */
+const LABEL_LINE = "15px";
+
+const pillIndicator = (theme: Theme): CSSProperties => ({
+  borderRadius: 15,
+  background: theme.hover,
+  boxShadow: `inset 0 0 0 1px ${theme.rule}`,
+});
+
 function LabelledTab({
   k,
   nav,
   theme,
+  slide,
 }: {
   k: NavKey;
   nav: ReturnType<typeof useNav>;
   theme: Theme;
+  slide: ReturnType<typeof useSlidingIndicator<NavKey>>;
 }) {
   const { tr } = useI18n();
   const on = nav.isActive(k);
@@ -518,6 +575,8 @@ function LabelledTab({
       aria-current={on ? "page" : undefined}
       aria-label={nav.aria(k)}
       style={{
+        position: "relative",
+        zIndex: Z_LOCAL.base,
         border: "none",
         background: "transparent",
         cursor: "pointer",
@@ -527,21 +586,21 @@ function LabelledTab({
         padding: "4px 0",
         fontFamily: "inherit",
         fontSize: 11.5,
+        lineHeight: LABEL_LINE,
         fontWeight: on ? 500 : 400,
         color: on ? theme.ink : theme.chromeInk,
+        transition: inkTransition,
         minWidth: 0,
       }}
     >
       <span
+        ref={slide.register(k)}
         style={{
           width: 58,
           height: 30,
           borderRadius: 15,
           display: "grid",
           placeItems: "center",
-          background: on ? theme.hover : "transparent",
-          boxShadow: on ? `inset 0 0 0 1px ${theme.rule}` : "none",
-          transition: "background 160ms ease-out",
         }}
       >
         <NavGlyph theme={theme} k={k} nav={nav} />
@@ -560,11 +619,19 @@ function LabelledTab({
   );
 }
 
+/** Height of the dock pill and of the import button beside it. */
+const DOCK_H = 56;
+/** The dock's items, and the inset that puts them the same distance from
+ *  every edge of the pill: (56 - 44) / 2 on all four sides. */
+const DOCK_ITEM = 44;
+const DOCK_INSET = (DOCK_H - DOCK_ITEM) / 2;
+
 /** A pill of four icons floating over the page, with import beside it as
  *  the one coloured control on screen. */
 function DockNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const nav = useNav(p);
+  const slide = useSlidingIndicator<NavKey>(activeKey(nav));
   const keys: NavKey[] = ["library", "store", "downloads", "settings"];
   return (
     <nav
@@ -578,68 +645,70 @@ function DockNav(p: MobileBottomNavProps) {
       }}
     >
       <div
+        ref={slide.containerRef as Ref<HTMLDivElement>}
         style={{
+          position: "relative",
           flex: 1,
           minWidth: 0,
-          height: 56,
+          height: DOCK_H,
           boxSizing: "border-box",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-around",
-          padding: "0 6px",
-          borderRadius: 28,
+          // space-between, not space-around: the end items sit DOCK_INSET
+          // from the pill's ends, exactly as far as from its top and bottom.
+          // space-around added half a gap of empty pill at each end.
+          justifyContent: "space-between",
+          padding: `0 ${DOCK_INSET}px`,
+          borderRadius: DOCK_H / 2,
           background: theme.chrome,
           border: `0.5px solid ${theme.ruleStrong}`,
           boxShadow: "0 8px 22px rgba(0,0,0,0.12)",
         }}
       >
-        {keys.map((k) => (
-          <DockItem key={k} k={k} nav={nav} theme={theme} />
-        ))}
+        <Indicator
+          slide={slide}
+          style={{ borderRadius: DOCK_ITEM / 2, background: theme.ink }}
+        />
+        {keys.map((k) => {
+          const on = nav.isActive(k);
+          return (
+            <button
+              key={k}
+              ref={slide.register(k)}
+              type="button"
+              onClick={() => nav.act(k)}
+              aria-current={on ? "page" : undefined}
+              aria-label={nav.aria(k)}
+              title={nav.aria(k)}
+              style={{
+                position: "relative",
+                zIndex: Z_LOCAL.base,
+                width: DOCK_ITEM,
+                height: DOCK_ITEM,
+                borderRadius: DOCK_ITEM / 2,
+                border: "none",
+                background: "transparent",
+                color: on ? theme.bg : theme.chromeInk,
+                transition: inkTransition,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <NavGlyph theme={theme} k={k} nav={nav} size={18} />
+            </button>
+          );
+        })}
       </div>
       <NavFabButton
         theme={theme}
         importing={p.importing}
         onClick={p.onImport}
-        size={56}
+        size={DOCK_H}
         tone="accent"
       />
     </nav>
-  );
-}
-
-function DockItem({
-  k,
-  nav,
-  theme,
-}: {
-  k: NavKey;
-  nav: ReturnType<typeof useNav>;
-  theme: Theme;
-}) {
-  const on = nav.isActive(k);
-  return (
-    <button
-      type="button"
-      onClick={() => nav.act(k)}
-      aria-current={on ? "page" : undefined}
-      aria-label={nav.aria(k)}
-      title={nav.aria(k)}
-      style={{
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        border: "none",
-        background: on ? theme.ink : "transparent",
-        color: on ? theme.bg : theme.chromeInk,
-        cursor: "pointer",
-        display: "grid",
-        placeItems: "center",
-        transition: "background 160ms ease-out, color 160ms ease-out",
-      }}
-    >
-      <NavGlyph theme={theme} k={k} nav={nav} size={18} />
-    </button>
   );
 }
 
@@ -648,8 +717,10 @@ function RaisedNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const { tr } = useI18n();
   const nav = useNav(p);
+  const slide = useSlidingIndicator<NavKey>(activeKey(nav));
   return (
     <nav
+      ref={slide.containerRef}
       data-home-bar="raised"
       style={{
         ...barBase(theme),
@@ -660,27 +731,34 @@ function RaisedNav(p: MobileBottomNavProps) {
         padding: "0 4px",
       }}
     >
-      <LabelledTab k="library" nav={nav} theme={theme} />
-      <LabelledTab k="store" nav={nav} theme={theme} />
+      <Indicator slide={slide} style={pillIndicator(theme)} />
+      <LabelledTab k="library" nav={nav} theme={theme} slide={slide} />
+      <LabelledTab k="store" nav={nav} theme={theme} slide={slide} />
+      {/* Laid out exactly like LabelledTab — 4px, a 30px slot, a 4px gap,
+          the label, 4px — so "Add" shares the other labels' baseline. The
+          button hangs from the slot. */}
       <span
         style={{
-          alignSelf: "stretch",
           position: "relative",
+          zIndex: Z_LOCAL.base,
           display: "grid",
           justifyItems: "center",
-          alignContent: "end",
-          paddingBottom: 13,
+          gap: 4,
+          padding: "4px 0",
           fontSize: 11.5,
+          lineHeight: LABEL_LINE,
           color: theme.chromeInk,
         }}
       >
+        <span style={{ height: 30 }} />
         {/* Out of the bar's top edge by only 14px: the update pill floats
             centred 20px above the bar (update/parts.tsx), and a button
-            raised further would run into it. */}
+            raised further would run into it. The bar's top edge sits 8px
+            above this column (75px bar, 59px column, centred). */}
         <span
           style={{
             position: "absolute",
-            top: -14,
+            top: -14 - 8,
             left: "50%",
             transform: "translateX(-50%)",
           }}
@@ -695,8 +773,8 @@ function RaisedNav(p: MobileBottomNavProps) {
         </span>
         <span aria-hidden>{tr("library.nav.add")}</span>
       </span>
-      <LabelledTab k="downloads" nav={nav} theme={theme} />
-      <LabelledTab k="settings" nav={nav} theme={theme} />
+      <LabelledTab k="downloads" nav={nav} theme={theme} slide={slide} />
+      <LabelledTab k="settings" nav={nav} theme={theme} slide={slide} />
     </nav>
   );
 }
@@ -707,6 +785,7 @@ function SwitchNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const { tr } = useI18n();
   const nav = useNav(p);
+  const slide = useSlidingIndicator<NavKey>(activeKey(nav));
   const side = (k: NavKey) => (
     <button
       type="button"
@@ -743,7 +822,9 @@ function SwitchNav(p: MobileBottomNavProps) {
     >
       {side("downloads")}
       <div
+        ref={slide.containerRef as Ref<HTMLDivElement>}
         style={{
+          position: "relative",
           flex: 1,
           minWidth: 0,
           display: "grid",
@@ -754,21 +835,32 @@ function SwitchNav(p: MobileBottomNavProps) {
           border: `0.5px solid ${theme.rule}`,
         }}
       >
+        <Indicator
+          slide={slide}
+          style={{
+            borderRadius: 22,
+            background: raisedSurface(theme),
+            boxShadow: "0 1px 4px rgba(0,0,0,0.14)",
+          }}
+        />
         {(["library", "store"] as const).map((k) => {
           const on = nav.isActive(k);
           return (
             <button
               key={k}
+              ref={slide.register(k)}
               type="button"
               onClick={() => nav.act(k)}
               aria-current={on ? "page" : undefined}
               style={{
+                position: "relative",
+                zIndex: Z_LOCAL.base,
                 height: 42,
                 border: "none",
                 borderRadius: 22,
-                background: on ? theme.bg : "transparent",
-                boxShadow: on ? "0 1px 4px rgba(0,0,0,0.14)" : "none",
+                background: "transparent",
                 color: on ? theme.ink : theme.chromeInk,
+                transition: inkTransition,
                 fontFamily: "inherit",
                 fontSize: 13.5,
                 fontWeight: on ? 500 : 400,
@@ -778,7 +870,6 @@ function SwitchNav(p: MobileBottomNavProps) {
                 justifyContent: "center",
                 gap: 7,
                 minWidth: 0,
-                transition: "background 160ms ease-out",
               }}
             >
               <Icon name={NAV_ICON[k]} size={17} />
@@ -800,15 +891,18 @@ function SwitchNav(p: MobileBottomNavProps) {
   );
 }
 
-/** Icons, except the screen you are on, which widens to show its name.
- *  Import lives in the header. */
+/** Icons, except the screen you are on, which widens to show its name; the
+ *  filled pill slides and stretches from one to the next. Import lives in
+ *  the header. */
 function ExpandingNav(p: MobileBottomNavProps) {
   const { theme } = p;
   const { tr } = useI18n();
   const nav = useNav(p);
+  const slide = useSlidingIndicator<NavKey>(activeKey(nav));
   const keys: NavKey[] = ["library", "store", "downloads", "settings"];
   return (
     <nav
+      ref={slide.containerRef}
       data-home-bar="expanding"
       style={{
         ...barBase(theme),
@@ -819,23 +913,31 @@ function ExpandingNav(p: MobileBottomNavProps) {
         padding: "0 12px",
       }}
     >
+      <Indicator
+        slide={slide}
+        style={{ borderRadius: 23, background: theme.ink }}
+      />
       {keys.map((k) => {
         const on = nav.isActive(k);
         return (
           <button
             key={k}
+            ref={slide.register(k)}
             type="button"
             onClick={() => nav.act(k)}
             aria-current={on ? "page" : undefined}
             aria-label={nav.aria(k)}
             style={{
+              position: "relative",
+              zIndex: Z_LOCAL.base,
               height: 46,
               minWidth: 46,
               padding: on ? "0 18px" : "0 12px",
               borderRadius: 23,
               border: "none",
-              background: on ? theme.ink : "transparent",
+              background: "transparent",
               color: on ? theme.bg : theme.chromeInk,
+              transition: inkTransition,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
@@ -844,12 +946,14 @@ function ExpandingNav(p: MobileBottomNavProps) {
               fontFamily: "inherit",
               fontSize: 13.5,
               fontWeight: 500,
-              transition:
-                "background 200ms ease-out, color 200ms ease-out, padding 200ms ease-out",
             }}
           >
             <NavGlyph theme={theme} k={k} nav={nav} size={18} />
-            {on && <span>{tr(NAV_LABEL[k])}</span>}
+            {on && (
+              // No mount fade: a webview can skip or hold a mount keyframe,
+              // leaving the label invisible. The colour eases in instead.
+              <span>{tr(NAV_LABEL[k])}</span>
+            )}
           </button>
         );
       })}

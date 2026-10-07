@@ -617,6 +617,19 @@ export function inkAlpha(theme: Theme, alpha: number): string {
   return withAlpha(theme.ink, alpha);
 }
 
+/** The fill of a selected segment sitting in a tinted track — a segmented
+ *  control's thumb. It has to read as raised ABOVE the track in every theme.
+ *  On the pale themes the page colour does that (the track is the page under
+ *  a dark tint). On the dark ones the page colour is darker than its own
+ *  track and reads as pressed in, so it is lifted a step toward white. */
+export function raisedSurface(theme: Theme): string {
+  const rgb = parseHexColor(theme.bg);
+  if (!rgb) return theme.bg;
+  const mean = (rgb[0] + rgb[1] + rgb[2]) / 3;
+  if (mean >= 128) return theme.bg;
+  return shade(theme.bg, mean < 24 ? 0.16 : 0.1);
+}
+
 /** How far the surround sits from the page. Small on purpose — enough to read
  *  as a sheet, not so much that it becomes a frame competing with the text. */
 const SURFACE_STEP = 0.06;
