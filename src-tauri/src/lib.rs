@@ -9,6 +9,8 @@ mod update_leftovers;
 mod updates;
 #[cfg(target_os = "macos")]
 mod webview_frame;
+#[cfg(target_os = "macos")]
+mod wheel_device;
 
 // Only needed to call `get_webview_window` from the desktop-only open-path
 // handlers below (single-instance callback, RunEvent::Opened) — gated so it
@@ -90,6 +92,15 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
+    // A reload forgets what the page was told about the wheel; tell it again
+    // on the next scroll. See wheel_device.rs.
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_page_load(|webview, _| {
+        if webview.label() == "main" {
+            wheel_device::forget();
+        }
+    });
+
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -137,6 +148,10 @@ pub fn run() {
             android_update::android_update_install,
         ])
         .setup(|app| {
+            // Mouse or trackpad, for the reader's wheel smoothing.
+            #[cfg(target_os = "macos")]
+            wheel_device::install(app.handle());
+
             // Cold start on Windows / Linux: the file double-clicked in the
             // file manager arrives as an argument. macOS doesn't use argv
             // for this — it sends RunEvent::Opened, handled below.
