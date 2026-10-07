@@ -1,0 +1,78 @@
+{
+  "version": "0.7.0",
+  "date": "2026-10-07",
+  "highlight": {
+    "image": "0.7.0-homebar.webp",
+    "title": {
+      "en": "A home that works like a phone app",
+      "ar": "واجهة رئيسية تعمل كتطبيقات الهاتف"
+    },
+    "body": {
+      "en": "On the phone, Library, Store, Downloads and Settings are now tabs on a bar at the bottom, and pages slide in as you go deeper and back out as you return. Choose from six bar styles in Settings → Appearance.",
+      "ar": "على الهاتف صارت المكتبة والمتجر والتنزيلات والإعدادات تبويبات في شريط أسفل الشاشة، وتنزلق الصفحات إلى الداخل كلما تعمّقت وتعود إلى الخارج حين ترجع. اختر من بين ستة أنماط للشريط في الإعدادات ← المظهر."
+    }
+  },
+  "stories": [
+    {
+      "kind": "new",
+      "image": "0.7.0-readerbar.webp",
+      "title": {
+        "en": "Pick the bar under your book",
+        "ar": "اختر الشريط أسفل كتابك"
+      },
+      "body": {
+        "en": "The reader's bottom bar comes in six styles on the phone, from a small floating capsule to a status line that shows the minutes left in the chapter. Find them in Settings → Appearance.",
+        "ar": "يأتي الشريط السفلي للقارئ على الهاتف بستة أنماط، من كبسولة صغيرة عائمة إلى سطر حالة يعرض الدقائق المتبقية في الفصل. تجدها في الإعدادات ← المظهر."
+      }
+    },
+    {
+      "kind": "improved",
+      "image": "0.7.0-selection.webp",
+      "title": {
+        "en": "Highlighting that stays on the words",
+        "ar": "تظليل يبقى على الكلمات"
+      },
+      "body": {
+        "en": "On the phone, a selection now stays on its text while you scroll, grows a whole word at a time, and stops at the end of a paragraph instead of jumping into the next. Its handles no longer cover the note box.",
+        "ar": "على الهاتف صار التحديد يبقى على نصّه أثناء التمرير، ويتّسع كلمةً كاملة في كل مرة، ويتوقف عند نهاية الفقرة بدل القفز إلى التالية. ولم تعد مقابضه تغطي مربع الملاحظة."
+      }
+    }
+  ],
+  "items": [
+    {
+      "kind": "improved",
+      "en": "A mouse wheel scrolls smoothly on the Mac, and the trackpad feels the same as before",
+      "ar": "عجلة الفأرة تمرّر بسلاسة على ماك، ولوحة اللمس كما كانت"
+    },
+    {
+      "kind": "improved",
+      "en": "Your library appears the moment the app opens",
+      "ar": "تظهر مكتبتك لحظة فتح التطبيق"
+    },
+    {
+      "kind": "improved",
+      "en": "Books and chapters load behind one quick ring with the title, and only when the wait is long enough to notice",
+      "ar": "تُحمَّل الكتب والفصول خلف حلقة واحدة سريعة مع العنوان، ولا تظهر إلا حين يطول الانتظار بما يكفي لملاحظته"
+    },
+    {
+      "kind": "improved",
+      "en": "A source's pages have a single back button that retraces your steps",
+      "ar": "لصفحات المصدر زر رجوع واحد يعيدك خطوةً خطوة"
+    },
+    {
+      "kind": "improved",
+      "en": "A novel's cover sits in the middle of its page on the phone",
+      "ar": "غلاف الرواية في منتصف صفحتها على الهاتف"
+    },
+    {
+      "kind": "fixed",
+      "en": "Swiping up from the bottom edge to leave the app no longer scrolls the page",
+      "ar": "السحب إلى الأعلى من الحافة السفلية لمغادرة التطبيق لم يعد يمرّر الصفحة"
+    },
+    {
+      "kind": "fixed",
+      "en": "The interface no longer looks zoomed in on phones set to a larger system font; book text still follows your reading settings",
+      "ar": "لم تعد الواجهة تبدو مكبّرة على الهواتف المضبوطة على خط نظام أكبر، ويبقى نص الكتاب تابعًا لإعدادات القراءة لديك"
+    }
+  ]
+}

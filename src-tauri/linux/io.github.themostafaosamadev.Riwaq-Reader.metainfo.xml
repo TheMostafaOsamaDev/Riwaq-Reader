@@ -70,9 +70,16 @@
        `gh release list` is the source of truth, not the version a branch
        happened to be carrying. -->
   <releases>
-    <release version="0.6.1" date="2026-10-03">
+    <release version="0.7.0" date="2026-10-07">
       <description>
-        <p>Packaging only: nothing changes inside the app. The Linux desktop entry and AppStream metadata now ship with the source.</p>
+        <p>A new home on the phone, bars you can choose, and highlighting that stays on the words.</p>
+        <ul>
+          <li>Library, Store, Downloads and Settings are tabs on a bar at the bottom, in six styles</li>
+          <li>Six styles for the reader's bottom bar, one showing the minutes left in the chapter</li>
+          <li>A selection stays on its text while you scroll and stops at the end of a paragraph</li>
+          <li>A mouse wheel scrolls smoothly on the Mac</li>
+          <li>Your library appears the moment the app opens</li>
+        </ul>
       </description>
     </release>
     <release version="0.6.0" date="2026-10-02">
