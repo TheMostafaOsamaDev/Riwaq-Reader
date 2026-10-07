@@ -20,9 +20,9 @@ import { attentionDot } from "../../store/updateFlow";
 import type { LibraryTab } from "./tabs";
 import type { HomeBarStyle } from "../../types/reader";
 import { useSlidingIndicator } from "../../hooks/useSlidingIndicator";
-import { GLASS_CLASS } from "../../reader/chrome/glass";
+import { GLASS_CLASS, homeBarGlass } from "../../reader/chrome/glass";
 import { useReducedMotion } from "../../styles/motion";
-import { ACCENT, raisedSurface, Z_LOCAL } from "../../styles/tokens";
+import { ACCENT, Z_LOCAL } from "../../styles/tokens";
 
 export interface MobileBottomNavProps {
   theme: Theme;
@@ -726,7 +726,7 @@ function DockNav(p: MobileBottomNavProps) {
           borderRadius: DOCK_H / 2,
           // The dock's own frosted glass: the strip around it is clear, so
           // the books show on either side and blur through the pill.
-          background: theme.chromeGlass,
+          background: homeBarGlass(theme),
           ["--riwaq-chrome-opaque" as string]: theme.chrome,
           border: `0.5px solid ${theme.ruleStrong}`,
           boxShadow: "0 8px 22px rgba(0,0,0,0.12)",
@@ -927,10 +927,12 @@ function SwitchNav(p: MobileBottomNavProps) {
       >
         <Indicator
           slide={slide}
+          // The selected half takes the theme's primary fill — the same ink
+          // every other style selects with — not a neutral raised grey.
           style={{
             borderRadius: 22,
-            background: raisedSurface(theme),
-            boxShadow: "0 1px 4px rgba(0,0,0,0.14)",
+            background: theme.ink,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
           }}
         />
         {(["library", "store"] as const).map((k) => {
@@ -949,7 +951,7 @@ function SwitchNav(p: MobileBottomNavProps) {
                 border: "none",
                 borderRadius: 22,
                 background: "transparent",
-                color: on ? theme.ink : theme.chromeInk,
+                color: on ? theme.bg : theme.chromeInk,
                 transition: inkTransition,
                 fontFamily: "inherit",
                 fontSize: 13.5,

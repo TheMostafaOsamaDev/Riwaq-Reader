@@ -11,7 +11,7 @@
 // its fallback needs `@supports` and inline styles cannot express that.
 
 import type { CSSProperties } from "react";
-import type { Theme } from "../../styles/tokens";
+import { type Theme, withAlpha } from "../../styles/tokens";
 
 /** Class carrying the `backdrop-filter` and its no-support fallback. */
 export const GLASS_CLASS = "riwaq-chrome-glass";
@@ -52,4 +52,16 @@ export function glassBar(theme: Theme, edge: GlassEdge): GlassBar {
         : { borderTop: `0.5px solid ${theme.ruleStrong}` }),
     },
   };
+}
+
+/** How much of the home bar's own colour sits over the blur. The reader's
+ *  bars use the themes' `chromeGlass`, about half, which suits a bar laid
+ *  over flat text. Over the library's covers — large blocks of saturated
+ *  colour — that much showing through read as too sheer, so the home bar
+ *  frosts more heavily. */
+const HOME_BAR_FILL = 0.8;
+
+/** The home bar's glass fill: the theme's chrome colour at HOME_BAR_FILL. */
+export function homeBarGlass(theme: Theme): string {
+  return withAlpha(theme.chrome, HOME_BAR_FILL);
 }

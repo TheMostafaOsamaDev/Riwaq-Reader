@@ -19,7 +19,7 @@ import {
   MobileBottomNav,
   NavFabButton,
 } from "./MobileBottomNav";
-import { glassBar } from "../../reader/chrome/glass";
+import { glassBar, homeBarGlass } from "../../reader/chrome/glass";
 import {
   homeBarHasImport,
   homeBarHasShelves,
@@ -649,7 +649,9 @@ export function MobileLibrary({
             paddingRight: "env(safe-area-inset-right, 0px)",
             // The dock is a pill floating on clear space; every other style
             // is one full-width sheet of the reader's frosted glass.
-            ...(homeBar === "dock" ? null : glassBottom.style),
+            ...(homeBar === "dock"
+              ? null
+              : { ...glassBottom.style, background: homeBarGlass(theme) }),
           }}
         >
           <MobileBottomNav
