@@ -1,0 +1,14 @@
+New
+
+* Library, Store, Downloads and Settings are tabs on a bar at the bottom, in six styles.
+* Six styles for the reader's bottom bar, one with the minutes left in the chapter.
+
+Improved
+
+* A selection stays on its text as you scroll and stops at a paragraph's end.
+* Your library appears the moment the app opens.
+
+Fixes
+
+* Swiping up from the bottom edge no longer scrolls the page.
+* The interface no longer looks zoomed in with a larger system font.
