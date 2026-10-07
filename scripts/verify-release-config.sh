@@ -129,7 +129,9 @@ check_config() {
       echo "docs/fdroid recipe builds with NDK '${ndk_rec}' but release.yml installs '${ndk_rel}'"
       problems=$((problems + 1))
     fi
-    rust_rec="$(grep -o -- '--default-toolchain [0-9.]*' "$recipe" | head -n1 | sed 's/.* //')"
+    # Debian's rustup package installs it (fdroiddata asked for that over a
+    # srclib); `rustup default` names the toolchain every build step uses.
+    rust_rec="$(grep -o -- 'rustup default [0-9.]*' "$recipe" | head -n1 | sed 's/.* //')"
     if [ -n "${channel:-}" ] && [ "$rust_rec" != "$channel" ]; then
       echo "docs/fdroid recipe installs Rust '${rust_rec}' but rust-toolchain.toml says $channel"
       problems=$((problems + 1))
@@ -270,7 +272,7 @@ if [ "${1:-}" = "--self-test" ]; then
     local name="${7:-0.2.0}" code="${8:-2000}"
     printf 'Builds:\n  - versionName: %s\n    versionCode: %s\n    commit: %s\n' \
       "$name" "$code" "${9:-0123456789abcdef0123456789abcdef01234567}" > "$d/docs/fdroid/com.riwaq.reader.yml"
-    printf '    build:\n      - x --default-toolchain %s\n      - %s\n    ndk: %s\n' \
+    printf '    build:\n      - rustup default %s\n      - %s\n    ndk: %s\n' \
       "$3" "$4" "$2" >> "$d/docs/fdroid/com.riwaq.reader.yml"
     printf 'CurrentVersion: %s\nCurrentVersionCode: %s\n' "$name" "$code" \
       >> "$d/docs/fdroid/com.riwaq.reader.yml"

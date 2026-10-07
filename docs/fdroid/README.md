@@ -46,7 +46,7 @@ they drift:
 
 | | Release job | Recipe |
 |---|---|---|
-| Rust | `dtolnay/rust-toolchain@1.97.1` | `--default-toolchain 1.97.1` (and `rust-toolchain.toml`) |
+| Rust | `dtolnay/rust-toolchain@1.97.1` | Debian's `rustup` package, `rustup default 1.97.1` (and `rust-toolchain.toml`) |
 | NDK | 29.0.14206865, the only NDK on the runner | `ndk: 29.0.14206865` |
 | RUSTFLAGS | `scripts/android-rustflags.sh` | `scripts/android-rustflags.sh` |
 | JDK | Temurin 21 | trixie's OpenJDK 21 |
@@ -66,6 +66,9 @@ locations in dependencies: `/home/runner/.cargo/registry/src/...` on GitHub,
 `/home/vagrant/.cargo/...` on F-Droid. The script maps the cargo home to
 `/cargo`. Cargo's `trim-paths` profile would do the same without a flag, but
 it is not stable in Rust 1.97.1.
+
+The recipe itself carries no comments, as fdroiddata's review asks; the
+reasons for each step are here instead.
 
 **The recipe differs from the release job in three places,** each because
 F-Droid requires it, none affecting the APK's contents:

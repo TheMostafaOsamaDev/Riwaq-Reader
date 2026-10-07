@@ -1,28 +1,3 @@
-# F-Droid recipe for Riwaq: the copy that goes to fdroiddata as
-# metadata/com.riwaq.reader.yml (see README.md next to this file).
-#
-# Every build step mirrors the Android job in .github/workflows/release.yml,
-# because F-Droid ships OUR signed APK only when its build of the same commit
-# comes out byte-identical (Binaries + AllowedAPKSigningKeys below):
-#
-#   Rust 1.97.1       rust-toolchain.toml, and the workflows' pinned ref
-#   NDK 29.0.14206865 release.yml's `sdkmanager "ndk;..."`, the only NDK there
-#   JDK 21            release.yml's setup-java, F-Droid's builder default
-#   Node 20, pnpm 9   release.yml's setup-node / pnpm action
-#   RUSTFLAGS         scripts/android-rustflags.sh, run by both
-#
-# scripts/verify-release-config.sh fails the release preflight if the NDK,
-# the Rust version or the RUSTFLAGS script here stop matching release.yml,
-# and .github/workflows/fdroid-verify.yml builds a commit with this recipe in
-# F-Droid's own build image and compares the result with our release APK.
-#
-# The Builds entry is the latest release, and `commit` is the FULL HASH:
-# fdroiddata requires one rather than a tag, because a tag can be moved or
-# deleted after review and this repository has deleted release tags before.
-# fdroid-verify.yml rewrites the version and commit for a test build;
-# fdroiddata's copy carries the real ones, and F-Droid's checkupdates adds
-# later releases on its own from the tags (AutoUpdateMode below).
-
 AntiFeatures:
   NonFreeNet:
     en-US: The optional Store browses third-party novel websites. Reading your own
@@ -40,7 +15,8 @@ AutoName: Riwaq
 
 RepoType: git
 Repo: https://github.com/TheMostafaOsamaDev/Riwaq-Reader.git
-Binaries: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v%v/app-universal-release.apk
+Binaries: 
+  https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v%v/app-universal-release.apk
 
 Builds:
   - versionName: 0.7.1
@@ -48,24 +24,22 @@ Builds:
     commit: a132314972487c747fa00f39ed628cad0bf44303
     sudo:
       - apt-get update
-      - apt-get install -y build-essential nodejs npm
+      - apt-get install -y build-essential nodejs npm rustup
       - npm install -g pnpm@9
-    output: src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
-    srclibs:
-      - rustup@1.28.2
+    output: 
+      src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
     prebuild:
       - sed -i '/^org\.gradle\.java\.home=/d' src-tauri/gen/android/gradle.properties
       - sed -i 's/signingConfigs.getByName("debug")/null/' src-tauri/gen/android/app/build.gradle.kts
     build:
-      - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain 1.97.1
-        --target aarch64-linux-android,armv7-linux-androideabi
-      - source $HOME/.cargo/env
+      - rustup toolchain install 1.97.1 --profile minimal --target aarch64-linux-android,armv7-linux-androideabi
+      - rustup default 1.97.1
       - export NDK_HOME=$$NDK$$
       - pnpm install --frozen-lockfile
       - wrapper=$PWD/src-tauri/gen/android/gradle/wrapper
-      - (cd "$(mktemp -d)" && touch settings.gradle && gradle wrapper --gradle-version "$(sed -n 's/.*gradle-\(.*\)-bin\.zip/\1/p'
-        "$wrapper/gradle-wrapper.properties")" && cp gradle/wrapper/gradle-wrapper.jar
-        "$wrapper/")
+      - (cd "$(mktemp -d)" && touch settings.gradle && gradle wrapper --gradle-version
+        "$(sed -n 's/.*gradle-\(.*\)-bin\.zip/\1/p' "$wrapper/gradle-wrapper.properties")"
+        && cp gradle/wrapper/gradle-wrapper.jar "$wrapper/")
       - RUSTFLAGS="$(bash scripts/android-rustflags.sh)" pnpm tauri android build
         --apk --target aarch64 armv7
     ndk: 29.0.14206865

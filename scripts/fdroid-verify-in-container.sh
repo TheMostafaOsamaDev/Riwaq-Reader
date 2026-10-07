@@ -51,7 +51,8 @@ python3 - "$work/metadata/$appid.yml" "$version" "$vercode" "$commit" <<'PY'
 import re, sys
 out, version, vercode, commit = sys.argv[1:]
 s = open("/src/docs/fdroid/com.riwaq.reader.yml").read()
-s = re.sub(r"(?m)^Binaries:.*\n", "", s)
+# fdroid rewritemeta wraps the long URL onto its own indented line.
+s = re.sub(r"(?m)^Binaries:.*\n(?:[ \t]+\S.*\n)*", "", s)
 s = re.sub(r"(?m)^Repo: .*$", "Repo: /src", s)
 s = re.sub(r"(?m)^(  - versionName: ).*$", r"\g<1>" + version, s)
 s = re.sub(r"(?m)^(    versionCode: ).*$", r"\g<1>" + vercode, s)
