@@ -54,6 +54,10 @@ export interface PlacementInput {
   placement: "auto" | "below";
   /** Gap between the toolbar and both the selection and the bounds. */
   margin: number;
+  /** Gap between the toolbar and the selection alone, when it must be wider
+   *  than `margin`: the phone draws selection handles whose dots hang past
+   *  the selected lines, and a toolbar `margin` away sat on them. */
+  gap?: number;
   /** The side the toolbar is ALREADY on, when it is already open.
    *
    *  Placement holds that side for the toolbar's whole life instead of
@@ -85,10 +89,11 @@ export function placePopover({
   bounds,
   placement,
   margin,
+  gap = margin,
   lockedSide,
 }: PlacementInput): Placement {
-  const above = anchor.top - size.height - margin;
-  const below = anchor.bottom + margin;
+  const above = anchor.top - size.height - gap;
+  const below = anchor.bottom + gap;
 
   const roomAbove = above >= bounds.top;
   const roomBelow = below + size.height <= bounds.bottom;

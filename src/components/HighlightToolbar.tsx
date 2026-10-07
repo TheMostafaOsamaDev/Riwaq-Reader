@@ -23,6 +23,12 @@ export interface ToolbarAnchor {
   /** The reader's chrome heights, so the toolbar stays inside ITS
    *  reading region. See useTrackedAnchor. */
   insets: { top: number; bottom: number };
+  /** Distance kept from the anchor when the default is too tight — the
+   *  phone's selection handles hang past the selected lines. */
+  gap?: number;
+  /** Hide the toolbar for now without losing its place: while a selection
+   *  edge is being dragged, or the page is moving. See useTrackedAnchor. */
+  held?: boolean;
 }
 
 /**
@@ -53,6 +59,8 @@ export function HighlightToolbar({
     getAnchor: anchor.getAnchor,
     placement: anchor.placement ?? "auto",
     insets: anchor.insets,
+    gap: anchor.gap,
+    held: anchor.held,
   });
 
   return (

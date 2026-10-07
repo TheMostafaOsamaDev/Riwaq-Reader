@@ -17,6 +17,7 @@ import {
   restoreScrollTop,
 } from "./readerProgress";
 import { MobileSheet } from "./MobileSheet";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   MAX_TICKS,
   ReaderProgressBar,
@@ -36,17 +37,34 @@ import {
   LONG_PRESS_MS,
 } from "../reader/chrome/pageTap";
 import { glassBar } from "../reader/chrome/glass";
+import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
 import {
   attachTouchPanFallback,
   movesThePage,
 } from "../reader/scroll/touchPanFallback";
 import { SelectionPopover } from "./SelectionPopover";
-import { SelectionOverlay } from "./SelectionOverlay";
-import { SelectionHandle } from "./SelectionHandle";
+import { HANDLE_CLEARANCE, SelectionLayer } from "./SelectionLayer";
+import {
+  caretInBody,
+  snapEndpoint,
+  type TextEndpoint,
+  wordAround,
+} from "../reader/selection/textCaret";
+import {
+  contentOrigin,
+  measureSelection,
+  sameGeometry,
+  type SelectionGeometry,
+} from "../reader/selection/selectionGeometry";
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
-import { EASE, MOTION, useReducedMotion } from "../styles/motion";
+import {
+  EASE,
+  isReducedMotion,
+  MOTION,
+  useReducedMotion,
+} from "../styles/motion";
 import {
   FONT_STACKS,
   isRtlLanguage,
@@ -75,80 +93,20 @@ import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
 
 // ---- Custom selection helpers --------------------------------------
 // We replace native text selection on mobile with a hand-rolled
-// pointer gesture. The user long-presses a word, drags to extend
-// within the same paragraph, and releases. The selection lives only
-// in React state — never on window.getSelection() — so the OS
-// selection toolbar has no anchor and never appears.
+// pointer gesture. The user long-presses a word, drags to extend, and
+// releases; the two handles then adjust either end. The selection lives
+// only in React state — never on window.getSelection() — so the OS
+// selection toolbar has no anchor and never appears. Where a finger is in
+// the text is reader/selection/textCaret.ts; what gets drawn is
+// reader/selection/selectionGeometry.ts.
 
 // The two numbers that separate a hold from a tap from a scroll live with the
 // test that decides between them — reader/chrome/pageTap.ts.
-const WORD_BOUNDARY_REGEX = /[\s\p{P}\p{S}]/u; // whitespace, punctuation, symbols
-
-interface RangeEndpoint {
-  node: Text;
-  offset: number;
-}
-
-/** Find the text-node + offset at a viewport (clientX, clientY) point. */
-function caretFromPoint(x: number, y: number): RangeEndpoint | null {
-  // Prefer the standard caretPositionFromPoint when available, falling
-  // back to caretRangeFromPoint (Chromium, Android WebView).
-  const fromPos =
-    (
-      document as unknown as {
-        caretPositionFromPoint?: (
-          x: number,
-          y: number,
-        ) => { offsetNode: Node; offset: number } | null;
-      }
-    ).caretPositionFromPoint?.(x, y) ?? null;
-  if (fromPos && fromPos.offsetNode.nodeType === Node.TEXT_NODE) {
-    return { node: fromPos.offsetNode as Text, offset: fromPos.offset };
-  }
-  const fromRange = document.caretRangeFromPoint?.(x, y) ?? null;
-  if (fromRange && fromRange.startContainer.nodeType === Node.TEXT_NODE) {
-    return {
-      node: fromRange.startContainer as Text,
-      offset: fromRange.startOffset,
-    };
-  }
-  return null;
-}
-
-/** Find the paragraph element (<p data-p-index>) ancestor of a node. */
-function paragraphOf(node: Node): HTMLElement | null {
-  let n: Node | null = node;
-  while (n) {
-    if (n instanceof HTMLElement && n.dataset.pIndex !== undefined) return n;
-    n = n.parentNode;
-  }
-  return null;
-}
-
-/** Walk left/right within a text node to expand to the surrounding
- *  word's start and end character offsets. */
-function wordRangeAt(node: Text, offset: number): [number, number] {
-  const text = node.data;
-  let start = offset;
-  let end = offset;
-  while (start > 0 && !WORD_BOUNDARY_REGEX.test(text[start - 1]!)) start--;
-  while (end < text.length && !WORD_BOUNDARY_REGEX.test(text[end]!)) end++;
-  if (start === end) return [offset, Math.min(offset + 1, text.length)];
-  return [start, end];
-}
-
-/** Accept any endpoint that lies inside any paragraph of the book
- *  body — returns null if the candidate has no `<p data-p-index>`
- *  ancestor (e.g. chrome). Multi-paragraph selection is allowed,
- *  so we no longer clamp to the original long-press paragraph. */
-function clampToBookBody(candidate: RangeEndpoint): RangeEndpoint | null {
-  return paragraphOf(candidate.node) ? candidate : null;
-}
 
 /** True if endpoint `a` lies strictly before endpoint `b` in document
  *  order. Same node → compare offsets; across nodes → use the DOM's
  *  compareDocumentPosition. */
-function comesBefore(a: RangeEndpoint, b: RangeEndpoint): boolean {
+function comesBefore(a: TextEndpoint, b: TextEndpoint): boolean {
   if (a.node === b.node) return a.offset < b.offset;
   return !!(
     a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING
@@ -156,72 +114,32 @@ function comesBefore(a: RangeEndpoint, b: RangeEndpoint): boolean {
 }
 
 /** Build a Range from two endpoints, ordered correctly (start before end). */
-function buildRange(a: RangeEndpoint, b: RangeEndpoint): Range {
+function buildRange(a: TextEndpoint, b: TextEndpoint): Range {
   const range = document.createRange();
-  const cmp =
-    a.node === b.node
-      ? a.offset - b.offset
-      : a.node.compareDocumentPosition(b.node) &
-          Node.DOCUMENT_POSITION_FOLLOWING
-        ? -1
-        : 1;
-  if (cmp < 0) {
-    range.setStart(a.node, a.offset);
-    range.setEnd(b.node, b.offset);
-  } else {
+  if (comesBefore(b, a)) {
     range.setStart(b.node, b.offset);
     range.setEnd(a.node, a.offset);
+  } else {
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
   }
   return range;
 }
-/** Sub-pixel churn is not worth a render. */
-function sameRect(a: DOMRect, b: DOMRect): boolean {
-  return (
-    Math.abs(a.x - b.x) < 0.5 &&
-    Math.abs(a.y - b.y) < 0.5 &&
-    Math.abs(a.width - b.width) < 0.5 &&
-    Math.abs(a.height - b.height) < 0.5
-  );
-}
 
-function sameRects(a: DOMRect[], b: DOMRect[]): boolean {
-  return a.length === b.length && a.every((r, i) => sameRect(r, b[i]));
-}
+/** How close to the reading region's top or bottom a dragged handle has to
+ *  be before the page scrolls to follow it, and how fast it then goes at
+ *  the very edge (px per frame). Selecting past the bottom of the screen is
+ *  otherwise impossible: the handle cannot be dragged off the glass. */
+const EDGE_SCROLL_ZONE = 56;
+const EDGE_SCROLL_MAX = 14;
 
-function computeHandleRects(range: Range): { start: DOMRect; end: DOMRect } {
-  const start = document.createRange();
-  start.setStart(range.startContainer, range.startOffset);
-  start.setEnd(range.startContainer, range.startOffset);
-  const end = document.createRange();
-  end.setStart(range.endContainer, range.endOffset);
-  end.setEnd(range.endContainer, range.endOffset);
-  // Collapsed ranges yield 0-width rects with valid top/left/height.
-  const sr = start.getBoundingClientRect();
-  const er = end.getBoundingClientRect();
-  // Copy so subsequent range mutations don't invalidate the saved values.
-  return {
-    start: new DOMRect(sr.x, sr.y, sr.width, sr.height),
-    end: new DOMRect(er.x, er.y, er.width, er.height),
-  };
-}
+/** How long after the last scroll event the page counts as still. The
+ *  selection toolbar comes back after that. */
+const SCROLL_SETTLE_MS = 220;
 
-function orderedEndpoints(range: Range): {
-  start: RangeEndpoint;
-  end: RangeEndpoint;
-} {
-  // Range exposes startContainer/startOffset/endContainer/endOffset
-  // already in document order — no swapping needed.
-  return {
-    start: {
-      node: range.startContainer as Text,
-      offset: range.startOffset,
-    },
-    end: {
-      node: range.endContainer as Text,
-      offset: range.endOffset,
-    },
-  };
-}
+/** Height of the guard over the system's swipe-up edge in full screen, where
+ *  the safe-area inset reads 0. Android's gesture strip is 24-32dp. */
+const SYSTEM_EDGE_PX = 28;
 // ---- end custom selection helpers ----------------------------------
 
 interface Props {
@@ -376,6 +294,7 @@ export function MobileReader({
   // double-tap. That is what makes focus mode a mode — a stray tap cannot end
   // it — and what keeps the plain toggle as cheap as it should be.
   const chromeHidden = focusOn || !barsUp;
+  const coarsePointer = useMediaQuery("(pointer: coarse)");
   /** End focus mode, from wherever. Always lands with the bars up: a reader
    *  who left the mode asked for their controls back, and the one route in
    *  that does not go through here (the header button) is unreachable without
@@ -502,9 +421,6 @@ export function MobileReader({
   /** Where and when the finger landed, for the test that decides whether the
    *  click it ends with was a tap at all. */
   const pressRef = useRef<Tap | null>(null);
-  const startEndpointRef = useRef<RangeEndpoint | null>(null);
-  const endEndpointRef = useRef<RangeEndpoint | null>(null);
-  const paragraphRef = useRef<HTMLElement | null>(null);
   const resumeRef = useRef(resumeParagraph);
   resumeRef.current = resumeParagraph;
   const resumeOffsetRef = useRef(resumeOffset);
@@ -724,22 +640,38 @@ export function MobileReader({
   //   - activeHl: shown when the user tapped an existing highlight
   // Showing one always clears the other.
   const [selAnchor, setSelAnchor] = useState<SelectionAnchor | null>(null);
-  const [selRects, setSelRects] = useState<DOMRect[]>([]);
-  const [handleRects, setHandleRects] = useState<{
-    start: DOMRect;
-    end: DOMRect;
-  } | null>(null);
+  /** The selection's tint and handles, in the scroller's content
+   *  coordinates. Derived from `selAnchor` by the layout effect below and
+   *  nowhere else. */
+  const [selGeom, setSelGeom] = useState<SelectionGeometry | null>(null);
+  /** A selection edge is being dragged — the long-press drag, or a handle.
+   *  The toolbar stands aside until it is let go. */
+  const [selDragging, setSelDragging] = useState(false);
+  /** The page is moving under an open toolbar. */
+  const [pageMoving, setPageMoving] = useState(false);
   const [activeHl, setActiveHl] = useState<{
     highlight: Highlight;
     rect: DOMRect;
   } | null>(null);
-  const draggingHandleRef = useRef<"start" | "end" | null>(null);
-  const draggingPointerIdRef = useRef<number | null>(null);
-  // True for one click after a custom-selection gesture ends. The
-  // browser synthesizes a click on touchup/pointerup; without this
-  // guard, the document-level click listener would treat that click
-  // as an outside-tap and dismiss the just-set selection.
-  const ignoreNextClickRef = useRef(false);
+  /** The handle being dragged: the selection edge that stays put, and the
+   *  offset from the finger to the caret it is moving (see onHandleDown). */
+  const handleDragRef = useRef<{
+    pointerId: number;
+    fixed: TextEndpoint;
+    dx: number;
+    dy: number;
+  } | null>(null);
+  // Swallow the click that a custom-selection gesture ends with. The
+  // browser synthesizes one on pointerup; without this guard the
+  // document-level click listener would treat it as an outside-tap and
+  // dismiss the just-set selection.
+  //
+  // A deadline rather than a "skip the next click" flag. A long press often
+  // ends in NO click — the platform turns a held touch into a long-press
+  // gesture, not a tap — and a flag left armed by it swallowed the reader's
+  // next real tap instead, so the selection could not be dismissed.
+  const suppressClickUntilRef = useRef(0);
+  const CLICK_AFTER_UP_MS = 350;
 
   // Custom long-press + drag selection on mobile. Replaces native
   // selection so the OS toolbar (which we can't suppress on Samsung
@@ -749,7 +681,8 @@ export function MobileReader({
   // the browser handles vertical scroll natively with momentum. The
   // preventDefault on pointermove below cannot stop that — a pointer event
   // does not cancel a scroll. A drag that goes vertical after the long-press
-  // is taken by the browser (pointercancel), which ends the selection drag.
+  // is taken by the browser (pointercancel), which ends the selection drag;
+  // the handles then take over.
   useEffect(() => {
     // Our OWN body, not the document's first: during a layout-flip crossfade
     // the outgoing DesktopReader is still mounted, earlier in the DOM, and
@@ -762,42 +695,27 @@ export function MobileReader({
     let startX = 0;
     let startY = 0;
     let longPressTimer: number | null = null;
-    // Saved word boundaries from the long-press. Form a "minimum
-    // range" — pointer movement inside this range leaves the
-    // selection alone; movement past either side extends in that
-    // direction.
-    let wordStart: RangeEndpoint | null = null;
-    let wordEnd: RangeEndpoint | null = null;
+    // The long-pressed word. It is a minimum: while the finger sits inside
+    // it the selection is left alone, and movement past either side
+    // extends in that direction, whole words at a time.
+    let wordStart: TextEndpoint | null = null;
+    let wordEnd: TextEndpoint | null = null;
 
-    const updateFromRange = (range: Range) => {
+    const select = (range: Range) => {
       const anchor = anchorFromRange(range);
-      if (anchor) {
-        setSelAnchor(anchor);
-        setActiveHl(null);
-        setSelRects(
-          Array.from(range.getClientRects()).map(
-            (r) => new DOMRect(r.x, r.y, r.width, r.height),
-          ),
-        );
-        setHandleRects(computeHandleRects(range));
-      }
+      if (!anchor) return;
+      setSelAnchor(anchor);
+      setActiveHl(null);
     };
 
     const startSelection = (cx: number, cy: number) => {
-      const ep = caretFromPoint(cx, cy);
+      const ep = caretInBody(bodyEl, cx, cy);
       if (!ep) return false;
-      const p = paragraphOf(ep.node);
-      if (!p) return false;
-      const [ws, we] = wordRangeAt(ep.node, ep.offset);
-      const range = document.createRange();
-      range.setStart(ep.node, ws);
-      range.setEnd(ep.node, we);
-      startEndpointRef.current = { node: ep.node, offset: ws };
-      endEndpointRef.current = { node: ep.node, offset: we };
+      const [ws, we] = wordAround(ep.node.data, ep.offset);
+      if (ws === we) return false;
       wordStart = { node: ep.node, offset: ws };
       wordEnd = { node: ep.node, offset: we };
-      paragraphRef.current = p;
-      updateFromRange(range);
+      select(buildRange(wordStart, wordEnd));
       return true;
     };
 
@@ -811,7 +729,11 @@ export function MobileReader({
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (pointerId !== null) return;
-      if ((e.target as HTMLElement | null)?.closest("[data-h-id]")) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-h-id]")) return;
+      // On the text. A hold on a heading, a figure or the paper between
+      // paragraphs is not a request to select the nearest word.
+      if (!target?.closest("p[data-p-index]")) return;
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
@@ -827,6 +749,7 @@ export function MobileReader({
         }
         if (startSelection(startX, startY)) {
           selectingRef.current = true;
+          setSelDragging(true);
         }
       }, LONG_PRESS_MS);
     };
@@ -845,36 +768,15 @@ export function MobileReader({
         }
         return;
       }
-      // Selecting — extend the range and preventDefault to keep the
-      // browser from also scrolling. The long-pressed word forms a
-      // minimum: while the finger sits inside it (or just jitters),
-      // we leave the selection alone. Movement past either side of
-      // the word extends in that direction.
       if (!wordStart || !wordEnd) return;
-      const currentEp = caretFromPoint(e.clientX, e.clientY);
-      if (!currentEp) return;
-      const clamped = clampToBookBody(currentEp);
-      if (!clamped) return;
-      let newStart: RangeEndpoint;
-      let newEnd: RangeEndpoint;
-      if (comesBefore(clamped, wordStart)) {
-        // Finger crossed before the word's start — extend backward,
-        // keep the word's end as the far boundary.
-        newStart = clamped;
-        newEnd = wordEnd;
-      } else if (comesBefore(wordEnd, clamped)) {
-        // Finger crossed past the word's end — extend forward.
-        newStart = wordStart;
-        newEnd = clamped;
-      } else {
-        // Inside the word — no change.
-        newStart = wordStart;
-        newEnd = wordEnd;
-      }
-      startEndpointRef.current = newStart;
-      endEndpointRef.current = newEnd;
-      const range = buildRange(newStart, newEnd);
-      if (!range.collapsed) updateFromRange(range);
+      const hit = caretInBody(bodyEl, e.clientX, e.clientY);
+      if (!hit) return;
+      let from = wordStart;
+      let to = wordEnd;
+      if (comesBefore(hit, wordStart)) from = snapEndpoint(hit, "start");
+      else if (comesBefore(wordEnd, hit)) to = snapEndpoint(hit, "end");
+      const range = buildRange(from, to);
+      if (!range.collapsed) select(range);
       e.preventDefault();
     };
 
@@ -887,10 +789,12 @@ export function MobileReader({
         } catch {
           // already released
         }
-        // The browser will synthesize a click event right after this
-        // pointerup. Tell the document click listener to swallow it
-        // so it doesn't dismiss the selection we just settled.
-        ignoreNextClickRef.current = true;
+        // Only a real release is followed by a click; a cancel (the
+        // browser took the drag for a scroll) is not.
+        if (e.type === "pointerup") {
+          suppressClickUntilRef.current = e.timeStamp + CLICK_AFTER_UP_MS;
+        }
+        setSelDragging(false);
       }
       pointerId = null;
       selectingRef.current = false;
@@ -923,7 +827,20 @@ export function MobileReader({
     const root = rootRef.current;
     const scroller = scrollRef.current;
     if (!root || !scroller) return;
-    return attachTouchPanFallback(root, scroller, () => selectingRef.current);
+    return attachTouchPanFallback(
+      root,
+      scroller,
+      () => selectingRef.current || handleDragRef.current !== null,
+    );
+  }, []);
+
+  // The phone layout also runs in a narrow desktop window, where a mouse
+  // wheel jumps the page a few lines per notch. Smoothed there exactly as in
+  // the desktop reader; on a phone no wheel ever arrives.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    return attachSmoothWheel(scroller, { reducedMotion: isReducedMotion });
   }, []);
 
   // Scrolling the page takes the bars with it. Reading is the gesture; the
@@ -966,124 +883,206 @@ export function MobileReader({
     return () => root.removeEventListener("touchmove", onTouchMove);
   }, []);
 
-  // Handle-drag effect: tracks pointer movement after the user grabs
-  // one of the start/end handles and extends the selection range.
-  // Depends on whether handles are up, NOT on where they are: the
-  // scroll-sync below rewrites their rects every frame, and keying this
-  // to the rects tore down and re-registered three document-level
-  // pointer listeners each time.
-  const handlesUp = handleRects !== null;
+  // Handle drags. A handle moves one edge of the selection; the other edge
+  // (`fixed`) stays where it was, and the moving one may cross it — the
+  // range is rebuilt from the two every move, so start and end simply
+  // trade places.
+  //
+  // Mounted while handles are up, NOT keyed to where they are: the geometry
+  // changes every drag frame, and re-registering document listeners that
+  // often dropped moves.
+  const handlesUp = selAnchor !== null && selGeom !== null;
   useEffect(() => {
     if (!handlesUp) return;
+    const bodyEl =
+      rootRef.current?.querySelector<HTMLElement>("[data-book-body]") ?? null;
+    const scroller = scrollRef.current;
+    if (!bodyEl || !scroller) return;
+
+    let last: { x: number; y: number } | null = null;
+    let raf = 0;
+
+    const extendTo = (x: number, y: number) => {
+      const drag = handleDragRef.current;
+      if (!drag) return;
+      // Asked at the CARET, not at the finger: the grip hangs off the line,
+      // so the finger is most of a line away from the edge it moves.
+      const hit = caretInBody(bodyEl, x + drag.dx, y + drag.dy);
+      if (!hit) return;
+      const forward = !comesBefore(hit, drag.fixed);
+      const moving = snapEndpoint(hit, forward ? "end" : "start");
+      const range = buildRange(drag.fixed, moving);
+      if (range.collapsed) return;
+      const anchor = anchorFromRange(range);
+      if (anchor) setSelAnchor(anchor);
+    };
+
+    // A handle held near the top or bottom of the reading region scrolls
+    // the page towards it, faster the closer it is to the edge, and keeps
+    // extending the selection as text comes past.
+    const edgeScroll = () => {
+      raf = 0;
+      if (!handleDragRef.current || !last) return;
+      const r = scroller.getBoundingClientRect();
+      const top = r.top + MOBILE_READING_INSETS.top + EDGE_SCROLL_ZONE;
+      const bottom = r.bottom - MOBILE_READING_INSETS.bottom - EDGE_SCROLL_ZONE;
+      const depth =
+        last.y < top
+          ? -(top - last.y) / EDGE_SCROLL_ZONE
+          : last.y > bottom
+            ? (last.y - bottom) / EDGE_SCROLL_ZONE
+            : 0;
+      if (depth === 0) return;
+      const step =
+        Math.sign(depth) *
+        Math.max(2, Math.round(EDGE_SCROLL_MAX * Math.min(1, Math.abs(depth))));
+      const before = scroller.scrollTop;
+      scroller.scrollTop = before + step;
+      if (scroller.scrollTop === before) return; // at an end of the chapter
+      extendTo(last.x, last.y);
+      raf = requestAnimationFrame(edgeScroll);
+    };
 
     const onMove = (e: PointerEvent) => {
-      if (
-        draggingHandleRef.current === null ||
-        e.pointerId !== draggingPointerIdRef.current
-      ) {
-        return;
-      }
-      const start = startEndpointRef.current;
-      const end = endEndpointRef.current;
-      if (!start || !end) return;
-
-      const currentEp = caretFromPoint(e.clientX, e.clientY);
-      if (!currentEp) return;
-      const clamped = clampToBookBody(currentEp);
-      if (!clamped) return;
-
-      const nextStart = draggingHandleRef.current === "start" ? clamped : start;
-      const nextEnd = draggingHandleRef.current === "end" ? clamped : end;
-
-      // If the user crossed the other handle, swap so start stays before end.
-      const range = buildRange(nextStart, nextEnd);
-      if (!range.collapsed) {
-        // Re-derive ordered endpoints from the built range so future
-        // drags continue from the visually-correct side.
-        const ordered = orderedEndpoints(range);
-        startEndpointRef.current = ordered.start;
-        endEndpointRef.current = ordered.end;
-        const anchor = anchorFromRange(range);
-        if (anchor) {
-          setSelAnchor(anchor);
-          setSelRects(
-            Array.from(range.getClientRects()).map(
-              (r) => new DOMRect(r.x, r.y, r.width, r.height),
-            ),
-          );
-          setHandleRects(computeHandleRects(range));
-        }
-      }
+      if (e.pointerId !== handleDragRef.current?.pointerId) return;
+      last = { x: e.clientX, y: e.clientY };
+      extendTo(e.clientX, e.clientY);
+      if (!raf) raf = requestAnimationFrame(edgeScroll);
       e.preventDefault();
     };
 
     const onUp = (e: PointerEvent) => {
-      if (e.pointerId !== draggingPointerIdRef.current) return;
-      if (draggingHandleRef.current !== null) {
-        ignoreNextClickRef.current = true;
+      if (e.pointerId !== handleDragRef.current?.pointerId) return;
+      if (e.type === "pointerup") {
+        suppressClickUntilRef.current = e.timeStamp + CLICK_AFTER_UP_MS;
       }
-      draggingHandleRef.current = null;
-      draggingPointerIdRef.current = null;
+      handleDragRef.current = null;
+      last = null;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      setSelDragging(false);
     };
 
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
     document.addEventListener("pointercancel", onUp);
     return () => {
+      if (raf) cancelAnimationFrame(raf);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
     };
   }, [handlesUp]);
 
-  // Keep the custom selection's paint glued to the text while the
-  // reader scrolls with a selection live. The reading surface is
-  // touch-action: pan-y, so a one-finger scroll during selection is normal — and
-  // every rect here was snapshotted in viewport coords at gesture
-  // time, which left the boxes, the handles and the toolbar sitting
-  // over whatever text scrolled under them.
-  //
-  // Everything is re-derived from the stored paragraph offsets, so this
-  // never reaches into the gesture state above. If the paragraphs have
-  // gone (chapter turned), the rects are left alone and the dismissal
-  // paths take over.
-  useEffect(() => {
+  const onHandleDown = (
+    which: "start" | "end",
+    e: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (!selAnchor) return;
-    let frame = 0;
-    const sync = () => {
-      frame = 0;
+    // The edges from the stored segments rather than from refs kept since
+    // the gesture: they survive the paragraph re-rendering underneath.
+    const range = rangeForSegments(selAnchor.segments);
+    if (!range) return;
+    const start = {
+      node: range.startContainer as Text,
+      offset: range.startOffset,
+    };
+    const end = { node: range.endContainer as Text, offset: range.endOffset };
+    if (
+      start.node.nodeType !== Node.TEXT_NODE ||
+      end.node.nodeType !== Node.TEXT_NODE
+    ) {
+      return;
+    }
+    // Where the caret this handle moves is, against where the finger came
+    // down. Every move is then asked at finger + this offset: the edge stays
+    // under the bar, not under the thumb a line below it — which is what
+    // used to drop a paragraph's end into the next paragraph's start the
+    // moment the end handle was touched.
+    const bar = (
+      e.currentTarget.parentElement ?? e.currentTarget
+    ).getBoundingClientRect();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is a nicety; the document listeners still see the drag.
+    }
+    handleDragRef.current = {
+      pointerId: e.pointerId,
+      fixed: which === "start" ? end : start,
+      dx: bar.left + bar.width / 2 - e.clientX,
+      dy: bar.top + bar.height / 2 - e.clientY,
+    };
+    setSelDragging(true);
+  };
+
+  // The selection's geometry, measured whenever there is a new selection or
+  // the text reflows (a resize, a font change). Never on scroll — it is drawn
+  // in the scroller's own coordinates and moves with the text by itself.
+  //
+  // If the paragraphs have gone (chapter turned), the last geometry is left
+  // alone and the dismissal paths take over.
+  useLayoutEffect(() => {
+    if (!selAnchor) {
+      setSelGeom(null);
+      return;
+    }
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const measure = () => {
       const range = rangeForSegments(selAnchor.segments);
       if (!range) return;
-      const rects = Array.from(range.getClientRects()).map(
-        (r) => new DOMRect(r.x, r.y, r.width, r.height),
-      );
-      const handles = computeHandleRects(range);
-      // Identity guards: without them every frame committed two fresh
-      // objects and re-rendered the whole reader, including BookBody,
-      // even when the text had not actually moved.
-      setSelRects((prev) => (sameRects(prev, rects) ? prev : rects));
-      setHandleRects((prev) =>
-        prev &&
-        sameRect(prev.start, handles.start) &&
-        sameRect(prev.end, handles.end)
-          ? prev
-          : handles,
-      );
+      const next = measureSelection(range, contentOrigin(scroller));
+      if (!next) return;
+      setSelGeom((prev) => (sameGeometry(prev, next) ? prev : next));
     };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(sync);
-    };
-    window.addEventListener("scroll", schedule, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener("resize", schedule);
+    measure();
+    const bodyEl = scroller.querySelector<HTMLElement>("[data-book-body]");
+    const ro =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    if (ro && bodyEl) ro.observe(bodyEl);
+    window.addEventListener("resize", measure);
     return () => {
-      if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", schedule, { capture: true });
-      window.removeEventListener("resize", schedule);
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
     };
   }, [selAnchor]);
+
+  // While a toolbar is open, note when the page is moving under it. It
+  // stands aside for the scroll and comes back once the page is still —
+  // following a compositor scroll from the main thread, it trailed the text.
+  // Only two renders a scroll: one as it starts, one as it settles.
+  const popoverOpen = selAnchor !== null || activeHl !== null;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!popoverOpen || !el) return;
+    let timer = 0;
+    let moving = false;
+    const onScroll = () => {
+      // The edge scroll of a handle drag is the drag's own; the toolbar is
+      // already aside for it.
+      if (handleDragRef.current) return;
+      if (!moving) {
+        moving = true;
+        setPageMoving(true);
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        moving = false;
+        setPageMoving(false);
+      }, SCROLL_SETTLE_MS);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.clearTimeout(timer);
+      setPageMoving(false);
+    };
+  }, [popoverOpen]);
 
   // All popover dismissal flows through clicks: tap an existing
   // highlight to open its action popover, tap outside everything to
@@ -1094,10 +1093,9 @@ export function MobileReader({
     state.highlights.find((h) => h.id === id);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (ignoreNextClickRef.current) {
-        // Synthetic click right after a custom-selection gesture
-        // finished. Skip dismissal exactly once.
-        ignoreNextClickRef.current = false;
+      if (e.timeStamp < suppressClickUntilRef.current) {
+        // The synthetic click a custom-selection gesture ends with.
+        suppressClickUntilRef.current = 0;
         return;
       }
       // composedPath snapshots the ancestor chain at dispatch time —
@@ -1137,11 +1135,8 @@ export function MobileReader({
 
   const dismissSelection = () => {
     setSelAnchor(null);
-    setSelRects([]);
-    setHandleRects(null);
-    startEndpointRef.current = null;
-    endEndpointRef.current = null;
-    paragraphRef.current = null;
+    handleDragRef.current = null;
+    setSelDragging(false);
   };
   const createFromSelection = (color: HighlightColor, note?: string) => {
     if (!selAnchor) return;
@@ -1398,7 +1393,45 @@ export function MobileReader({
           onOpenToc={() => setSheet("toc")}
           onTopOfChapter={toTopOfChapter}
         />
+        {selAnchor && selGeom && (
+          <SelectionLayer
+            geometry={selGeom}
+            dragging={selDragging}
+            onHandleDown={onHandleDown}
+          />
+        )}
       </div>
+
+      {/* The system's swipe-up edge. Reading is full screen, and Android
+          hands an edge swipe in full screen to the APP as well as using it
+          to bring the system bars back — so a swipe up to leave the app
+          arrived here as a hard flick and threw the page a screen or more
+          down the chapter. Nothing on the page scrolls from this strip:
+          `touch-action: none` keeps the browser off it, and it is neither
+          the scroller nor a pan zone, so the pan fallback ignores it too.
+          A tap still counts as a tap on the page.
+
+          Only in full screen on a touch screen. With the bars up the system
+          bars are showing and take their own swipes, and the strip would
+          sit over the bottom of the tab bar; with a mouse there is no edge
+          swipe, and a wheel over the strip would not scroll the page. */}
+      {chromeHidden && coarsePointer && (
+        <div
+          aria-hidden
+          data-system-edge
+          onPointerDown={onPagePointerDown}
+          onClick={onPageClick}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: `max(env(safe-area-inset-bottom, 0px), ${SYSTEM_EDGE_PX}px)`,
+            touchAction: "none",
+            zIndex: Z.readerChrome + 1,
+          }}
+        />
+      )}
 
       {/* Bottom chrome — same always-mounted pattern as the top bar.
           Slides down off-screen when hidden and gives up pointer events. */}
@@ -1573,53 +1606,27 @@ export function MobileReader({
         </div>
       </MobileSheet>
       {selAnchor && (
-        <>
-          <SelectionOverlay rects={selRects} />
-          {handleRects && (
-            <>
-              <SelectionHandle
-                rect={handleRects.start}
-                position="start"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  draggingHandleRef.current = "start";
-                  draggingPointerIdRef.current = e.pointerId;
-                }}
-              />
-              <SelectionHandle
-                rect={handleRects.end}
-                position="end"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  draggingHandleRef.current = "end";
-                  draggingPointerIdRef.current = e.pointerId;
-                }}
-              />
-            </>
-          )}
-          <SelectionPopover
-            theme={theme}
-            anchor={{
-              // No live branch here, unlike the desktop reader: this one
-              // renders BookBody with `selectable={false}`, so its selection
-              // lives in React state and never on `window.getSelection()`.
-              // It also keeps this snapshot fresh itself, re-resolving the
-              // anchor on every pointermove of the drag, so there is nothing
-              // stale for a live read to correct.
-              getAnchor: () => rectForSegments(selAnchor.segments),
-              placement: "below",
-              insets: MOBILE_READING_INSETS,
-            }}
-            onPick={(color) => createFromSelection(color)}
-            onAddNote={(color, note) => createFromSelection(color, note)}
-            onCopy={() => copySelection(selAnchor)}
-            onDismiss={dismissSelection}
-          />
-        </>
+        <SelectionPopover
+          theme={theme}
+          anchor={{
+            // No live branch here, unlike the desktop reader: this one
+            // renders BookBody with `selectable={false}`, so its selection
+            // lives in React state and never on `window.getSelection()`.
+            // It also keeps this snapshot fresh itself, re-resolving the
+            // anchor on every pointermove of the drag, so there is nothing
+            // stale for a live read to correct.
+            getAnchor: () => rectForSegments(selAnchor.segments),
+            placement: "below",
+            insets: MOBILE_READING_INSETS,
+            // Clear of the handles' dots, which hang past the lines.
+            gap: HANDLE_CLEARANCE,
+            held: selDragging || pageMoving,
+          }}
+          onPick={(color) => createFromSelection(color)}
+          onAddNote={(color, note) => createFromSelection(color, note)}
+          onCopy={() => copySelection(selAnchor)}
+          onDismiss={dismissSelection}
+        />
       )}
       {activeHl && (
         <HighlightActionPopover
@@ -1629,6 +1636,7 @@ export function MobileReader({
           anchor={{
             getAnchor: () => rectForMark(activeHl.highlight.id),
             insets: MOBILE_READING_INSETS,
+            held: pageMoving,
           }}
           onDelete={() => {
             onDeleteHighlight(activeHl.highlight.id);

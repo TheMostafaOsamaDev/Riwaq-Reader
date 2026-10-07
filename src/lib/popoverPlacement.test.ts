@@ -65,6 +65,22 @@ describe("placePopover", () => {
     expect(p.top).toBe(328);
   });
 
+  // The phone's selection handles hang a dot past the selected lines; a
+  // toolbar `margin` away sat on the end handle's dot.
+  it("keeps a wider gap from the anchor when asked, but not from the bounds", () => {
+    const below = placePopover(input({ placement: "below", gap: 28 }));
+    expect(below.top).toBe(348); // 320 + 28
+    const above = placePopover(input({ gap: 28 }));
+    expect(above.top).toBe(228); // 300 - 44 - 28
+    const clamped = placePopover(
+      input({
+        gap: 28,
+        anchor: line({ top: 10, bottom: 30, left: 0, right: 10 }),
+      }),
+    );
+    expect(clamped.left).toBe(8); // still `margin` from the region's edge
+  });
+
   it("goes back above when below would collide with the bottom chrome", () => {
     const p = placePopover(
       input({ anchor: line({ top: 600, bottom: 620, left: 400, right: 600 }) }),
