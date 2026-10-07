@@ -70,6 +70,11 @@
        `gh release list` is the source of truth, not the version a branch
        happened to be carrying. -->
   <releases>
+    <release version="0.7.1" date="2026-10-07">
+      <description>
+        <p>The reader bar style chosen in Appearance now applies to the desktop reader too: classic, labelled, slider first, capsule, status line or corners.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-10-07">
       <description>
         <p>A new home on the phone, bars you can choose, and highlighting that stays on the words.</p>
