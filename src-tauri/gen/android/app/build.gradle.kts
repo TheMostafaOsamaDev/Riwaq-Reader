@@ -26,6 +26,14 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
+    // No "Dependency metadata" block in the APK's signing block. The Android
+    // Gradle plugin adds it by default for Google Play; it is an encrypted
+    // blob nobody else can read, and F-Droid's scanner rejects an APK that
+    // carries one.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     compileSdk = 36
     namespace = "com.riwaq.reader"
     defaultConfig {
