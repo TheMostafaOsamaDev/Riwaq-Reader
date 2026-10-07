@@ -30,7 +30,12 @@ const initExtensions = vi.fn(
       resolveInit = resolve;
     }),
 );
-vi.mock("../sources/registry", () => ({ initExtensions }));
+// Whether a previous visit already loaded the registry (registry.isInitialized).
+let alreadyInitialized = false;
+vi.mock("../sources/registry", () => ({
+  initExtensions,
+  isInitialized: () => alreadyInitialized,
+}));
 
 // The Store's sub-views are faked. They are siblings of the thing under test
 // here, their module graphs reach the registry mock above (which deliberately
@@ -200,6 +205,20 @@ describe("Store — initialises its own extensions on mount", () => {
   it("shows a skeleton placeholder while extensions are still loading", () => {
     mount();
     expect(host.querySelector(".riwaq-skeleton")).not.toBeNull();
+  });
+
+  // A return visit: the registry is already loaded, so the sources draw at
+  // once instead of a skeleton — and the re-list still runs behind them.
+  it("skips the skeleton when an earlier visit already loaded extensions", () => {
+    alreadyInitialized = true;
+    try {
+      mount();
+      expect(host.querySelector(".riwaq-skeleton")).toBeNull();
+      expect(q("sources-list-view")).not.toBeNull();
+      expect(initExtensions).toHaveBeenCalled();
+    } finally {
+      alreadyInitialized = false;
+    }
   });
 
   it("renders SourcesListView once extensions resolve", async () => {

@@ -115,7 +115,9 @@ export function NovelHero({
           style={{
             width: coverW,
             flexShrink: 0,
-            alignSelf: isMobile ? "flex-start" : "flex-end",
+            // Centred on the phone, above the title — the cover is the page's
+            // picture there, not a thumbnail beside the text.
+            alignSelf: isMobile ? "center" : "flex-end",
           }}
         >
           <div

@@ -63,7 +63,7 @@ import { SourceHomeView } from "./SourceHomeView";
 import { NovelDetailView } from "./novel/NovelDetailView";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
 import { ThemedSkeleton } from "./Skeleton";
-import { initExtensions } from "../sources/registry";
+import { initExtensions, isInitialized } from "../sources/registry";
 import type { Theme } from "../styles/tokens";
 
 interface Props {
@@ -111,7 +111,10 @@ export function Store({
   // each bundle's evaluation by `id@sha256`, so the repeat cost is a
   // directory listing and a couple of small reads, not a fresh blob-URL
   // import and re-execution of every extension per visit.
-  const [extensionsReady, setExtensionsReady] = useState(false);
+  // Already loaded on an earlier visit: draw the pages straight away; the
+  // re-list below still runs and picks up any install or removal. Starting
+  // false every time put a skeleton up on each return to the Store tab.
+  const [extensionsReady, setExtensionsReady] = useState(isInitialized);
   useEffect(() => {
     // The load is not cancellable (it is filesystem reads and module
     // evaluation), but the setState must not land on an unmounted tree: a

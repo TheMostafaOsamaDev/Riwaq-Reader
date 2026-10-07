@@ -1,7 +1,7 @@
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { SearchOverlay } from "../SearchOverlay";
 import { LazyViewFallback } from "../LazyViewFallback";
-import { NovelDetailView, Store } from "./lazyViews";
+import { NovelDetailView, preloadStore, Store } from "./lazyViews";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 import { ShelvesPage, AddTile } from "../ShelvesPage";
@@ -114,6 +114,14 @@ export function MobileLibrary({
   const hero =
     tab === "all" ? visible.find((b) => b.lastReadAt !== undefined) : undefined;
   const others = hero ? visible.filter((b) => b.id !== hero.id) : visible;
+
+  // The Store tab's code, fetched once the shell has been idle a moment, so
+  // the first tap on the tab draws it at once instead of a blank frame while
+  // the chunk loads. Code only — extensions still load only on the visit.
+  useEffect(() => {
+    const t = window.setTimeout(preloadStore, 1500);
+    return () => window.clearTimeout(t);
+  }, []);
 
   // Which page the body shows, and which tab it belongs to.
   const nav = useNav();

@@ -46,6 +46,10 @@ import {
 } from "../../store/importProgress";
 import { draftDefaultCover } from "../../store/draftDefaults";
 import {
+  loadLibrarySnapshot,
+  saveLibrarySnapshot,
+} from "../../store/libraryCache";
+import {
   useNav,
   goLibrary,
   goShelf,
@@ -140,20 +144,27 @@ interface Props {
 
 function useBooks() {
   const { tr } = useI18n();
-  const [books, setBooks] = useState<BookIndexEntry[]>([]);
-  const [covers, setCovers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  // The last session's library, drawn at once (store/libraryCache.ts); the
+  // disk read below replaces it a moment later.
+  const [cached] = useState(loadLibrarySnapshot);
+  const [books, setBooks] = useState<BookIndexEntry[]>(cached?.books ?? []);
+  const [covers, setCovers] = useState<Record<string, string>>(
+    cached?.covers ?? {},
+  );
+  // "Loading" only when there is nothing to show yet — a refresh behind a
+  // library already on screen is invisible.
+  const [loading, setLoading] = useState(cached === null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const list = await listBooks();
+      // The list first, so the shelf never waits on covers: each cover's path
+      // is an IPC round trip, and for a large library those used to hold the
+      // whole screen on "Loading…".
       setBooks(list);
-      // Resolve cover URLs in parallel — these are cheap (convertFileSrc is
-      // synchronous after the one-time appDataDir lookup) but awaiting them
-      // up front means no per-card flicker.
+      setLoading(false);
       const entries = await Promise.all(
         list
           .filter((b) => b.coverFile)
@@ -161,7 +172,9 @@ function useBooks() {
       );
       const next: Record<string, string> = {};
       for (const [id, url] of entries) if (url) next[id] = url;
-      setCovers(next);
+      // Unchanged covers keep their identity, so the cards do not re-render.
+      setCovers((prev) => (sameCovers(prev, next) ? prev : next));
+      saveLibrarySnapshot({ books: list, covers: next });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(errorLabel(message, tr));
@@ -175,6 +188,14 @@ function useBooks() {
   }, [refresh]);
 
   return { books, covers, loading, error, refresh, setError };
+}
+
+function sameCovers(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
 }
 
 /** The shelves the Library last read this session — see `shelves` below. */

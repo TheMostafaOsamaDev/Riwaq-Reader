@@ -3,9 +3,9 @@
 //
 // Two motions, chosen by what kind of move it was:
 //
-//   - Between tabs, the pages fade through: the old one fades out, the new
-//     one fades in while settling from a hair smaller. Tabs are siblings;
-//     sliding between them would claim an order they do not have.
+//   - Between tabs, the new page dissolves in over the old one while
+//     settling from a hair smaller. Tabs are siblings; sliding between them
+//     would claim an order they do not have.
 //   - Within a tab, going deeper slides the new page in from the reading
 //     direction's end, over the old one, which drifts a little the other way
 //     and dims — and going back reverses it exactly. Which way is read from
@@ -49,8 +49,7 @@ interface Swap {
 
 const SLIDE_MS = 320;
 const SLIDE_CURVE = "cubic-bezier(0.32, 0.72, 0, 1)";
-const FADE_IN_MS = 220;
-const FADE_OUT_MS = 140;
+const FADE_IN_MS = 200;
 /** How far the page underneath drifts, as a share of the width. */
 const UNDER_SHIFT = 0.28;
 
@@ -207,19 +206,23 @@ function slotStyles(
   const slide = (ms: number) =>
     `transform ${ms}ms ${SLIDE_CURVE}, opacity ${ms}ms ${SLIDE_CURVE}`;
   if (mode === "fade") {
+    // A cross-dissolve, not a fade-through: the old page stays exactly as
+    // it is underneath while the new one fades in over it. Both are opaque
+    // (see `background`), so at every frame there is a whole page on
+    // screen. Fading the old one out first left a frame or two of bare
+    // background between the tabs — read as the page "appearing blank
+    // first".
     return {
       from: {
         zIndex: Z_LOCAL.base,
         pointerEvents: "none",
-        opacity: running ? 0 : 1,
-        transition: running ? `opacity ${FADE_OUT_MS}ms ease-out` : "none",
       },
       to: {
         zIndex: Z_LOCAL.raised,
         opacity: running ? 1 : 0,
-        transform: running ? "none" : "scale(0.985)",
+        transform: running ? "none" : "scale(0.99)",
         transition: running
-          ? `opacity ${FADE_IN_MS}ms ease-out ${FADE_OUT_MS / 2}ms, transform ${FADE_IN_MS}ms ease-out ${FADE_OUT_MS / 2}ms`
+          ? `opacity ${FADE_IN_MS}ms ease-out, transform ${FADE_IN_MS}ms ease-out`
           : "none",
       },
     };
