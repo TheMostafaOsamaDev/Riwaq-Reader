@@ -45,7 +45,7 @@ Binaries: https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v
 Builds:
   - versionName: 0.7.0
     versionCode: 7000
-    commit: 56e20c5562e62a0f7528902a6e7dcc7082869684
+    commit: a74899cbe608397d68d86010a6c1b63b3b0422e3
     sudo:
       - apt-get update
       - apt-get install -y build-essential nodejs npm
