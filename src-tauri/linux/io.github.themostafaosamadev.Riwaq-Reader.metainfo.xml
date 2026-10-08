@@ -70,6 +70,11 @@
        `gh release list` is the source of truth, not the version a branch
        happened to be carrying. -->
   <releases>
+    <release version="0.7.2" date="2026-10-08">
+      <description>
+        <p>Packaging only: nothing changes inside the app. The Android build can now be published by F-Droid.</p>
+      </description>
+    </release>
     <release version="0.7.1" date="2026-10-07">
       <description>
         <p>The reader bar style chosen in Appearance now applies to the desktop reader too: classic, labelled, slider first, capsule, status line or corners.</p>

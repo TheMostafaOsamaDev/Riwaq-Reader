@@ -1,0 +1,11 @@
+{
+  "version": "0.7.2",
+  "date": "2026-10-08",
+  "items": [
+    {
+      "kind": "improved",
+      "en": "Nothing changes in the app — this release lets F-Droid build and publish Riwaq.",
+      "ar": "لا شيء يتغيّر داخل التطبيق — يتيح هذا الإصدار لمتجر F-Droid بناء رواق ونشره."
+    }
+  ]
+}
