@@ -60,6 +60,22 @@ check_config() {
     fi
   done
 
+  # tauri.conf.json names the Android versionCode outright, because F-Droid's
+  # checkupdates reads it from there (UpdateCheckData) and cannot do the
+  # arithmetic Tauri would otherwise do. It must still be that arithmetic:
+  # major*1000000 + minor*1000 + patch, the code every install so far has.
+  local vc_conf
+  vc_conf="$(jq -r '.bundle.android.versionCode // empty' "$conf")"
+  if [ -n "$v_conf" ]; then
+    local maj min pat want_vc
+    IFS=. read -r maj min pat <<<"$v_conf"
+    want_vc=$((maj * 1000000 + min * 1000 + pat))
+    if [ "$vc_conf" != "$want_vc" ]; then
+      echo "tauri.conf.json bundle.android.versionCode is '${vc_conf}' but version $v_conf needs $want_vc"
+      problems=$((problems + 1))
+    fi
+  fi
+
   # Cargo.lock has to carry the same version or `cargo check --locked` fails
   # in every build job, ~25 minutes apart, for a one-line reason.
   local lock="$root/src-tauri/Cargo.lock"
@@ -232,7 +248,9 @@ if [ "${1:-}" = "--self-test" ]; then
     printf 'version = "%s"\n' "$2" > "$d/src-tauri/Cargo.toml"
     printf 'name = "riwaq"\nversion = "%s"\n' "$2" > "$d/src-tauri/Cargo.lock"
     jq -n --arg v "$2" --arg pk "$3" --argjson ua "$4" \
-      '{version:$v, bundle:{createUpdaterArtifacts:$ua}, plugins:{updater:{pubkey:$pk}}}' \
+      '{version:$v, bundle:{createUpdaterArtifacts:$ua,
+        android:{versionCode:($v|split(".")|map(tonumber)|.[0]*1000000+.[1]*1000+.[2])}},
+        plugins:{updater:{pubkey:$pk}}}' \
       > "$d/src-tauri/tauri.conf.json"
     echo "$d"
   }
@@ -250,6 +268,10 @@ if [ "${1:-}" = "--self-test" ]; then
   expect 1 "package.json out of step is caught"       "$d"                            v0.2.0
   d2="$(mk lock 0.2.0 KEY true)"; printf 'name = "riwaq"\nversion = "0.1.0"\n' > "$d2/src-tauri/Cargo.lock"
   expect 1 "a stale Cargo.lock is caught"             "$d2"                           v0.2.0
+  d5="$(mk vcmiss 0.2.0 KEY true)"; jq 'del(.bundle.android)' "$d5/src-tauri/tauri.conf.json" > "$d5/c" && mv "$d5/c" "$d5/src-tauri/tauri.conf.json"
+  expect 1 "no Android versionCode in tauri.conf.json" "$d5"                          v0.2.0
+  d6="$(mk vcbad 0.2.0 KEY true)"; jq '.bundle.android.versionCode = 1999' "$d6/src-tauri/tauri.conf.json" > "$d6/c" && mv "$d6/c" "$d6/src-tauri/tauri.conf.json"
+  expect 1 "a versionCode that is not the version's"  "$d6"                           v0.2.0
 
   # toolchain pinning
   mktc() { # dir channel workflow-ref
