@@ -1,0 +1,1 @@
+Nothing changes in the app. This release lets F-Droid build and publish Riwaq.
