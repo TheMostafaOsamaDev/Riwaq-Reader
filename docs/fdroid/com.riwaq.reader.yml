@@ -21,7 +21,7 @@ Binaries:
 Builds:
   - versionName: 0.7.2
     versionCode: 7002
-    commit: a132314972487c747fa00f39ed628cad0bf44303
+    commit: a28284bfdf39d4cec1255d7911240b6e4db78089
     sudo:
       - apt-get update
       - apt-get install -y build-essential nodejs npm rustup
