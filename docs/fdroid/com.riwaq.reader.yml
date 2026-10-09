@@ -21,7 +21,7 @@ Binaries:
 Builds:
   - versionName: 0.8.0
     versionCode: 8000
-    commit: a28284bfdf39d4cec1255d7911240b6e4db78089
+    commit: c9e0a8b544dea3fa2b8d61497ecf104595f09752
     sudo:
       - apt-get update
       - apt-get install -y build-essential nodejs npm rustup
