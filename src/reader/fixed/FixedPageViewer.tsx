@@ -67,6 +67,7 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import { edgeSide, forwardFor, turnFromDrag } from "../pagedTouch";
+import { wheelIsMouse } from "../scroll/smoothWheel";
 import type { FixedPageSource } from "./FixedPageSource";
 import { anchorAt, scrollTopForAnchor, type PageAnchor } from "./scrollAnchor";
 
@@ -82,6 +83,12 @@ const NARROW_VIEWPORT = 520;
 // a half-finished peek back; ANIM/CANCEL are the slide timings; POST_LOCK eats
 // trackpad momentum right after a turn so it doesn't immediately start another.
 const TURN_PX = 200;
+// Push at a page edge that moves nothing at all. Without it the very first
+// wheel deltas pulled the neighbour page in — up to a quarter of it — and it
+// sprang back 170ms after the reader stopped, so a small scroll to see the
+// bottom of a page read as the next page flashing into the current one. Past
+// the dead zone the turn tracks the push as before.
+const PEEK_DEADZONE_PX = 48;
 const IDLE_MS = 170;
 const ANIM_MS = 220;
 const CANCEL_MS = 190;
@@ -417,6 +424,8 @@ export const FixedPageViewer = forwardRef<
   // The incoming page's render, so a programmatic turn can wait for it.
   const peekRender = useRef<{ idx: number; done: Promise<void> } | null>(null);
   const accum = useRef(0); // overscroll accumulated toward the current turn
+  // Push gathered at an edge before a peek opens (see PEEK_DEADZONE_PX).
+  const edgePush = useRef({ d: 0, amount: 0, t: 0 });
   const peekDir = useRef<0 | 1 | -1>(0);
   const peekNeighbor = useRef(0); // index in the overlay (ref mirror of peekIdx)
   const peekHold = useRef<number | null>(null); // keep overlay until base paints
@@ -971,6 +980,12 @@ export const FixedPageViewer = forwardRef<
   const releaseTurn = useCallback(() => {
     turnLive.current = false;
     revealRef.current = 0;
+    // The overlay goes invisible BEFORE its transform is cleared. Cleared, it
+    // sits at its settled spot — right on top of the current page — and React
+    // only unmounts it a frame or more later. On a peek that springs back (a
+    // small scroll at a page edge) that frame was the neighbour page blinking
+    // over the one being read. `writeTurn` makes it visible again on reuse.
+    if (peekHostRef.current) peekHostRef.current.style.visibility = "hidden";
     for (const el of [
       hostRefs.current.get(currentRef.current),
       duotoneRef.current,
@@ -1294,6 +1309,23 @@ export const FixedPageViewer = forwardRef<
           e.preventDefault();
           return;
         }
+        // A mouse notch is a step, not a drag: ~100px at once, which revealed
+        // half the next page in a single frame and then sprang it back — a
+        // jolt, not a turn. At the edge a notch simply turns the page, with
+        // the full animation; the lock below then swallows the rest of the
+        // spin, so one spin is one page.
+        if (wheelIsMouse()) {
+          e.preventDefault();
+          if (e.timeStamp < turnLockUntil.current || peekHold.current != null) {
+            turnLockUntil.current = Math.min(
+              turnLockCap.current,
+              Math.max(turnLockUntil.current, e.timeStamp + MOMENTUM_GAP_MS),
+            );
+            return;
+          }
+          animateTurn(d);
+          return;
+        }
         if (e.timeStamp < turnLockUntil.current || peekHold.current != null) {
           e.preventDefault(); // still settling the previous turn
           // Momentum from the swipe that turned it — keep it locked until the
@@ -1305,13 +1337,23 @@ export const FixedPageViewer = forwardRef<
           return;
         }
         e.preventDefault();
+        // Gather the push in the dead zone first; a pause of IDLE_MS or a
+        // change of direction starts it over.
+        const push = edgePush.current;
+        if (push.d !== d || e.timeStamp - push.t > IDLE_MS) push.amount = 0;
+        push.d = d;
+        push.t = e.timeStamp;
+        push.amount += Math.abs(e.deltaY);
+        if (push.amount < PEEK_DEADZONE_PX) return;
+        const over = push.amount - PEEK_DEADZONE_PX;
+        push.amount = 0;
         if (turnTimer.current) {
           window.clearTimeout(turnTimer.current); // abort a spring-back mid-flight
           turnTimer.current = null;
         }
         peekDir.current = d;
         peekNeighbor.current = dest;
-        accum.current = Math.abs(e.deltaY);
+        accum.current = Math.max(1, over);
         turnLive.current = true;
         setPeekIdx(dest);
         setPeek({ dir: d });
@@ -1334,7 +1376,7 @@ export const FixedPageViewer = forwardRef<
       el.removeEventListener("wheel", onWheel);
       el.style.cursor = "";
     };
-  }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek]);
+  }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek, animateTurn]);
 
   // Paged mode on touch: a horizontal drag pans the filmstrip 1:1 with the
   // finger and snaps on release. The wheel path above never fires from a finger,
