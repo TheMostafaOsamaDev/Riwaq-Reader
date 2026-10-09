@@ -30,8 +30,8 @@ type SetTweak = <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
 
 /** Fixed-layout viewer zoom bounds, shared by the panel stepper and any
  *  caller that clamps zoom itself. */
-export const ZOOM_MIN = 0.5;
-export const ZOOM_MAX = 2.5;
+export { ZOOM_MAX, ZOOM_MIN } from "../reader/fixed/fixedZoom";
+import { ZOOM_MAX, ZOOM_MIN } from "../reader/fixed/fixedZoom";
 export const ZOOM_STEP = 0.1;
 
 // ── settings catalog model (categories + searchable entries) ─────────────────

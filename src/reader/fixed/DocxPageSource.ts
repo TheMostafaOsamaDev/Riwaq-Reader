@@ -101,6 +101,9 @@ export async function createDocxPageSourceFromParts(
   const blocks = [...meas.children] as HTMLElement[];
   const pages: Node[][] = [[]];
   const headingPage: Record<string, number> = {};
+  // Every id in the document → its page, for in-document links: a Word
+  // contents page links to bookmarks (`#_Toc…`), not only to headings.
+  const idPage: Record<string, number> = {};
   // Stable block id → page. Ids are assigned here (before cloning) so a
   // highlight anchored to a block survives re-pagination when the page box
   // changes — it just resolves to a different page.
@@ -125,6 +128,10 @@ export async function createDocxPageSourceFromParts(
     blk.querySelectorAll("[id^='docx-h-']").forEach((el) => {
       headingPage[el.id] = pageIdx;
     });
+    if (blk.id) idPage[blk.id] ??= pageIdx;
+    blk.querySelectorAll("[id]").forEach((el) => {
+      idPage[el.id] ??= pageIdx;
+    });
     pages[pageIdx].push(blk.cloneNode(true));
     curH += h;
   });
@@ -148,10 +155,47 @@ export async function createDocxPageSourceFromParts(
   // fresh on every renderPage so a newly-created highlight shows on re-render.
   let curHighlights: Highlight[] = [];
   let curThemeKey: ThemeKey = "light";
-  /** Tears down the note bars' reflow observer. A page is rebuilt on
-   *  every turn, and an observer outliving its card would measure a
-   *  page that is gone. */
-  let cancelSpines: (() => void) | undefined;
+  /** Built page cards, kept so a page is built once and then MOVED between
+   *  hosts — the way PdfPageSource re-parents a drawn canvas. Building a card
+   *  is cloning the page's blocks and weaving its highlights in, and a single
+   *  turn used to do it twice (the sliding overlay, then the settled page)
+   *  plus four more for the neighbours being warmed, none of which were ever
+   *  reused. Scale is only a transform on the card, so one card serves every
+   *  zoom. Cleared whenever the highlights change, since they are woven in.
+   *
+   *  Each card owns its note bars' observer: a single shared one, as before,
+   *  was dropped by whichever page was built last — a warmed neighbour took
+   *  the visible page's bars down with it. */
+  const cards = new Map<number, { card: HTMLElement; cancel?: () => void }>();
+  const MAX_CARDS = 10;
+  // Note-bar observers of cards forgotten while still on screen. They keep
+  // working until the card leaves its host, and are cancelled then.
+  const orphans = new Map<HTMLElement, () => void>();
+  const dropCard = (i: number) => {
+    const entry = cards.get(i);
+    if (!entry) return;
+    cards.delete(i);
+    // A card still on screen keeps its bars until it is replaced.
+    if (!entry.card.isConnected) entry.cancel?.();
+    else if (entry.cancel) orphans.set(entry.card, entry.cancel);
+  };
+  /** Cancel the observer of whatever a host held before it is refilled. */
+  const releaseOutgoing = (host: HTMLElement, incoming: HTMLElement) => {
+    for (const child of Array.from(host.children)) {
+      if (child === incoming) continue;
+      const cancel = orphans.get(child as HTMLElement);
+      if (cancel) {
+        cancel();
+        orphans.delete(child as HTMLElement);
+      }
+    }
+  };
+  const clearCards = () => {
+    for (const entry of cards.values()) entry.cancel?.();
+    cards.clear();
+    for (const cancel of orphans.values()) cancel();
+    orphans.clear();
+  };
 
   return {
     kind: "docx",
@@ -160,6 +204,9 @@ export async function createDocxPageSourceFromParts(
     hasTextLayer: true,
     pageForBlock(blockId) {
       return blockPage[blockId];
+    },
+    pageForAnchor(id) {
+      return idPage[id] ?? headingPage[id];
     },
     blockForPage(page) {
       // Blocks are numbered in document order and packed into pages in that
@@ -171,18 +218,33 @@ export async function createDocxPageSourceFromParts(
     setHighlights(hs, themeKey) {
       curHighlights = hs;
       curThemeKey = themeKey;
+      clearCards();
     },
     async pageSize() {
       return { w: PAGE_W, h: PAGE_H };
     },
     async renderPage(i, host, scale) {
       host.style.overflow = "hidden";
+      const originX = parts.dir === "rtl" ? "right" : "left";
+      const cached = cards.get(i);
+      if (cached) {
+        cached.card.style.transform = `scale(${scale})`;
+        cached.card.style.transformOrigin = `top ${originX}`;
+        if (cached.card.parentElement !== host) {
+          releaseOutgoing(host, cached.card);
+          host.replaceChildren(cached.card);
+        }
+        // Refresh LRU order.
+        cards.delete(i);
+        cards.set(i, cached);
+        return;
+      }
       const card = document.createElement("div");
       card.setAttribute("dir", parts.dir);
       // RTL blocks narrower/wider than the host anchor to the inline-start (right)
       // edge, so the scale origin must match that edge — otherwise the scaled card
-      // overflows the host's clip box on the start side. LTR anchors left.
-      const originX = parts.dir === "rtl" ? "right" : "left";
+      // overflows the host's clip box on the start side. LTR anchors left
+      // (`originX`, above).
       // Colors read from CSS vars set on the viewer (see FixedPageViewer), so
       // the "Page color" / "Text color" reading settings restyle the cards live
       // — no re-pagination. Fallbacks preserve the original white page + near-
@@ -191,8 +253,10 @@ export async function createDocxPageSourceFromParts(
         `width:${PAGE_W}px; height:${PAGE_H}px; box-sizing:border-box; padding:${MARGIN}px; ` +
         `background:var(--reading-paper, #ffffff); color:var(--reading-ink, #1b1b1b); overflow:hidden; ` +
         `font-family:${FONT}; font-size:${FONT_SIZE}px; line-height:${LINE_HEIGHT}; ` +
-        // The app shell is unselectable (global.css); the page's text opts in.
-        `-webkit-user-select:text; user-select:text; ` +
+        // The app shell is unselectable (global.css); the page's text opts in
+        // — unless the viewer says otherwise: the phone draws its own
+        // selection, and a native one raises the system toolbar.
+        `-webkit-user-select:var(--fixed-select, text); user-select:var(--fixed-select, text); ` +
         `transform: scale(${scale}); transform-origin: top ${originX};`;
       for (const n of pages[i] || []) card.appendChild(n.cloneNode(true));
       card.querySelectorAll("img").forEach(IMG_CONSTRAIN);
@@ -227,19 +291,25 @@ export async function createDocxPageSourceFromParts(
               applyHighlightsToBlock(blockEl, marks, curThemeKey);
           });
       }
+      releaseOutgoing(host, card);
       host.replaceChildren(card);
       // Note bars come AFTER attaching: a bar's position can only be
       // measured once the card is in the document and its marks are
-      // laid out. The previous page's observer is dropped first.
-      cancelSpines?.();
-      cancelSpines =
+      // laid out.
+      const cancel =
         noted.length > 0
           ? paintDocxNoteSpines(card, noted, curThemeKey)
           : undefined;
+      dropCard(i);
+      cards.set(i, { card, cancel });
+      while (cards.size > MAX_CARDS) {
+        const oldest = cards.keys().next().value;
+        if (oldest === undefined) break;
+        dropCard(oldest);
+      }
     },
     destroy() {
-      cancelSpines?.();
-      cancelSpines = undefined;
+      clearCards();
     },
   };
 }

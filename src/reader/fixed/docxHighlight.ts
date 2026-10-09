@@ -1,26 +1,12 @@
-// DOM-coupled helpers for DOCX highlighting: resolve a browser text selection
-// to a stable {blockId, charStart, charEnd} anchor, and inject <mark> spans back
+// DOM-coupled helpers for DOCX highlighting: char offsets into a block (how a
+// selection is anchored — see fixedSelection.ts), and inject <mark> spans back
 // into a rendered block. Char offsets count concatenated text-node content
 // (textContent order) so capture and render-back agree.
 
 import { hlBg, type HighlightColor, type ThemeKey } from "../../styles/tokens";
 
-/** Nearest ancestor element carrying a `data-block-id` (the DOCX block). */
-function docxBlockOf(node: Node | null): HTMLElement | null {
-  let el: Element | null =
-    node && node.nodeType === Node.ELEMENT_NODE
-      ? (node as Element)
-      : (node?.parentElement ?? null);
-  while (el) {
-    if (el instanceof HTMLElement && el.hasAttribute("data-block-id"))
-      return el;
-    el = el.parentElement;
-  }
-  return null;
-}
-
 /** Char offset of (node, offset) within `block`, counting text-node content. */
-function charOffsetInBlock(
+export function charOffsetInBlock(
   block: HTMLElement,
   node: Node,
   offset: number,
@@ -29,50 +15,6 @@ function charOffsetInBlock(
   range.selectNodeContents(block);
   range.setEnd(node, offset);
   return range.toString().length;
-}
-
-export interface DocxSelectionAnchor {
-  blockId: string;
-  charStart: number;
-  charEnd: number;
-  text: string;
-  /** Viewport-coordinate rect of the selection, for popover placement. */
-  rect: DOMRect;
-}
-
-/** Resolve the current window selection to a single-block DOCX anchor, or null
- *  if there's no usable selection (collapsed, outside `root`, or spanning more
- *  than one block — multi-block is deferred to a later phase). */
-export function resolveDocxSelection(
-  root: HTMLElement,
-): DocxSelectionAnchor | null {
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
-  const text = sel.toString();
-  if (!text.trim()) return null;
-  const range = sel.getRangeAt(0);
-  if (
-    !root.contains(range.startContainer) ||
-    !root.contains(range.endContainer)
-  ) {
-    return null;
-  }
-  const block = docxBlockOf(range.startContainer);
-  if (!block || block !== docxBlockOf(range.endContainer)) return null;
-  const blockId = block.getAttribute("data-block-id");
-  if (!blockId) return null;
-  const a = charOffsetInBlock(block, range.startContainer, range.startOffset);
-  const b = charOffsetInBlock(block, range.endContainer, range.endOffset);
-  const charStart = Math.min(a, b);
-  const charEnd = Math.max(a, b);
-  if (charEnd <= charStart) return null;
-  return {
-    blockId,
-    charStart,
-    charEnd,
-    text,
-    rect: range.getBoundingClientRect(),
-  };
 }
 
 export interface BlockMark {

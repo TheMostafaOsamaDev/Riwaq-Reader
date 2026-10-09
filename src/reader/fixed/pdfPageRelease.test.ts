@@ -43,6 +43,9 @@ function fakeDoc(pageCount = 40): PdfDoc {
       canvas.width = Math.floor(PAGE_W * scale);
       canvas.height = Math.floor(PAGE_H * scale);
     },
+    async pageLinks() {
+      return [];
+    },
     async renderTextLayer(_i, container, _scale) {
       container.textContent = "";
       for (let n = 0; n < SPANS; n++) {
@@ -97,7 +100,7 @@ describe("a page the source has evicted", () => {
     // that was never sized in the first place.
     expect(first.canvas.width).toBe(PAGE_W);
     expect(first.canvas.height).toBe(PAGE_H);
-    expect(first.text.childElementCount).toBe(SPANS);
+    expect(first.text.querySelectorAll("span").length).toBe(SPANS);
   });
 
   it("is detached from its host", async () => {
@@ -118,7 +121,7 @@ describe("a page the source has evicted", () => {
   it("gives its text layer back", async () => {
     const src = await createPdfPageSourceFrom(fakeDoc());
     const pages = await renderPages(src, 30);
-    expect(pages[0].text.childElementCount).toBe(0);
+    expect(pages[0].text.querySelectorAll("span").length).toBe(0);
   });
 
   it("holds no more pixels than the pages it still has mounted", async () => {
@@ -144,7 +147,7 @@ describe("destroying the source", () => {
     for (const p of pages) {
       expect(p.canvas.width).toBe(0);
       expect(p.canvas.height).toBe(0);
-      expect(p.text.childElementCount).toBe(0);
+      expect(p.text.querySelectorAll("span").length).toBe(0);
     }
   });
 });
@@ -196,5 +199,29 @@ describe("the document behind the pages", () => {
     released.length = 0;
     src.destroy();
     expect([...released].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe("a page whose canvas the browser reports lost", () => {
+  it("is found by heal() and redrawn by the next render", async () => {
+    let draws = 0;
+    const doc = fakeDoc();
+    const render = doc.renderPage;
+    doc.renderPage = async (i, canvas, scale) => {
+      draws++;
+      return render(i, canvas, scale);
+    };
+    const src = await createPdfPageSourceFrom(doc);
+    const host = newHost();
+    src.retain?.([0]);
+    await src.renderPage(0, host, 1);
+    expect(draws).toBe(1);
+    expect(src.heal?.()).toBe(false); // drawn and intact: nothing to do
+
+    host.querySelector("canvas")!.dispatchEvent(new Event("contextlost"));
+    expect(src.heal?.()).toBe(true);
+    await src.renderPage(0, host, 1);
+    expect(draws).toBe(2);
+    expect(src.heal?.()).toBe(false); // the flag is spent once redrawn
   });
 });

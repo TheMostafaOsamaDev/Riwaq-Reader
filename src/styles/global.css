@@ -1094,6 +1094,40 @@ input:focus-visible,
   top: 0;
   height: 0;
 }
+/* Over a link on a fixed-layout page (FixedPageViewer sets the attribute on
+   its scroller by hit test — the link areas themselves take no pointer). The
+   text spans carry their own `cursor: text`, so the hand has to win over them. */
+[data-fixed-over-link],
+[data-fixed-over-link] * {
+  cursor: pointer !important;
+}
+/* pdf.js's selection guard (see src/pdf/textLayerSelection.ts): empty space in
+   the layer resolves to the end of the text being selected, not to whatever
+   earlier node the browser picks. It covers the layer only while selecting. */
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+/* The canvas pdf.js measures text runs on. It appends it to <body>, where it
+   otherwise sat as a real 300x150 inline box, inheriting the UI's
+   font-size-adjust. */
+.hiddenCanvasElement {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  display: none;
+  font-size-adjust: none;
+}
 /* Decorative glyphs pdf.js exposes as images carry no text to select. */
 .textLayer span[role="img"] {
   user-select: none;

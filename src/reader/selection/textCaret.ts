@@ -122,7 +122,7 @@ export function snapOffset(
 }
 
 /** The browser's own "which character is at this point". */
-function caretFromPoint(x: number, y: number): TextEndpoint | null {
+export function caretFromPoint(x: number, y: number): TextEndpoint | null {
   const doc = document as Document & {
     caretPositionFromPoint?: (
       x: number,

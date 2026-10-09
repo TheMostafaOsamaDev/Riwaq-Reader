@@ -7,11 +7,15 @@
 // cost ~400 MB of webview heap before the first page was drawn.
 
 import { BaseDirectory, stat } from "@tauri-apps/plugin-fs";
-import { openPdfDocument, type PdfDoc } from "../../pdf/pdfjs";
+import { openPdfDocument, type PdfDoc, type PdfLink } from "../../pdf/pdfjs";
+import {
+  attachTextLayerSelection,
+  detachTextLayerSelection,
+} from "../../pdf/textLayerSelection";
 import { bookDir, type Highlight, type PdfBook } from "../../store/library";
 import { hlBg, hlMark, Z_LOCAL, type ThemeKey } from "../../styles/tokens";
 
-import type { FixedPageSource } from "./FixedPageSource";
+import type { FixedPageSource, SelectMode } from "./FixedPageSource";
 
 const BASE = BaseDirectory.AppData;
 // Never evict below this: the page on screen, the one sliding in, and one
@@ -54,6 +58,10 @@ function canvasBudgetBytes(): number {
  *              rects are stored normalized (0..1), so they are positioned in
  *              percentages against this and need no repaint on zoom or resize.
  *    marks     painted highlights. `pointer-events: none` — see `pdfHighlightAt`.
+ *    links     the page's link areas, invisible and `pointer-events: none` too,
+ *              found by hit test on a tap (see `pdfLinkAt`) for the same reason
+ *              as the marks: a link that took the pointer would be text you
+ *              could not select.
  *    text      pdf.js's transparent, selectable text layer, on top so a drag
  *              across the page selects text rather than the marks under it.
  */
@@ -61,10 +69,22 @@ interface Mounted {
   wrap: HTMLDivElement;
   canvas: HTMLCanvasElement;
   marks: HTMLDivElement;
+  links: HTMLDivElement;
   text: HTMLDivElement;
   scale: number;
   /** Backing-store bytes, so eviction can budget by memory rather than count. */
   bytes: number;
+  /** A render is in flight — its canvas is blank on purpose (see `heal`). */
+  drawing?: boolean;
+  /** The browser said this canvas lost its contents (`contextlost`). */
+  lost?: boolean;
+}
+
+function reducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /** RGBA backing store of a canvas, in bytes. */
@@ -111,12 +131,14 @@ export async function createPdfPageSourceFrom(
   // Current highlights + theme, pushed in by the viewer via setHighlights.
   let curHighlights: Highlight[] = [];
   let curThemeKey: ThemeKey = "light";
-  // Whether the text layer should accept the pointer. Off in paged mode, where
-  // a horizontal drag is a page turn and would otherwise be swallowed by a text
-  // selection. The spans are still built either way — building them costs one
-  // getTextContent() per page, and keeping the layer identical across flows
-  // means switching flow never has to rebuild it.
-  let selectable = true;
+  // How the text layer takes the pointer — see SelectMode. The spans are
+  // built in every mode: building them costs one getTextContent() per page,
+  // and keeping the layer identical across modes means a switch never has to
+  // rebuild it.
+  let selectMode: SelectMode = "native";
+  // Each page's links, fetched once — they never change with scale, being
+  // normalized to the page box like the marks.
+  const linkCache = new Map<number, Promise<PdfLink[]>>();
 
   /** Build the three-layer page element. Empty until renderPage fills it. */
   function makeMount(i: number): Mounted {
@@ -137,8 +159,17 @@ export async function createPdfPageSourceFrom(
       "position:relative; line-height:0; direction:ltr; font-size-adjust:none;";
     const canvas = document.createElement("canvas");
     canvas.style.display = "block";
+    // The browser's own word that the pixels went (where it gives one): the
+    // next render redraws the page rather than trusting the scale record.
+    canvas.addEventListener("contextlost", () => {
+      const m = mounted.get(i);
+      if (m && m.canvas === canvas) m.lost = true;
+    });
     const marks = document.createElement("div");
     marks.style.cssText =
+      "position:absolute; inset:0; pointer-events:none; overflow:hidden;";
+    const links = document.createElement("div");
+    links.style.cssText =
       "position:absolute; inset:0; pointer-events:none; overflow:hidden;";
     const text = document.createElement("div");
     // `.textLayer` in global.css styles the SPANS pdf.js creates (it owns their
@@ -154,15 +185,51 @@ export async function createPdfPageSourceFrom(
     text.style.cssText =
       "position:absolute; inset:0; overflow:clip; line-height:1; " +
       `text-align:initial; transform-origin:0 0; z-index:${Z_LOCAL.base};`;
-    wrap.append(canvas, marks, text);
+    wrap.append(canvas, marks, links, text);
     applySelectable(text);
-    return { wrap, canvas, marks, text, scale: 0, bytes: 0 };
+    void paintLinks(i, links);
+    return { wrap, canvas, marks, links, text, scale: 0, bytes: 0 };
+  }
+
+  /** Draw a mounted page at `scale`, marked as drawing while it runs. */
+  async function draw(i: number, m: Mounted, scale: number) {
+    m.drawing = true;
+    try {
+      await doc.renderPage(i, m.canvas, scale);
+    } finally {
+      m.drawing = false;
+    }
   }
 
   function applySelectable(text: HTMLDivElement) {
-    text.style.pointerEvents = selectable ? "auto" : "none";
-    text.style.userSelect = selectable ? "text" : "none";
-    text.style.webkitUserSelect = selectable ? "text" : "none";
+    // "caret": hit-testable, so the phone's own selection can ask which
+    // character is under a finger, but never natively selectable — a native
+    // selection is what raises the system's copy/share toolbar.
+    text.style.pointerEvents = selectMode === "off" ? "none" : "auto";
+    const user = selectMode === "native" ? "text" : "none";
+    text.style.userSelect = user;
+    text.style.webkitUserSelect = user;
+  }
+
+  /** Lay a page's link areas out as percentages of the page box. */
+  async function paintLinks(i: number, layer: HTMLDivElement) {
+    let pending = linkCache.get(i);
+    if (!pending) {
+      pending = doc.pageLinks(i).catch(() => []);
+      linkCache.set(i, pending);
+    }
+    const links = await pending;
+    layer.textContent = "";
+    for (const l of links) {
+      const el = document.createElement("div");
+      el.setAttribute("data-pdf-link", "");
+      if (l.page != null) el.setAttribute("data-link-page", String(l.page));
+      if (l.url) el.setAttribute("data-link-url", l.url);
+      el.style.cssText =
+        `position:absolute; left:${l.x * 100}%; top:${l.y * 100}%; ` +
+        `width:${l.w * 100}%; height:${l.h * 100}%;`;
+      layer.appendChild(el);
+    }
   }
 
   /** Repaint one page's marks from the current highlight set. Positions are
@@ -240,8 +307,10 @@ export async function createPdfPageSourceFrom(
    *  the same outcome as before, when the draw landed on a detached canvas. */
   function release(i: number, m: Mounted) {
     m.wrap.remove();
+    detachTextLayerSelection(m.text);
     m.text.textContent = "";
     m.marks.textContent = "";
+    m.links.textContent = "";
     m.canvas.width = 0;
     m.canvas.height = 0;
     m.bytes = 0;
@@ -287,6 +356,45 @@ export async function createPdfPageSourceFrom(
     outline: doc.outline,
     hasTextLayer: doc.hasTextLayer,
 
+    heal() {
+      // A drawn page whose pixels are gone. The browser may discard a
+      // canvas's GPU-backed contents while the app sits in the background —
+      // the element, its size and our "drawn at this scale" record all
+      // survive, so nothing ever redraws it: a white page (black, inverted)
+      // with no words. pdf.js paints an opaque background, so a drawn page
+      // never has a transparent pixel; three of them in a row is a page that
+      // lost its contents. A zeroed scale makes the next renderPage redraw.
+      let lost = false;
+      // Only the pages the viewer has on screen: each check is a GPU readback,
+      // and a page off screen is redrawn on its way back anyway.
+      for (const [i, m] of mounted) {
+        if (!retained.has(i) || m.drawing) continue;
+        if (m.scale === 0 && !m.lost) continue; // never drawn — not "lost"
+        const { width: w, height: h } = m.canvas;
+        let gone = !!m.lost || w === 0 || h === 0;
+        if (!gone) {
+          try {
+            const ctx = m.canvas.getContext("2d");
+            gone =
+              !!ctx &&
+              [
+                [w >> 1, h >> 1],
+                [w >> 2, h >> 2],
+                [w - (w >> 2), h - (h >> 2)],
+              ].every(([x, y]) => ctx.getImageData(x, y, 1, 1).data[3] === 0);
+          } catch {
+            gone = false;
+          }
+        }
+        if (gone) {
+          m.scale = 0;
+          m.lost = false;
+          lost = true;
+        }
+      }
+      return lost;
+    },
+
     retain(pages) {
       retained = new Set(pages);
     },
@@ -300,9 +408,9 @@ export async function createPdfPageSourceFrom(
       for (const [i, m] of mounted) paintMarks(i, m);
     },
 
-    setSelectable(on) {
-      if (selectable === on) return;
-      selectable = on;
+    setSelectable(mode) {
+      if (selectMode === mode) return;
+      selectMode = mode;
       for (const m of mounted.values()) applySelectable(m.text);
     },
 
@@ -335,8 +443,9 @@ export async function createPdfPageSourceFrom(
         // Same scale → the bitmap is still correct, nothing to redraw.
         if (entry.scale === want) return;
         entry.scale = want;
-        await doc.renderPage(i, entry.canvas, scale);
+        await draw(i, entry, scale);
         await doc.renderTextLayer(i, entry.text, scale);
+        attachTextLayerSelection(entry.text);
         entry.bytes = canvasBytes(entry.canvas); // scale changed the backing store
         evict(i);
         return;
@@ -348,11 +457,28 @@ export async function createPdfPageSourceFrom(
       host.textContent = "";
       const created = makeMount(i);
       created.scale = want;
+      // A page's first drawing fades in rather than popping onto its blank
+      // sheet — most visible on a page that slides in before it is drawn.
+      // Only the first: a page moved between hosts keeps its pixels and shows
+      // at once.
+      const fade = !reducedMotion();
+      if (fade) created.canvas.style.opacity = "0";
       host.appendChild(created.wrap);
       mounted.set(i, created);
       paintMarks(i, created);
-      await doc.renderPage(i, created.canvas, scale);
+      try {
+        await draw(i, created, scale);
+      } finally {
+        // In `finally`: a render that throws must not leave the page
+        // invisible for good — a later redraw goes down the cached path,
+        // which never touches opacity.
+        if (fade) {
+          created.canvas.style.transition = "opacity 140ms ease-out";
+          created.canvas.style.opacity = "1";
+        }
+      }
       await doc.renderTextLayer(i, created.text, scale);
+      attachTextLayerSelection(created.text);
       created.bytes = canvasBytes(created.canvas);
       evict(i);
     },

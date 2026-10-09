@@ -11,6 +11,7 @@
 // list without opening every book.json. This also lets us cheaply show
 // `lastReadAt`, `progress`, etc. without reloading chapters.
 
+import { ZOOM_MAX, ZOOM_MIN } from "../reader/fixed/fixedZoom";
 import {
   BaseDirectory,
   exists,
@@ -153,6 +154,10 @@ export interface BookState {
       migration pass. A user preference about reading, which is why it lives
       in state rather than in book.json's document description. */
   readingMode?: "pages" | "flow";
+  /** Fixed-page (PDF/DOCX) only — the zoom the reader last read this book at,
+      as the multiplier on the fit scale. Absent means 1. Per book, because
+      one PDF wants 125% and the next is fine at 100%. */
+  fixedZoom?: number;
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -314,6 +319,14 @@ async function readState(id: string): Promise<BookState> {
         parsed.readingMode === "flow" || parsed.readingMode === "pages"
           ? parsed.readingMode
           : undefined,
+      // Validated like the rest: a number in the range the zoom control can
+      // produce, or nothing.
+      fixedZoom:
+        typeof parsed.fixedZoom === "number" &&
+        parsed.fixedZoom >= ZOOM_MIN &&
+        parsed.fixedZoom <= ZOOM_MAX
+          ? parsed.fixedZoom
+          : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
   } catch {
@@ -325,6 +338,29 @@ async function readState(id: string): Promise<BookState> {
       highlights: [],
     };
   }
+}
+
+/**
+ * Serialises every read-modify-write of one book's `state.json`.
+ *
+ * Each writer reads the whole file, changes one field and writes the whole
+ * file back, so two that overlap lose whichever landed first. That is not
+ * hypothetical: a selection across several paragraphs (or PDF pages) saves one
+ * highlight per part, all at once, and only the last part survived a reopen;
+ * and the debounced position save that follows every scroll could land between
+ * a highlight's read and its write and put the old list back. Chained per book,
+ * so two books never wait on each other.
+ */
+const stateLocks = new Map<string, Promise<unknown>>();
+function withStateLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const prev = stateLocks.get(id) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.catch(() => {});
+  stateLocks.set(id, tail);
+  void tail.then(() => {
+    if (stateLocks.get(id) === tail) stateLocks.delete(id);
+  });
+  return run;
 }
 
 async function writeState(state: BookState) {
@@ -799,14 +835,16 @@ export async function setDocxReadingMode(
   blockMap: number[][],
 ): Promise<void> {
   const { positionForMode } = await import("../docx/modeSwitch");
-  const state = await readState(id);
-  const patch = positionForMode(to, blockMap, {
-    currentChapter: state.currentChapter,
-    paragraphIndex: state.paragraphIndex,
-    paragraphOffset: state.paragraphOffset,
-    fixedAnchor: state.fixedAnchor,
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    const patch = positionForMode(to, blockMap, {
+      currentChapter: state.currentChapter,
+      paragraphIndex: state.paragraphIndex,
+      paragraphOffset: state.paragraphOffset,
+      fixedAnchor: state.fixedAnchor,
+    });
+    await writeState({ ...state, ...patch, readingMode: to });
   });
-  await writeState({ ...state, ...patch, readingMode: to });
 }
 
 /**
@@ -1564,13 +1602,15 @@ export async function updateReadingPosition(
   chapterCount: number,
 ): Promise<void> {
   return withIndexLock(async () => {
-    const state = await readState(id);
-    state.currentChapter = currentChapter;
-    // A chapter switch resets paragraph progress for that chapter — the new
-    // chapter starts at the top.
-    state.paragraphIndex = 0;
-    state.paragraphOffset = 0;
-    await writeState(state);
+    await withStateLock(id, async () => {
+      const state = await readState(id);
+      state.currentChapter = currentChapter;
+      // A chapter switch resets paragraph progress for that chapter — the new
+      // chapter starts at the top.
+      state.paragraphIndex = 0;
+      state.paragraphOffset = 0;
+      await writeState(state);
+    });
 
     const idx = await readIndex();
     const entry = idx.books.find((b) => b.id === id);
@@ -1621,10 +1661,12 @@ export async function updateParagraphPosition(
   paragraphIndex: number,
   paragraphOffset?: number,
 ): Promise<void> {
-  const state = await readState(id);
-  state.paragraphIndex = paragraphIndex;
-  state.paragraphOffset = paragraphOffset ?? 0;
-  await writeState(state);
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    state.paragraphIndex = paragraphIndex;
+    state.paragraphOffset = paragraphOffset ?? 0;
+    await writeState(state);
+  });
 }
 
 /**
@@ -1638,11 +1680,22 @@ export async function updatePagePosition(
   pageOffset?: number,
   fixedAnchor?: { blockId: string; frac: number },
 ): Promise<void> {
-  const state = await readState(id);
-  state.currentPage = currentPage;
-  state.pageOffset = pageOffset ?? 0;
-  if (fixedAnchor) state.fixedAnchor = fixedAnchor;
-  await writeState(state);
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    state.currentPage = currentPage;
+    state.pageOffset = pageOffset ?? 0;
+    if (fixedAnchor) state.fixedAnchor = fixedAnchor;
+    await writeState(state);
+  });
+}
+
+/** Persist a fixed-page book's zoom (see BookState.fixedZoom). */
+export async function updateFixedZoom(id: string, zoom: number): Promise<void> {
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    state.fixedZoom = zoom === 1 ? undefined : zoom;
+    await writeState(state);
+  });
 }
 
 /**
@@ -1669,24 +1722,28 @@ export async function saveHighlight(
   id: string,
   highlight: Omit<Highlight, "id" | "ts">,
 ): Promise<Highlight> {
-  const state = await readState(id);
-  const full: Highlight = {
-    ...highlight,
-    id: crypto.randomUUID(),
-    ts: Date.now(),
-  };
-  state.highlights.push(full);
-  await writeState(state);
-  return full;
+  return withStateLock(id, async () => {
+    const state = await readState(id);
+    const full: Highlight = {
+      ...highlight,
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+    };
+    state.highlights.push(full);
+    await writeState(state);
+    return full;
+  });
 }
 
 export async function deleteHighlight(
   id: string,
   highlightId: string,
 ): Promise<void> {
-  const state = await readState(id);
-  state.highlights = state.highlights.filter((h) => h.id !== highlightId);
-  await writeState(state);
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    state.highlights = state.highlights.filter((h) => h.id !== highlightId);
+    await writeState(state);
+  });
 }
 
 /** Delete several highlights atomically. Used when a multi-paragraph
@@ -1697,9 +1754,11 @@ export async function deleteHighlights(
 ): Promise<void> {
   if (highlightIds.length === 0) return;
   const ids = new Set(highlightIds);
-  const state = await readState(id);
-  state.highlights = state.highlights.filter((h) => !ids.has(h.id));
-  await writeState(state);
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    state.highlights = state.highlights.filter((h) => !ids.has(h.id));
+    await writeState(state);
+  });
 }
 
 export async function updateHighlightNote(
@@ -1707,12 +1766,14 @@ export async function updateHighlightNote(
   highlightId: string,
   note: string,
 ): Promise<void> {
-  const state = await readState(id);
-  const trimmed = note.trim();
-  state.highlights = state.highlights.map((h) =>
-    h.id === highlightId
-      ? { ...h, note: trimmed.length > 0 ? trimmed : undefined }
-      : h,
-  );
-  await writeState(state);
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    const trimmed = note.trim();
+    state.highlights = state.highlights.map((h) =>
+      h.id === highlightId
+        ? { ...h, note: trimmed.length > 0 ? trimmed : undefined }
+        : h,
+    );
+    await writeState(state);
+  });
 }

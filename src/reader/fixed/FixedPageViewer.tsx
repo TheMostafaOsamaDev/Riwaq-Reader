@@ -26,15 +26,23 @@ import {
   Z_LOCAL,
 } from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
+import { pdfHighlightAt, pdfLinkAt } from "./pdfHighlight";
 import {
-  resolveDocxSelection,
-  type DocxSelectionAnchor,
-} from "./docxHighlight";
+  orderedRange,
+  selectionFromWindow,
+  type FixedSelection,
+} from "./fixedSelection";
+import { SelectionLayer } from "../../components/SelectionLayer";
+import { useTouchSelection } from "./useTouchSelection";
 import {
-  pdfHighlightAt,
-  resolvePdfSelection,
-  type PdfSelectionAnchor,
-} from "./pdfHighlight";
+  boxFromRects,
+  dirOf,
+  liveSelectionBox,
+} from "../../lib/selectionAnchor";
+import type { AnchorBox } from "../../lib/popoverPlacement";
+import { isPageTap, LONG_PRESS_MOVE_TOLERANCE } from "../chrome/pageTap";
+import type { Tap } from "../chrome/focusGesture";
+import { stayedPut } from "../gestureAxis";
 import type {
   FixedFit,
   FixedFlow,
@@ -42,6 +50,7 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import { edgeSide, forwardFor, turnFromDrag } from "../pagedTouch";
+import { attachSmoothWheel, wheelIsMouse } from "../scroll/smoothWheel";
 import type { FixedPageSource } from "./FixedPageSource";
 import { anchorAt, scrollTopForAnchor, type PageAnchor } from "./scrollAnchor";
 
@@ -57,10 +66,33 @@ const NARROW_VIEWPORT = 520;
 // a half-finished peek back; ANIM/CANCEL are the slide timings; POST_LOCK eats
 // trackpad momentum right after a turn so it doesn't immediately start another.
 const TURN_PX = 200;
+// Push at a page edge that moves nothing at all. Without it the very first
+// wheel deltas pulled the neighbour page in — up to a quarter of it — and it
+// sprang back 170ms after the reader stopped, so a small scroll to see the
+// bottom of a page read as the next page flashing into the current one. Past
+// the dead zone the turn tracks the push as before.
+const PEEK_DEADZONE_PX = 48;
 const IDLE_MS = 170;
 const ANIM_MS = 220;
 const CANCEL_MS = 190;
 const POST_LOCK_MS = 340;
+// A trackpad swipe trails a second or more of momentum, and the fixed lock above
+// expired inside it: the stream then opened the NEXT page ~96% of the way and
+// hung there until the idle timer sprang it back — two seconds of the page
+// moving under a reader who had swiped once. So while locked, every wheel
+// event pushes the lock out by MOMENTUM_GAP_MS; it ends at the first pause in
+// the stream, never later than MOMENTUM_CAP_MS after the turn, so a deliberate
+// second swipe is never swallowed for long.
+const MOMENTUM_GAP_MS = 120;
+const MOMENTUM_CAP_MS = 1200;
+// How long a key/button/edge turn waits for the incoming page to be drawn
+// before sliding it in. A turn that starts first slides a blank sheet in and
+// pops the content at the end — the "next page renders badly" a reader sees
+// when turning faster than pages rasterize.
+const PEEK_READY_WAIT_MS = 150;
+// Turns asked for while one runs are queued, up to this many, rather than
+// dropped (five quick arrow presses used to turn two pages).
+const MAX_QUEUED_TURNS = 3;
 const TURN_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 // A turn released from a drag carries on from the speed the finger had and
 // decelerates to rest, so it needs a curve that leaves the gate at roughly
@@ -99,7 +131,7 @@ const VELOCITY_WINDOW_MS = 100;
 // A plain timer rather than requestIdleCallback on purpose: idle callbacks fire
 // in the gaps *between* a drag's frames, so the rasterization lands mid-gesture
 // and costs more than it saves (measured: ~20 fewer frames delivered per drag).
-const PREFETCH_DELAY_MS = 80;
+const PREFETCH_DELAY_MS = 16;
 // How many pages to keep warm ahead of the reader. Three covers a burst of
 // quick swipes without the incoming page ever arriving unrasterized.
 //
@@ -110,7 +142,7 @@ const PREFETCH_DELAY_MS = 80;
 // immediately turn back. Memory is bounded by the source's byte budget, not by
 // this number; see canvasBudgetBytes in PdfPageSource.
 const PREFETCH_AHEAD = 3;
-const PREFETCH_BEHIND = 1;
+const PREFETCH_BEHIND = 2;
 // How long to keep trying to place the scroller after a switch to scroll flow,
 // while the virtualized column grows to its full height underneath.
 const FLOW_RESTORE_MS = 2500;
@@ -142,13 +174,10 @@ export function tintFilter(tint: FixedPageTint): string {
   }
 }
 
-/** A pending text selection, tagged by the format that produced it — the two
- *  anchor into a fixed-layout page in fundamentally different ways (a DOCX
- *  block + char range vs. a PDF page + normalized rects), and the reader has to
- *  store whichever it is given. */
-export type FixedSelection =
-  | ({ kind: "docx" } & DocxSelectionAnchor)
-  | ({ kind: "pdf" } & PdfSelectionAnchor);
+export type { FixedSelection } from "./fixedSelection";
+
+/** How long after the last scroll event the page counts as still again. */
+const SCROLL_SETTLE_MS = 220;
 
 export interface FixedPageViewerProps {
   source: FixedPageSource;
@@ -171,14 +200,40 @@ export interface FixedPageViewerProps {
   /** This book's highlights (for DOCX render-back) + the active theme key. */
   highlights: Highlight[];
   themeKey: ThemeKey;
-  /** DOCX text selected (or null to dismiss) — the shell shows a color popover. */
-  onSelect: (anchor: FixedSelection | null) => void;
-  /** An existing highlight `<mark>` was clicked — the shell shows edit/delete. */
+  /** Text selected (or null to dismiss) — the shell shows a color popover. */
+  onSelect: (sel: FixedSelection | null) => void;
+  /** An existing highlight was tapped — the shell shows edit/delete. */
   onHighlightClick: (id: string, rect: DOMRect) => void;
+  /** Space the reader's floating bars cover at the top and bottom, in px.
+   *  The viewer is full-bleed underneath them, so a scrolled page passes under
+   *  their glass the way the EPUB reader's text does; these keep the first
+   *  page's head and the last page's foot clear of them, size a fitted page to
+   *  the room between them, and seat a paged sheet in that room. */
+  insets?: { top: number; bottom: number };
+  /** The phone: draw our own selection (long-press, then handles) instead of
+   *  the browser's, whose system toolbar we cannot suppress on every skin. */
+  touchSelect?: boolean;
+  /** A tap on the page that nothing on it claimed — not a link, a highlight,
+   *  an edge turn or the dismissal of a selection. The phone's chrome toggle. */
+  onTap?: (tap: Tap) => void;
+  /** Whether the selection toolbar should stand aside: an edge is being
+   *  dragged, or (while `trackScroll`) the page is moving under it. */
+  onHoldChange?: (held: boolean) => void;
+  /** Watch for the page moving — set while a toolbar is open over it. */
+  trackScroll?: boolean;
+  /** A link to somewhere outside the document was tapped. */
+  onOpenUrl?: (url: string) => void;
 }
 
 export interface FixedPageViewerHandle {
   goToPage(i: number): void;
+  /** Drop the phone's drawn selection (the desktop's is the browser's own). */
+  clearSelection(): void;
+  /** Where the current selection is, measured now — for a toolbar that has
+   *  to follow it. */
+  selectionBox(): AnchorBox | null;
+  /** A long-press drag or a handle drag is in progress. */
+  isSelecting(): boolean;
 }
 
 let shimmerInjected = false;
@@ -213,8 +268,16 @@ export const FixedPageViewer = forwardRef<
     themeKey,
     onSelect,
     onHighlightClick,
+    touchSelect = false,
+    onTap,
+    onHoldChange,
+    trackScroll = false,
+    onOpenUrl,
   } = props;
+  const insetTop = props.insets?.top ?? 0;
+  const insetBottom = props.insets?.bottom ?? 0;
   const pageCount = source.pageCount;
+  const kind = source.kind;
 
   // Bumped whenever DOCX highlights/theme change to force a re-render of the
   // visible pages (renderPage re-injects the <mark> spans from the source).
@@ -234,56 +297,28 @@ export const FixedPageViewer = forwardRef<
     setHighlightNonce((n) => n + 1);
   }, [source, highlights, themeKey]);
 
-  // Selecting text is a scroll-mode affordance for now: in paged mode a
-  // horizontal drag is a page turn, and the text layer would swallow it.
+  // How the text takes the pointer: the phone always asks for a caret (it draws
+  // its own selection, in either flow); the desktop selects natively in scroll
+  // flow and not at all in paged, where a drag turns the page.
   useEffect(() => {
-    source.setSelectable?.(flow === "scroll");
-  }, [source, flow]);
+    source.setSelectable?.(
+      touchSelect ? "caret" : flow === "scroll" ? "native" : "off",
+    );
+  }, [source, flow, touchSelect]);
 
-  // Text selection → color popover; clicking an existing highlight → its
-  // edit/delete popover. Deferred a tick so the browser finalizes the selection.
-  //
-  // The two formats differ only in how a selection is anchored and how an
-  // existing highlight is found under the pointer. DOCX marks are real
-  // elements in the text, so `closest()` finds them; PDF marks are an overlay
-  // beneath the text layer and deliberately transparent to the pointer, so
-  // they are found by hit test (see pdfHighlightAt).
-  const isPdf = source.kind === "pdf";
+  // Desktop: a native selection finished → the colour toolbar. Deferred a tick
+  // so the browser has finalized the selection. Taps (links, highlights) are
+  // the click handler's — see `onPageClick`.
   useEffect(() => {
-    // Paged mode has no selectable text layer to select from (PDF), and turning
-    // pages by drag should not raise a colour popover (DOCX).
-    if (flow !== "scroll") return;
+    if (touchSelect || flow !== "scroll") return;
     const scroller = scrollRef.current;
     if (!scroller) return;
-    const onUp = (e: PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      const { clientX, clientY } = e;
-      window.setTimeout(() => {
-        if (isPdf) {
-          const anchor = resolvePdfSelection(scroller);
-          if (anchor) {
-            onSelect({ kind: "pdf", ...anchor });
-            return;
-          }
-          onSelect(null);
-          const hit = pdfHighlightAt(clientX, clientY);
-          if (hit) onHighlightClick(hit.id, hit.rect);
-          return;
-        }
-        const anchor = resolveDocxSelection(scroller);
-        if (anchor) {
-          onSelect({ kind: "docx", ...anchor });
-          return;
-        }
-        onSelect(null);
-        const mark = target?.closest?.("[data-h-id]") as HTMLElement | null;
-        const id = mark?.getAttribute("data-h-id");
-        if (id) onHighlightClick(id, mark!.getBoundingClientRect());
-      }, 0);
+    const onUp = () => {
+      window.setTimeout(() => onSelect(selectionFromWindow(scroller, kind)), 0);
     };
     scroller.addEventListener("pointerup", onUp);
     return () => scroller.removeEventListener("pointerup", onUp);
-  }, [isPdf, flow, onSelect, onHighlightClick]);
+  }, [touchSelect, kind, flow, onSelect]);
 
   // Reading colours come straight from the theme now. The page is the theme's
   // paper and the surround a shade behind it, so the sheet reads as a sheet
@@ -299,6 +334,9 @@ export const FixedPageViewer = forwardRef<
   // See `sweepBlankHosts`.
   const [healNonce, setHealNonce] = useState(0);
   const resumedRef = useRef(false);
+  /** The scrollTop the viewer itself last wrote for the resume position, or
+   *  null once the reader has moved (see the hold-still effect). */
+  const resumeTopRef = useRef<number | null>(null);
   const lastEmitted = useRef(-1);
   const saveTimer = useRef<number | null>(null);
 
@@ -337,7 +375,16 @@ export const FixedPageViewer = forwardRef<
   // depend on the page number alone: `sizes` and `layout` change on every
   // measurement, and depending on them restarted the timer faster than it
   // could fire, so on quick page turns the neighbours were never warmed.
-  const layoutRef = useRef<{ top: number[] }>({ top: [] });
+  const layoutRef = useRef<{ top: number[]; displayH: number[] }>({
+    top: [],
+    displayH: [],
+  });
+  const peekGeomRef = useRef<{
+    displayW: number[];
+    displayH: number[];
+    containerH: number;
+    sizes: Array<{ w: number; h: number } | undefined>;
+  }>({ displayW: [], displayH: [], containerH: 0, sizes: [] });
   // The reader's place in the scroll column, kept as a page plus a fraction
   // into it rather than as a scrollTop — see scrollAnchor.ts. Refreshed on
   // every scroll frame, and read back after a change of scale to put the
@@ -357,7 +404,13 @@ export const FixedPageViewer = forwardRef<
   // Where the swapped-in page lands (top normally; bottom when turning back).
   const pendingScroll = useRef<null | "top" | "bottom">(null);
   const turnLockUntil = useRef(0); // momentum guard after a turn
+  const turnLockCap = useRef(0); // the furthest momentum may push that guard
+  const queuedTurns = useRef(0); // signed count of turns asked for mid-turn
+  // The incoming page's render, so a programmatic turn can wait for it.
+  const peekRender = useRef<{ idx: number; done: Promise<void> } | null>(null);
   const accum = useRef(0); // overscroll accumulated toward the current turn
+  // Push gathered at an edge before a peek opens (see PEEK_DEADZONE_PX).
+  const edgePush = useRef({ d: 0, amount: 0, t: 0 });
   const peekDir = useRef<0 | 1 | -1>(0);
   const peekNeighbor = useRef(0); // index in the overlay (ref mirror of peekIdx)
   const peekHold = useRef<number | null>(null); // keep overlay until base paints
@@ -392,6 +445,8 @@ export const FixedPageViewer = forwardRef<
   currentRef.current = current;
   const reducedRef = useRef(reducedMotion);
   reducedRef.current = reducedMotion;
+  const insetsRef = useRef({ top: insetTop, bottom: insetBottom });
+  insetsRef.current = { top: insetTop, bottom: insetBottom };
 
   useEffect(() => ensureShimmerStyle(), []);
 
@@ -427,7 +482,9 @@ export const FixedPageViewer = forwardRef<
     const displayW = new Array<number>(pageCount);
     const displayH = new Array<number>(pageCount);
     const top = new Array<number>(pageCount);
-    let y = PAD;
+    // The room between the bars, which is what "fit page" fits to.
+    const roomH = container.h - insetTop - insetBottom - PAD * 2;
+    let y = PAD + insetTop;
     for (let i = 0; i < pageCount; i++) {
       const s = sizes[i];
       let w: number;
@@ -435,7 +492,7 @@ export const FixedPageViewer = forwardRef<
       if (fit === "page" && container.h > 0) {
         const iw = s?.w ?? Math.max(1, usableW);
         const ih = s?.h ?? iw * fallbackRatio;
-        const sc = Math.min(usableW / iw, (container.h - PAD * 2) / ih) * zoom;
+        const sc = Math.min(usableW / iw, Math.max(1, roomH) / ih) * zoom;
         w = iw * sc;
         h = ih * sc;
       } else {
@@ -448,12 +505,29 @@ export const FixedPageViewer = forwardRef<
       top[i] = y;
       y += h + GAP;
     }
-    return { displayW, displayH, top, totalH: y - GAP + PAD };
-  }, [sizes, container.h, zoom, fit, usableW, fallbackRatio, pageCount]);
+    return { displayW, displayH, top, totalH: y - GAP + PAD + insetBottom };
+  }, [
+    sizes,
+    container.h,
+    zoom,
+    fit,
+    usableW,
+    fallbackRatio,
+    pageCount,
+    insetTop,
+    insetBottom,
+  ]);
 
   prefetchInputs.current = { sizes, layout, usableW };
   // Read by the flow-restore retry loop, which outlives the render it started in.
   layoutRef.current = layout;
+  // What `openPeek` needs to seat the incoming page without waiting for React.
+  peekGeomRef.current = {
+    displayW: layout.displayW,
+    displayH: layout.displayH,
+    containerH: container.h,
+    sizes,
+  };
 
   const emit = useCallback(
     (page: number) => {
@@ -466,25 +540,79 @@ export const FixedPageViewer = forwardRef<
           ? formatCounter(page + 1, pageCount)
           : `${page + 1} / ${pageCount}`,
       });
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-      saveTimer.current = window.setTimeout(() => {
-        saveTimer.current = null;
-        const el = scrollRef.current;
-        let off = 0;
-        if (el && flow === "scroll") {
-          off = Math.max(
-            0,
-            Math.min(
-              1,
-              (el.scrollTop - layout.top[page]) / (layout.displayH[page] || 1),
-            ),
-          );
-        }
-        onLocationChange?.(page, off);
-      }, 500);
+      scheduleSaveRef.current();
     },
-    [onProgress, onLocationChange, formatCounter, pageCount, flow, layout],
+    [onProgress, formatCounter, pageCount],
   );
+
+  // ---- Saving the place -------------------------------------------------------
+  //
+  // Exactly where the reader is, read LIVE when the save fires: in scroll flow
+  // the page under the top of the reading area (just below the top bar) and
+  // how far into it, as a fraction; in paged flow the page and how far a tall
+  // page has been panned. It used to be saved only when the page CHANGED, from
+  // the layout of the moment it was scheduled — so scrolling within a page
+  // never moved the saved place, and a page's estimated height being corrected
+  // in between skewed the offset. And a save still waiting when the reader
+  // closed was thrown away.
+  const onLocationChangeRef = useRef(onLocationChange);
+  onLocationChangeRef.current = onLocationChange;
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
+  /** Where the reader is, read from the live scroller — or null when it
+   *  cannot be read: before the opening position is placed (the scroller
+   *  sits at 0 until then, and saving that would overwrite the real place
+   *  with page 1), or once the scroller has left the document, where
+   *  `scrollTop` reads 0. */
+  const placeNow = useCallback((): { page: number; offset: number } | null => {
+    const el = scrollRef.current;
+    const lay = layoutRef.current;
+    if (!el || !el.isConnected || lay.top.length === 0) return null;
+    if (flowRef.current === "scroll") {
+      if (!resumedRef.current) return null;
+      const a = anchorAt(
+        lay.top,
+        lay.displayH,
+        el.scrollTop + insetsRef.current.top,
+      );
+      return a
+        ? { page: a.page, offset: Math.max(0, Math.min(1, a.offset)) }
+        : null;
+    }
+    const page = currentRef.current;
+    const h = lay.displayH[page] || 1;
+    return { page, offset: Math.max(0, Math.min(1, el.scrollTop / h)) };
+  }, []);
+  // The place as of the reader's last move. Saving reads the live one when it
+  // can, and falls back to this when it cannot — on close, the scroller is
+  // already out of the document by the time the save runs, and reading it
+  // there would save page 1.
+  const lastPlace = useRef<{ page: number; offset: number } | null>(null);
+  const saveNow = useCallback(() => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const place = placeNow() ?? lastPlace.current;
+    if (place) onLocationChangeRef.current?.(place.page, place.offset);
+  }, [placeNow]);
+  const scheduleSaveRef = useRef<() => void>(() => {});
+  scheduleSaveRef.current = () => {
+    lastPlace.current = placeNow() ?? lastPlace.current;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(saveNow, 400);
+  };
+  // Write a waiting save at once when the app is hidden or the reader closes.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && saveTimer.current) saveNow();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      if (saveTimer.current) saveNow();
+    };
+  }, [saveNow]);
 
   /** Notice a mounted host that has lost its contents.
    *
@@ -521,7 +649,8 @@ export const FixedPageViewer = forwardRef<
     let end = -1;
     let cur = 0;
     let bestD = Infinity;
-    const mid = st + ch * 0.35;
+    // The reading area starts under the top bar, not at the glass edge.
+    const mid = st + insetTop + (ch - insetTop - insetBottom) * 0.35;
     for (let i = 0; i < pageCount; i++) {
       const t = layout.top[i];
       const b = t + layout.displayH[i];
@@ -539,12 +668,13 @@ export const FixedPageViewer = forwardRef<
       start = 0;
       end = Math.min(pageCount - 1, 2);
     }
-    anchorRef.current = anchorAt(layout.top, layout.displayH, st);
+    anchorRef.current = anchorAt(layout.top, layout.displayH, st + insetTop);
     setWin((w) => (w.start === start && w.end === end ? w : { start, end }));
     setCurrent((c) => (c === cur ? c : cur));
     sweepBlankHosts();
     emit(cur);
-  }, [flow, pageCount, layout, emit, sweepBlankHosts]);
+    scheduleSaveRef.current();
+  }, [flow, pageCount, layout, emit, sweepBlankHosts, insetTop, insetBottom]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -585,13 +715,15 @@ export const FixedPageViewer = forwardRef<
       // The saved location is a PageAnchor under other field names — a page
       // plus a fraction into it, for exactly the reason the anchor exists: it
       // has to survive being reopened at another zoom or window size.
-      el.scrollTop = scrollTopForAnchor(layout.top, layout.displayH, {
-        page: resume.page,
-        offset: resume.pageOffset ?? 0,
-      });
+      el.scrollTop =
+        scrollTopForAnchor(layout.top, layout.displayH, {
+          page: resume.page,
+          offset: resume.pageOffset ?? 0,
+        }) - insetTop;
+      resumeTopRef.current = el.scrollTop;
     }
     emit(resume.page);
-  }, [resume, container.h, layout, flow, emit]);
+  }, [resume, container.h, layout, flow, emit, insetTop]);
 
   // Keep your place when the flow changes.
   //
@@ -620,7 +752,11 @@ export const FixedPageViewer = forwardRef<
     let raf = 0;
     const place = () => {
       const el = scrollRef.current;
-      const top = layoutRef.current.top[target];
+      const pageTop = layoutRef.current.top[target];
+      const top =
+        pageTop == null
+          ? undefined
+          : Math.max(0, pageTop - PAD - insetsRef.current.top);
       if (el && top != null) {
         el.scrollTop = top;
         if (Math.abs(el.scrollTop - top) <= 2) return; // the column can hold it
@@ -675,7 +811,9 @@ export const FixedPageViewer = forwardRef<
   // against the zero-height column. Restoring that writes `scrollTop =
   // top[0]`, which is PAD — so every book that did not resume would open with
   // its top gutter scrolled away. Same guard as `prevFlow` above.
-  const scaleKey = `${zoom}|${fit}|${usableW}|${container.h}`;
+  // The insets join them: they move every page's offset (top) and, at fit
+  // page, its scale.
+  const scaleKey = `${zoom}|${fit}|${usableW}|${container.h}|${insetTop}|${insetBottom}`;
   const prevScale = useRef(scaleKey);
   useLayoutEffect(() => {
     if (prevScale.current === scaleKey) return;
@@ -684,8 +822,68 @@ export const FixedPageViewer = forwardRef<
     const el = scrollRef.current;
     const anchor = anchorRef.current;
     if (!el || !anchor) return;
-    el.scrollTop = scrollTopForAnchor(layout.top, layout.displayH, anchor);
+    el.scrollTop =
+      scrollTopForAnchor(layout.top, layout.displayH, anchor) - insetTop;
   }, [scaleKey]);
+
+  // Hold still while page heights are being measured.
+  //
+  // Every page starts at an ESTIMATED height (the first measured page's
+  // shape) and is corrected when it is measured — and each correction moved
+  // every page below it. Pages are measured as they come near, so while
+  // scrolling the column kept shifting under the reader by a few px to a whole
+  // page: the "shaking" of a PDF whose pages are not all one shape, and the
+  // reason a reopened book could land ~150px from where it was left. The scale
+  // effect above deliberately ignores these (they are not a rescale); this is
+  // the px-exact counterpart it asked for.
+  //
+  // The place is held by its offset in px from the top of the page under the
+  // reading line — unchanged by a correction to that page's own height, since
+  // a page grows downwards at a fixed width. Until the reader has moved, the
+  // place is the RESUME position instead, re-derived from its saved fraction
+  // against the corrected heights, so a reopened book lands exactly.
+  const prevTops = useRef<number[]>([]);
+  const scaleAtTops = useRef(scaleKey);
+  useLayoutEffect(() => {
+    const old = prevTops.current;
+    prevTops.current = layout.top;
+    const sameScale = scaleAtTops.current === scaleKey;
+    scaleAtTops.current = scaleKey;
+    if (flow !== "scroll" || !resumedRef.current) return;
+    const el = scrollRef.current;
+    if (!el || old === layout.top || old.length !== layout.top.length) return;
+    if (!sameScale) return; // a rescale — the scale effect owns that
+    // Still exactly where the viewer last put it for the resume? Then the
+    // reader has not moved — by any means: wheel, finger, keys, the scrollbar
+    // thumb — and the resume position is still the place to hold.
+    const placed = resumeTopRef.current;
+    if (placed != null && Math.abs(el.scrollTop - placed) <= 2 && resume) {
+      el.scrollTop =
+        scrollTopForAnchor(layout.top, layout.displayH, {
+          page: resume.page,
+          offset: resume.pageOffset ?? 0,
+        }) - insetTop;
+      resumeTopRef.current = el.scrollTop;
+      return;
+    }
+    resumeTopRef.current = null;
+    // The page under the reading line, in the OLD column.
+    const y = el.scrollTop + insetTop;
+    let p = 0;
+    while (p + 1 < old.length && old[p + 1] <= y) p++;
+    const shift = layout.top[p] - old[p];
+    if (shift !== 0) el.scrollTop += shift;
+  }, [layout]);
+
+  // A mouse wheel moves a WKWebView page a whole notch in ONE frame — about
+  // 120px with nothing in between, which on a page of print reads as the page
+  // jumping. The EPUB reader glides those notches; this does the same, and
+  // only for a mouse (a trackpad already scrolls smoothly). See smoothWheel.ts.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || flow !== "scroll") return;
+    return attachSmoothWheel(el);
+  }, [flow]);
 
   // Tell the source which pages are mounted, so a source that caches page
   // bitmaps never evicts one out from under a live host. Without this, a PDF
@@ -797,7 +995,19 @@ export const FixedPageViewer = forwardRef<
       }
       const sc = layout.displayW[current] / s.w;
       const cur = current;
-      void source.renderPage(cur, host, sc).then(() => {
+      const landing = source.renderPage(cur, host, sc);
+      // A page already drawn is MOVED here out of the overlay, synchronously
+      // (PdfPageSource re-parents its canvas). The overlay is then an empty
+      // opaque sheet on top of the finished page until React drops it — a
+      // blank frame on about one turn in eight in WebKit. Hide it now.
+      const overlay = peekHostRef.current;
+      if (
+        overlay &&
+        peekHold.current === cur &&
+        overlay.firstElementChild === null
+      )
+        overlay.style.visibility = "hidden";
+      void landing.then(() => {
         setRendered((prev) => (prev.has(cur) ? prev : new Set(prev).add(cur)));
         dropOverlayRef.current(cur);
       });
@@ -806,7 +1016,41 @@ export const FixedPageViewer = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [flow, current, layout, sizes, tint, source, emit, highlightNonce]);
+  }, [
+    flow,
+    current,
+    layout,
+    sizes,
+    tint,
+    source,
+    emit,
+    highlightNonce,
+    healNonce,
+  ]);
+
+  // Coming back to the app: redraw any page whose pixels were thrown away
+  // while it was in the background (see FixedPageSource.heal) — it came back
+  // as a blank sheet otherwise, and stayed one.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!source.heal?.()) return;
+      renderedScale.current.clear();
+      setHealNonce((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("pageshow", check);
+    // Some losses arrive with no event at all; a slow, cheap check (three
+    // pixels per page on screen) catches those too.
+    const timer = window.setInterval(check, 5000);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("pageshow", check);
+      window.clearInterval(timer);
+    };
+  }, [source]);
 
   // ---- Paged turn controller ------------------------------------------------
 
@@ -824,6 +1068,56 @@ export const FixedPageViewer = forwardRef<
    *  whole viewer once per frame; at a 20x CPU handicap that put p99 frame time
    *  at ~196ms. `will-change` promotes the layers so the compositor moves them
    *  without repainting the page bitmap underneath. */
+  /** Open a turn towards `dest`: the incoming page is sized, filled and made
+   *  ready to move in THIS frame, not after React re-renders.
+   *
+   *  The overlay used to be mounted by the `setPeek` below, and filled by an
+   *  effect after that commit — while the first drag frame was already moving
+   *  the page being left. On a phone that render is several frames, so a swipe
+   *  opened a gap of bare background between the leaving page and the one
+   *  that should be attached to it, and the incoming page caught up a moment
+   *  later. The overlay host now stays mounted for the whole paged session;
+   *  this seats it directly, and a page already drawn is re-parented into it
+   *  synchronously (PdfPageSource / DocxPageSource), so both pages move from
+   *  the very first frame. React's state follows for bookkeeping. */
+  const openPeek = useCallback(
+    (dest: number, d: 1 | -1) => {
+      peekDir.current = d;
+      peekNeighbor.current = dest;
+      turnLive.current = true;
+      const host = peekHostRef.current;
+      if (host) {
+        const g = peekGeomRef.current;
+        const { top: it, bottom: ib } = insetsRef.current;
+        const w = g.displayW[dest] || 0;
+        const h = g.displayH[dest] || 0;
+        host.style.width = `${w}px`;
+        host.style.height = `${h}px`;
+        // Going back onto a tall page, show its foot (see `peekOverflow`).
+        const over =
+          d === -1 ? Math.max(0, h + 2 * PAD + it + ib - g.containerH) : 0;
+        host.style.margin = over > 0 ? `${-over}px auto auto` : "auto";
+        const size = g.sizes[dest];
+        if (size && w > 0) {
+          const done = source.renderPage(dest, host, w / size.w);
+          peekRender.current = { idx: dest, done };
+        }
+      }
+      setPeekIdx(dest);
+      setPeek({ dir: d });
+    },
+    [source],
+  );
+
+  // The overlay host is mounted once per paged session and starts out of
+  // sight; `writeTurn` shows it, `releaseTurn` hides it again. A stable
+  // callback, so a re-render never re-runs it in the middle of a turn.
+  const peekHostCb = useCallback((el: HTMLDivElement | null) => {
+    peekHostRef.current = el;
+    if (el && !turnLive.current && peekHold.current == null)
+      el.style.visibility = "hidden";
+  }, []);
+
   const writeTurn = useCallback(
     (
       reveal: number,
@@ -850,6 +1144,9 @@ export const FixedPageViewer = forwardRef<
       }
       const incoming = peekHostRef.current;
       if (incoming) {
+        // Hidden by the landing of the previous turn (see the paged render
+        // effect); a turn queued right behind it can reuse the same node.
+        incoming.style.visibility = "";
         incoming.style.willChange = "transform";
         incoming.style.transition = transition;
         incoming.style.transform = at(peekPx);
@@ -865,6 +1162,12 @@ export const FixedPageViewer = forwardRef<
   const releaseTurn = useCallback(() => {
     turnLive.current = false;
     revealRef.current = 0;
+    // The overlay goes invisible BEFORE its transform is cleared. Cleared, it
+    // sits at its settled spot — right on top of the current page — and React
+    // only unmounts it a frame or more later. On a peek that springs back (a
+    // small scroll at a page edge) that frame was the neighbour page blinking
+    // over the one being read. `writeTurn` makes it visible again on reuse.
+    if (peekHostRef.current) peekHostRef.current.style.visibility = "hidden";
     for (const el of [
       hostRefs.current.get(currentRef.current),
       duotoneRef.current,
@@ -890,7 +1193,9 @@ export const FixedPageViewer = forwardRef<
       turning.current = false;
       accum.current = 0;
       peekDir.current = 0;
-      turnLockUntil.current = performance.now() + POST_LOCK_MS;
+      const now = performance.now();
+      turnLockUntil.current = now + POST_LOCK_MS;
+      turnLockCap.current = now + MOMENTUM_CAP_MS;
       pendingScroll.current = d > 0 ? "top" : "bottom";
       peekHold.current = neighbor;
       // The base host is keyed on `current`, so swapping pages hands us a fresh
@@ -906,6 +1211,7 @@ export const FixedPageViewer = forwardRef<
         releaseTurn();
         setPeek(null);
         setPeekIdx(null);
+        runQueuedRef.current();
       }, 500);
     },
     [releaseTurn],
@@ -1027,10 +1333,8 @@ export const FixedPageViewer = forwardRef<
         return;
       }
       turning.current = true;
-      turnLive.current = true;
-      setPeekIdx(dest);
-      setPeek({ dir: d });
-      window.requestAnimationFrame(() => {
+      openPeek(dest, d);
+      const slide = () => {
         // Seat the layers at reveal 0, flush, then animate to 1 on the next
         // frame. WKWebView otherwise coalesces the two writes and the slide
         // snaps — see the two-frame gotcha.
@@ -1041,23 +1345,72 @@ export const FixedPageViewer = forwardRef<
           if (turnTimer.current) window.clearTimeout(turnTimer.current);
           turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
         });
-      });
+      };
+      // Slide once the incoming page is drawn, or after PEEK_READY_WAIT_MS,
+      // whichever is first. A warmed page is a re-parent and resolves at once,
+      // so this only ever waits for a page the prefetcher did not reach. The
+      // overlay sits off-screen at reveal 0 meanwhile, so the wait shows
+      // nothing.
+      const t0 = performance.now();
+      let started = false;
+      const go = () => {
+        if (started) return;
+        started = true;
+        window.requestAnimationFrame(slide);
+      };
+      const poll = () => {
+        if (started) return;
+        const r = peekRender.current;
+        if (r && r.idx === dest) {
+          void r.done.then(go, go);
+          return;
+        }
+        if (performance.now() - t0 >= PEEK_READY_WAIT_MS) go();
+        else window.requestAnimationFrame(poll);
+      };
+      window.setTimeout(go, PEEK_READY_WAIT_MS);
+      poll();
     },
-    [clampIdx, finalize, writeTurn],
+    [clampIdx, finalize, writeTurn, openPeek],
   );
 
   const goToPage = useCallback(
     (i: number) => {
       const clamped = Math.max(0, Math.min(pageCount - 1, i));
+      // A jump is the reader moving: the resume position no longer applies.
+      resumeTopRef.current = null;
       if (flow === "scroll") {
-        scrollRef.current?.scrollTo({
-          top: layout.top[clamped],
-          behavior: reducedMotion ? "auto" : "smooth",
+        const el = scrollRef.current;
+        const top = Math.max(0, layout.top[clamped] - PAD - insetTop);
+        // Glide a short way (the next page); jump a long way (the contents).
+        // A long glide passes pages that get measured on the way, and the
+        // hold-still correction for each one is a scroll of its own that
+        // cancels the glide part-way.
+        const far = el
+          ? Math.abs(top - el.scrollTop) > 2 * el.clientHeight
+          : true;
+        el?.scrollTo({
+          // Seat the page's head just under the top bar, not behind it.
+          top,
+          behavior: reducedMotion || far ? "auto" : "smooth",
         });
         return;
       }
-      if (turning.current || peekDir.current) return; // a turn is already running
       const cur = currentRef.current;
+      if (turning.current || peekDir.current || peekHold.current != null) {
+        // A turn is running (or still handing its page over). A step in the
+        // same direction is queued and run when it lands, instead of lost.
+        const d = Math.sign(clamped - cur);
+        const busyDir = peekDir.current || lastDir.current;
+        if (Math.abs(clamped - cur) <= 1 && d !== 0 && d === busyDir) {
+          queuedTurns.current = Math.max(
+            -MAX_QUEUED_TURNS,
+            Math.min(MAX_QUEUED_TURNS, queuedTurns.current + d),
+          );
+        }
+        return;
+      }
+      queuedTurns.current = 0;
       if (clamped === cur) return;
       if (Math.abs(clamped - cur) === 1) {
         animateTurn((clamped - cur) as 1 | -1);
@@ -1066,10 +1419,22 @@ export const FixedPageViewer = forwardRef<
         setCurrent(clamped);
       }
     },
-    [flow, layout, pageCount, reducedMotion, animateTurn],
+    [flow, layout, pageCount, reducedMotion, animateTurn, insetTop],
   );
 
-  useImperativeHandle(ref, () => ({ goToPage }), [goToPage]);
+  // Run one queued turn, once the last one has fully landed.
+  const runQueuedRef = useRef<() => void>(() => {});
+  runQueuedRef.current = () => {
+    const q = queuedTurns.current;
+    if (q === 0) return;
+    const d = (q > 0 ? 1 : -1) as 1 | -1;
+    queuedTurns.current = q - d;
+    window.requestAnimationFrame(() => {
+      if (turning.current || peekDir.current || peekHold.current != null)
+        return;
+      animateTurn(d);
+    });
+  };
 
   const flip = useCallback(
     (delta: number) => goToPage(current + delta),
@@ -1098,8 +1463,29 @@ export const FixedPageViewer = forwardRef<
     if (!el) return;
     const mode = pendingScroll.current;
     pendingScroll.current = null;
+    // The very first page of a session lands where the reader left it, if they
+    // had panned down a tall page; every later one at its head or foot.
+    if (!pagedResumed.current) {
+      pagedResumed.current = true;
+      const off = resume?.page === current ? (resume.pageOffset ?? 0) : 0;
+      el.scrollTop = off * (layout.displayH[current] || 0);
+      return;
+    }
     el.scrollTop = mode === "bottom" ? el.scrollHeight : 0;
+    scheduleSaveRef.current();
   }, [current, flow]);
+  // Only a book OPENED in paged flow takes the saved pan offset: the saved
+  // place is the open-time one, and after a switch from scroll flow it
+  // describes nothing on screen.
+  const pagedResumed = useRef(flow !== "paged");
+  // Panning a tall page in paged flow moves the place too.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || flow !== "paged") return;
+    const onScroll = () => scheduleSaveRef.current();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [flow]);
 
   // Paged mode: wheel pans a tall page; at the edge it drags the neighbour in
   // (peek) and only turns past TURN_PX of push. Non-passive so we can swallow
@@ -1128,21 +1514,64 @@ export const FixedPageViewer = forwardRef<
         if (!atEdge) return; // room to pan — let native scroll do it
         const dest = clampIdx(currentRef.current + d);
         if (dest === currentRef.current) return; // first / last page
+        // The dying tail of a trackpad's momentum (a few px per event) never
+        // opens a turn: past MOMENTUM_CAP_MS it used to peek the next page in
+        // for a second and spring it back. A real push starts bigger.
+        if (
+          Math.abs(e.deltaY) < 4 &&
+          e.timeStamp >= turnLockUntil.current &&
+          e.timeStamp < turnLockCap.current + MOMENTUM_GAP_MS * 10
+        ) {
+          e.preventDefault();
+          return;
+        }
+        // A mouse notch is a step, not a drag: ~100px at once, which revealed
+        // half the next page in a single frame and then sprang it back — a
+        // jolt, not a turn. At the edge a notch simply turns the page, with
+        // the full animation; the lock below then swallows the rest of the
+        // spin, so one spin is one page.
+        if (wheelIsMouse()) {
+          e.preventDefault();
+          if (e.timeStamp < turnLockUntil.current || peekHold.current != null) {
+            turnLockUntil.current = Math.min(
+              turnLockCap.current,
+              Math.max(turnLockUntil.current, e.timeStamp + MOMENTUM_GAP_MS),
+            );
+            return;
+          }
+          animateTurn(d);
+          return;
+        }
         if (e.timeStamp < turnLockUntil.current || peekHold.current != null) {
           e.preventDefault(); // still settling the previous turn
+          // Momentum from the swipe that turned it — keep it locked until the
+          // stream pauses (see MOMENTUM_GAP_MS).
+          turnLockUntil.current = Math.min(
+            turnLockCap.current,
+            Math.max(turnLockUntil.current, e.timeStamp + MOMENTUM_GAP_MS),
+          );
           return;
         }
         e.preventDefault();
+        // Gather the push in the dead zone first; a pause of IDLE_MS or a
+        // change of direction starts it over.
+        const push = edgePush.current;
+        if (push.d !== d || e.timeStamp - push.t > IDLE_MS) push.amount = 0;
+        push.d = d;
+        push.t = e.timeStamp;
+        push.amount += Math.abs(e.deltaY);
+        if (push.amount < PEEK_DEADZONE_PX) return;
+        const over = push.amount - PEEK_DEADZONE_PX;
+        push.amount = 0;
         if (turnTimer.current) {
           window.clearTimeout(turnTimer.current); // abort a spring-back mid-flight
           turnTimer.current = null;
         }
         peekDir.current = d;
         peekNeighbor.current = dest;
-        accum.current = Math.abs(e.deltaY);
+        accum.current = Math.max(1, over);
         turnLive.current = true;
-        setPeekIdx(dest);
-        setPeek({ dir: d });
+        openPeek(dest, d);
         renderPeek();
         scheduleIdle();
         return;
@@ -1162,7 +1591,15 @@ export const FixedPageViewer = forwardRef<
       el.removeEventListener("wheel", onWheel);
       el.style.cursor = "";
     };
-  }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek]);
+  }, [
+    flow,
+    clampIdx,
+    renderPeek,
+    scheduleIdle,
+    cancelPeek,
+    animateTurn,
+    openPeek,
+  ]);
 
   // Paged mode on touch: a horizontal drag pans the filmstrip 1:1 with the
   // finger and snaps on release. The wheel path above never fires from a finger,
@@ -1195,6 +1632,12 @@ export const FixedPageViewer = forwardRef<
     const onMove = (e: PointerEvent) => {
       const s = touch.current;
       if (e.pointerId !== s.pointerId) return;
+      // A long-press drag or a handle is moving a selection edge — the finger
+      // is working with the text, and the page must stay where it is.
+      if (selectingRef.current || handleDragRef.current) {
+        s.axis = "";
+        return;
+      }
       const dx = e.clientX - s.x;
       const dy = e.clientY - s.y;
 
@@ -1253,8 +1696,7 @@ export const FixedPageViewer = forwardRef<
         peekDir.current = d;
         peekNeighbor.current = dest;
         turnLive.current = true;
-        setPeekIdx(dest);
-        setPeek({ dir: d });
+        openPeek(dest, d);
       } else if (peekDir.current !== d) {
         cancelPeek(); // dragged back past the origin
         return;
@@ -1326,7 +1768,7 @@ export const FixedPageViewer = forwardRef<
       el.removeEventListener("pointerup", onEnd);
       el.removeEventListener("pointercancel", onEnd);
     };
-  }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit]);
+  }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit, openPeek]);
 
   // Render the peeked page into the overlay host (once per turn — keyed on the
   // page index, not the reveal, so dragging doesn't re-render the pdf).
@@ -1352,7 +1794,9 @@ export const FixedPageViewer = forwardRef<
         });
       }
       const sc = (layout.displayW[peekIdx] || usableW) / s.w;
-      await source.renderPage(peekIdx, host, sc);
+      const done = source.renderPage(peekIdx, host, sc);
+      peekRender.current = { idx: peekIdx, done };
+      await done;
     })();
     return () => {
       cancelled = true;
@@ -1388,7 +1832,16 @@ export const FixedPageViewer = forwardRef<
         const i = wanted[k];
         const host = warmRefs.current[k];
         if (cancelled || !host || i < 0 || i >= pageCount) continue;
-        if (turnLive.current) return; // a turn owns the canvases right now
+        // A turn owns two canvases — the page leaving and the one sliding in.
+        // Re-parenting either would yank it out of the animation, so those
+        // two are skipped; the rest are warmed regardless. Giving up whenever
+        // ANY turn was live meant quick successive turns never warmed
+        // anything, and every one slid in a blank sheet.
+        if (
+          turnLive.current &&
+          (i === peekNeighbor.current || i === currentRef.current)
+        )
+          continue;
         let size = sz[i];
         if (!size) {
           try {
@@ -1397,6 +1850,17 @@ export const FixedPageViewer = forwardRef<
             continue;
           }
           if (cancelled) return;
+          // Record it: a turn seats its incoming page from the measured size
+          // in the very first frame (`openPeek`), and without this a warmed
+          // page's size was only known to the source — that first frame then
+          // showed the incoming sheet empty.
+          const measured = size;
+          setSizes((prev) => {
+            if (prev[i]) return prev;
+            const next = prev.slice();
+            next[i] = measured;
+            return next;
+          });
         }
         try {
           await source.renderPage(i, host, (lay.displayW[i] || uw) / size.w);
@@ -1440,6 +1904,7 @@ export const FixedPageViewer = forwardRef<
       releaseTurn();
       setPeek(null);
       setPeekIdx(null);
+      runQueuedRef.current();
     },
     [releaseTurn],
   );
@@ -1447,7 +1912,6 @@ export const FixedPageViewer = forwardRef<
 
   useEffect(
     () => () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
       for (const t of [idleTimer, turnTimer, holdTimer]) {
         if (t.current) window.clearTimeout(t.current);
       }
@@ -1482,31 +1946,231 @@ export const FixedPageViewer = forwardRef<
     const r = el.getBoundingClientRect();
     return edgeSide(clientX, r.left, r.width);
   }, []);
-  const onPagedClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (suppressClick.current) {
-        // Trailing click of a drag that already turned the page.
-        suppressClick.current = false;
-        return;
+  // ---- Taps -----------------------------------------------------------------
+  //
+  // One path for every tap on the page, in a fixed order, so each thing on the
+  // page gets first refusal before the page itself does:
+  //   1. a drawn selection is up → the tap dismisses it, nothing else;
+  //   2. a link → follow it;
+  //   3. a highlight → its edit/delete toolbar;
+  //   4. paged flow, an edge → turn;
+  //   5. anything else is the reader's (`onTap`) — the phone's chrome toggle.
+  // A press that moved, or (by touch) one held into a long-press, is a scroll,
+  // a drag or a selection, not a tap — see reader/chrome/pageTap.ts.
+  const pressRef = useRef<(Tap & { mouse: boolean }) | null>(null);
+  const suppressClickUntil = useRef(0);
+  const onPagePointerDown = useCallback((e: React.PointerEvent) => {
+    pressRef.current = {
+      t: e.timeStamp,
+      x: e.clientX,
+      y: e.clientY,
+      mouse: e.pointerType === "mouse",
+    };
+  }, []);
+
+  /** Follow the link under a point, if there is one. */
+  const followLinkAt = useCallback(
+    (target: HTMLElement | null, x: number, y: number): boolean => {
+      // DOCX: the document's own anchors are real elements in the text.
+      const a = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (a) {
+        const href = a.getAttribute("href") ?? "";
+        if (href.startsWith("#")) {
+          let id = href.slice(1);
+          try {
+            id = decodeURIComponent(id);
+          } catch {
+            // a malformed escape — look the id up as written
+          }
+          const page = source.pageForAnchor?.(id);
+          if (page != null) goToPage(page);
+          return true;
+        }
+        if (/^(https?:|mailto:)/i.test(href)) {
+          onOpenUrl?.(href);
+          return true;
+        }
+        return false;
       }
-      const edge = edgeSideAt(e.clientX);
-      if (edge !== 0) flip(forwardFor(edge, dir === "rtl"));
+      if (kind !== "pdf") return false;
+      const link = pdfLinkAt(x, y);
+      if (!link) return false;
+      if (link.page != null) goToPage(link.page);
+      else if (link.url) onOpenUrl?.(link.url);
+      return true;
     },
-    [edgeSideAt, flip, dir],
-  );
-  const onPagedMove = useCallback(
-    (e: React.MouseEvent) => {
-      const el = scrollRef.current;
-      if (el)
-        el.style.cursor = edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
-    },
-    [edgeSideAt],
+    [source, kind, goToPage, onOpenUrl],
   );
 
+  const onPageClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    // A document link's own navigation would change the app's URL.
+    if (target?.closest?.("a[href]")) e.preventDefault();
+    if (e.timeStamp < suppressClickUntil.current) {
+      // The click a selection gesture ends with.
+      suppressClickUntil.current = 0;
+      return;
+    }
+    if (suppressClick.current) {
+      // Trailing click of a drag that already turned the page.
+      suppressClick.current = false;
+      return;
+    }
+    if (target?.closest?.("[data-selection-handle]")) return;
+    const press = pressRef.current;
+    pressRef.current = null;
+    const up: Tap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+    const tap = press?.mouse
+      ? stayedPut(up.x - press.x, up.y - press.y, LONG_PRESS_MOVE_TOLERANCE)
+      : isPageTap(press, up);
+    if (!tap) return;
+    if (touchRangeRef.current) {
+      clearTouchSelection();
+      return;
+    }
+    if (followLinkAt(target, up.x, up.y)) return;
+    if (kind === "pdf") {
+      const hit = pdfHighlightAt(up.x, up.y);
+      if (hit) {
+        onHighlightClick(hit.id, hit.rect);
+        return;
+      }
+    } else {
+      const mark = target?.closest?.("[data-h-id]") as HTMLElement | null;
+      const id = mark?.getAttribute("data-h-id");
+      if (mark && id) {
+        onHighlightClick(id, mark.getBoundingClientRect());
+        return;
+      }
+    }
+    if (flow === "paged") {
+      const edge = edgeSideAt(up.x);
+      if (edge !== 0) {
+        flip(forwardFor(edge, dir === "rtl"));
+        return;
+      }
+    }
+    onTap?.(up);
+  };
+
+  // Desktop pointer feedback: a hand over a link, and over a paged edge.
+  const onPageMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const target = e.target as HTMLElement | null;
+      const overLink =
+        !!target?.closest?.("a[href]") ||
+        (kind === "pdf" && pdfLinkAt(e.clientX, e.clientY) !== null);
+      el.toggleAttribute("data-fixed-over-link", overLink);
+      if (flow === "paged")
+        el.style.cursor =
+          !overLink && edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
+    },
+    [kind, flow, edgeSideAt],
+  );
+
+  // ---- The phone's own selection ---------------------------------------------
+  //
+  // Drawn by the viewer, never on `window.getSelection()` — see
+  // useTouchSelection.ts.
+  const {
+    touchRange,
+    selGeom,
+    selDragging,
+    touchRangeRef,
+    selectingRef,
+    handleDragRef,
+    clearTouchSelection,
+    onHandleDown,
+  } = useTouchSelection({
+    enabled: touchSelect,
+    kind,
+    scrollRef,
+    hostRefs,
+    insetsRef,
+    isTurning: () => peekDir.current !== 0 || turning.current,
+    suppressClickUntil,
+    onSelect,
+    layout,
+  });
+
+  // Anything that moves or replaces the pages under a selection ends it: a
+  // turn, a flow switch, a rescale. In scroll flow `current` is only the page
+  // nearest the top, which changes under a handle dragged past a page break —
+  // so there it is not a reason.
+  const turnKey = flow === "paged" ? current : -1;
+  useEffect(() => {
+    clearTouchSelection();
+  }, [turnKey, flow, scaleKey, highlightNonce, clearTouchSelection]);
+
+  // The page moving under an open toolbar: it stands aside, and comes back
+  // once the page is still. Two renders a scroll, not one per frame.
+  const [pageMoving, setPageMoving] = useState(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!trackScroll || !el) return;
+    let timer = 0;
+    let moving = false;
+    const onScroll = () => {
+      if (handleDragRef.current) return; // the drag's own edge scroll
+      if (!moving) {
+        moving = true;
+        setPageMoving(true);
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        moving = false;
+        setPageMoving(false);
+      }, SCROLL_SETTLE_MS);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.clearTimeout(timer);
+      setPageMoving(false);
+    };
+  }, [trackScroll]);
+  const held = selDragging || pageMoving;
+  useEffect(() => {
+    onHoldChange?.(held);
+  }, [held, onHoldChange]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      goToPage,
+      clearSelection: clearTouchSelection,
+      selectionBox() {
+        const r = touchRangeRef.current;
+        if (!r) return liveSelectionBox();
+        const range = orderedRange(r.a, r.b);
+        return boxFromRects(
+          Array.from(range.getClientRects()),
+          dirOf(range.commonAncestorContainer),
+        );
+      },
+      isSelecting: () => selectingRef.current || handleDragRef.current !== null,
+    }),
+    [goToPage, clearTouchSelection],
+  );
+
+  // The colour of the page once it is drawn, so an undrawn page is the same
+  // sheet with nothing on it yet. A PDF canvas paints white (the tint filter on
+  // the host shades it like the drawn page); a DOCX card paints the reading
+  // paper. The sheet used to be the CHROME colour — within a shade of the
+  // surround on most themes, so a page sliding in before it was drawn looked
+  // like a transparent hole that the content then popped into.
+  const sheetColor = kind === "pdf" ? "#ffffff" : surfaces.page;
   const skeletonStyle = (
     w: number,
     h: number,
     animate: boolean,
+    /** Faint text lines on the sheet, for a page that may still be drawing.
+     *  Static (no animation), and inset from every edge, so they never show
+     *  round a drawn canvas that is a pixel off the host's estimated size —
+     *  the canvas, opaque once drawn, simply covers them. */
+    lines = false,
   ): React.CSSProperties => ({
     width: w,
     height: h,
@@ -1515,7 +2179,16 @@ export const FixedPageViewer = forwardRef<
     // the page from the background, so it's kept wherever there's a gutter for
     // it to fall into; full-bleed (fit: width) has none, so it's dropped too.
     boxShadow: padX > 0 ? "0 8px 30px rgba(0,0,0,0.22)" : "none",
-    backgroundColor: theme.chrome,
+    backgroundColor: sheetColor,
+    ...(lines && !animate
+      ? {
+          backgroundImage:
+            "repeating-linear-gradient(to bottom, rgba(0,0,0,0.055) 0 6px, transparent 6px 22px)",
+          backgroundSize: "78% 74%",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }
+      : null),
     // The shimmer is a loading affordance, so it is only ever painted while
     // there is genuinely nothing to show. A page host is sized from the
     // ESTIMATED layout while its canvas is sized from the real render, and the
@@ -1523,7 +2196,7 @@ export const FixedPageViewer = forwardRef<
     // mounted canvas leaks around the edges as a travelling band.
     ...(animate && !reducedMotion
       ? {
-          backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
+          backgroundImage: `linear-gradient(100deg, ${sheetColor} 30%, ${theme.hover} 50%, ${sheetColor} 70%)`,
           backgroundSize: "200% 100%",
           animation: "fx-shimmer 1.3s linear infinite",
         }
@@ -1539,6 +2212,22 @@ export const FixedPageViewer = forwardRef<
   overflowX.current = Math.max(0, (layout.displayW[current] || 0) - contentW);
 
   const nIdx = peekIdx ?? 0;
+  // Going BACK to a page taller than the view, the incoming page must show its
+  // FOOT, joined to the head of the page being left — that is where the base
+  // lands it after the swap (`pendingScroll: "bottom"`). Centred with
+  // `margin: auto` a tall page pins to its head instead, and the swap then
+  // jumped it by its whole overflow (measured: 460px in one frame).
+  const peekOverflow =
+    peek?.dir === -1
+      ? Math.max(
+          0,
+          (layout.displayH[nIdx] || 0) +
+            2 * PAD +
+            insetTop +
+            insetBottom -
+            container.h,
+        )
+      : 0;
 
   // A turn pans across a filmstrip of pages: BOTH layers move as one, the
   // incoming page entering from the edge while the outgoing leaves by exactly
@@ -1562,6 +2251,7 @@ export const FixedPageViewer = forwardRef<
   return (
     <div
       dir={dir}
+      data-fixed-viewer
       style={{
         position: "absolute",
         inset: 0,
@@ -1575,14 +2265,18 @@ export const FixedPageViewer = forwardRef<
         ...({
           "--reading-ink": theme.ink,
           "--reading-paper": surfaces.page,
+          // DOCX pages read this for their `user-select` (DocxPageSource):
+          // the phone draws its own selection and must never get a native one.
+          ...(touchSelect ? { "--fixed-select": "none" } : null),
         } as React.CSSProperties),
       }}
     >
       <div
         ref={scrollRef}
         className="no-scrollbar"
-        onClick={flow === "paged" ? onPagedClick : undefined}
-        onMouseMove={flow === "paged" ? onPagedMove : undefined}
+        onPointerDown={onPagePointerDown}
+        onClick={onPageClick}
+        onMouseMove={onPageMouseMove}
         style={{
           position: "absolute",
           inset: 0,
@@ -1591,13 +2285,27 @@ export const FixedPageViewer = forwardRef<
           background: theme.bg,
           // Paged: claim horizontal gestures for the page-turn drag. Without
           // this the compositor can take the pan before the touch handler sees
-          // it, and the strip never follows the finger.
-          touchAction: flow === "paged" ? "pan-y" : undefined,
+          // it, and the strip never follows the finger. The phone in scroll
+          // flow claims them too while nothing is wider than the screen, so a
+          // long-press drag sideways extends the selection instead of being
+          // taken for a pan (the EPUB phone reader is pan-y for the same
+          // reason); a zoomed page keeps the native sideways pan.
+          touchAction:
+            flow === "paged" || (touchSelect && overflowX.current <= 4)
+              ? "pan-y"
+              : undefined,
+          // No system callout (link preview, "save image") on a held finger.
+          ...(touchSelect
+            ? ({ WebkitTouchCallout: "none" } as React.CSSProperties)
+            : null),
           // Paged: a scrollable flex box. The page uses margin:auto, so it
           // centers when it fits and pins to the top-start (fully scrollable,
           // head never clipped) when it's taller / wider than the viewport.
           ...(flow === "paged"
-            ? { display: "flex", padding: `${PAD}px ${padX}px` }
+            ? {
+                display: "flex",
+                padding: `${PAD + insetTop}px ${padX}px ${PAD + insetBottom}px`,
+              }
             : null),
         }}
       >
@@ -1613,6 +2321,7 @@ export const FixedPageViewer = forwardRef<
               <div
                 key={i}
                 ref={hostCb(i)}
+                data-fixed-host={i}
                 style={{
                   position: "absolute",
                   top: layout.top[i],
@@ -1632,16 +2341,21 @@ export const FixedPageViewer = forwardRef<
             <div
               key={current}
               ref={hostCb(current)}
+              data-fixed-host={current}
               style={{
                 margin: "auto",
                 flexShrink: 0,
                 filter: hostFilter,
                 // transform/transition intentionally absent — `writeTurn`
                 // owns them, and React must not fight it mid-turn.
+                // The same lined sheet as the incoming page rather than a
+                // shimmer: a page that lands undrawn must look like the sheet
+                // that slid in, not change into a flashing one as it settles.
                 ...skeletonStyle(
                   layout.displayW[current] || 0,
                   layout.displayH[current] || 0,
-                  !rendered.has(current),
+                  false,
+                  true,
                 ),
               }}
             />
@@ -1670,12 +2384,32 @@ export const FixedPageViewer = forwardRef<
             )}
           </>
         )}
+        {touchRange && selGeom && (
+          // Raised above the pages: pdf.js's text layer carries its own
+          // z-index with no stacking context around it, so unlifted it
+          // painted over the handles and a touch on a grip landed on a text
+          // span — the browser scrolled the page instead of moving the edge.
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              zIndex: Z_LOCAL.raised,
+            }}
+          >
+            <SelectionLayer
+              geometry={selGeom}
+              dragging={selDragging}
+              onHandleDown={onHandleDown}
+            />
+          </div>
+        )}
       </div>
 
       {/* Peek overlay: the incoming page, sliding in from the edge as the turn
           progresses. Pointer-events off so the wheel keeps reaching the scroller
           underneath (which drives the peek). */}
-      {flow === "paged" && peek && (
+      {flow === "paged" && (
         <div
           style={{
             position: "absolute",
@@ -1687,13 +2421,14 @@ export const FixedPageViewer = forwardRef<
             // Mirror the base scroller's box exactly (flex + PAD + margin:auto
             // on the child) so the page lands where the settled page sits and
             // the swap is invisible.
-            padding: `${PAD}px ${padX}px`,
+            padding: `${PAD + insetTop}px ${padX}px ${PAD + insetBottom}px`,
           }}
         >
           <div
-            ref={peekHostRef}
+            ref={peekHostCb}
             style={{
-              margin: "auto",
+              margin:
+                peekOverflow > 0 ? `${-peekOverflow}px auto auto` : "auto",
               flexShrink: 0,
               // transform/transition are written by `writeTurn`; a layout
               // effect seats this at reveal 0 the moment it mounts so it never
@@ -1715,6 +2450,7 @@ export const FixedPageViewer = forwardRef<
                 layout.displayW[nIdx] || 0,
                 layout.displayH[nIdx] || 0,
                 false,
+                true,
               ),
             }}
           />

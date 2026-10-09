@@ -28,7 +28,8 @@ import {
   type ThemeKey,
   Z,
 } from "../../styles/tokens";
-import { useReducedMotion } from "../../styles/motion";
+import { EASE, MOTION, useReducedMotion } from "../../styles/motion";
+import { invoke } from "@tauri-apps/api/core";
 import type { Tweaks, TocEntry } from "../../types/reader";
 import type {
   BookState,
@@ -49,6 +50,12 @@ import { SelectionPopover } from "../../components/SelectionPopover";
 import { HighlightActionPopover } from "../../components/HighlightActionPopover";
 import { copyText } from "../../lib/clipboard";
 import { boxFromRect } from "../../lib/selectionAnchor";
+import { HANDLE_CLEARANCE } from "../../components/SelectionLayer";
+import { fractionToWidth } from "../../components/readerProgress";
+import { FocusRail } from "../chrome/FocusRail";
+import { FOCUS_TOAST_MS, FocusLock, FocusPill } from "../chrome/FocusSigns";
+import { isDoubleTap, type Tap } from "../chrome/focusGesture";
+import { TOUCH_SLOP } from "../gestureAxis";
 import { SideSheet } from "../../components/SideSheet";
 import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
@@ -123,6 +130,8 @@ export interface FixedPageReaderProps {
     blockId?: string,
   ) => void;
   onOpenFullSettings?: () => void;
+  /** Persist a change of zoom for this book. */
+  onZoomChange?: (zoom: number) => void;
   /** DOCX only — the reading-mode toggle, forwarded to the shared settings
    *  panel. Absent for PDF and EPUB, which have no second mode. */
   docxMode?: "pages" | "flow";
@@ -148,6 +157,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     sourceKey,
     onLocationChange,
     onOpenFullSettings,
+    onZoomChange,
     docxMode,
     onDocxModeChange,
     onBack,
@@ -168,7 +178,13 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // Same affordance the EPUB reader has: the scrubber can be folded away when
   // you want the page and nothing else.
   const [showProgress, setShowProgress] = useState(true);
-  const [zoom, setZoom] = useState(1);
+  // The zoom this book was last read at (BookState.fixedZoom), and every
+  // change saved back — it used to reset to 100% on each open.
+  const [zoom, setZoomState] = useState(() => state.fixedZoom ?? 1);
+  const setZoom = (z: number) => {
+    setZoomState(z);
+    onZoomChange?.(z);
+  };
   const [progress, setProgress] = useState<{
     page: number;
     fraction: number;
@@ -183,36 +199,115 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     id: string;
     rect: DOMRect;
   } | null>(null);
+  /** The selection toolbar stands aside — an edge is being dragged, or the
+   *  page is moving under it (see the viewer's `onHoldChange`). */
+  const [selHeld, setSelHeld] = useState(false);
 
-  const createFromSelection = (color: HighlightColor, note?: string) => {
-    if (!sel) return;
-    // The anchor follows the format the selection came from. A DOCX page is
-    // real text, so it anchors to a block and a char range; a PDF page is a
-    // bitmap, so it anchors to the page plus the rectangles the selection
-    // covered, normalized to the page box.
-    onCreateHighlight({
-      text: sel.text,
-      color,
-      note,
-      fixed:
-        sel.kind === "pdf"
-          ? { fmt: "pdf", page: sel.page, rects: sel.rects }
-          : {
-              fmt: "docx",
-              blockId: sel.blockId,
-              charStart: sel.charStart,
-              charEnd: sel.charEnd,
-            },
-    });
+  const dismissSelection = () => {
+    viewerRef.current?.clearSelection();
     window.getSelection()?.removeAllRanges();
     setSel(null);
   };
 
+  const createFromSelection = (color: HighlightColor, note?: string) => {
+    if (!sel) return;
+    // One highlight per page (PDF) or block (DOCX) the selection crossed, each
+    // anchored the way its format stores one — a PDF page by its normalized
+    // rectangles, a DOCX block by a char range — and grouped, so they delete
+    // together and read as the one highlight the reader made. The note goes
+    // on the first part only, as in the EPUB reader.
+    const trimmed = note?.trim() || undefined;
+    const groupId = sel.parts.length > 1 ? crypto.randomUUID() : undefined;
+    sel.parts.forEach((part, i) => {
+      onCreateHighlight({
+        text: part.text,
+        color,
+        note: i === 0 ? trimmed : undefined,
+        groupId,
+        fixed: part.fixed,
+      });
+    });
+    dismissSelection();
+  };
+
   // ── Focus mode ────────────────────────────────────────────────────────────
-  // The same affordance the reflow reader has, off the same persisted tweak —
-  // see reader/chrome/focusChrome.tsx. Desktop only: the reveal is driven by
-  // pointer proximity, and a phone has no pointer to track. On a phone the tab
-  // bar is the reader's way back to everything, so hiding it would strand them.
+  // Off the same persisted tweak as the reflow readers. Two implementations,
+  // because the two platforms reveal the chrome differently:
+  //   - desktop: reader/chrome/focusChrome.tsx — the bars float away and come
+  //     back on pointer proximity;
+  //   - phone: the EPUB phone reader's model (MobileReader) — a tap clears the
+  //     page and brings the bars back, scrolling or turning takes them away,
+  //     and focus mode is the same bare page held until a double-tap (or the
+  //     lock in the corner) lets go. It used to be desktop-only here, so on a
+  //     phone the button did not exist and the bars could never be cleared.
+  const focusOn = t.focusMode;
+  // Bars up right now, OUTSIDE focus mode. Session state, not a tweak.
+  const [barsUp, setBarsUp] = useState(true);
+  const barsUpRef = useRef(barsUp);
+  barsUpRef.current = barsUp;
+  const chromeHidden = isMobile && (focusOn || !barsUp);
+  const [pillUp, setPillUp] = useState(false);
+  useEffect(() => {
+    if (!pillUp) return;
+    const id = window.setTimeout(() => setPillUp(false), FOCUS_TOAST_MS);
+    return () => window.clearTimeout(id);
+  }, [pillUp]);
+  const lastTapRef = useRef<Tap | null>(null);
+  /** Always lands with the bars up: a reader who left the mode asked for
+   *  their controls back. */
+  const leaveFocus = () => {
+    setTweak("focusMode", false);
+    setBarsUp(true);
+    setPillUp(false);
+  };
+  const enterFocus = () => {
+    setTweak("focusMode", true);
+    // "Just the book": a sheet left open would float over a bare page.
+    setPanel(null);
+    setPillUp(true);
+  };
+  /** A tap on the page nothing else claimed (see the viewer's tap order). */
+  const onPageTap = (up: Tap) => {
+    // A tap off an open toolbar closes it, and is spent doing so. Nothing else
+    // closes the highlight's toolbar (it only answers Escape), so without this
+    // it stayed up over the page until another highlight was tapped.
+    if (activeHl) {
+      setActiveHl(null);
+      return;
+    }
+    if (sel) {
+      dismissSelection();
+      return;
+    }
+    if (!isMobile) return;
+    if (!focusOn) {
+      setBarsUp((wasUp) => !wasUp);
+      return;
+    }
+    if (isDoubleTap(lastTapRef.current, up)) {
+      lastTapRef.current = null;
+      leaveFocus();
+      return;
+    }
+    lastTapRef.current = up;
+  };
+
+  // Android full screen goes with the bars: hiding the reader's own chrome
+  // used to leave the system's clock and nav bar painted over the page.
+  // Rejects and no-ops everywhere but Android.
+  useEffect(() => {
+    if (!isMobile) return;
+    void invoke("set_immersive_mode", { immersive: chromeHidden }).catch(
+      () => {},
+    );
+  }, [isMobile, chromeHidden]);
+  useEffect(
+    () => () => {
+      void invoke("set_immersive_mode", { immersive: false }).catch(() => {});
+    },
+    [],
+  );
+
   const focus = useFocusChrome({
     active: t.focusMode,
     setActive: (next) => setTweak("focusMode", next),
@@ -224,6 +319,26 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     // A docked Contents panel keeps the floating bars off its own header.
     dockInset: tocDocked ? DOCK_WIDTH : 0,
   });
+
+  // The phone's top bar, measured for the same reason as the bottom one: the
+  // page runs full-bleed under both and needs to know what they cover.
+  const topBarRef = useRef<HTMLDivElement>(null);
+  const [topBarHeight, setTopBarHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const el = topBarRef.current;
+    if (!isMobile || !el || typeof ResizeObserver === "undefined") {
+      setTopBarHeight(null);
+      return;
+    }
+    const read = () => {
+      const h = Math.round(el.getBoundingClientRect().height);
+      setTopBarHeight((prev) => (prev === h || h === 0 ? prev : h));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isMobile]);
 
   // The phone bar's real height, whichever style it is in.
   const barRef = useRef<HTMLDivElement>(null);
@@ -288,6 +403,72 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // reader, so the bars drop to `Z.readerChrome` and go under it.
   const barLayer = isMobile ? { zIndex: Z.readerChrome } : null;
 
+  // The phone runs the page FULL-BLEED, under both bars, the way the EPUB
+  // reader runs its text. Reserving the bars' height around the page instead
+  // left an opaque band of reader background behind them — which showed as a
+  // solid strip behind the floating bar styles, whose whole point is the page
+  // showing around them. The viewer is told what the bars cover instead
+  // (`insets`), and keeps the first and last page clear of them.
+  //
+  // The insets hold still while the bars come and go, as the EPUB reader's
+  // padding does: a page that re-fitted on every tap would jump under the
+  // reader. Focus mode is the exception, in paged flow only — a mode entered
+  // on purpose, where a sheet seated between bars that are not there would
+  // sit in a band of empty margin for the whole session.
+  const EDGE_AIR = 12;
+  const mobileInsets = isMobile
+    ? focusOn && t.fixedFlow === "paged"
+      ? { top: EDGE_AIR, bottom: EDGE_AIR }
+      : {
+          top: topBarHeight ?? 0,
+          bottom: barHeight ?? 8 + (showProgress ? 50 : 0) + 44 + 6,
+        }
+    : undefined;
+  const chromeTransition = reduced
+    ? "none"
+    : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
+  /** Show/hide for a phone bar: slide off its edge and give up the pointer. */
+  const phoneBarMotion = (edge: "top" | "bottom") =>
+    isMobile
+      ? {
+          transform: chromeHidden
+            ? `translateY(${edge === "top" ? "-100%" : "100%"})`
+            : "translateY(0)",
+          opacity: chromeHidden ? 0 : 1,
+          transition: chromeTransition,
+          pointerEvents: chromeHidden ? ("none" as const) : ("auto" as const),
+        }
+      : null;
+
+  // Moving the page takes the bars with it — reading is the gesture, the
+  // furniture is what you ask for in between. A scroll or a page-turn swipe,
+  // not a tap's wobble (TOUCH_SLOP) and not a selection drag.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const onRootTouchStart = (e: React.TouchEvent) => {
+    const p = e.touches[0];
+    touchStartRef.current = p ? { x: p.clientX, y: p.clientY } : null;
+  };
+  const onRootTouchMove = (e: React.TouchEvent) => {
+    if (!isMobile || !barsUpRef.current) return;
+    const start = touchStartRef.current;
+    const p = e.touches[0];
+    if (!start || !p) return;
+    if (Math.hypot(p.clientX - start.x, p.clientY - start.y) <= TOUCH_SLOP)
+      return;
+    const target = e.target as Element | null;
+    if (!target?.closest("[data-fixed-viewer]")) return;
+    if (target.closest("[data-pan-none]")) return; // a selection handle
+    if (viewerRef.current?.isSelecting()) return;
+    setBarsUp(false);
+  };
+
+  // Focus mode's progress rail, fed from the page counter.
+  const focusFillRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusFillRef.current)
+      focusFillRef.current.style.width = fractionToWidth(progress.fraction);
+  }, [progress.fraction, chromeHidden]);
+
   // Content/page-flip direction: DOCX carries its own; PDF follows the UI.
   const contentDir = book.kind === "docx" ? book.dir : uiDir;
 
@@ -337,8 +518,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     return { page: state.currentPage ?? 0, pageOffset: state.pageOffset ?? 0 };
   }, [state.fixedAnchor, state.currentPage, state.pageOffset, source]);
 
-  const openPanel = (p: Exclude<Panel, null>) =>
+  const openPanel = (p: Exclude<Panel, null>) => {
+    // A selection does not outlive the reader turning to a panel — it used to
+    // stay drawn (natively, toolbar and all) over the sheet.
+    dismissSelection();
     setPanel((cur) => (cur === p ? null : p));
+  };
   const closePanel = () => setPanel(null);
 
   const jumpToPage = (page: number) => {
@@ -461,6 +646,16 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             : undefined;
 
   const title = book.title || tr("common.untitled");
+  // The reading region a toolbar must stay inside: between the bars while
+  // they are up.
+  const popoverInsets = isMobile
+    ? chromeHidden
+      ? { top: EDGE_AIR, bottom: EDGE_AIR }
+      : {
+          top: topBarHeight ?? CHROME_INSET_TOP,
+          bottom: barHeight ?? CHROME_INSET_BOTTOM,
+        }
+    : { top: CHROME_INSET_TOP, bottom: CHROME_INSET_BOTTOM };
   const total = sourcePageCount(source);
   const pageCounterFor = useCallback(
     (page: number) =>
@@ -530,6 +725,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
       dir={uiDir}
       // Pointer proximity summons a hidden bar; leaving the window retires both.
       {...focus.rootHandlers}
+      onTouchStart={onRootTouchStart}
+      onTouchMove={onRootTouchMove}
       style={{
         position: "absolute",
         inset: 0,
@@ -544,10 +741,12 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           the clip window that lets it slide away, out of focus mode it is
           simply pinned. The page area insets itself by `padTop` either way. */}
       <div
+        ref={topBarRef}
+        aria-hidden={chromeHidden || undefined}
         style={
           focus.floating
             ? focus.clip("top", focus.showTop)
-            : { ...focus.pin("top"), ...barLayer }
+            : { ...focus.pin("top"), ...barLayer, ...phoneBarMotion("top") }
         }
       >
         <div
@@ -583,7 +782,16 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               )
             }
             trailing={
-              isMobile ? undefined : (
+              isMobile ? (
+                // The way IN to focus mode, as in the EPUB phone reader's
+                // header. The way out is the lock, or a double-tap.
+                <ReaderIconButton
+                  theme={theme}
+                  icon="focus"
+                  label={tr("reader.focusMode")}
+                  onClick={enterFocus}
+                />
+              ) : (
                 <>
                   <ReaderIconButton
                     theme={theme}
@@ -665,8 +873,9 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             position: "relative",
             minHeight: 0,
             minWidth: 0,
-            marginTop: pageTop,
-            marginBottom: pageBottom,
+            // Full-bleed on the phone — see `mobileInsets`.
+            marginTop: isMobile ? 0 : pageTop,
+            marginBottom: isMobile ? 0 : pageBottom,
           }}
         >
           {source ? (
@@ -688,6 +897,16 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               onHighlightClick={(id, rect) => {
                 setSel(null);
                 setActiveHl({ id, rect });
+              }}
+              insets={mobileInsets}
+              touchSelect={isMobile}
+              onTap={onPageTap}
+              onHoldChange={setSelHeld}
+              trackScroll={sel !== null || activeHl !== null}
+              onOpenUrl={(url) => {
+                void import("@tauri-apps/plugin-opener")
+                  .then(({ openUrl }) => openUrl(url))
+                  .catch(() => {});
               }}
               resume={resume}
               reducedMotion={reduced}
@@ -740,10 +959,11 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           theme={theme}
           style={t.readerBar}
           rootRef={barRef}
-          hidden={false}
+          hidden={chromeHidden}
           frame={{
             ...focus.pin("bottom"),
             ...barLayer,
+            ...phoneBarMotion("bottom"),
           }}
           slider={progressBar}
           place={{
@@ -812,6 +1032,49 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         />
       )}
 
+      {/* The phone's focus furniture, as in the EPUB phone reader. */}
+      {chromeHidden && (
+        <FocusRail
+          fillRef={focusFillRef}
+          theme={theme}
+          rtl={contentDir === "rtl"}
+          initialFraction={progress.fraction}
+        />
+      )}
+      {isMobile && focusOn && (
+        <FocusLock
+          theme={theme}
+          label={tr("reader.exitFocusMode")}
+          onExit={leaveFocus}
+        />
+      )}
+      {isMobile && focusOn && pillUp && (
+        <FocusPill
+          theme={theme}
+          title={tr("reader.focusMode")}
+          hint={tr("reader.focusExitHint")}
+          reduced={reduced}
+        />
+      )}
+      {/* Android hands a full-screen edge swipe to the app as well as using
+          it to bring the system bars back; without this strip a swipe up to
+          leave the app flung the page. See MobileReader's twin. */}
+      {chromeHidden && (
+        <div
+          aria-hidden
+          data-system-edge
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: "max(var(--safe-bottom), 28px)",
+            touchAction: "none",
+            zIndex: Z.readerChrome + 1,
+          }}
+        />
+      )}
+
       {focus.hintVisible && (
         <FocusHint
           theme={theme}
@@ -853,13 +1116,24 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           // for the toolbar to follow — it keeps the rect it opened
           // with. (The reflowable readers pass a live re-measure.)
           anchor={{
-            getAnchor: () => boxFromRect(sel.rect, contentDir),
-            insets: { top: CHROME_INSET_TOP, bottom: CHROME_INSET_BOTTOM },
+            // Measured live, so it follows the text when the page scrolls.
+            getAnchor: () =>
+              viewerRef.current?.selectionBox() ??
+              boxFromRect(sel.rect, contentDir),
+            insets: popoverInsets,
+            ...(isMobile
+              ? {
+                  // Clear of the handles' dots, which hang past the lines.
+                  placement: "below" as const,
+                  gap: HANDLE_CLEARANCE,
+                }
+              : null),
+            held: selHeld,
           }}
           onPick={(color) => createFromSelection(color)}
           onAddNote={(color, note) => createFromSelection(color, note)}
           onCopy={() => copyText(sel.text)}
-          onDismiss={() => setSel(null)}
+          onDismiss={dismissSelection}
         />
       )}
       {activeHl &&
@@ -872,7 +1146,8 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               highlight={hl}
               anchor={{
                 getAnchor: () => boxFromRect(activeHl.rect, contentDir),
-                insets: { top: CHROME_INSET_TOP, bottom: CHROME_INSET_BOTTOM },
+                insets: popoverInsets,
+                held: selHeld,
               }}
               onDelete={() => {
                 onDeleteHighlight(hl.id);
