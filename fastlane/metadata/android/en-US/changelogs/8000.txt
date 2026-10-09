@@ -1,0 +1,1 @@
+Highlight PDF and Word files on the phone the way you highlight books, with focus mode and working contents links. Pages turn smoothly, a PDF scrolls without shaking, and files reopen exactly where you stopped, at the same zoom.

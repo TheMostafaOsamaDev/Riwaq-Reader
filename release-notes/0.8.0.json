@@ -1,0 +1,66 @@
+{
+  "version": "0.8.0",
+  "date": "2026-10-10",
+  "highlight": {
+    "image": "0.8.0-pdf-highlight.webp",
+    "title": {
+      "en": "Highlight PDFs and Word files on the phone",
+      "ar": "ظلّل ملفات PDF وWord على الهاتف"
+    },
+    "body": {
+      "en": "Press and hold a word, drag the handles, and pick a colour — the same highlighting your EPUB books have, with no system menu popping up over the page. A highlight can now run across a page break, and it is saved as one.",
+      "ar": "اضغط مطوّلًا على كلمة واسحب المقبضين واختر لونًا — التظليل نفسه الذي في كتب EPUB، دون أن تظهر قائمة النظام فوق الصفحة. ويمكن للتظليل الآن أن يمتد عبر فاصل الصفحات، ويُحفظ كتظليل واحد."
+    }
+  },
+  "stories": [
+    {
+      "kind": "new",
+      "image": "0.8.0-pdf-focus.webp",
+      "title": {
+        "en": "Focus mode for PDF and Word",
+        "ar": "وضع التركيز لملفات PDF وWord"
+      },
+      "body": {
+        "en": "Tap the page to hide the bars, or turn on focus mode from the top bar to keep it bare until you double-tap. The floating bar styles now show the page behind them.",
+        "ar": "انقر الصفحة لإخفاء الأشرطة، أو شغّل وضع التركيز من الشريط العلوي ليبقى كذلك حتى تنقر مرتين. وصارت أنماط الشريط العائم تُظهر الصفحة من خلفها."
+      }
+    }
+  ],
+  "items": [
+    {
+      "kind": "new",
+      "en": "Links in a PDF's contents take you to their page, and web links open in your browser",
+      "ar": "روابط فهرس ملف PDF تنقلك إلى صفحتها، وروابط الويب تفتح في متصفحك"
+    },
+    {
+      "kind": "improved",
+      "en": "A PDF or Word file reopens exactly where you stopped reading, at the zoom you left it on",
+      "ar": "يعود ملف PDF أو Word إلى الموضع الذي توقفت عنده بالضبط، وبالتكبير الذي تركته عليه"
+    },
+    {
+      "kind": "improved",
+      "en": "Turning pages one at a time is smooth: no blank sheet sliding in, no jump, no flash from a small scroll",
+      "ar": "تقليب الصفحات واحدةً تلو الأخرى صار سلسًا: لا ورقة فارغة تنزلق، ولا قفزة، ولا وميض من تمرير بسيط"
+    },
+    {
+      "kind": "improved",
+      "en": "Scrolling through a PDF holds steady instead of shaking, and a mouse wheel glides on the Mac",
+      "ar": "صار التمرير في ملفات PDF ثابتًا بدل الاهتزاز، وعجلة الفأرة تنساب على ماك"
+    },
+    {
+      "kind": "fixed",
+      "en": "Selecting text in a PDF on the desktop no longer jumps to other lines, and covers the whole word",
+      "ar": "لم يعد تحديد النص في ملف PDF على سطح المكتب يقفز إلى أسطر أخرى، وصار يغطي الكلمة كاملة"
+    },
+    {
+      "kind": "fixed",
+      "en": "A PDF page no longer comes back blank after the app has been in the background",
+      "ar": "لم تعد صفحة PDF تعود فارغة بعد بقاء التطبيق في الخلفية"
+    },
+    {
+      "kind": "fixed",
+      "en": "A highlight that spans several paragraphs is no longer partly lost when you reopen the book",
+      "ar": "لم يعد التظليل الممتد عبر عدة فقرات يضيع جزء منه عند إعادة فتح الكتاب"
+    }
+  ]
+}
