@@ -2,6 +2,16 @@ import type { TocEntry } from "../../types/reader";
 import type { Highlight } from "../../store/library";
 import type { ThemeKey } from "../../styles/tokens";
 
+/** How a page's text takes the pointer.
+ *
+ *  - "native": the browser's own selection — the desktop, in scroll flow.
+ *  - "caret": hit-testable but never natively selectable. The phone draws its
+ *    own selection (a native one raises the system toolbar) and only needs to
+ *    ask which character is under a finger.
+ *  - "off": not even hit-testable — desktop paged flow, where a drag is a page
+ *    turn and a selection would swallow it. */
+export type SelectMode = "native" | "caret" | "off";
+
 /**
  * Abstracts the two fixed-layout page sources — PDF (pdf.js canvas) and DOCX
  * (paginated HTML) — behind one interface so `FixedPageViewer` renders either
@@ -33,6 +43,9 @@ export interface FixedPageSource {
   /** DOCX only — the page a block id currently lives on, for jumping to a
    *  highlight. Undefined for PDF (highlights carry their own page). */
   pageForBlock?(blockId: string): number | undefined;
+  /** DOCX only — the page an element id lives on, for the document's own
+   *  `#id` links (a contents page). PDF links are resolved by the PDF itself. */
+  pageForAnchor?(id: string): number | undefined;
   /** DOCX only — the first block on a page, the inverse of `pageForBlock`.
    *
    *  This is what makes a reading position portable. A page number means
@@ -49,9 +62,7 @@ export interface FixedPageSource {
    *  paints an overlay above the bitmap and updates it in place, so the call
    *  alone is enough. */
   setHighlights?(highlights: Highlight[], themeKey: ThemeKey): void;
-  /** PDF only — whether the selectable text layer takes the pointer. The
-   *  viewer turns it off in paged mode, where a horizontal drag is a page turn
-   *  and would otherwise start a text selection instead. */
-  setSelectable?(on: boolean): void;
+  /** PDF only — how the text layer takes the pointer (see SelectMode). */
+  setSelectable?(mode: SelectMode): void;
   destroy(): void;
 }

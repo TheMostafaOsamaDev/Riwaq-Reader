@@ -361,7 +361,10 @@ export function dirOf(node: Node): "rtl" | "ltr" {
  * view) reports one, and it would otherwise become a line box at the
  * origin and drag the toolbar to the corner.
  */
-function boxFromRects(rects: DOMRect[], dir: "rtl" | "ltr"): AnchorBox | null {
+export function boxFromRects(
+  rects: DOMRect[],
+  dir: "rtl" | "ltr",
+): AnchorBox | null {
   const lines = rects.filter((r) => r.width > 0 || r.height > 0);
   if (lines.length === 0) return null;
 

@@ -43,6 +43,9 @@ function fakeDoc(pageCount = 40): PdfDoc {
       canvas.width = Math.floor(PAGE_W * scale);
       canvas.height = Math.floor(PAGE_H * scale);
     },
+    async pageLinks() {
+      return [];
+    },
     async renderTextLayer(_i, container, _scale) {
       container.textContent = "";
       for (let n = 0; n < SPANS; n++) {

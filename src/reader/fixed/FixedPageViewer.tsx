@@ -26,15 +26,40 @@ import {
   Z_LOCAL,
 } from "../../styles/tokens";
 import type { Highlight } from "../../store/library";
+import { pdfHighlightAt, pdfLinkAt } from "./pdfHighlight";
 import {
-  resolveDocxSelection,
-  type DocxSelectionAnchor,
-} from "./docxHighlight";
+  caretNear,
+  comesBefore,
+  orderedRange,
+  selectionFromRange,
+  selectionFromWindow,
+  type FixedSelection,
+} from "./fixedSelection";
 import {
-  pdfHighlightAt,
-  resolvePdfSelection,
-  type PdfSelectionAnchor,
-} from "./pdfHighlight";
+  snapEndpoint,
+  wordAround,
+  type TextEndpoint,
+} from "../selection/textCaret";
+import {
+  contentOrigin,
+  measureSelection,
+  sameGeometry,
+  type SelectionGeometry,
+} from "../selection/selectionGeometry";
+import { SelectionLayer } from "../../components/SelectionLayer";
+import {
+  boxFromRects,
+  dirOf,
+  liveSelectionBox,
+} from "../../lib/selectionAnchor";
+import type { AnchorBox } from "../../lib/popoverPlacement";
+import {
+  isPageTap,
+  LONG_PRESS_MOVE_TOLERANCE,
+  LONG_PRESS_MS,
+} from "../chrome/pageTap";
+import type { Tap } from "../chrome/focusGesture";
+import { stayedPut } from "../gestureAxis";
 import type {
   FixedFit,
   FixedFlow,
@@ -61,6 +86,23 @@ const IDLE_MS = 170;
 const ANIM_MS = 220;
 const CANCEL_MS = 190;
 const POST_LOCK_MS = 340;
+// A trackpad swipe trails a second or more of momentum, and the fixed lock above
+// expired inside it: the stream then opened the NEXT page ~96% of the way and
+// hung there until the idle timer sprang it back — two seconds of the page
+// moving under a reader who had swiped once. So while locked, every wheel
+// event pushes the lock out by MOMENTUM_GAP_MS; it ends at the first pause in
+// the stream, never later than MOMENTUM_CAP_MS after the turn, so a deliberate
+// second swipe is never swallowed for long.
+const MOMENTUM_GAP_MS = 120;
+const MOMENTUM_CAP_MS = 1200;
+// How long a key/button/edge turn waits for the incoming page to be drawn
+// before sliding it in. A turn that starts first slides a blank sheet in and
+// pops the content at the end — the "next page renders badly" a reader sees
+// when turning faster than pages rasterize.
+const PEEK_READY_WAIT_MS = 150;
+// Turns asked for while one runs are queued, up to this many, rather than
+// dropped (five quick arrow presses used to turn two pages).
+const MAX_QUEUED_TURNS = 3;
 const TURN_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 // A turn released from a drag carries on from the speed the finger had and
 // decelerates to rest, so it needs a curve that leaves the gate at roughly
@@ -99,7 +141,7 @@ const VELOCITY_WINDOW_MS = 100;
 // A plain timer rather than requestIdleCallback on purpose: idle callbacks fire
 // in the gaps *between* a drag's frames, so the rasterization lands mid-gesture
 // and costs more than it saves (measured: ~20 fewer frames delivered per drag).
-const PREFETCH_DELAY_MS = 80;
+const PREFETCH_DELAY_MS = 16;
 // How many pages to keep warm ahead of the reader. Three covers a burst of
 // quick swipes without the incoming page ever arriving unrasterized.
 //
@@ -142,13 +184,20 @@ export function tintFilter(tint: FixedPageTint): string {
   }
 }
 
-/** A pending text selection, tagged by the format that produced it — the two
- *  anchor into a fixed-layout page in fundamentally different ways (a DOCX
- *  block + char range vs. a PDF page + normalized rects), and the reader has to
- *  store whichever it is given. */
-export type FixedSelection =
-  | ({ kind: "docx" } & DocxSelectionAnchor)
-  | ({ kind: "pdf" } & PdfSelectionAnchor);
+export type { FixedSelection } from "./fixedSelection";
+
+/** How far from any text a long-press may land and still select the nearest
+ *  word. A hold on a margin or a picture is not a request to select. */
+const LONG_PRESS_REACH = 28;
+/** The click a custom-selection gesture ends with arrives within this. A
+ *  deadline, not a flag: a long press often ends with no click at all, and a
+ *  flag left armed swallowed the reader's next real tap (see MobileReader). */
+const CLICK_AFTER_UP_MS = 350;
+/** How long after the last scroll event the page counts as still again. */
+const SCROLL_SETTLE_MS = 220;
+/** Handle drag near the top/bottom of the reading area scrolls the page. */
+const EDGE_SCROLL_ZONE = 56;
+const EDGE_SCROLL_MAX = 14;
 
 export interface FixedPageViewerProps {
   source: FixedPageSource;
@@ -171,14 +220,40 @@ export interface FixedPageViewerProps {
   /** This book's highlights (for DOCX render-back) + the active theme key. */
   highlights: Highlight[];
   themeKey: ThemeKey;
-  /** DOCX text selected (or null to dismiss) — the shell shows a color popover. */
-  onSelect: (anchor: FixedSelection | null) => void;
-  /** An existing highlight `<mark>` was clicked — the shell shows edit/delete. */
+  /** Text selected (or null to dismiss) — the shell shows a color popover. */
+  onSelect: (sel: FixedSelection | null) => void;
+  /** An existing highlight was tapped — the shell shows edit/delete. */
   onHighlightClick: (id: string, rect: DOMRect) => void;
+  /** Space the reader's floating bars cover at the top and bottom, in px.
+   *  The viewer is full-bleed underneath them, so a scrolled page passes under
+   *  their glass the way the EPUB reader's text does; these keep the first
+   *  page's head and the last page's foot clear of them, size a fitted page to
+   *  the room between them, and seat a paged sheet in that room. */
+  insets?: { top: number; bottom: number };
+  /** The phone: draw our own selection (long-press, then handles) instead of
+   *  the browser's, whose system toolbar we cannot suppress on every skin. */
+  touchSelect?: boolean;
+  /** A tap on the page that nothing on it claimed — not a link, a highlight,
+   *  an edge turn or the dismissal of a selection. The phone's chrome toggle. */
+  onTap?: (tap: Tap) => void;
+  /** Whether the selection toolbar should stand aside: an edge is being
+   *  dragged, or (while `trackScroll`) the page is moving under it. */
+  onHoldChange?: (held: boolean) => void;
+  /** Watch for the page moving — set while a toolbar is open over it. */
+  trackScroll?: boolean;
+  /** A link to somewhere outside the document was tapped. */
+  onOpenUrl?: (url: string) => void;
 }
 
 export interface FixedPageViewerHandle {
   goToPage(i: number): void;
+  /** Drop the phone's drawn selection (the desktop's is the browser's own). */
+  clearSelection(): void;
+  /** Where the current selection is, measured now — for a toolbar that has
+   *  to follow it. */
+  selectionBox(): AnchorBox | null;
+  /** A long-press drag or a handle drag is in progress. */
+  isSelecting(): boolean;
 }
 
 let shimmerInjected = false;
@@ -213,8 +288,16 @@ export const FixedPageViewer = forwardRef<
     themeKey,
     onSelect,
     onHighlightClick,
+    touchSelect = false,
+    onTap,
+    onHoldChange,
+    trackScroll = false,
+    onOpenUrl,
   } = props;
+  const insetTop = props.insets?.top ?? 0;
+  const insetBottom = props.insets?.bottom ?? 0;
   const pageCount = source.pageCount;
+  const kind = source.kind;
 
   // Bumped whenever DOCX highlights/theme change to force a re-render of the
   // visible pages (renderPage re-injects the <mark> spans from the source).
@@ -234,56 +317,28 @@ export const FixedPageViewer = forwardRef<
     setHighlightNonce((n) => n + 1);
   }, [source, highlights, themeKey]);
 
-  // Selecting text is a scroll-mode affordance for now: in paged mode a
-  // horizontal drag is a page turn, and the text layer would swallow it.
+  // How the text takes the pointer: the phone always asks for a caret (it draws
+  // its own selection, in either flow); the desktop selects natively in scroll
+  // flow and not at all in paged, where a drag turns the page.
   useEffect(() => {
-    source.setSelectable?.(flow === "scroll");
-  }, [source, flow]);
+    source.setSelectable?.(
+      touchSelect ? "caret" : flow === "scroll" ? "native" : "off",
+    );
+  }, [source, flow, touchSelect]);
 
-  // Text selection → color popover; clicking an existing highlight → its
-  // edit/delete popover. Deferred a tick so the browser finalizes the selection.
-  //
-  // The two formats differ only in how a selection is anchored and how an
-  // existing highlight is found under the pointer. DOCX marks are real
-  // elements in the text, so `closest()` finds them; PDF marks are an overlay
-  // beneath the text layer and deliberately transparent to the pointer, so
-  // they are found by hit test (see pdfHighlightAt).
-  const isPdf = source.kind === "pdf";
+  // Desktop: a native selection finished → the colour toolbar. Deferred a tick
+  // so the browser has finalized the selection. Taps (links, highlights) are
+  // the click handler's — see `onPageClick`.
   useEffect(() => {
-    // Paged mode has no selectable text layer to select from (PDF), and turning
-    // pages by drag should not raise a colour popover (DOCX).
-    if (flow !== "scroll") return;
+    if (touchSelect || flow !== "scroll") return;
     const scroller = scrollRef.current;
     if (!scroller) return;
-    const onUp = (e: PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      const { clientX, clientY } = e;
-      window.setTimeout(() => {
-        if (isPdf) {
-          const anchor = resolvePdfSelection(scroller);
-          if (anchor) {
-            onSelect({ kind: "pdf", ...anchor });
-            return;
-          }
-          onSelect(null);
-          const hit = pdfHighlightAt(clientX, clientY);
-          if (hit) onHighlightClick(hit.id, hit.rect);
-          return;
-        }
-        const anchor = resolveDocxSelection(scroller);
-        if (anchor) {
-          onSelect({ kind: "docx", ...anchor });
-          return;
-        }
-        onSelect(null);
-        const mark = target?.closest?.("[data-h-id]") as HTMLElement | null;
-        const id = mark?.getAttribute("data-h-id");
-        if (id) onHighlightClick(id, mark!.getBoundingClientRect());
-      }, 0);
+    const onUp = () => {
+      window.setTimeout(() => onSelect(selectionFromWindow(scroller, kind)), 0);
     };
     scroller.addEventListener("pointerup", onUp);
     return () => scroller.removeEventListener("pointerup", onUp);
-  }, [isPdf, flow, onSelect, onHighlightClick]);
+  }, [touchSelect, kind, flow, onSelect]);
 
   // Reading colours come straight from the theme now. The page is the theme's
   // paper and the surround a shade behind it, so the sheet reads as a sheet
@@ -357,6 +412,10 @@ export const FixedPageViewer = forwardRef<
   // Where the swapped-in page lands (top normally; bottom when turning back).
   const pendingScroll = useRef<null | "top" | "bottom">(null);
   const turnLockUntil = useRef(0); // momentum guard after a turn
+  const turnLockCap = useRef(0); // the furthest momentum may push that guard
+  const queuedTurns = useRef(0); // signed count of turns asked for mid-turn
+  // The incoming page's render, so a programmatic turn can wait for it.
+  const peekRender = useRef<{ idx: number; done: Promise<void> } | null>(null);
   const accum = useRef(0); // overscroll accumulated toward the current turn
   const peekDir = useRef<0 | 1 | -1>(0);
   const peekNeighbor = useRef(0); // index in the overlay (ref mirror of peekIdx)
@@ -392,6 +451,8 @@ export const FixedPageViewer = forwardRef<
   currentRef.current = current;
   const reducedRef = useRef(reducedMotion);
   reducedRef.current = reducedMotion;
+  const insetsRef = useRef({ top: insetTop, bottom: insetBottom });
+  insetsRef.current = { top: insetTop, bottom: insetBottom };
 
   useEffect(() => ensureShimmerStyle(), []);
 
@@ -427,7 +488,9 @@ export const FixedPageViewer = forwardRef<
     const displayW = new Array<number>(pageCount);
     const displayH = new Array<number>(pageCount);
     const top = new Array<number>(pageCount);
-    let y = PAD;
+    // The room between the bars, which is what "fit page" fits to.
+    const roomH = container.h - insetTop - insetBottom - PAD * 2;
+    let y = PAD + insetTop;
     for (let i = 0; i < pageCount; i++) {
       const s = sizes[i];
       let w: number;
@@ -435,7 +498,7 @@ export const FixedPageViewer = forwardRef<
       if (fit === "page" && container.h > 0) {
         const iw = s?.w ?? Math.max(1, usableW);
         const ih = s?.h ?? iw * fallbackRatio;
-        const sc = Math.min(usableW / iw, (container.h - PAD * 2) / ih) * zoom;
+        const sc = Math.min(usableW / iw, Math.max(1, roomH) / ih) * zoom;
         w = iw * sc;
         h = ih * sc;
       } else {
@@ -448,8 +511,18 @@ export const FixedPageViewer = forwardRef<
       top[i] = y;
       y += h + GAP;
     }
-    return { displayW, displayH, top, totalH: y - GAP + PAD };
-  }, [sizes, container.h, zoom, fit, usableW, fallbackRatio, pageCount]);
+    return { displayW, displayH, top, totalH: y - GAP + PAD + insetBottom };
+  }, [
+    sizes,
+    container.h,
+    zoom,
+    fit,
+    usableW,
+    fallbackRatio,
+    pageCount,
+    insetTop,
+    insetBottom,
+  ]);
 
   prefetchInputs.current = { sizes, layout, usableW };
   // Read by the flow-restore retry loop, which outlives the render it started in.
@@ -476,14 +549,23 @@ export const FixedPageViewer = forwardRef<
             0,
             Math.min(
               1,
-              (el.scrollTop - layout.top[page]) / (layout.displayH[page] || 1),
+              (el.scrollTop + insetTop - layout.top[page]) /
+                (layout.displayH[page] || 1),
             ),
           );
         }
         onLocationChange?.(page, off);
       }, 500);
     },
-    [onProgress, onLocationChange, formatCounter, pageCount, flow, layout],
+    [
+      onProgress,
+      onLocationChange,
+      formatCounter,
+      pageCount,
+      flow,
+      layout,
+      insetTop,
+    ],
   );
 
   /** Notice a mounted host that has lost its contents.
@@ -521,7 +603,8 @@ export const FixedPageViewer = forwardRef<
     let end = -1;
     let cur = 0;
     let bestD = Infinity;
-    const mid = st + ch * 0.35;
+    // The reading area starts under the top bar, not at the glass edge.
+    const mid = st + insetTop + (ch - insetTop - insetBottom) * 0.35;
     for (let i = 0; i < pageCount; i++) {
       const t = layout.top[i];
       const b = t + layout.displayH[i];
@@ -539,12 +622,12 @@ export const FixedPageViewer = forwardRef<
       start = 0;
       end = Math.min(pageCount - 1, 2);
     }
-    anchorRef.current = anchorAt(layout.top, layout.displayH, st);
+    anchorRef.current = anchorAt(layout.top, layout.displayH, st + insetTop);
     setWin((w) => (w.start === start && w.end === end ? w : { start, end }));
     setCurrent((c) => (c === cur ? c : cur));
     sweepBlankHosts();
     emit(cur);
-  }, [flow, pageCount, layout, emit, sweepBlankHosts]);
+  }, [flow, pageCount, layout, emit, sweepBlankHosts, insetTop, insetBottom]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -585,13 +668,14 @@ export const FixedPageViewer = forwardRef<
       // The saved location is a PageAnchor under other field names — a page
       // plus a fraction into it, for exactly the reason the anchor exists: it
       // has to survive being reopened at another zoom or window size.
-      el.scrollTop = scrollTopForAnchor(layout.top, layout.displayH, {
-        page: resume.page,
-        offset: resume.pageOffset ?? 0,
-      });
+      el.scrollTop =
+        scrollTopForAnchor(layout.top, layout.displayH, {
+          page: resume.page,
+          offset: resume.pageOffset ?? 0,
+        }) - insetTop;
     }
     emit(resume.page);
-  }, [resume, container.h, layout, flow, emit]);
+  }, [resume, container.h, layout, flow, emit, insetTop]);
 
   // Keep your place when the flow changes.
   //
@@ -620,7 +704,11 @@ export const FixedPageViewer = forwardRef<
     let raf = 0;
     const place = () => {
       const el = scrollRef.current;
-      const top = layoutRef.current.top[target];
+      const pageTop = layoutRef.current.top[target];
+      const top =
+        pageTop == null
+          ? undefined
+          : Math.max(0, pageTop - PAD - insetsRef.current.top);
       if (el && top != null) {
         el.scrollTop = top;
         if (Math.abs(el.scrollTop - top) <= 2) return; // the column can hold it
@@ -675,7 +763,9 @@ export const FixedPageViewer = forwardRef<
   // against the zero-height column. Restoring that writes `scrollTop =
   // top[0]`, which is PAD — so every book that did not resume would open with
   // its top gutter scrolled away. Same guard as `prevFlow` above.
-  const scaleKey = `${zoom}|${fit}|${usableW}|${container.h}`;
+  // The insets join them: they move every page's offset (top) and, at fit
+  // page, its scale.
+  const scaleKey = `${zoom}|${fit}|${usableW}|${container.h}|${insetTop}|${insetBottom}`;
   const prevScale = useRef(scaleKey);
   useLayoutEffect(() => {
     if (prevScale.current === scaleKey) return;
@@ -684,7 +774,8 @@ export const FixedPageViewer = forwardRef<
     const el = scrollRef.current;
     const anchor = anchorRef.current;
     if (!el || !anchor) return;
-    el.scrollTop = scrollTopForAnchor(layout.top, layout.displayH, anchor);
+    el.scrollTop =
+      scrollTopForAnchor(layout.top, layout.displayH, anchor) - insetTop;
   }, [scaleKey]);
 
   // Tell the source which pages are mounted, so a source that caches page
@@ -797,7 +888,19 @@ export const FixedPageViewer = forwardRef<
       }
       const sc = layout.displayW[current] / s.w;
       const cur = current;
-      void source.renderPage(cur, host, sc).then(() => {
+      const landing = source.renderPage(cur, host, sc);
+      // A page already drawn is MOVED here out of the overlay, synchronously
+      // (PdfPageSource re-parents its canvas). The overlay is then an empty
+      // opaque sheet on top of the finished page until React drops it — a
+      // blank frame on about one turn in eight in WebKit. Hide it now.
+      const overlay = peekHostRef.current;
+      if (
+        overlay &&
+        peekHold.current === cur &&
+        overlay.firstElementChild === null
+      )
+        overlay.style.visibility = "hidden";
+      void landing.then(() => {
         setRendered((prev) => (prev.has(cur) ? prev : new Set(prev).add(cur)));
         dropOverlayRef.current(cur);
       });
@@ -850,6 +953,9 @@ export const FixedPageViewer = forwardRef<
       }
       const incoming = peekHostRef.current;
       if (incoming) {
+        // Hidden by the landing of the previous turn (see the paged render
+        // effect); a turn queued right behind it can reuse the same node.
+        incoming.style.visibility = "";
         incoming.style.willChange = "transform";
         incoming.style.transition = transition;
         incoming.style.transform = at(peekPx);
@@ -890,7 +996,9 @@ export const FixedPageViewer = forwardRef<
       turning.current = false;
       accum.current = 0;
       peekDir.current = 0;
-      turnLockUntil.current = performance.now() + POST_LOCK_MS;
+      const now = performance.now();
+      turnLockUntil.current = now + POST_LOCK_MS;
+      turnLockCap.current = now + MOMENTUM_CAP_MS;
       pendingScroll.current = d > 0 ? "top" : "bottom";
       peekHold.current = neighbor;
       // The base host is keyed on `current`, so swapping pages hands us a fresh
@@ -906,6 +1014,7 @@ export const FixedPageViewer = forwardRef<
         releaseTurn();
         setPeek(null);
         setPeekIdx(null);
+        runQueuedRef.current();
       }, 500);
     },
     [releaseTurn],
@@ -1030,7 +1139,7 @@ export const FixedPageViewer = forwardRef<
       turnLive.current = true;
       setPeekIdx(dest);
       setPeek({ dir: d });
-      window.requestAnimationFrame(() => {
+      const slide = () => {
         // Seat the layers at reveal 0, flush, then animate to 1 on the next
         // frame. WKWebView otherwise coalesces the two writes and the slide
         // snaps — see the two-frame gotcha.
@@ -1041,7 +1150,31 @@ export const FixedPageViewer = forwardRef<
           if (turnTimer.current) window.clearTimeout(turnTimer.current);
           turnTimer.current = window.setTimeout(() => finalize(d), ANIM_MS);
         });
-      });
+      };
+      // Slide once the incoming page is drawn, or after PEEK_READY_WAIT_MS,
+      // whichever is first. A warmed page is a re-parent and resolves at once,
+      // so this only ever waits for a page the prefetcher did not reach. The
+      // overlay sits off-screen at reveal 0 meanwhile, so the wait shows
+      // nothing.
+      const t0 = performance.now();
+      let started = false;
+      const go = () => {
+        if (started) return;
+        started = true;
+        window.requestAnimationFrame(slide);
+      };
+      const poll = () => {
+        if (started) return;
+        const r = peekRender.current;
+        if (r && r.idx === dest) {
+          void r.done.then(go, go);
+          return;
+        }
+        if (performance.now() - t0 >= PEEK_READY_WAIT_MS) go();
+        else window.requestAnimationFrame(poll);
+      };
+      window.setTimeout(go, PEEK_READY_WAIT_MS);
+      poll();
     },
     [clampIdx, finalize, writeTurn],
   );
@@ -1051,13 +1184,27 @@ export const FixedPageViewer = forwardRef<
       const clamped = Math.max(0, Math.min(pageCount - 1, i));
       if (flow === "scroll") {
         scrollRef.current?.scrollTo({
-          top: layout.top[clamped],
+          // Seat the page's head just under the top bar, not behind it.
+          top: Math.max(0, layout.top[clamped] - PAD - insetTop),
           behavior: reducedMotion ? "auto" : "smooth",
         });
         return;
       }
-      if (turning.current || peekDir.current) return; // a turn is already running
       const cur = currentRef.current;
+      if (turning.current || peekDir.current || peekHold.current != null) {
+        // A turn is running (or still handing its page over). A step in the
+        // same direction is queued and run when it lands, instead of lost.
+        const d = Math.sign(clamped - cur);
+        const busyDir = peekDir.current || lastDir.current;
+        if (Math.abs(clamped - cur) <= 1 && d !== 0 && d === busyDir) {
+          queuedTurns.current = Math.max(
+            -MAX_QUEUED_TURNS,
+            Math.min(MAX_QUEUED_TURNS, queuedTurns.current + d),
+          );
+        }
+        return;
+      }
+      queuedTurns.current = 0;
       if (clamped === cur) return;
       if (Math.abs(clamped - cur) === 1) {
         animateTurn((clamped - cur) as 1 | -1);
@@ -1066,10 +1213,22 @@ export const FixedPageViewer = forwardRef<
         setCurrent(clamped);
       }
     },
-    [flow, layout, pageCount, reducedMotion, animateTurn],
+    [flow, layout, pageCount, reducedMotion, animateTurn, insetTop],
   );
 
-  useImperativeHandle(ref, () => ({ goToPage }), [goToPage]);
+  // Run one queued turn, once the last one has fully landed.
+  const runQueuedRef = useRef<() => void>(() => {});
+  runQueuedRef.current = () => {
+    const q = queuedTurns.current;
+    if (q === 0) return;
+    const d = (q > 0 ? 1 : -1) as 1 | -1;
+    queuedTurns.current = q - d;
+    window.requestAnimationFrame(() => {
+      if (turning.current || peekDir.current || peekHold.current != null)
+        return;
+      animateTurn(d);
+    });
+  };
 
   const flip = useCallback(
     (delta: number) => goToPage(current + delta),
@@ -1128,8 +1287,21 @@ export const FixedPageViewer = forwardRef<
         if (!atEdge) return; // room to pan — let native scroll do it
         const dest = clampIdx(currentRef.current + d);
         if (dest === currentRef.current) return; // first / last page
+        // The dying tail of a trackpad's momentum (a few px per event) never
+        // opens a turn: past MOMENTUM_CAP_MS it used to peek the next page in
+        // for a second and spring it back. A real push starts bigger.
+        if (Math.abs(e.deltaY) < 4 && e.timeStamp >= turnLockUntil.current) {
+          e.preventDefault();
+          return;
+        }
         if (e.timeStamp < turnLockUntil.current || peekHold.current != null) {
           e.preventDefault(); // still settling the previous turn
+          // Momentum from the swipe that turned it — keep it locked until the
+          // stream pauses (see MOMENTUM_GAP_MS).
+          turnLockUntil.current = Math.min(
+            turnLockCap.current,
+            Math.max(turnLockUntil.current, e.timeStamp + MOMENTUM_GAP_MS),
+          );
           return;
         }
         e.preventDefault();
@@ -1195,6 +1367,12 @@ export const FixedPageViewer = forwardRef<
     const onMove = (e: PointerEvent) => {
       const s = touch.current;
       if (e.pointerId !== s.pointerId) return;
+      // A long-press drag or a handle is moving a selection edge — the finger
+      // is working with the text, and the page must stay where it is.
+      if (selectingRef.current || handleDragRef.current) {
+        s.axis = "";
+        return;
+      }
       const dx = e.clientX - s.x;
       const dy = e.clientY - s.y;
 
@@ -1352,7 +1530,9 @@ export const FixedPageViewer = forwardRef<
         });
       }
       const sc = (layout.displayW[peekIdx] || usableW) / s.w;
-      await source.renderPage(peekIdx, host, sc);
+      const done = source.renderPage(peekIdx, host, sc);
+      peekRender.current = { idx: peekIdx, done };
+      await done;
     })();
     return () => {
       cancelled = true;
@@ -1388,7 +1568,16 @@ export const FixedPageViewer = forwardRef<
         const i = wanted[k];
         const host = warmRefs.current[k];
         if (cancelled || !host || i < 0 || i >= pageCount) continue;
-        if (turnLive.current) return; // a turn owns the canvases right now
+        // A turn owns two canvases — the page leaving and the one sliding in.
+        // Re-parenting either would yank it out of the animation, so those
+        // two are skipped; the rest are warmed regardless. Giving up whenever
+        // ANY turn was live meant quick successive turns never warmed
+        // anything, and every one slid in a blank sheet.
+        if (
+          turnLive.current &&
+          (i === peekNeighbor.current || i === currentRef.current)
+        )
+          continue;
         let size = sz[i];
         if (!size) {
           try {
@@ -1440,6 +1629,7 @@ export const FixedPageViewer = forwardRef<
       releaseTurn();
       setPeek(null);
       setPeekIdx(null);
+      runQueuedRef.current();
     },
     [releaseTurn],
   );
@@ -1482,25 +1672,486 @@ export const FixedPageViewer = forwardRef<
     const r = el.getBoundingClientRect();
     return edgeSide(clientX, r.left, r.width);
   }, []);
-  const onPagedClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (suppressClick.current) {
-        // Trailing click of a drag that already turned the page.
-        suppressClick.current = false;
+  // ---- Taps -----------------------------------------------------------------
+  //
+  // One path for every tap on the page, in a fixed order, so each thing on the
+  // page gets first refusal before the page itself does:
+  //   1. a drawn selection is up → the tap dismisses it, nothing else;
+  //   2. a link → follow it;
+  //   3. a highlight → its edit/delete toolbar;
+  //   4. paged flow, an edge → turn;
+  //   5. anything else is the reader's (`onTap`) — the phone's chrome toggle.
+  // A press that moved, or (by touch) one held into a long-press, is a scroll,
+  // a drag or a selection, not a tap — see reader/chrome/pageTap.ts.
+  const pressRef = useRef<(Tap & { mouse: boolean }) | null>(null);
+  const suppressClickUntil = useRef(0);
+  const onPagePointerDown = useCallback((e: React.PointerEvent) => {
+    pressRef.current = {
+      t: e.timeStamp,
+      x: e.clientX,
+      y: e.clientY,
+      mouse: e.pointerType === "mouse",
+    };
+  }, []);
+
+  /** Follow the link under a point, if there is one. */
+  const followLinkAt = useCallback(
+    (target: HTMLElement | null, x: number, y: number): boolean => {
+      // DOCX: the document's own anchors are real elements in the text.
+      const a = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (a) {
+        const href = a.getAttribute("href") ?? "";
+        if (href.startsWith("#")) {
+          const page = source.pageForAnchor?.(
+            decodeURIComponent(href.slice(1)),
+          );
+          if (page != null) goToPage(page);
+          return true;
+        }
+        if (/^(https?:|mailto:)/i.test(href)) {
+          onOpenUrl?.(href);
+          return true;
+        }
+        return false;
+      }
+      if (kind !== "pdf") return false;
+      const link = pdfLinkAt(x, y);
+      if (!link) return false;
+      if (link.page != null) goToPage(link.page);
+      else if (link.url) onOpenUrl?.(link.url);
+      return true;
+    },
+    [source, kind, goToPage, onOpenUrl],
+  );
+
+  const onPageClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    // A document link's own navigation would change the app's URL.
+    if (target?.closest?.("a[href]")) e.preventDefault();
+    if (e.timeStamp < suppressClickUntil.current) {
+      // The click a selection gesture ends with.
+      suppressClickUntil.current = 0;
+      return;
+    }
+    if (suppressClick.current) {
+      // Trailing click of a drag that already turned the page.
+      suppressClick.current = false;
+      return;
+    }
+    if (target?.closest?.("[data-selection-handle]")) return;
+    const press = pressRef.current;
+    pressRef.current = null;
+    const up: Tap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+    const tap = press?.mouse
+      ? stayedPut(up.x - press.x, up.y - press.y, LONG_PRESS_MOVE_TOLERANCE)
+      : isPageTap(press, up);
+    if (!tap) return;
+    if (touchRangeRef.current) {
+      clearTouchSelection();
+      return;
+    }
+    if (followLinkAt(target, up.x, up.y)) return;
+    if (kind === "pdf") {
+      const hit = pdfHighlightAt(up.x, up.y);
+      if (hit) {
+        onHighlightClick(hit.id, hit.rect);
         return;
       }
-      const edge = edgeSideAt(e.clientX);
-      if (edge !== 0) flip(forwardFor(edge, dir === "rtl"));
-    },
-    [edgeSideAt, flip, dir],
-  );
-  const onPagedMove = useCallback(
+    } else {
+      const mark = target?.closest?.("[data-h-id]") as HTMLElement | null;
+      const id = mark?.getAttribute("data-h-id");
+      if (mark && id) {
+        onHighlightClick(id, mark.getBoundingClientRect());
+        return;
+      }
+    }
+    if (flow === "paged") {
+      const edge = edgeSideAt(up.x);
+      if (edge !== 0) {
+        flip(forwardFor(edge, dir === "rtl"));
+        return;
+      }
+    }
+    onTap?.(up);
+  };
+
+  // Desktop pointer feedback: a hand over a link, and over a paged edge.
+  const onPageMouseMove = useCallback(
     (e: React.MouseEvent) => {
       const el = scrollRef.current;
-      if (el)
-        el.style.cursor = edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
+      if (!el) return;
+      const target = e.target as HTMLElement | null;
+      const overLink =
+        !!target?.closest?.("a[href]") ||
+        (kind === "pdf" && pdfLinkAt(e.clientX, e.clientY) !== null);
+      el.toggleAttribute("data-fixed-over-link", overLink);
+      if (flow === "paged")
+        el.style.cursor =
+          !overLink && edgeSideAt(e.clientX) === 0 ? "default" : "pointer";
     },
-    [edgeSideAt],
+    [kind, flow, edgeSideAt],
+  );
+
+  // ---- The phone's own selection ---------------------------------------------
+  //
+  // Long-press a word, drag to extend, let go; two handles then move either
+  // end. The selection lives here, as two text endpoints, and is drawn by
+  // SelectionLayer inside the scroller — never on `window.getSelection()`, so
+  // the system's copy/share toolbar has nothing to anchor to (it used to sit
+  // over the page, and over the panels sheet once that opened, because the
+  // native selection outlived the gesture). The same model as the EPUB phone
+  // reader, with a caret finder for pages instead of paragraphs (caretNear).
+  const touchRangeRef = useRef<{ a: TextEndpoint; b: TextEndpoint } | null>(
+    null,
+  );
+  const [touchRange, setTouchRange] = useState<{
+    a: TextEndpoint;
+    b: TextEndpoint;
+  } | null>(null);
+  const [selGeom, setSelGeom] = useState<SelectionGeometry | null>(null);
+  const [selDragging, setSelDragging] = useState(false);
+  /** A long-press drag owns the pointer. */
+  const selectingRef = useRef(false);
+  /** The handle being dragged: the edge that stays put, and the offset from
+   *  the finger to the caret it moves. */
+  const handleDragRef = useRef<{
+    pointerId: number;
+    fixed: TextEndpoint;
+    dx: number;
+    dy: number;
+  } | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  const setTouchSelection = useCallback(
+    (a: TextEndpoint, b: TextEndpoint) => {
+      const range = orderedRange(a, b);
+      if (range.collapsed) return;
+      const prev = touchRangeRef.current;
+      if (
+        prev &&
+        prev.a.node === a.node &&
+        prev.a.offset === a.offset &&
+        prev.b.node === b.node &&
+        prev.b.offset === b.offset
+      ) {
+        return;
+      }
+      touchRangeRef.current = { a, b };
+      setTouchRange({ a, b });
+      const scroller = scrollRef.current;
+      onSelectRef.current(
+        scroller ? selectionFromRange(range, scroller, kind) : null,
+      );
+    },
+    [kind],
+  );
+
+  const clearTouchSelection = useCallback(() => {
+    if (!touchRangeRef.current && !handleDragRef.current) return;
+    touchRangeRef.current = null;
+    handleDragRef.current = null;
+    selectingRef.current = false;
+    setTouchRange(null);
+    setSelDragging(false);
+    onSelectRef.current(null);
+  }, []);
+
+  /** The page hosts on screen — where a finger can be in the text. */
+  const liveHosts = useCallback(
+    () => Array.from(hostRefs.current.values()),
+    [],
+  );
+
+  // Long-press + drag.
+  useEffect(() => {
+    if (!touchSelect) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let pointerId: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let timer: number | null = null;
+    // The long-pressed word: a minimum the drag extends from, whole words at
+    // a time, in whichever direction the finger goes.
+    let wordStart: TextEndpoint | null = null;
+    let wordEnd: TextEndpoint | null = null;
+    const cancelTimer = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (pointerId !== null) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-selection-handle]")) return;
+      if (!target?.closest("[data-fixed-host]")) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      selectingRef.current = false;
+      cancelTimer();
+      timer = window.setTimeout(() => {
+        timer = null;
+        // A page turn took the gesture meanwhile.
+        if (pointerId === null || peekDir.current || turning.current) return;
+        const ep = caretNear(
+          liveHosts(),
+          kind,
+          startX,
+          startY,
+          LONG_PRESS_REACH,
+        );
+        if (!ep) return;
+        const [ws, we] = wordAround(ep.node.data, ep.offset);
+        if (ws === we) return;
+        try {
+          el.setPointerCapture(pointerId);
+        } catch {
+          return;
+        }
+        wordStart = { node: ep.node, offset: ws };
+        wordEnd = { node: ep.node, offset: we };
+        selectingRef.current = true;
+        setSelDragging(true);
+        setTouchSelection(wordStart, wordEnd);
+      }, LONG_PRESS_MS);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      if (!selectingRef.current) {
+        // Moved before the hold landed: a scroll or a turn, not a selection.
+        const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (moved > LONG_PRESS_MOVE_TOLERANCE) {
+          cancelTimer();
+          pointerId = null;
+        }
+        return;
+      }
+      if (!wordStart || !wordEnd) return;
+      const hit = caretNear(liveHosts(), kind, e.clientX, e.clientY);
+      if (!hit) return;
+      let from = wordStart;
+      let to = wordEnd;
+      if (comesBefore(hit, wordStart)) from = snapEndpoint(hit, "start");
+      else if (comesBefore(wordEnd, hit)) to = snapEndpoint(hit, "end");
+      setTouchSelection(from, to);
+      e.preventDefault();
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      cancelTimer();
+      if (selectingRef.current) {
+        try {
+          el.releasePointerCapture(e.pointerId);
+        } catch {
+          // already released
+        }
+        if (e.type === "pointerup")
+          suppressClickUntil.current = e.timeStamp + CLICK_AFTER_UP_MS;
+        setSelDragging(false);
+      }
+      pointerId = null;
+      selectingRef.current = false;
+      wordStart = null;
+      wordEnd = null;
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    return () => {
+      cancelTimer();
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+    };
+  }, [touchSelect, kind, liveHosts, setTouchSelection]);
+
+  // Handle drags. Mounted while handles are up, not keyed to where they are —
+  // re-registering document listeners every drag frame dropped moves.
+  const handlesUp = touchRange !== null && selGeom !== null;
+  useEffect(() => {
+    if (!handlesUp) return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    let last: { x: number; y: number } | null = null;
+    let raf = 0;
+    const extendTo = (x: number, y: number) => {
+      const drag = handleDragRef.current;
+      if (!drag) return;
+      // Asked at the CARET, not the finger: the grip hangs off the line.
+      const hit = caretNear(liveHosts(), kind, x + drag.dx, y + drag.dy);
+      if (!hit) return;
+      const forward = !comesBefore(hit, drag.fixed);
+      setTouchSelection(
+        drag.fixed,
+        snapEndpoint(hit, forward ? "end" : "start"),
+      );
+    };
+    // Held near the top or bottom of the reading area, a handle scrolls the
+    // page towards it — the only way to select past the bottom of the glass.
+    const edgeScroll = () => {
+      raf = 0;
+      if (!handleDragRef.current || !last) return;
+      const r = scroller.getBoundingClientRect();
+      const { top: it, bottom: ib } = insetsRef.current;
+      const top = r.top + it + EDGE_SCROLL_ZONE;
+      const bottom = r.bottom - ib - EDGE_SCROLL_ZONE;
+      const depth =
+        last.y < top
+          ? -(top - last.y) / EDGE_SCROLL_ZONE
+          : last.y > bottom
+            ? (last.y - bottom) / EDGE_SCROLL_ZONE
+            : 0;
+      if (depth === 0) return;
+      const step =
+        Math.sign(depth) *
+        Math.max(2, Math.round(EDGE_SCROLL_MAX * Math.min(1, Math.abs(depth))));
+      const before = scroller.scrollTop;
+      scroller.scrollTop = before + step;
+      if (scroller.scrollTop === before) return;
+      extendTo(last.x, last.y);
+      raf = requestAnimationFrame(edgeScroll);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== handleDragRef.current?.pointerId) return;
+      last = { x: e.clientX, y: e.clientY };
+      extendTo(e.clientX, e.clientY);
+      if (!raf) raf = requestAnimationFrame(edgeScroll);
+      e.preventDefault();
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== handleDragRef.current?.pointerId) return;
+      if (e.type === "pointerup")
+        suppressClickUntil.current = e.timeStamp + CLICK_AFTER_UP_MS;
+      handleDragRef.current = null;
+      last = null;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      setSelDragging(false);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, [handlesUp, kind, liveHosts, setTouchSelection]);
+
+  const onHandleDown = (
+    which: "start" | "end",
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = touchRangeRef.current;
+    if (!r) return;
+    const [start, end] = comesBefore(r.b, r.a) ? [r.b, r.a] : [r.a, r.b];
+    const bar = (
+      e.currentTarget.parentElement ?? e.currentTarget
+    ).getBoundingClientRect();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // the document listeners still see the drag
+    }
+    handleDragRef.current = {
+      pointerId: e.pointerId,
+      fixed: which === "start" ? end : start,
+      dx: bar.left + bar.width / 2 - e.clientX,
+      dy: bar.top + bar.height / 2 - e.clientY,
+    };
+    setSelDragging(true);
+  };
+
+  // What the selection looks like, measured when it changes or the pages
+  // re-lay out. Never on scroll: it is drawn in the scroller's own
+  // coordinates and moves with the page by itself.
+  useLayoutEffect(() => {
+    if (!touchRange) {
+      setSelGeom(null);
+      return;
+    }
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    // The text under it was rebuilt (a DOCX page re-rendered, a PDF page
+    // re-rasterized at a new scale): the endpoints point at nothing.
+    if (!touchRange.a.node.isConnected || !touchRange.b.node.isConnected) {
+      clearTouchSelection();
+      return;
+    }
+    const next = measureSelection(
+      orderedRange(touchRange.a, touchRange.b),
+      contentOrigin(scroller),
+    );
+    if (next) setSelGeom((prev) => (sameGeometry(prev, next) ? prev : next));
+  }, [touchRange, layout, clearTouchSelection]);
+
+  // Anything that moves or replaces the pages under a selection ends it: a
+  // turn, a flow switch, a rescale. In scroll flow `current` is only the page
+  // nearest the top, which changes under a handle dragged past a page break —
+  // so there it is not a reason.
+  const turnKey = flow === "paged" ? current : -1;
+  useEffect(() => {
+    clearTouchSelection();
+  }, [turnKey, flow, scaleKey, highlightNonce, clearTouchSelection]);
+
+  // The page moving under an open toolbar: it stands aside, and comes back
+  // once the page is still. Two renders a scroll, not one per frame.
+  const [pageMoving, setPageMoving] = useState(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!trackScroll || !el) return;
+    let timer = 0;
+    let moving = false;
+    const onScroll = () => {
+      if (handleDragRef.current) return; // the drag's own edge scroll
+      if (!moving) {
+        moving = true;
+        setPageMoving(true);
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        moving = false;
+        setPageMoving(false);
+      }, SCROLL_SETTLE_MS);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.clearTimeout(timer);
+      setPageMoving(false);
+    };
+  }, [trackScroll]);
+  const held = selDragging || pageMoving;
+  useEffect(() => {
+    onHoldChange?.(held);
+  }, [held, onHoldChange]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      goToPage,
+      clearSelection: clearTouchSelection,
+      selectionBox() {
+        const r = touchRangeRef.current;
+        if (!r) return liveSelectionBox();
+        const range = orderedRange(r.a, r.b);
+        return boxFromRects(
+          Array.from(range.getClientRects()),
+          dirOf(range.commonAncestorContainer),
+        );
+      },
+      isSelecting: () => selectingRef.current || handleDragRef.current !== null,
+    }),
+    [goToPage, clearTouchSelection],
   );
 
   const skeletonStyle = (
@@ -1539,6 +2190,22 @@ export const FixedPageViewer = forwardRef<
   overflowX.current = Math.max(0, (layout.displayW[current] || 0) - contentW);
 
   const nIdx = peekIdx ?? 0;
+  // Going BACK to a page taller than the view, the incoming page must show its
+  // FOOT, joined to the head of the page being left — that is where the base
+  // lands it after the swap (`pendingScroll: "bottom"`). Centred with
+  // `margin: auto` a tall page pins to its head instead, and the swap then
+  // jumped it by its whole overflow (measured: 460px in one frame).
+  const peekOverflow =
+    peek?.dir === -1
+      ? Math.max(
+          0,
+          (layout.displayH[nIdx] || 0) +
+            2 * PAD +
+            insetTop +
+            insetBottom -
+            container.h,
+        )
+      : 0;
 
   // A turn pans across a filmstrip of pages: BOTH layers move as one, the
   // incoming page entering from the edge while the outgoing leaves by exactly
@@ -1562,6 +2229,7 @@ export const FixedPageViewer = forwardRef<
   return (
     <div
       dir={dir}
+      data-fixed-viewer
       style={{
         position: "absolute",
         inset: 0,
@@ -1575,14 +2243,18 @@ export const FixedPageViewer = forwardRef<
         ...({
           "--reading-ink": theme.ink,
           "--reading-paper": surfaces.page,
+          // DOCX pages read this for their `user-select` (DocxPageSource):
+          // the phone draws its own selection and must never get a native one.
+          ...(touchSelect ? { "--fixed-select": "none" } : null),
         } as React.CSSProperties),
       }}
     >
       <div
         ref={scrollRef}
         className="no-scrollbar"
-        onClick={flow === "paged" ? onPagedClick : undefined}
-        onMouseMove={flow === "paged" ? onPagedMove : undefined}
+        onPointerDown={onPagePointerDown}
+        onClick={onPageClick}
+        onMouseMove={onPageMouseMove}
         style={{
           position: "absolute",
           inset: 0,
@@ -1591,13 +2263,27 @@ export const FixedPageViewer = forwardRef<
           background: theme.bg,
           // Paged: claim horizontal gestures for the page-turn drag. Without
           // this the compositor can take the pan before the touch handler sees
-          // it, and the strip never follows the finger.
-          touchAction: flow === "paged" ? "pan-y" : undefined,
+          // it, and the strip never follows the finger. The phone in scroll
+          // flow claims them too while nothing is wider than the screen, so a
+          // long-press drag sideways extends the selection instead of being
+          // taken for a pan (the EPUB phone reader is pan-y for the same
+          // reason); a zoomed page keeps the native sideways pan.
+          touchAction:
+            flow === "paged" || (touchSelect && overflowX.current <= 4)
+              ? "pan-y"
+              : undefined,
+          // No system callout (link preview, "save image") on a held finger.
+          ...(touchSelect
+            ? ({ WebkitTouchCallout: "none" } as React.CSSProperties)
+            : null),
           // Paged: a scrollable flex box. The page uses margin:auto, so it
           // centers when it fits and pins to the top-start (fully scrollable,
           // head never clipped) when it's taller / wider than the viewport.
           ...(flow === "paged"
-            ? { display: "flex", padding: `${PAD}px ${padX}px` }
+            ? {
+                display: "flex",
+                padding: `${PAD + insetTop}px ${padX}px ${PAD + insetBottom}px`,
+              }
             : null),
         }}
       >
@@ -1613,6 +2299,7 @@ export const FixedPageViewer = forwardRef<
               <div
                 key={i}
                 ref={hostCb(i)}
+                data-fixed-host={i}
                 style={{
                   position: "absolute",
                   top: layout.top[i],
@@ -1632,6 +2319,7 @@ export const FixedPageViewer = forwardRef<
             <div
               key={current}
               ref={hostCb(current)}
+              data-fixed-host={current}
               style={{
                 margin: "auto",
                 flexShrink: 0,
@@ -1670,6 +2358,26 @@ export const FixedPageViewer = forwardRef<
             )}
           </>
         )}
+        {touchRange && selGeom && (
+          // Raised above the pages: pdf.js's text layer carries its own
+          // z-index with no stacking context around it, so unlifted it
+          // painted over the handles and a touch on a grip landed on a text
+          // span — the browser scrolled the page instead of moving the edge.
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              zIndex: Z_LOCAL.raised,
+            }}
+          >
+            <SelectionLayer
+              geometry={selGeom}
+              dragging={selDragging}
+              onHandleDown={onHandleDown}
+            />
+          </div>
+        )}
       </div>
 
       {/* Peek overlay: the incoming page, sliding in from the edge as the turn
@@ -1687,13 +2395,14 @@ export const FixedPageViewer = forwardRef<
             // Mirror the base scroller's box exactly (flex + PAD + margin:auto
             // on the child) so the page lands where the settled page sits and
             // the swap is invisible.
-            padding: `${PAD}px ${padX}px`,
+            padding: `${PAD + insetTop}px ${padX}px ${PAD + insetBottom}px`,
           }}
         >
           <div
             ref={peekHostRef}
             style={{
-              margin: "auto",
+              margin:
+                peekOverflow > 0 ? `${-peekOverflow}px auto auto` : "auto",
               flexShrink: 0,
               // transform/transition are written by `writeTurn`; a layout
               // effect seats this at reveal 0 the moment it mounts so it never

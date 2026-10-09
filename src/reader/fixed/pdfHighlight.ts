@@ -5,31 +5,9 @@
 // rectangles the selection covered, normalized to the page box (0..1 on each
 // axis) so they survive zoom, a window resize and a fit-mode change without
 // re-anchoring. Painting them back is PdfPageSource's job; capturing them is
-// this file's.
+// fixedSelection.ts's, with the rect merging here.
 
 import type { NormRect } from "../../store/library";
-
-/** Nearest ancestor that is a rendered PDF page (see PdfPageSource). */
-function pageWrapOf(node: Node | null): HTMLElement | null {
-  let el: Element | null =
-    node && node.nodeType === Node.ELEMENT_NODE
-      ? (node as Element)
-      : (node?.parentElement ?? null);
-  while (el) {
-    if (el instanceof HTMLElement && el.hasAttribute("data-page-index"))
-      return el;
-    el = el.parentElement;
-  }
-  return null;
-}
-
-export interface PdfSelectionAnchor {
-  page: number;
-  rects: NormRect[];
-  text: string;
-  /** Viewport-coordinate rect of the selection, for popover placement. */
-  rect: DOMRect;
-}
 
 /** Two rects are on the same line when their vertical centres sit within half a
  *  line height of each other. Comparing tops alone splits a line wherever a
@@ -79,42 +57,6 @@ export function mergeRects(rects: readonly NormRect[]): NormRect[] {
   return out;
 }
 
-/** Resolve the current window selection to a single-page PDF anchor, or null if
- *  there is no usable selection (collapsed, outside `root`, or spanning more
- *  than one page — multi-page is deferred, matching the DOCX single-block
- *  rule). */
-export function resolvePdfSelection(
-  root: HTMLElement,
-): PdfSelectionAnchor | null {
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
-  const text = sel.toString();
-  if (!text.trim()) return null;
-  const range = sel.getRangeAt(0);
-  if (
-    !root.contains(range.startContainer) ||
-    !root.contains(range.endContainer)
-  ) {
-    return null;
-  }
-  const wrap = pageWrapOf(range.startContainer);
-  if (!wrap || wrap !== pageWrapOf(range.endContainer)) return null;
-  const page = Number(wrap.getAttribute("data-page-index"));
-  if (!Number.isFinite(page)) return null;
-  const box = wrap.getBoundingClientRect();
-  if (box.width <= 0 || box.height <= 0) return null;
-  const rects = mergeRects(
-    Array.from(range.getClientRects(), (r) => ({
-      x: (r.left - box.left) / box.width,
-      y: (r.top - box.top) / box.height,
-      w: r.width / box.width,
-      h: r.height / box.height,
-    })),
-  );
-  if (rects.length === 0) return null;
-  return { page, rects, text, rect: range.getBoundingClientRect() };
-}
-
 /** Which highlight, if any, sits under a viewport point.
  *
  *  A hit test rather than a DOM `closest()`: the painted marks live UNDER the
@@ -135,6 +77,29 @@ export function pdfHighlightAt(
     if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
       const id = el.getAttribute("data-h-id");
       if (id) return { id, rect: r };
+    }
+  }
+  return null;
+}
+
+/** Which link, if any, sits under a viewport point — found the same way as a
+ *  highlight, for the same reason: the link areas are `pointer-events: none`
+ *  so they never stand between a finger and the text it wants to select. */
+export function pdfLinkAt(
+  x: number,
+  y: number,
+): { page?: number; url?: string } | null {
+  const wrap = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest(
+    "[data-page-index]",
+  );
+  if (!wrap) return null;
+  for (const el of wrap.querySelectorAll<HTMLElement>("[data-pdf-link]")) {
+    const r = el.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      const page = el.getAttribute("data-link-page");
+      const url = el.getAttribute("data-link-url");
+      if (page != null) return { page: Number(page) };
+      if (url) return { url };
     }
   }
   return null;

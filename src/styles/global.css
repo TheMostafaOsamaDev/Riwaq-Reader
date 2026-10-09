@@ -1094,6 +1094,13 @@ input:focus-visible,
   top: 0;
   height: 0;
 }
+/* Over a link on a fixed-layout page (FixedPageViewer sets the attribute on
+   its scroller by hit test — the link areas themselves take no pointer). The
+   text spans carry their own `cursor: text`, so the hand has to win over them. */
+[data-fixed-over-link],
+[data-fixed-over-link] * {
+  cursor: pointer !important;
+}
 /* Decorative glyphs pdf.js exposes as images carry no text to select. */
 .textLayer span[role="img"] {
   user-select: none;

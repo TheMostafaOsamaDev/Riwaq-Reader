@@ -29,6 +29,18 @@ export async function loadPdfjs(): Promise<typeof import("pdfjs-dist")> {
   return pdfjsPromise;
 }
 
+/** A link on a page: where it sits, normalized to the page box (0..1 on each
+ *  axis, origin top-left), and where it goes — a page in this document, or a
+ *  web address. */
+export interface PdfLink {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  page?: number;
+  url?: string;
+}
+
 export interface PdfMeta {
   title?: string;
   author?: string;
@@ -65,6 +77,13 @@ export interface PdfDoc {
     container: HTMLElement,
     scale: number,
   ): Promise<void>;
+  /** Page `i`'s links — a contents page's entries, a footnote marker, a URL.
+   *
+   *  pdf.js parses these as Link annotations; drawing them is the job of its
+   *  annotation layer, which this app does not use, so without this every
+   *  link in a book was dead print. Internal destinations are resolved to a
+   *  page index here so the caller never sees pdf.js's dest shapes. */
+  pageLinks(i: number): Promise<PdfLink[]>;
   /** Let go of page `i`'s cached resources.
    *
    *  pdf.js holds on to every page it has handed out until the document is
@@ -194,6 +213,47 @@ export async function openPdfDocument(source: PdfSource): Promise<PdfDoc> {
       } finally {
         if (textTasks.get(container) === layer) textTasks.delete(container);
       }
+    },
+
+    async pageLinks(i) {
+      const page = await doc.getPage(i + 1);
+      const vp = page.getViewport({ scale: 1 });
+      let annots: any[] = [];
+      try {
+        annots = await page.getAnnotations({ intent: "display" });
+      } catch {
+        return [];
+      }
+      const out: PdfLink[] = [];
+      for (const a of annots) {
+        if (a?.subtype !== "Link" || !Array.isArray(a.rect)) continue;
+        let target: { page?: number; url?: string } | null = null;
+        if (a.dest) {
+          try {
+            target = { page: await destToPageIndex(doc, a.dest) };
+          } catch {
+            target = null;
+          }
+        } else if (typeof a.url === "string" && a.url) {
+          target = { url: a.url };
+        }
+        if (!target) continue;
+        // PDF user space (origin bottom-left) → page CSS px at scale 1.
+        const [x1, y1, x2, y2] = vp.convertToViewportRectangle(a.rect);
+        const left = Math.min(x1, x2);
+        const top = Math.min(y1, y2);
+        const w = Math.abs(x2 - x1);
+        const h = Math.abs(y2 - y1);
+        if (w <= 0 || h <= 0) continue;
+        out.push({
+          x: left / vp.width,
+          y: top / vp.height,
+          w: w / vp.width,
+          h: h / vp.height,
+          ...target,
+        });
+      }
+      return out;
     },
 
     releasePage(i) {

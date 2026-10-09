@@ -7,11 +7,11 @@
 // cost ~400 MB of webview heap before the first page was drawn.
 
 import { BaseDirectory, stat } from "@tauri-apps/plugin-fs";
-import { openPdfDocument, type PdfDoc } from "../../pdf/pdfjs";
+import { openPdfDocument, type PdfDoc, type PdfLink } from "../../pdf/pdfjs";
 import { bookDir, type Highlight, type PdfBook } from "../../store/library";
 import { hlBg, hlMark, Z_LOCAL, type ThemeKey } from "../../styles/tokens";
 
-import type { FixedPageSource } from "./FixedPageSource";
+import type { FixedPageSource, SelectMode } from "./FixedPageSource";
 
 const BASE = BaseDirectory.AppData;
 // Never evict below this: the page on screen, the one sliding in, and one
@@ -54,6 +54,10 @@ function canvasBudgetBytes(): number {
  *              rects are stored normalized (0..1), so they are positioned in
  *              percentages against this and need no repaint on zoom or resize.
  *    marks     painted highlights. `pointer-events: none` — see `pdfHighlightAt`.
+ *    links     the page's link areas, invisible and `pointer-events: none` too,
+ *              found by hit test on a tap (see `pdfLinkAt`) for the same reason
+ *              as the marks: a link that took the pointer would be text you
+ *              could not select.
  *    text      pdf.js's transparent, selectable text layer, on top so a drag
  *              across the page selects text rather than the marks under it.
  */
@@ -61,6 +65,7 @@ interface Mounted {
   wrap: HTMLDivElement;
   canvas: HTMLCanvasElement;
   marks: HTMLDivElement;
+  links: HTMLDivElement;
   text: HTMLDivElement;
   scale: number;
   /** Backing-store bytes, so eviction can budget by memory rather than count. */
@@ -111,12 +116,14 @@ export async function createPdfPageSourceFrom(
   // Current highlights + theme, pushed in by the viewer via setHighlights.
   let curHighlights: Highlight[] = [];
   let curThemeKey: ThemeKey = "light";
-  // Whether the text layer should accept the pointer. Off in paged mode, where
-  // a horizontal drag is a page turn and would otherwise be swallowed by a text
-  // selection. The spans are still built either way — building them costs one
-  // getTextContent() per page, and keeping the layer identical across flows
-  // means switching flow never has to rebuild it.
-  let selectable = true;
+  // How the text layer takes the pointer — see SelectMode. The spans are
+  // built in every mode: building them costs one getTextContent() per page,
+  // and keeping the layer identical across modes means a switch never has to
+  // rebuild it.
+  let selectMode: SelectMode = "native";
+  // Each page's links, fetched once — they never change with scale, being
+  // normalized to the page box like the marks.
+  const linkCache = new Map<number, Promise<PdfLink[]>>();
 
   /** Build the three-layer page element. Empty until renderPage fills it. */
   function makeMount(i: number): Mounted {
@@ -140,6 +147,9 @@ export async function createPdfPageSourceFrom(
     const marks = document.createElement("div");
     marks.style.cssText =
       "position:absolute; inset:0; pointer-events:none; overflow:hidden;";
+    const links = document.createElement("div");
+    links.style.cssText =
+      "position:absolute; inset:0; pointer-events:none; overflow:hidden;";
     const text = document.createElement("div");
     // `.textLayer` in global.css styles the SPANS pdf.js creates (it owns their
     // creation, so they can only be reached from a stylesheet). The container's
@@ -154,15 +164,41 @@ export async function createPdfPageSourceFrom(
     text.style.cssText =
       "position:absolute; inset:0; overflow:clip; line-height:1; " +
       `text-align:initial; transform-origin:0 0; z-index:${Z_LOCAL.base};`;
-    wrap.append(canvas, marks, text);
+    wrap.append(canvas, marks, links, text);
     applySelectable(text);
-    return { wrap, canvas, marks, text, scale: 0, bytes: 0 };
+    void paintLinks(i, links);
+    return { wrap, canvas, marks, links, text, scale: 0, bytes: 0 };
   }
 
   function applySelectable(text: HTMLDivElement) {
-    text.style.pointerEvents = selectable ? "auto" : "none";
-    text.style.userSelect = selectable ? "text" : "none";
-    text.style.webkitUserSelect = selectable ? "text" : "none";
+    // "caret": hit-testable, so the phone's own selection can ask which
+    // character is under a finger, but never natively selectable — a native
+    // selection is what raises the system's copy/share toolbar.
+    text.style.pointerEvents = selectMode === "off" ? "none" : "auto";
+    const user = selectMode === "native" ? "text" : "none";
+    text.style.userSelect = user;
+    text.style.webkitUserSelect = user;
+  }
+
+  /** Lay a page's link areas out as percentages of the page box. */
+  async function paintLinks(i: number, layer: HTMLDivElement) {
+    let pending = linkCache.get(i);
+    if (!pending) {
+      pending = doc.pageLinks(i).catch(() => []);
+      linkCache.set(i, pending);
+    }
+    const links = await pending;
+    layer.textContent = "";
+    for (const l of links) {
+      const el = document.createElement("div");
+      el.setAttribute("data-pdf-link", "");
+      if (l.page != null) el.setAttribute("data-link-page", String(l.page));
+      if (l.url) el.setAttribute("data-link-url", l.url);
+      el.style.cssText =
+        `position:absolute; left:${l.x * 100}%; top:${l.y * 100}%; ` +
+        `width:${l.w * 100}%; height:${l.h * 100}%;`;
+      layer.appendChild(el);
+    }
   }
 
   /** Repaint one page's marks from the current highlight set. Positions are
@@ -242,6 +278,7 @@ export async function createPdfPageSourceFrom(
     m.wrap.remove();
     m.text.textContent = "";
     m.marks.textContent = "";
+    m.links.textContent = "";
     m.canvas.width = 0;
     m.canvas.height = 0;
     m.bytes = 0;
@@ -300,9 +337,9 @@ export async function createPdfPageSourceFrom(
       for (const [i, m] of mounted) paintMarks(i, m);
     },
 
-    setSelectable(on) {
-      if (selectable === on) return;
-      selectable = on;
+    setSelectable(mode) {
+      if (selectMode === mode) return;
+      selectMode = mode;
       for (const m of mounted.values()) applySelectable(m.text);
     },
 
