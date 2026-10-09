@@ -70,6 +70,12 @@
        `gh release list` is the source of truth, not the version a branch
        happened to be carrying. -->
   <releases>
+    <release version="0.8.0" date="2026-10-10">
+      <description>
+        <p>PDF and Word files can be highlighted on the phone the same way as books, with selections that cross a page break. Focus mode now works in PDF and Word files, and links in a PDF's contents take you to their page.</p>
+        <p>Page-by-page reading turns smoothly, scrolling a PDF holds steady, and a file reopens exactly where you stopped, at the zoom you left it on. Text selection in PDFs on the desktop no longer jumps to other lines, and a page no longer comes back blank after the app has been in the background.</p>
+      </description>
+    </release>
     <release version="0.7.2" date="2026-10-08">
       <description>
         <p>Packaging only: nothing changes inside the app. The Android build can now be published by F-Droid.</p>
