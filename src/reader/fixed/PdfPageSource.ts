@@ -74,6 +74,8 @@ interface Mounted {
   scale: number;
   /** Backing-store bytes, so eviction can budget by memory rather than count. */
   bytes: number;
+  /** A render is in flight — its canvas is blank on purpose (see `heal`). */
+  drawing?: boolean;
 }
 
 function reducedMotion(): boolean {
@@ -155,6 +157,12 @@ export async function createPdfPageSourceFrom(
       "position:relative; line-height:0; direction:ltr; font-size-adjust:none;";
     const canvas = document.createElement("canvas");
     canvas.style.display = "block";
+    // The browser's own word that the pixels went (where it gives one): the
+    // next render redraws the page rather than trusting the scale record.
+    canvas.addEventListener("contextlost", () => {
+      const m = mounted.get(i);
+      if (m && m.canvas === canvas) m.scale = 0;
+    });
     const marks = document.createElement("div");
     marks.style.cssText =
       "position:absolute; inset:0; pointer-events:none; overflow:hidden;";
@@ -179,6 +187,16 @@ export async function createPdfPageSourceFrom(
     applySelectable(text);
     void paintLinks(i, links);
     return { wrap, canvas, marks, links, text, scale: 0, bytes: 0 };
+  }
+
+  /** Draw a mounted page at `scale`, marked as drawing while it runs. */
+  async function draw(i: number, m: Mounted, scale: number) {
+    m.drawing = true;
+    try {
+      await doc.renderPage(i, m.canvas, scale);
+    } finally {
+      m.drawing = false;
+    }
   }
 
   function applySelectable(text: HTMLDivElement) {
@@ -336,6 +354,41 @@ export async function createPdfPageSourceFrom(
     outline: doc.outline,
     hasTextLayer: doc.hasTextLayer,
 
+    heal() {
+      // A drawn page whose pixels are gone. The browser may discard a
+      // canvas's GPU-backed contents while the app sits in the background —
+      // the element, its size and our "drawn at this scale" record all
+      // survive, so nothing ever redraws it: a white page (black, inverted)
+      // with no words. pdf.js paints an opaque background, so a drawn page
+      // never has a transparent pixel; three of them in a row is a page that
+      // lost its contents. A zeroed scale makes the next renderPage redraw.
+      let lost = false;
+      for (const m of mounted.values()) {
+        if (m.scale === 0 || m.drawing) continue;
+        const { width: w, height: h } = m.canvas;
+        let gone = w === 0 || h === 0;
+        if (!gone) {
+          try {
+            const ctx = m.canvas.getContext("2d");
+            gone =
+              !!ctx &&
+              [
+                [w >> 1, h >> 1],
+                [w >> 2, h >> 2],
+                [w - (w >> 2), h - (h >> 2)],
+              ].every(([x, y]) => ctx.getImageData(x, y, 1, 1).data[3] === 0);
+          } catch {
+            gone = false;
+          }
+        }
+        if (gone) {
+          m.scale = 0;
+          lost = true;
+        }
+      }
+      return lost;
+    },
+
     retain(pages) {
       retained = new Set(pages);
     },
@@ -384,7 +437,7 @@ export async function createPdfPageSourceFrom(
         // Same scale → the bitmap is still correct, nothing to redraw.
         if (entry.scale === want) return;
         entry.scale = want;
-        await doc.renderPage(i, entry.canvas, scale);
+        await draw(i, entry, scale);
         await doc.renderTextLayer(i, entry.text, scale);
         attachTextLayerSelection(entry.text);
         entry.bytes = canvasBytes(entry.canvas); // scale changed the backing store
@@ -407,10 +460,16 @@ export async function createPdfPageSourceFrom(
       host.appendChild(created.wrap);
       mounted.set(i, created);
       paintMarks(i, created);
-      await doc.renderPage(i, created.canvas, scale);
-      if (fade) {
-        created.canvas.style.transition = "opacity 140ms ease-out";
-        created.canvas.style.opacity = "1";
+      try {
+        await draw(i, created, scale);
+      } finally {
+        // In `finally`: a render that throws must not leave the page
+        // invisible for good — a later redraw goes down the cached path,
+        // which never touches opacity.
+        if (fade) {
+          created.canvas.style.transition = "opacity 140ms ease-out";
+          created.canvas.style.opacity = "1";
+        }
       }
       await doc.renderTextLayer(i, created.text, scale);
       attachTextLayerSelection(created.text);

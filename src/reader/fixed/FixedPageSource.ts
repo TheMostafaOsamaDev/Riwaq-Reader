@@ -62,6 +62,10 @@ export interface FixedPageSource {
    *  paints an overlay above the bitmap and updates it in place, so the call
    *  alone is enough. */
   setHighlights?(highlights: Highlight[], themeKey: ThemeKey): void;
+  /** PDF only — find drawn pages whose pixels the browser has since thrown
+   *  away (a background app's canvases can lose their contents), mark them
+   *  for redraw, and say whether any were found. */
+  heal?(): boolean;
   /** PDF only — how the text layer takes the pointer (see SelectMode). */
   setSelectable?(mode: SelectMode): void;
   destroy(): void;

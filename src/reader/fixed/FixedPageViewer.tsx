@@ -1041,7 +1041,41 @@ export const FixedPageViewer = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [flow, current, layout, sizes, tint, source, emit, highlightNonce]);
+  }, [
+    flow,
+    current,
+    layout,
+    sizes,
+    tint,
+    source,
+    emit,
+    highlightNonce,
+    healNonce,
+  ]);
+
+  // Coming back to the app: redraw any page whose pixels were thrown away
+  // while it was in the background (see FixedPageSource.heal) — it came back
+  // as a blank sheet otherwise, and stayed one.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!source.heal?.()) return;
+      renderedScale.current.clear();
+      setHealNonce((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("pageshow", check);
+    // Some losses arrive with no event at all; a slow, cheap check (three
+    // pixels per page on screen) catches those too.
+    const timer = window.setInterval(check, 5000);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("pageshow", check);
+      window.clearInterval(timer);
+    };
+  }, [source]);
 
   // ---- Paged turn controller ------------------------------------------------
 
