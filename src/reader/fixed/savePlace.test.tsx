@@ -98,8 +98,26 @@ it("saves a move WITHIN a page, at the fraction the reader is at", async () => {
   act(() => root.unmount());
 });
 
+/** A browser answers 0 for the `scrollTop` of a scroller that has left the
+ *  document; happy-dom keeps the old value, which once let a save that read
+ *  the detached scroller pass this test while saving page 1 in the app. */
+function detachedScrollerReadsZero() {
+  const el = host.querySelector<HTMLElement>(".no-scrollbar")!;
+  let value = el.scrollTop;
+  Object.defineProperty(el, "scrollTop", {
+    configurable: true,
+    get() {
+      return el.isConnected ? value : 0;
+    },
+    set(v: number) {
+      value = v;
+    },
+  });
+}
+
 it("writes a waiting save when the reader closes", async () => {
   await settle();
+  detachedScrollerReadsZero();
   const p5 = await pageBox(5);
   scrollTo(p5.top + 0.5 * p5.h);
   await settle(); // fewer than the 400ms the save waits

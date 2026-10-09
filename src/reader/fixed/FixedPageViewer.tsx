@@ -559,56 +559,58 @@ export const FixedPageViewer = forwardRef<
   onLocationChangeRef.current = onLocationChange;
   const flowRef = useRef(flow);
   flowRef.current = flow;
-  const saveNow = useCallback((scroller?: HTMLElement | null) => {
-    if (saveTimer.current) {
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    const el = scroller ?? scrollRef.current;
+  /** Where the reader is, read from the live scroller — or null when it
+   *  cannot be read: before the opening position is placed (the scroller
+   *  sits at 0 until then, and saving that would overwrite the real place
+   *  with page 1), or once the scroller has left the document, where
+   *  `scrollTop` reads 0. */
+  const placeNow = useCallback((): { page: number; offset: number } | null => {
+    const el = scrollRef.current;
     const lay = layoutRef.current;
-    if (!el || lay.top.length === 0) return;
+    if (!el || !el.isConnected || lay.top.length === 0) return null;
     if (flowRef.current === "scroll") {
-      // Not before the opening position is in place — the scroller sits at 0
-      // until then, and saving that would overwrite the real place with page 1.
-      if (!resumedRef.current) return;
+      if (!resumedRef.current) return null;
       const a = anchorAt(
         lay.top,
         lay.displayH,
         el.scrollTop + insetsRef.current.top,
       );
-      if (a)
-        onLocationChangeRef.current?.(
-          a.page,
-          Math.max(0, Math.min(1, a.offset)),
-        );
-    } else {
-      const page = currentRef.current;
-      const h = lay.displayH[page] || 1;
-      onLocationChangeRef.current?.(
-        page,
-        Math.max(0, Math.min(1, el.scrollTop / h)),
-      );
+      return a
+        ? { page: a.page, offset: Math.max(0, Math.min(1, a.offset)) }
+        : null;
     }
+    const page = currentRef.current;
+    const h = lay.displayH[page] || 1;
+    return { page, offset: Math.max(0, Math.min(1, el.scrollTop / h)) };
   }, []);
+  // The place as of the reader's last move. Saving reads the live one when it
+  // can, and falls back to this when it cannot — on close, the scroller is
+  // already out of the document by the time the save runs, and reading it
+  // there would save page 1.
+  const lastPlace = useRef<{ page: number; offset: number } | null>(null);
+  const saveNow = useCallback(() => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const place = placeNow() ?? lastPlace.current;
+    if (place) onLocationChangeRef.current?.(place.page, place.offset);
+  }, [placeNow]);
   const scheduleSaveRef = useRef<() => void>(() => {});
   scheduleSaveRef.current = () => {
+    lastPlace.current = placeNow() ?? lastPlace.current;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => saveNow(), 400);
+    saveTimer.current = window.setTimeout(saveNow, 400);
   };
   // Write a waiting save at once when the app is hidden or the reader closes.
   useEffect(() => {
-    // Held here because React has already let go of `scrollRef` by the time
-    // an unmount cleanup runs — reading it there found nothing, and the save
-    // on close silently did not happen.
-    const el = scrollRef.current;
     const onHide = () => {
-      if (document.visibilityState === "hidden" && saveTimer.current)
-        saveNow(el);
+      if (document.visibilityState === "hidden" && saveTimer.current) saveNow();
     };
     document.addEventListener("visibilitychange", onHide);
     return () => {
       document.removeEventListener("visibilitychange", onHide);
-      if (saveTimer.current) saveNow(el);
+      if (saveTimer.current) saveNow();
     };
   }, [saveNow]);
 
@@ -1378,10 +1380,19 @@ export const FixedPageViewer = forwardRef<
       // A jump is the reader moving: the resume position no longer applies.
       resumeTopRef.current = null;
       if (flow === "scroll") {
-        scrollRef.current?.scrollTo({
+        const el = scrollRef.current;
+        const top = Math.max(0, layout.top[clamped] - PAD - insetTop);
+        // Glide a short way (the next page); jump a long way (the contents).
+        // A long glide passes pages that get measured on the way, and the
+        // hold-still correction for each one is a scroll of its own that
+        // cancels the glide part-way.
+        const far = el
+          ? Math.abs(top - el.scrollTop) > 2 * el.clientHeight
+          : true;
+        el?.scrollTo({
           // Seat the page's head just under the top bar, not behind it.
-          top: Math.max(0, layout.top[clamped] - PAD - insetTop),
-          behavior: reducedMotion ? "auto" : "smooth",
+          top,
+          behavior: reducedMotion || far ? "auto" : "smooth",
         });
         return;
       }
@@ -1463,7 +1474,10 @@ export const FixedPageViewer = forwardRef<
     el.scrollTop = mode === "bottom" ? el.scrollHeight : 0;
     scheduleSaveRef.current();
   }, [current, flow]);
-  const pagedResumed = useRef(false);
+  // Only a book OPENED in paged flow takes the saved pan offset: the saved
+  // place is the open-time one, and after a switch from scroll flow it
+  // describes nothing on screen.
+  const pagedResumed = useRef(flow !== "paged");
   // Panning a tall page in paged flow moves the place too.
   useEffect(() => {
     const el = scrollRef.current;
@@ -1503,7 +1517,11 @@ export const FixedPageViewer = forwardRef<
         // The dying tail of a trackpad's momentum (a few px per event) never
         // opens a turn: past MOMENTUM_CAP_MS it used to peek the next page in
         // for a second and spring it back. A real push starts bigger.
-        if (Math.abs(e.deltaY) < 4 && e.timeStamp >= turnLockUntil.current) {
+        if (
+          Math.abs(e.deltaY) < 4 &&
+          e.timeStamp >= turnLockUntil.current &&
+          e.timeStamp < turnLockCap.current + MOMENTUM_GAP_MS * 10
+        ) {
           e.preventDefault();
           return;
         }
@@ -1958,9 +1976,13 @@ export const FixedPageViewer = forwardRef<
       if (a) {
         const href = a.getAttribute("href") ?? "";
         if (href.startsWith("#")) {
-          const page = source.pageForAnchor?.(
-            decodeURIComponent(href.slice(1)),
-          );
+          let id = href.slice(1);
+          try {
+            id = decodeURIComponent(id);
+          } catch {
+            // a malformed escape — look the id up as written
+          }
+          const page = source.pageForAnchor?.(id);
           if (page != null) goToPage(page);
           return true;
         }

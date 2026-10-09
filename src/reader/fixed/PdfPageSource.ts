@@ -76,6 +76,8 @@ interface Mounted {
   bytes: number;
   /** A render is in flight — its canvas is blank on purpose (see `heal`). */
   drawing?: boolean;
+  /** The browser said this canvas lost its contents (`contextlost`). */
+  lost?: boolean;
 }
 
 function reducedMotion(): boolean {
@@ -161,7 +163,7 @@ export async function createPdfPageSourceFrom(
     // next render redraws the page rather than trusting the scale record.
     canvas.addEventListener("contextlost", () => {
       const m = mounted.get(i);
-      if (m && m.canvas === canvas) m.scale = 0;
+      if (m && m.canvas === canvas) m.lost = true;
     });
     const marks = document.createElement("div");
     marks.style.cssText =
@@ -363,10 +365,13 @@ export async function createPdfPageSourceFrom(
       // never has a transparent pixel; three of them in a row is a page that
       // lost its contents. A zeroed scale makes the next renderPage redraw.
       let lost = false;
-      for (const m of mounted.values()) {
-        if (m.scale === 0 || m.drawing) continue;
+      // Only the pages the viewer has on screen: each check is a GPU readback,
+      // and a page off screen is redrawn on its way back anyway.
+      for (const [i, m] of mounted) {
+        if (!retained.has(i) || m.drawing) continue;
+        if (m.scale === 0 && !m.lost) continue; // never drawn — not "lost"
         const { width: w, height: h } = m.canvas;
-        let gone = w === 0 || h === 0;
+        let gone = !!m.lost || w === 0 || h === 0;
         if (!gone) {
           try {
             const ctx = m.canvas.getContext("2d");
@@ -383,6 +388,7 @@ export async function createPdfPageSourceFrom(
         }
         if (gone) {
           m.scale = 0;
+          m.lost = false;
           lost = true;
         }
       }

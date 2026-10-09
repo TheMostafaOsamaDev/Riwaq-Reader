@@ -11,6 +11,7 @@
 // list without opening every book.json. This also lets us cheaply show
 // `lastReadAt`, `progress`, etc. without reloading chapters.
 
+import { ZOOM_MAX, ZOOM_MIN } from "../reader/fixed/fixedZoom";
 import {
   BaseDirectory,
   exists,
@@ -322,8 +323,8 @@ async function readState(id: string): Promise<BookState> {
       // produce, or nothing.
       fixedZoom:
         typeof parsed.fixedZoom === "number" &&
-        parsed.fixedZoom >= 0.25 &&
-        parsed.fixedZoom <= 5
+        parsed.fixedZoom >= ZOOM_MIN &&
+        parsed.fixedZoom <= ZOOM_MAX
           ? parsed.fixedZoom
           : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],

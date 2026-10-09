@@ -168,16 +168,33 @@ export async function createDocxPageSourceFromParts(
    *  the visible page's bars down with it. */
   const cards = new Map<number, { card: HTMLElement; cancel?: () => void }>();
   const MAX_CARDS = 10;
+  // Note-bar observers of cards forgotten while still on screen. They keep
+  // working until the card leaves its host, and are cancelled then.
+  const orphans = new Map<HTMLElement, () => void>();
   const dropCard = (i: number) => {
     const entry = cards.get(i);
     if (!entry) return;
     cards.delete(i);
-    // A card still on screen keeps its bars; it is only forgotten here.
+    // A card still on screen keeps its bars until it is replaced.
     if (!entry.card.isConnected) entry.cancel?.();
+    else if (entry.cancel) orphans.set(entry.card, entry.cancel);
+  };
+  /** Cancel the observer of whatever a host held before it is refilled. */
+  const releaseOutgoing = (host: HTMLElement, incoming: HTMLElement) => {
+    for (const child of Array.from(host.children)) {
+      if (child === incoming) continue;
+      const cancel = orphans.get(child as HTMLElement);
+      if (cancel) {
+        cancel();
+        orphans.delete(child as HTMLElement);
+      }
+    }
   };
   const clearCards = () => {
     for (const entry of cards.values()) entry.cancel?.();
     cards.clear();
+    for (const cancel of orphans.values()) cancel();
+    orphans.clear();
   };
 
   return {
@@ -213,8 +230,10 @@ export async function createDocxPageSourceFromParts(
       if (cached) {
         cached.card.style.transform = `scale(${scale})`;
         cached.card.style.transformOrigin = `top ${originX}`;
-        if (cached.card.parentElement !== host)
+        if (cached.card.parentElement !== host) {
+          releaseOutgoing(host, cached.card);
           host.replaceChildren(cached.card);
+        }
         // Refresh LRU order.
         cards.delete(i);
         cards.set(i, cached);
@@ -272,6 +291,7 @@ export async function createDocxPageSourceFromParts(
               applyHighlightsToBlock(blockEl, marks, curThemeKey);
           });
       }
+      releaseOutgoing(host, card);
       host.replaceChildren(card);
       // Note bars come AFTER attaching: a bar's position can only be
       // measured once the card is in the document and its marks are

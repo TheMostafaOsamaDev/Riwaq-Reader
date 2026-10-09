@@ -201,3 +201,27 @@ describe("the document behind the pages", () => {
     expect([...released].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
   });
 });
+
+describe("a page whose canvas the browser reports lost", () => {
+  it("is found by heal() and redrawn by the next render", async () => {
+    let draws = 0;
+    const doc = fakeDoc();
+    const render = doc.renderPage;
+    doc.renderPage = async (i, canvas, scale) => {
+      draws++;
+      return render(i, canvas, scale);
+    };
+    const src = await createPdfPageSourceFrom(doc);
+    const host = newHost();
+    src.retain?.([0]);
+    await src.renderPage(0, host, 1);
+    expect(draws).toBe(1);
+    expect(src.heal?.()).toBe(false); // drawn and intact: nothing to do
+
+    host.querySelector("canvas")!.dispatchEvent(new Event("contextlost"));
+    expect(src.heal?.()).toBe(true);
+    await src.renderPage(0, host, 1);
+    expect(draws).toBe(2);
+    expect(src.heal?.()).toBe(false); // the flag is spent once redrawn
+  });
+});

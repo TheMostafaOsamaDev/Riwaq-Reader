@@ -886,6 +886,13 @@ function App() {
         );
         void updatePageProgress(bookId, page, pageCount);
       };
+      // Hidden already (the viewer flushing its own last move on the way out):
+      // a timer armed now runs late or never — the OS may freeze or kill a
+      // backgrounded app — so write at once.
+      if (document.visibilityState === "hidden") {
+        write();
+        return;
+      }
       pendingPageSave.current = write;
       pageSaveTimer.current = window.setTimeout(write, 600);
     },
