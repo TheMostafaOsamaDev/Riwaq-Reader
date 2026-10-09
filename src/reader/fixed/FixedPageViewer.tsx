@@ -159,7 +159,7 @@ const PREFETCH_DELAY_MS = 16;
 // immediately turn back. Memory is bounded by the source's byte budget, not by
 // this number; see canvasBudgetBytes in PdfPageSource.
 const PREFETCH_AHEAD = 3;
-const PREFETCH_BEHIND = 1;
+const PREFETCH_BEHIND = 2;
 // How long to keep trying to place the scroller after a switch to scroll flow,
 // while the virtualized column grows to its full height underneath.
 const FLOW_RESTORE_MS = 2500;
@@ -2196,10 +2196,22 @@ export const FixedPageViewer = forwardRef<
     [goToPage, clearTouchSelection],
   );
 
+  // The colour of the page once it is drawn, so an undrawn page is the same
+  // sheet with nothing on it yet. A PDF canvas paints white (the tint filter on
+  // the host shades it like the drawn page); a DOCX card paints the reading
+  // paper. The sheet used to be the CHROME colour — within a shade of the
+  // surround on most themes, so a page sliding in before it was drawn looked
+  // like a transparent hole that the content then popped into.
+  const sheetColor = kind === "pdf" ? "#ffffff" : surfaces.page;
   const skeletonStyle = (
     w: number,
     h: number,
     animate: boolean,
+    /** Faint text lines on the sheet, for a page that may still be drawing.
+     *  Static (no animation), and inset from every edge, so they never show
+     *  round a drawn canvas that is a pixel off the host's estimated size —
+     *  the canvas, opaque once drawn, simply covers them. */
+    lines = false,
   ): React.CSSProperties => ({
     width: w,
     height: h,
@@ -2208,7 +2220,16 @@ export const FixedPageViewer = forwardRef<
     // the page from the background, so it's kept wherever there's a gutter for
     // it to fall into; full-bleed (fit: width) has none, so it's dropped too.
     boxShadow: padX > 0 ? "0 8px 30px rgba(0,0,0,0.22)" : "none",
-    backgroundColor: theme.chrome,
+    backgroundColor: sheetColor,
+    ...(lines && !animate
+      ? {
+          backgroundImage:
+            "repeating-linear-gradient(to bottom, rgba(0,0,0,0.055) 0 6px, transparent 6px 22px)",
+          backgroundSize: "78% 74%",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }
+      : null),
     // The shimmer is a loading affordance, so it is only ever painted while
     // there is genuinely nothing to show. A page host is sized from the
     // ESTIMATED layout while its canvas is sized from the real render, and the
@@ -2216,7 +2237,7 @@ export const FixedPageViewer = forwardRef<
     // mounted canvas leaks around the edges as a travelling band.
     ...(animate && !reducedMotion
       ? {
-          backgroundImage: `linear-gradient(100deg, ${theme.chrome} 30%, ${theme.hover} 50%, ${theme.chrome} 70%)`,
+          backgroundImage: `linear-gradient(100deg, ${sheetColor} 30%, ${theme.hover} 50%, ${sheetColor} 70%)`,
           backgroundSize: "200% 100%",
           animation: "fx-shimmer 1.3s linear infinite",
         }
@@ -2368,10 +2389,14 @@ export const FixedPageViewer = forwardRef<
                 filter: hostFilter,
                 // transform/transition intentionally absent — `writeTurn`
                 // owns them, and React must not fight it mid-turn.
+                // The same lined sheet as the incoming page rather than a
+                // shimmer: a page that lands undrawn must look like the sheet
+                // that slid in, not change into a flashing one as it settles.
                 ...skeletonStyle(
                   layout.displayW[current] || 0,
                   layout.displayH[current] || 0,
-                  !rendered.has(current),
+                  false,
+                  true,
                 ),
               }}
             />
@@ -2466,6 +2491,7 @@ export const FixedPageViewer = forwardRef<
                 layout.displayW[nIdx] || 0,
                 layout.displayH[nIdx] || 0,
                 false,
+                true,
               ),
             }}
           />

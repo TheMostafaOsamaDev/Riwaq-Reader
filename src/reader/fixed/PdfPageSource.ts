@@ -72,6 +72,13 @@ interface Mounted {
   bytes: number;
 }
 
+function reducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /** RGBA backing store of a canvas, in bytes. */
 function canvasBytes(c: HTMLCanvasElement): number {
   return c.width * c.height * 4;
@@ -385,10 +392,20 @@ export async function createPdfPageSourceFrom(
       host.textContent = "";
       const created = makeMount(i);
       created.scale = want;
+      // A page's first drawing fades in rather than popping onto its blank
+      // sheet — most visible on a page that slides in before it is drawn.
+      // Only the first: a page moved between hosts keeps its pixels and shows
+      // at once.
+      const fade = !reducedMotion();
+      if (fade) created.canvas.style.opacity = "0";
       host.appendChild(created.wrap);
       mounted.set(i, created);
       paintMarks(i, created);
       await doc.renderPage(i, created.canvas, scale);
+      if (fade) {
+        created.canvas.style.transition = "opacity 140ms ease-out";
+        created.canvas.style.opacity = "1";
+      }
       await doc.renderTextLayer(i, created.text, scale);
       created.bytes = canvasBytes(created.canvas);
       evict(i);
