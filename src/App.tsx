@@ -858,6 +858,10 @@ function App() {
 
   // Debounced persistence of fixed-page (PDF/DOCX) reading position + progress.
   const pageSaveTimer = useRef<number | null>(null);
+  // The save the timer is holding, so it can be written NOW when the app is
+  // hidden or closed — a debounced write dropped there lost the reader's last
+  // few seconds of reading.
+  const pendingPageSave = useRef<(() => void) | null>(null);
   const savePagePosition = useCallback(
     (
       bookId: string,
@@ -867,8 +871,9 @@ function App() {
       blockId?: string,
     ) => {
       if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
-      pageSaveTimer.current = window.setTimeout(() => {
+      const write = () => {
         pageSaveTimer.current = null;
+        pendingPageSave.current = null;
         void updatePagePosition(
           bookId,
           page,
@@ -879,13 +884,26 @@ function App() {
           blockId ? { blockId, frac: pageOffset } : undefined,
         );
         void updatePageProgress(bookId, page, pageCount);
-      }, 600);
+      };
+      pendingPageSave.current = write;
+      pageSaveTimer.current = window.setTimeout(write, 600);
     },
     [],
   );
   useEffect(() => {
-    return () => {
+    const flush = () => {
       if (pageSaveTimer.current) clearTimeout(pageSaveTimer.current);
+      pendingPageSave.current?.();
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+      flush();
     };
   }, []);
 

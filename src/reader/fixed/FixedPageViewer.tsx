@@ -67,7 +67,7 @@ import type {
   ReaderProgress,
 } from "../../types/reader";
 import { edgeSide, forwardFor, turnFromDrag } from "../pagedTouch";
-import { wheelIsMouse } from "../scroll/smoothWheel";
+import { attachSmoothWheel, wheelIsMouse } from "../scroll/smoothWheel";
 import type { FixedPageSource } from "./FixedPageSource";
 import { anchorAt, scrollTopForAnchor, type PageAnchor } from "./scrollAnchor";
 
@@ -361,6 +361,9 @@ export const FixedPageViewer = forwardRef<
   // See `sweepBlankHosts`.
   const [healNonce, setHealNonce] = useState(0);
   const resumedRef = useRef(false);
+  /** The scrollTop the viewer itself last wrote for the resume position, or
+   *  null once the reader has moved (see the hold-still effect). */
+  const resumeTopRef = useRef<number | null>(null);
   const lastEmitted = useRef(-1);
   const saveTimer = useRef<number | null>(null);
 
@@ -399,7 +402,16 @@ export const FixedPageViewer = forwardRef<
   // depend on the page number alone: `sizes` and `layout` change on every
   // measurement, and depending on them restarted the timer faster than it
   // could fire, so on quick page turns the neighbours were never warmed.
-  const layoutRef = useRef<{ top: number[] }>({ top: [] });
+  const layoutRef = useRef<{ top: number[]; displayH: number[] }>({
+    top: [],
+    displayH: [],
+  });
+  const peekGeomRef = useRef<{
+    displayW: number[];
+    displayH: number[];
+    containerH: number;
+    sizes: Array<{ w: number; h: number } | undefined>;
+  }>({ displayW: [], displayH: [], containerH: 0, sizes: [] });
   // The reader's place in the scroll column, kept as a page plus a fraction
   // into it rather than as a scrollTop — see scrollAnchor.ts. Refreshed on
   // every scroll frame, and read back after a change of scale to put the
@@ -536,6 +548,13 @@ export const FixedPageViewer = forwardRef<
   prefetchInputs.current = { sizes, layout, usableW };
   // Read by the flow-restore retry loop, which outlives the render it started in.
   layoutRef.current = layout;
+  // What `openPeek` needs to seat the incoming page without waiting for React.
+  peekGeomRef.current = {
+    displayW: layout.displayW,
+    displayH: layout.displayH,
+    containerH: container.h,
+    sizes,
+  };
 
   const emit = useCallback(
     (page: number) => {
@@ -548,34 +567,77 @@ export const FixedPageViewer = forwardRef<
           ? formatCounter(page + 1, pageCount)
           : `${page + 1} / ${pageCount}`,
       });
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-      saveTimer.current = window.setTimeout(() => {
-        saveTimer.current = null;
-        const el = scrollRef.current;
-        let off = 0;
-        if (el && flow === "scroll") {
-          off = Math.max(
-            0,
-            Math.min(
-              1,
-              (el.scrollTop + insetTop - layout.top[page]) /
-                (layout.displayH[page] || 1),
-            ),
-          );
-        }
-        onLocationChange?.(page, off);
-      }, 500);
+      scheduleSaveRef.current();
     },
-    [
-      onProgress,
-      onLocationChange,
-      formatCounter,
-      pageCount,
-      flow,
-      layout,
-      insetTop,
-    ],
+    [onProgress, formatCounter, pageCount],
   );
+
+  // ---- Saving the place -------------------------------------------------------
+  //
+  // Exactly where the reader is, read LIVE when the save fires: in scroll flow
+  // the page under the top of the reading area (just below the top bar) and
+  // how far into it, as a fraction; in paged flow the page and how far a tall
+  // page has been panned. It used to be saved only when the page CHANGED, from
+  // the layout of the moment it was scheduled — so scrolling within a page
+  // never moved the saved place, and a page's estimated height being corrected
+  // in between skewed the offset. And a save still waiting when the reader
+  // closed was thrown away.
+  const onLocationChangeRef = useRef(onLocationChange);
+  onLocationChangeRef.current = onLocationChange;
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
+  const saveNow = useCallback((scroller?: HTMLElement | null) => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const el = scroller ?? scrollRef.current;
+    const lay = layoutRef.current;
+    if (!el || lay.top.length === 0) return;
+    if (flowRef.current === "scroll") {
+      // Not before the opening position is in place — the scroller sits at 0
+      // until then, and saving that would overwrite the real place with page 1.
+      if (!resumedRef.current) return;
+      const a = anchorAt(
+        lay.top,
+        lay.displayH,
+        el.scrollTop + insetsRef.current.top,
+      );
+      if (a)
+        onLocationChangeRef.current?.(
+          a.page,
+          Math.max(0, Math.min(1, a.offset)),
+        );
+    } else {
+      const page = currentRef.current;
+      const h = lay.displayH[page] || 1;
+      onLocationChangeRef.current?.(
+        page,
+        Math.max(0, Math.min(1, el.scrollTop / h)),
+      );
+    }
+  }, []);
+  const scheduleSaveRef = useRef<() => void>(() => {});
+  scheduleSaveRef.current = () => {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => saveNow(), 400);
+  };
+  // Write a waiting save at once when the app is hidden or the reader closes.
+  useEffect(() => {
+    // Held here because React has already let go of `scrollRef` by the time
+    // an unmount cleanup runs — reading it there found nothing, and the save
+    // on close silently did not happen.
+    const el = scrollRef.current;
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && saveTimer.current)
+        saveNow(el);
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      if (saveTimer.current) saveNow(el);
+    };
+  }, [saveNow]);
 
   /** Notice a mounted host that has lost its contents.
    *
@@ -636,6 +698,7 @@ export const FixedPageViewer = forwardRef<
     setCurrent((c) => (c === cur ? c : cur));
     sweepBlankHosts();
     emit(cur);
+    scheduleSaveRef.current();
   }, [flow, pageCount, layout, emit, sweepBlankHosts, insetTop, insetBottom]);
 
   useEffect(() => {
@@ -682,6 +745,7 @@ export const FixedPageViewer = forwardRef<
           page: resume.page,
           offset: resume.pageOffset ?? 0,
         }) - insetTop;
+      resumeTopRef.current = el.scrollTop;
     }
     emit(resume.page);
   }, [resume, container.h, layout, flow, emit, insetTop]);
@@ -786,6 +850,65 @@ export const FixedPageViewer = forwardRef<
     el.scrollTop =
       scrollTopForAnchor(layout.top, layout.displayH, anchor) - insetTop;
   }, [scaleKey]);
+
+  // Hold still while page heights are being measured.
+  //
+  // Every page starts at an ESTIMATED height (the first measured page's
+  // shape) and is corrected when it is measured — and each correction moved
+  // every page below it. Pages are measured as they come near, so while
+  // scrolling the column kept shifting under the reader by a few px to a whole
+  // page: the "shaking" of a PDF whose pages are not all one shape, and the
+  // reason a reopened book could land ~150px from where it was left. The scale
+  // effect above deliberately ignores these (they are not a rescale); this is
+  // the px-exact counterpart it asked for.
+  //
+  // The place is held by its offset in px from the top of the page under the
+  // reading line — unchanged by a correction to that page's own height, since
+  // a page grows downwards at a fixed width. Until the reader has moved, the
+  // place is the RESUME position instead, re-derived from its saved fraction
+  // against the corrected heights, so a reopened book lands exactly.
+  const prevTops = useRef<number[]>([]);
+  const scaleAtTops = useRef(scaleKey);
+  useLayoutEffect(() => {
+    const old = prevTops.current;
+    prevTops.current = layout.top;
+    const sameScale = scaleAtTops.current === scaleKey;
+    scaleAtTops.current = scaleKey;
+    if (flow !== "scroll" || !resumedRef.current) return;
+    const el = scrollRef.current;
+    if (!el || old === layout.top || old.length !== layout.top.length) return;
+    if (!sameScale) return; // a rescale — the scale effect owns that
+    // Still exactly where the viewer last put it for the resume? Then the
+    // reader has not moved — by any means: wheel, finger, keys, the scrollbar
+    // thumb — and the resume position is still the place to hold.
+    const placed = resumeTopRef.current;
+    if (placed != null && Math.abs(el.scrollTop - placed) <= 2 && resume) {
+      el.scrollTop =
+        scrollTopForAnchor(layout.top, layout.displayH, {
+          page: resume.page,
+          offset: resume.pageOffset ?? 0,
+        }) - insetTop;
+      resumeTopRef.current = el.scrollTop;
+      return;
+    }
+    resumeTopRef.current = null;
+    // The page under the reading line, in the OLD column.
+    const y = el.scrollTop + insetTop;
+    let p = 0;
+    while (p + 1 < old.length && old[p + 1] <= y) p++;
+    const shift = layout.top[p] - old[p];
+    if (shift !== 0) el.scrollTop += shift;
+  }, [layout]);
+
+  // A mouse wheel moves a WKWebView page a whole notch in ONE frame — about
+  // 120px with nothing in between, which on a page of print reads as the page
+  // jumping. The EPUB reader glides those notches; this does the same, and
+  // only for a mouse (a trackpad already scrolls smoothly). See smoothWheel.ts.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || flow !== "scroll") return;
+    return attachSmoothWheel(el);
+  }, [flow]);
 
   // Tell the source which pages are mounted, so a source that caches page
   // bitmaps never evicts one out from under a live host. Without this, a PDF
@@ -936,6 +1059,56 @@ export const FixedPageViewer = forwardRef<
    *  whole viewer once per frame; at a 20x CPU handicap that put p99 frame time
    *  at ~196ms. `will-change` promotes the layers so the compositor moves them
    *  without repainting the page bitmap underneath. */
+  /** Open a turn towards `dest`: the incoming page is sized, filled and made
+   *  ready to move in THIS frame, not after React re-renders.
+   *
+   *  The overlay used to be mounted by the `setPeek` below, and filled by an
+   *  effect after that commit — while the first drag frame was already moving
+   *  the page being left. On a phone that render is several frames, so a swipe
+   *  opened a gap of bare background between the leaving page and the one
+   *  that should be attached to it, and the incoming page caught up a moment
+   *  later. The overlay host now stays mounted for the whole paged session;
+   *  this seats it directly, and a page already drawn is re-parented into it
+   *  synchronously (PdfPageSource / DocxPageSource), so both pages move from
+   *  the very first frame. React's state follows for bookkeeping. */
+  const openPeek = useCallback(
+    (dest: number, d: 1 | -1) => {
+      peekDir.current = d;
+      peekNeighbor.current = dest;
+      turnLive.current = true;
+      const host = peekHostRef.current;
+      if (host) {
+        const g = peekGeomRef.current;
+        const { top: it, bottom: ib } = insetsRef.current;
+        const w = g.displayW[dest] || 0;
+        const h = g.displayH[dest] || 0;
+        host.style.width = `${w}px`;
+        host.style.height = `${h}px`;
+        // Going back onto a tall page, show its foot (see `peekOverflow`).
+        const over =
+          d === -1 ? Math.max(0, h + 2 * PAD + it + ib - g.containerH) : 0;
+        host.style.margin = over > 0 ? `${-over}px auto auto` : "auto";
+        const size = g.sizes[dest];
+        if (size && w > 0) {
+          const done = source.renderPage(dest, host, w / size.w);
+          peekRender.current = { idx: dest, done };
+        }
+      }
+      setPeekIdx(dest);
+      setPeek({ dir: d });
+    },
+    [source],
+  );
+
+  // The overlay host is mounted once per paged session and starts out of
+  // sight; `writeTurn` shows it, `releaseTurn` hides it again. A stable
+  // callback, so a re-render never re-runs it in the middle of a turn.
+  const peekHostCb = useCallback((el: HTMLDivElement | null) => {
+    peekHostRef.current = el;
+    if (el && !turnLive.current && peekHold.current == null)
+      el.style.visibility = "hidden";
+  }, []);
+
   const writeTurn = useCallback(
     (
       reveal: number,
@@ -1151,9 +1324,7 @@ export const FixedPageViewer = forwardRef<
         return;
       }
       turning.current = true;
-      turnLive.current = true;
-      setPeekIdx(dest);
-      setPeek({ dir: d });
+      openPeek(dest, d);
       const slide = () => {
         // Seat the layers at reveal 0, flush, then animate to 1 on the next
         // frame. WKWebView otherwise coalesces the two writes and the slide
@@ -1191,12 +1362,14 @@ export const FixedPageViewer = forwardRef<
       window.setTimeout(go, PEEK_READY_WAIT_MS);
       poll();
     },
-    [clampIdx, finalize, writeTurn],
+    [clampIdx, finalize, writeTurn, openPeek],
   );
 
   const goToPage = useCallback(
     (i: number) => {
       const clamped = Math.max(0, Math.min(pageCount - 1, i));
+      // A jump is the reader moving: the resume position no longer applies.
+      resumeTopRef.current = null;
       if (flow === "scroll") {
         scrollRef.current?.scrollTo({
           // Seat the page's head just under the top bar, not behind it.
@@ -1272,8 +1445,26 @@ export const FixedPageViewer = forwardRef<
     if (!el) return;
     const mode = pendingScroll.current;
     pendingScroll.current = null;
+    // The very first page of a session lands where the reader left it, if they
+    // had panned down a tall page; every later one at its head or foot.
+    if (!pagedResumed.current) {
+      pagedResumed.current = true;
+      const off = resume?.page === current ? (resume.pageOffset ?? 0) : 0;
+      el.scrollTop = off * (layout.displayH[current] || 0);
+      return;
+    }
     el.scrollTop = mode === "bottom" ? el.scrollHeight : 0;
+    scheduleSaveRef.current();
   }, [current, flow]);
+  const pagedResumed = useRef(false);
+  // Panning a tall page in paged flow moves the place too.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || flow !== "paged") return;
+    const onScroll = () => scheduleSaveRef.current();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [flow]);
 
   // Paged mode: wheel pans a tall page; at the edge it drags the neighbour in
   // (peek) and only turns past TURN_PX of push. Non-passive so we can swallow
@@ -1355,8 +1546,7 @@ export const FixedPageViewer = forwardRef<
         peekNeighbor.current = dest;
         accum.current = Math.max(1, over);
         turnLive.current = true;
-        setPeekIdx(dest);
-        setPeek({ dir: d });
+        openPeek(dest, d);
         renderPeek();
         scheduleIdle();
         return;
@@ -1376,7 +1566,15 @@ export const FixedPageViewer = forwardRef<
       el.removeEventListener("wheel", onWheel);
       el.style.cursor = "";
     };
-  }, [flow, clampIdx, renderPeek, scheduleIdle, cancelPeek, animateTurn]);
+  }, [
+    flow,
+    clampIdx,
+    renderPeek,
+    scheduleIdle,
+    cancelPeek,
+    animateTurn,
+    openPeek,
+  ]);
 
   // Paged mode on touch: a horizontal drag pans the filmstrip 1:1 with the
   // finger and snaps on release. The wheel path above never fires from a finger,
@@ -1473,8 +1671,7 @@ export const FixedPageViewer = forwardRef<
         peekDir.current = d;
         peekNeighbor.current = dest;
         turnLive.current = true;
-        setPeekIdx(dest);
-        setPeek({ dir: d });
+        openPeek(dest, d);
       } else if (peekDir.current !== d) {
         cancelPeek(); // dragged back past the origin
         return;
@@ -1546,7 +1743,7 @@ export const FixedPageViewer = forwardRef<
       el.removeEventListener("pointerup", onEnd);
       el.removeEventListener("pointercancel", onEnd);
     };
-  }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit]);
+  }, [flow, dir, clampIdx, renderPeek, cancelPeek, commit, openPeek]);
 
   // Render the peeked page into the overlay host (once per turn — keyed on the
   // page index, not the reveal, so dragging doesn't re-render the pdf).
@@ -1628,6 +1825,17 @@ export const FixedPageViewer = forwardRef<
             continue;
           }
           if (cancelled) return;
+          // Record it: a turn seats its incoming page from the measured size
+          // in the very first frame (`openPeek`), and without this a warmed
+          // page's size was only known to the source — that first frame then
+          // showed the incoming sheet empty.
+          const measured = size;
+          setSizes((prev) => {
+            if (prev[i]) return prev;
+            const next = prev.slice();
+            next[i] = measured;
+            return next;
+          });
         }
         try {
           await source.renderPage(i, host, (lay.displayW[i] || uw) / size.w);
@@ -1679,7 +1887,6 @@ export const FixedPageViewer = forwardRef<
 
   useEffect(
     () => () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
       for (const t of [idleTimer, turnTimer, holdTimer]) {
         if (t.current) window.clearTimeout(t.current);
       }
@@ -2450,7 +2657,7 @@ export const FixedPageViewer = forwardRef<
       {/* Peek overlay: the incoming page, sliding in from the edge as the turn
           progresses. Pointer-events off so the wheel keeps reaching the scroller
           underneath (which drives the peek). */}
-      {flow === "paged" && peek && (
+      {flow === "paged" && (
         <div
           style={{
             position: "absolute",
@@ -2466,7 +2673,7 @@ export const FixedPageViewer = forwardRef<
           }}
         >
           <div
-            ref={peekHostRef}
+            ref={peekHostCb}
             style={{
               margin:
                 peekOverflow > 0 ? `${-peekOverflow}px auto auto` : "auto",
