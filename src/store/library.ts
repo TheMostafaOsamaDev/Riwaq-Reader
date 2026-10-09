@@ -153,6 +153,10 @@ export interface BookState {
       migration pass. A user preference about reading, which is why it lives
       in state rather than in book.json's document description. */
   readingMode?: "pages" | "flow";
+  /** Fixed-page (PDF/DOCX) only — the zoom the reader last read this book at,
+      as the multiplier on the fit scale. Absent means 1. Per book, because
+      one PDF wants 125% and the next is fine at 100%. */
+  fixedZoom?: number;
   /** Mutable over time — drives the Highlights panel. Empty on a freshly
       imported book. */
   highlights: Highlight[];
@@ -313,6 +317,14 @@ async function readState(id: string): Promise<BookState> {
       readingMode:
         parsed.readingMode === "flow" || parsed.readingMode === "pages"
           ? parsed.readingMode
+          : undefined,
+      // Validated like the rest: a number in the range the zoom control can
+      // produce, or nothing.
+      fixedZoom:
+        typeof parsed.fixedZoom === "number" &&
+        parsed.fixedZoom >= 0.25 &&
+        parsed.fixedZoom <= 5
+          ? parsed.fixedZoom
           : undefined,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
     };
@@ -1672,6 +1684,15 @@ export async function updatePagePosition(
     state.currentPage = currentPage;
     state.pageOffset = pageOffset ?? 0;
     if (fixedAnchor) state.fixedAnchor = fixedAnchor;
+    await writeState(state);
+  });
+}
+
+/** Persist a fixed-page book's zoom (see BookState.fixedZoom). */
+export async function updateFixedZoom(id: string, zoom: number): Promise<void> {
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    state.fixedZoom = zoom === 1 ? undefined : zoom;
     await writeState(state);
   });
 }

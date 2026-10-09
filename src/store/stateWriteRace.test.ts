@@ -57,6 +57,7 @@ vi.mock("./legacyRoot", () => ({ migrateLegacyRoot: async () => {} }));
 import {
   loadFixedBook,
   saveHighlight,
+  updateFixedZoom,
   updatePagePosition,
   writeInitialState,
 } from "./library";
@@ -99,5 +100,28 @@ describe("state.json writes are serialised per book", () => {
     const { state } = await loadFixedBook("b");
     expect(state.highlights).toHaveLength(1);
     expect(state.currentPage).toBe(7);
+  });
+});
+
+describe("a fixed book's zoom", () => {
+  beforeEach(async () => {
+    files = {};
+    dirs.clear();
+    files[`${bookDir("b")}/book.json`] = JSON.stringify({ id: "b" });
+    await writeInitialState("b");
+  });
+
+  it("comes back on the next open, and survives a position save", async () => {
+    await updateFixedZoom("b", 1.5);
+    await updatePagePosition("b", 3, 0.2);
+    expect((await loadFixedBook("b")).state.fixedZoom).toBe(1.5);
+  });
+
+  it("stores 100% as no zoom, and ignores a value no control can make", async () => {
+    await updateFixedZoom("b", 1);
+    expect((await loadFixedBook("b")).state.fixedZoom).toBeUndefined();
+    const path = `${bookDir("b")}/state.json`;
+    files[path] = JSON.stringify({ ...JSON.parse(files[path]), fixedZoom: 40 });
+    expect((await loadFixedBook("b")).state.fixedZoom).toBeUndefined();
   });
 });

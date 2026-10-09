@@ -130,6 +130,8 @@ export interface FixedPageReaderProps {
     blockId?: string,
   ) => void;
   onOpenFullSettings?: () => void;
+  /** Persist a change of zoom for this book. */
+  onZoomChange?: (zoom: number) => void;
   /** DOCX only — the reading-mode toggle, forwarded to the shared settings
    *  panel. Absent for PDF and EPUB, which have no second mode. */
   docxMode?: "pages" | "flow";
@@ -155,6 +157,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     sourceKey,
     onLocationChange,
     onOpenFullSettings,
+    onZoomChange,
     docxMode,
     onDocxModeChange,
     onBack,
@@ -175,7 +178,13 @@ export function FixedPageReader(props: FixedPageReaderProps) {
   // Same affordance the EPUB reader has: the scrubber can be folded away when
   // you want the page and nothing else.
   const [showProgress, setShowProgress] = useState(true);
-  const [zoom, setZoom] = useState(1);
+  // The zoom this book was last read at (BookState.fixedZoom), and every
+  // change saved back — it used to reset to 100% on each open.
+  const [zoom, setZoomState] = useState(() => state.fixedZoom ?? 1);
+  const setZoom = (z: number) => {
+    setZoomState(z);
+    onZoomChange?.(z);
+  };
   const [progress, setProgress] = useState<{
     page: number;
     fraction: number;

@@ -71,6 +71,7 @@ import {
   saveHighlight,
   updateHighlightNote,
   updatePagePosition,
+  updateFixedZoom,
   updatePageProgress,
   updateParagraphPosition,
   updateReadingPosition,
@@ -1370,6 +1371,20 @@ function App() {
                     blockId,
                   )
                 }
+                onZoomChange={(zoom) => {
+                  const id = loadedFixed.book.id;
+                  void updateFixedZoom(id, zoom);
+                  // In memory too: a layout flip remounts the reader from
+                  // this state, and would otherwise put the old zoom back.
+                  setLoadedFixed((prev) =>
+                    prev && prev.book.id === id
+                      ? {
+                          ...prev,
+                          state: { ...prev.state, fixedZoom: zoom },
+                        }
+                      : prev,
+                  );
+                }}
                 onOpenFullSettings={openSettings}
                 onBack={closeBook}
               />
