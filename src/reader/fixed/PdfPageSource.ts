@@ -8,6 +8,10 @@
 
 import { BaseDirectory, stat } from "@tauri-apps/plugin-fs";
 import { openPdfDocument, type PdfDoc, type PdfLink } from "../../pdf/pdfjs";
+import {
+  attachTextLayerSelection,
+  detachTextLayerSelection,
+} from "../../pdf/textLayerSelection";
 import { bookDir, type Highlight, type PdfBook } from "../../store/library";
 import { hlBg, hlMark, Z_LOCAL, type ThemeKey } from "../../styles/tokens";
 
@@ -283,6 +287,7 @@ export async function createPdfPageSourceFrom(
    *  the same outcome as before, when the draw landed on a detached canvas. */
   function release(i: number, m: Mounted) {
     m.wrap.remove();
+    detachTextLayerSelection(m.text);
     m.text.textContent = "";
     m.marks.textContent = "";
     m.links.textContent = "";
@@ -381,6 +386,7 @@ export async function createPdfPageSourceFrom(
         entry.scale = want;
         await doc.renderPage(i, entry.canvas, scale);
         await doc.renderTextLayer(i, entry.text, scale);
+        attachTextLayerSelection(entry.text);
         entry.bytes = canvasBytes(entry.canvas); // scale changed the backing store
         evict(i);
         return;
@@ -407,6 +413,7 @@ export async function createPdfPageSourceFrom(
         created.canvas.style.opacity = "1";
       }
       await doc.renderTextLayer(i, created.text, scale);
+      attachTextLayerSelection(created.text);
       created.bytes = canvasBytes(created.canvas);
       evict(i);
     },

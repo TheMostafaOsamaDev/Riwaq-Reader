@@ -100,7 +100,7 @@ describe("a page the source has evicted", () => {
     // that was never sized in the first place.
     expect(first.canvas.width).toBe(PAGE_W);
     expect(first.canvas.height).toBe(PAGE_H);
-    expect(first.text.childElementCount).toBe(SPANS);
+    expect(first.text.querySelectorAll("span").length).toBe(SPANS);
   });
 
   it("is detached from its host", async () => {
@@ -121,7 +121,7 @@ describe("a page the source has evicted", () => {
   it("gives its text layer back", async () => {
     const src = await createPdfPageSourceFrom(fakeDoc());
     const pages = await renderPages(src, 30);
-    expect(pages[0].text.childElementCount).toBe(0);
+    expect(pages[0].text.querySelectorAll("span").length).toBe(0);
   });
 
   it("holds no more pixels than the pages it still has mounted", async () => {
@@ -147,7 +147,7 @@ describe("destroying the source", () => {
     for (const p of pages) {
       expect(p.canvas.width).toBe(0);
       expect(p.canvas.height).toBe(0);
-      expect(p.text.childElementCount).toBe(0);
+      expect(p.text.querySelectorAll("span").length).toBe(0);
     }
   });
 });
