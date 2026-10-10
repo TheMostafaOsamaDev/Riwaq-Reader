@@ -28,7 +28,8 @@ import {
   type ThemeKey,
   Z,
 } from "../../styles/tokens";
-import { EASE, MOTION, useReducedMotion } from "../../styles/motion";
+import { useReducedMotion } from "../../styles/motion";
+import { phoneBarMotion } from "../chrome/glass";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tweaks, TocEntry } from "../../types/reader";
 import type {
@@ -424,21 +425,10 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           bottom: barHeight ?? 8 + (showProgress ? 50 : 0) + 44 + 6,
         }
     : undefined;
-  const chromeTransition = reduced
-    ? "none"
-    : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
-  /** Show/hide for a phone bar: slide off its edge and give up the pointer. */
-  const phoneBarMotion = (edge: "top" | "bottom") =>
-    isMobile
-      ? {
-          transform: chromeHidden
-            ? `translateY(${edge === "top" ? "-100%" : "100%"})`
-            : "translateY(0)",
-          opacity: chromeHidden ? 0 : 1,
-          transition: chromeTransition,
-          pointerEvents: chromeHidden ? ("none" as const) : ("auto" as const),
-        }
-      : null;
+  /** Show/hide for a phone bar: slide off its edge and give up the pointer.
+   *  No fade, or the frost cuts out while the bar moves — see glass.ts. */
+  const barMotion = (edge: "top" | "bottom") =>
+    isMobile ? phoneBarMotion(edge, chromeHidden, reduced) : null;
 
   // Moving the page takes the bars with it — reading is the gesture, the
   // furniture is what you ask for in between. A scroll or a page-turn swipe,
@@ -746,7 +736,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
         style={
           focus.floating
             ? focus.clip("top", focus.showTop)
-            : { ...focus.pin("top"), ...barLayer, ...phoneBarMotion("top") }
+            : { ...focus.pin("top"), ...barLayer, ...barMotion("top") }
         }
       >
         <div
@@ -963,7 +953,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           frame={{
             ...focus.pin("bottom"),
             ...barLayer,
-            ...phoneBarMotion("bottom"),
+            ...barMotion("bottom"),
           }}
           slider={progressBar}
           place={{
