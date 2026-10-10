@@ -19,8 +19,8 @@ Binaries:
   https://github.com/TheMostafaOsamaDev/Riwaq-Reader/releases/download/v%v/app-universal-release.apk
 
 Builds:
-  - versionName: 0.8.0
-    versionCode: 8000
+  - versionName: 0.8.1
+    versionCode: 8001
     commit: c9e0a8b544dea3fa2b8d61497ecf104595f09752
     sudo:
       - apt-get update
@@ -49,5 +49,5 @@ AllowedAPKSigningKeys: 83cb81f108b4f2448b20a5f5f714ea22d4a0f6712035a6df9c4bf7f2d
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
 UpdateCheckData: src-tauri/tauri.conf.json|"versionCode":\s*(\d+)|.|"version":\s*"([\d.]+)"
-CurrentVersion: 0.8.0
-CurrentVersionCode: 8000
+CurrentVersion: 0.8.1
+CurrentVersionCode: 8001

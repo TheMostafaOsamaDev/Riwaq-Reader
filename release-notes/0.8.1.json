@@ -1,0 +1,16 @@
+{
+  "version": "0.8.1",
+  "date": "2026-10-10",
+  "items": [
+    {
+      "kind": "fixed",
+      "en": "On the phone, the reading bars are frosted from the moment they slide back in, instead of arriving see-through and blurring over once they stop — most noticeable with the Capsule bar.",
+      "ar": "على الهاتف، تظهر أشرطة القراءة ضبابيّة منذ لحظة انزلاقها للعودة، بدلًا من أن تأتي شفّافة ثم تتضبّب بعد أن تستقر — وكان ذلك أوضح ما يكون مع شريط الكبسولة."
+    },
+    {
+      "kind": "fixed",
+      "en": "A book you reopen on the phone now lands exactly where you stopped reading, instead of a little higher each time.",
+      "ar": "صار الكتاب الذي تعيد فتحه على الهاتف يعود إلى حيث توقفت عن القراءة بالضبط، بدلًا من أن يعود أعلى قليلًا في كل مرة."
+    }
+  ]
+}

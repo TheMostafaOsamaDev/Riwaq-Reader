@@ -70,6 +70,11 @@
        `gh release list` is the source of truth, not the version a branch
        happened to be carrying. -->
   <releases>
+    <release version="0.8.1" date="2026-10-10">
+      <description>
+        <p>On the phone, the reading bars are frosted from the moment they slide back in, instead of arriving see-through and blurring over once they stop. A book you reopen on the phone now lands exactly where you stopped reading, instead of a little higher each time.</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-10-10">
       <description>
         <p>PDF and Word files can be highlighted on the phone the same way as books, with selections that cross a page break. Focus mode now works in PDF and Word files, and links in a PDF's contents take you to their page.</p>
