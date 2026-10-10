@@ -11,6 +11,7 @@
 // its fallback needs `@supports` and inline styles cannot express that.
 
 import type { CSSProperties } from "react";
+import { EASE, MOTION } from "../../styles/motion";
 import { type Theme, withAlpha } from "../../styles/tokens";
 
 /** Class carrying the `backdrop-filter` and its no-support fallback. */
@@ -81,4 +82,37 @@ const HOME_BAR_FILL = 0.8;
 /** The home bar's glass fill: the theme's chrome colour at HOME_BAR_FILL. */
 export function homeBarGlass(theme: Theme): string {
   return withAlpha(theme.chrome, HOME_BAR_FILL);
+}
+
+/** How a phone reader's bar comes and goes when the page is tapped: it slides
+ *  off its own edge, and gives up the pointer while it is away.
+ *
+ *  Transform ONLY — never opacity. A fade cannot carry the frost with it, two
+ *  ways at once:
+ *
+ *  - On a bar whose glass sits on a child (the floating capsule and corner
+ *    styles), the fading element is an ancestor with `opacity` < 1, i.e. a
+ *    backdrop root, and the blur inside it has nothing to sample. It cuts out
+ *    for the whole fade and pops in the frame opacity reaches 1.
+ *  - Even with the glass on the fading element itself, a half-faded bar is
+ *    half blurred page and half SHARP page, so the text shows through it.
+ *
+ *  Either way the reader saw a clear bar slide in and frost over only once it
+ *  had stopped. The focus bars hit this first (see `slide` in
+ *  focusChrome.tsx); the slide alone takes the bar fully out of sight, since
+ *  each bar is pinned to the edge it leaves by. */
+export function phoneBarMotion(
+  edge: GlassEdge,
+  hidden: boolean,
+  reducedMotion: boolean,
+): Pick<CSSProperties, "transform" | "transition" | "pointerEvents"> {
+  return {
+    transform: hidden
+      ? `translateY(${edge === "top" ? "-100%" : "100%"})`
+      : "translateY(0)",
+    transition: reducedMotion
+      ? "none"
+      : `transform ${MOTION.med}ms ${EASE.enter}`,
+    pointerEvents: hidden ? "none" : "auto",
+  };
 }

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { THEMES } from "../../styles/tokens";
-import { GLASS_CLASS, glassBar } from "./glass";
+import { GLASS_CLASS, glassBar, phoneBarMotion } from "./glass";
 
 describe("glassBar", () => {
   it("fills with the theme's translucent chrome, not the opaque one", () => {
@@ -124,5 +124,36 @@ describe(".riwaq-chrome-glass", () => {
     // because `@supports` would still report support.
     expect(rule).toContain("-webkit-backdrop-filter:");
     expect(rule).toContain("backdrop-filter:");
+  });
+});
+
+describe("phoneBarMotion", () => {
+  it("never fades a bar, shown or hidden", () => {
+    // A fade takes the frost with it: the bar slid in clear and blurred over
+    // only once it had stopped. Opacity must stay out of both the resting
+    // styles and the transition.
+    for (const edge of ["top", "bottom"] as const) {
+      for (const hidden of [true, false]) {
+        const m = phoneBarMotion(edge, hidden, false);
+        expect(m).not.toHaveProperty("opacity");
+        expect(String(m.transition)).not.toMatch(/opacity|all/);
+      }
+    }
+  });
+
+  it("slides each bar fully off the edge it is pinned to", () => {
+    expect(phoneBarMotion("top", true, false).transform).toBe(
+      "translateY(-100%)",
+    );
+    expect(phoneBarMotion("bottom", true, false).transform).toBe(
+      "translateY(100%)",
+    );
+    expect(phoneBarMotion("top", false, false).transform).toBe("translateY(0)");
+  });
+
+  it("lets taps through only while hidden, and skips motion when reduced", () => {
+    expect(phoneBarMotion("top", true, false).pointerEvents).toBe("none");
+    expect(phoneBarMotion("top", false, false).pointerEvents).toBe("auto");
+    expect(phoneBarMotion("bottom", false, true).transition).toBe("none");
   });
 });

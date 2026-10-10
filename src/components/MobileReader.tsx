@@ -39,7 +39,7 @@ import {
   LONG_PRESS_MOVE_TOLERANCE,
   LONG_PRESS_MS,
 } from "../reader/chrome/pageTap";
-import { glassBar } from "../reader/chrome/glass";
+import { glassBar, phoneBarMotion } from "../reader/chrome/glass";
 import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
 import {
   attachTouchPanFallback,
@@ -62,7 +62,7 @@ import {
 import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
-import { EASE, MOTION, useReducedMotion } from "../styles/motion";
+import { useReducedMotion } from "../styles/motion";
 import {
   FONT_STACKS,
   isRtlLanguage,
@@ -284,9 +284,10 @@ export function MobileReader({
   barsUpRef.current = barsUp;
   const [showProgress, setShowProgress] = useState(true);
   const reduced = useReducedMotion();
-  // Top/bottom chrome bars stay mounted and animate via transform + opacity,
-  // so the bars leaving is a fade rather than a hard cut. Pointer-events are
-  // dropped while hidden so taps fall through to the reader.
+  // Top/bottom chrome bars stay mounted and slide off their edges, so the
+  // bars leaving is a motion rather than a hard cut — a slide, never a fade,
+  // or the frost cuts out while they move (phoneBarMotion). Pointer-events
+  // are dropped while hidden so taps fall through to the reader.
   //
   // Two ways to the same bare page, and the difference between them is how you
   // get back: outside focus mode one tap is enough, inside it takes a
@@ -375,9 +376,6 @@ export function MobileReader({
     return () => window.clearTimeout(id);
   }, [pillUp]);
 
-  const chromeTransition = reduced
-    ? "none"
-    : `transform ${MOTION.med}ms ${EASE.enter}, opacity ${MOTION.med}ms ${EASE.enter}`;
   const glassTop = glassBar(theme, "top");
 
   // Android full screen. The app draws edge-to-edge, so hiding the reader's
@@ -443,11 +441,6 @@ export function MobileReader({
   const surfaces = readingSurfaces(theme);
   const contentTheme: Theme = theme;
 
-  // Read by the scroll-to-resume effect so it knows whether the chrome is
-  // currently occluding the top of the scroll area. Tracked via a ref so a
-  // chrome toggle alone doesn't re-trigger the scroll.
-  const showChromeRef = useRef(!chromeHidden);
-  showChromeRef.current = !chromeHidden;
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
 
@@ -489,24 +482,18 @@ export function MobileReader({
       jumpScrollTop(el, 0);
       return;
     }
-    // The top chrome is position:absolute, so it overlays the scroll area
-    // rather than displacing it. When visible, it covers a chunk of the
-    // very top — landing scrollTop exactly at target.offsetTop would hide
-    // the target's first line behind it. Offset by the chrome's intrinsic
-    // height (plus a small visual gap) when it's actually shown.
-    const chromeOffset =
-      showChromeRef.current && chromeRef.current
-        ? chromeRef.current.offsetHeight + 8
-        : 0;
+    // Land on exactly the scrollTop the save measured — the exact inverse of
+    // the scroll listener below, and nothing else. This once also subtracted
+    // the top bar's height when the bar was up, from before the scroller's
+    // top padding cleared the bar. The save never added it back, so every
+    // reopen landed a bar higher than the last and saved THAT, and the drift
+    // compounded. See mobileReaderResume.test.tsx.
     jumpScrollTop(
       el,
-      Math.max(
-        0,
-        restoreScrollTop(
-          target.offsetTop,
-          target.offsetHeight,
-          resumeOffsetRef.current,
-        ) - chromeOffset,
+      restoreScrollTop(
+        target.offsetTop,
+        target.offsetHeight,
+        resumeOffsetRef.current,
       ),
     );
     // book.chapters[currentChapter]?.id changes when a streamed chapter's
@@ -1223,10 +1210,7 @@ export function MobileReader({
           // instead of being clipped off by an opaque strip — see
           // reader/chrome/glass.ts.
           ...glassTop.style,
-          transform: chromeHidden ? "translateY(-100%)" : "translateY(0)",
-          opacity: chromeHidden ? 0 : 1,
-          transition: chromeTransition,
-          pointerEvents: chromeHidden ? "none" : "auto",
+          ...phoneBarMotion("top", chromeHidden, reduced),
         }}
       >
         <ChapterProgressBar fillRef={progressFillRef} theme={theme} rtl={rtl} />
@@ -1463,10 +1447,7 @@ export function MobileReader({
           left: 0,
           right: 0,
           zIndex: Z.readerChrome,
-          transform: chromeHidden ? "translateY(100%)" : "translateY(0)",
-          opacity: chromeHidden ? 0 : 1,
-          transition: chromeTransition,
-          pointerEvents: chromeHidden ? "none" : "auto",
+          ...phoneBarMotion("bottom", chromeHidden, reduced),
         }}
         slider={
           <ReaderProgressBar
