@@ -441,11 +441,6 @@ export function MobileReader({
   const surfaces = readingSurfaces(theme);
   const contentTheme: Theme = theme;
 
-  // Read by the scroll-to-resume effect so it knows whether the chrome is
-  // currently occluding the top of the scroll area. Tracked via a ref so a
-  // chrome toggle alone doesn't re-trigger the scroll.
-  const showChromeRef = useRef(!chromeHidden);
-  showChromeRef.current = !chromeHidden;
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
 
@@ -487,24 +482,18 @@ export function MobileReader({
       jumpScrollTop(el, 0);
       return;
     }
-    // The top chrome is position:absolute, so it overlays the scroll area
-    // rather than displacing it. When visible, it covers a chunk of the
-    // very top — landing scrollTop exactly at target.offsetTop would hide
-    // the target's first line behind it. Offset by the chrome's intrinsic
-    // height (plus a small visual gap) when it's actually shown.
-    const chromeOffset =
-      showChromeRef.current && chromeRef.current
-        ? chromeRef.current.offsetHeight + 8
-        : 0;
+    // Land on exactly the scrollTop the save measured — the exact inverse of
+    // the scroll listener below, and nothing else. This once also subtracted
+    // the top bar's height when the bar was up, from before the scroller's
+    // top padding cleared the bar. The save never added it back, so every
+    // reopen landed a bar higher than the last and saved THAT, and the drift
+    // compounded. See mobileReaderResume.test.tsx.
     jumpScrollTop(
       el,
-      Math.max(
-        0,
-        restoreScrollTop(
-          target.offsetTop,
-          target.offsetHeight,
-          resumeOffsetRef.current,
-        ) - chromeOffset,
+      restoreScrollTop(
+        target.offsetTop,
+        target.offsetHeight,
+        resumeOffsetRef.current,
       ),
     );
     // book.chapters[currentChapter]?.id changes when a streamed chapter's
