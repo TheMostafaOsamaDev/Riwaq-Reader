@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SelectionNoteEditor } from "./SelectionNoteEditor";
+import { HighlightColorRail } from "./HighlightColorRail";
 import {
   HighlightToolbar,
   NoteFieldButton,
@@ -11,6 +12,7 @@ import type { Highlight } from "../store/library";
 import {
   FONT_STACKS,
   hlMark,
+  type HighlightColor,
   type Theme,
   type ThemeKey,
 } from "../styles/tokens";
@@ -24,6 +26,7 @@ interface Props {
   anchor: ToolbarAnchor;
   onDelete: () => void;
   onUpdateNote: (note: string) => void;
+  onUpdateColor?: (color: HighlightColor) => void;
   onDismiss: () => void;
 }
 
@@ -48,6 +51,7 @@ export function HighlightActionPopover({
   anchor,
   onDelete,
   onUpdateNote,
+  onUpdateColor,
   onDismiss,
 }: Props) {
   const { tr } = useI18n();
@@ -106,9 +110,8 @@ export function HighlightActionPopover({
           theme={theme}
           note={draft}
           onNote={setDraft}
-          // No rail: the colour of an existing highlight is not this
-          // screen's business, and offering a choice we cannot store
-          // would be a lie.
+          color={highlight.color}
+          onColor={onUpdateColor}
           onBack={() => {
             setEditing(false);
             setDraft(highlight.note ?? "");
@@ -117,6 +120,13 @@ export function HighlightActionPopover({
         />
       ) : (
         <>
+          {onUpdateColor && (
+            <HighlightColorRail
+              theme={theme}
+              selected={highlight.color}
+              onPick={onUpdateColor}
+            />
+          )}
           {hasNote && (
             <div
               style={{

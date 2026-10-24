@@ -38,6 +38,8 @@ interface Props {
   /** Whether the progress bar above is showing. */
   showProgress: boolean;
   onToggleProgress: () => void;
+  /** Return to the personal library. */
+  onBack?: () => void;
 }
 
 export function ReaderTabBar({
@@ -46,10 +48,21 @@ export function ReaderTabBar({
   onOpen,
   showProgress,
   onToggleProgress,
+  onBack,
 }: Props) {
   const { tr } = useI18n();
   return (
     <div style={{ display: "flex", justifyContent: "space-around" }}>
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={readerTabStyle(theme)}
+          aria-label={tr("reader.backToLibrary")}
+          title={tr("reader.backToLibrary")}
+        >
+          <Icon name="home" size={18} />
+        </button>
+      )}
       <button
         onClick={() => onOpen("toc")}
         style={readerTabStyle(theme, active === "toc")}

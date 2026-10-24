@@ -77,6 +77,8 @@ interface Props {
    *  floating styles' slider card is NOT part of that box: it opens over the
    *  page instead of pushing it, so a fitted page never re-fits under it. */
   rootRef?: Ref<HTMLDivElement>;
+  /** Return to the personal library. */
+  onBack?: () => void;
 }
 
 /** Space under the controls for Android's gesture pill. */
@@ -104,6 +106,7 @@ function SolidBar({
   frame,
   hidden,
   rootRef,
+  onBack,
 }: Props) {
   const glass = glassBar(theme, "bottom");
   const padding =
@@ -138,6 +141,7 @@ function SolidBar({
             onOpen={onOpen}
             showProgress={showProgress}
             onToggleProgress={onToggleProgress}
+            onBack={onBack}
           />
         </>
       )}
