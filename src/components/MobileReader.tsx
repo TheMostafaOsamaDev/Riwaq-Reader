@@ -63,6 +63,7 @@ import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import { useReducedMotion } from "../styles/motion";
+import { usePinchZoom } from "../hooks/usePinchZoom";
 import {
   FONT_STACKS,
   isRtlLanguage,
@@ -185,6 +186,7 @@ interface Props {
    *  panel. Absent for PDF and EPUB, which have no second mode. */
   docxMode?: "pages" | "flow";
   onDocxModeChange?: (mode: "pages" | "flow") => void;
+  onUpdateHighlightColor?: (id: string, color: HighlightColor) => void;
   onBack: () => void;
 }
 
@@ -262,6 +264,7 @@ export function MobileReader({
   onOpenFullSettings,
   docxMode,
   onDocxModeChange,
+  onUpdateHighlightColor,
   onBack,
 }: Props) {
   const { tr, dir, locale } = useI18n();
@@ -407,6 +410,16 @@ export function MobileReader({
   );
   const [sheet, setSheet] = useState<ActivePanel>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  usePinchZoom({
+    ref: scrollRef,
+    currentValue: t.fontSize,
+    minValue: 14,
+    maxValue: 42,
+    precision: "int",
+    onChange: (val) => setTweak("fontSize", val),
+  });
+
   const chromeRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   /** A long-press selection owns the pointer. Set by the selection effect,
@@ -1441,6 +1454,7 @@ export function MobileReader({
         theme={theme}
         style={t.readerBar}
         hidden={chromeHidden}
+        onBack={onBack}
         frame={{
           position: "absolute",
           bottom: 0,
@@ -1591,6 +1605,7 @@ export function MobileReader({
                     }
                   : undefined
               }
+              onBack={onBack}
             />
           )}
           {sheet === "progress" && (
@@ -1654,6 +1669,21 @@ export function MobileReader({
             onUpdateHighlightNote(activeHl.highlight.id, note);
             setActiveHl(null);
           }}
+          onUpdateColor={
+            onUpdateHighlightColor
+              ? (color) => {
+                  onUpdateHighlightColor(activeHl.highlight.id, color);
+                  setActiveHl((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          highlight: { ...prev.highlight, color },
+                        }
+                      : null,
+                  );
+                }
+              : undefined
+          }
           onDismiss={() => setActiveHl(null)}
         />
       )}

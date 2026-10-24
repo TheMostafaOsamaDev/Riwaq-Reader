@@ -62,6 +62,7 @@ import { HighlightActionPopover } from "./HighlightActionPopover";
 import type { EpubBook } from "../epub/types";
 import type { BookState, Highlight } from "../store/library";
 import type { HighlightColor } from "../styles/tokens";
+import { usePinchZoom } from "../hooks/usePinchZoom";
 import {
   rectForMark,
   liveSelectionBox,
@@ -146,6 +147,7 @@ interface Props {
    *  panel. Absent for PDF and EPUB, which have no second mode. */
   docxMode?: "pages" | "flow";
   onDocxModeChange?: (mode: "pages" | "flow") => void;
+  onUpdateHighlightColor?: (id: string, color: HighlightColor) => void;
   onBack: () => void;
 }
 
@@ -173,10 +175,22 @@ export function DesktopReader({
   onOpenFullSettings,
   docxMode,
   onDocxModeChange,
+  onUpdateHighlightColor,
   onBack,
 }: Props) {
   const { tr, dir, locale } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+
+  usePinchZoom({
+    ref: contentAreaRef,
+    currentValue: t.fontSize,
+    minValue: 14,
+    maxValue: 42,
+    precision: "int",
+    onChange: (val) => setTweak("fontSize", val),
+  });
+
   const mode = t.readingMode;
   const isPaginated = mode !== "scroll";
   const paginatedColumns: 1 | 2 = mode === "paginated-2" ? 2 : 1;
@@ -1157,6 +1171,7 @@ export function DesktopReader({
                     }
                   : undefined
               }
+              onBack={onBack}
             />
           )}
           {activePanel === "progress" && (
@@ -1187,6 +1202,7 @@ export function DesktopReader({
         </SideSheet>
 
         <div
+          ref={contentAreaRef}
           style={{
             flex: 1,
             display: "flex",
@@ -1213,8 +1229,9 @@ export function DesktopReader({
                 background: surfaces.page,
                 // Nothing in here scrolls, so the browser has no pan to take,
                 // and a sideways swipe has to reach the page-turn listener
-                // above instead of being claimed as one. Pinch-zoom stays.
-                touchAction: "pinch-zoom",
+                // above instead of being claimed as one. Pinch-to-zoom is handled
+                // by usePinchZoom for font size.
+                touchAction: "pan-y",
               }}
             >
               <PaginatedView
@@ -1460,6 +1477,21 @@ export function DesktopReader({
             onUpdateHighlightNote(activeHl.highlight.id, note);
             setActiveHl(null);
           }}
+          onUpdateColor={
+            onUpdateHighlightColor
+              ? (color) => {
+                  onUpdateHighlightColor(activeHl.highlight.id, color);
+                  setActiveHl((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          highlight: { ...prev.highlight, color },
+                        }
+                      : null,
+                  );
+                }
+              : undefined
+          }
           onDismiss={() => setActiveHl(null)}
         />
       )}

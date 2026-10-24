@@ -70,6 +70,7 @@ import {
   markBookOpened,
   saveHighlight,
   updateHighlightNote,
+  updateHighlightColor,
   updatePagePosition,
   updateFixedZoom,
   updatePageProgress,
@@ -945,6 +946,48 @@ function App() {
       groupId?: string;
     }) => {
       if (!loaded) return;
+      // If an existing highlight in this chapter & paragraph covers the same text or range,
+      // update its color (and note if provided) rather than creating a duplicate.
+      const existing = loaded.state.highlights.find(
+        (h) =>
+          h.chapter === input.chapter &&
+          h.paragraphIndex === input.paragraphIndex &&
+          ((h.charStart === input.charStart && h.charEnd === input.charEnd) ||
+            (input.text.length > 0 &&
+              h.text === input.text &&
+              Math.abs(h.charStart - input.charStart) <= 2)),
+      );
+      if (existing) {
+        await updateHighlightColor(loaded.book.id, existing.id, input.color);
+        if (input.note !== undefined) {
+          await updateHighlightNote(loaded.book.id, existing.id, input.note);
+        }
+        setLoaded((prev) => {
+          if (!prev) return prev;
+          const targetGroup = existing.groupId;
+          return {
+            ...prev,
+            state: {
+              ...prev.state,
+              highlights: prev.state.highlights.map((h) =>
+                h.id === existing.id ||
+                (targetGroup && h.groupId === targetGroup)
+                  ? {
+                      ...h,
+                      color: input.color,
+                      note:
+                        input.note !== undefined
+                          ? input.note.trim() || undefined
+                          : h.note,
+                      ts: Date.now(),
+                    }
+                  : h,
+              ),
+            },
+          };
+        });
+        return;
+      }
       const saved = await saveHighlight(loaded.book.id, input);
       setLoaded((prev) =>
         prev
@@ -1006,6 +1049,56 @@ function App() {
       fixed: DocxHighlightAnchor | PdfHighlightAnchor;
     }) => {
       if (!loadedFixed) return;
+      // Check if an existing fixed highlight on the same block/page matches
+      const existing = loadedFixed.state.highlights.find((existingH) => {
+        if (!existingH.fixed) return false;
+        if (h.fixed.fmt === "docx" && existingH.fixed.fmt === "docx") {
+          return (
+            existingH.fixed.blockId === h.fixed.blockId &&
+            existingH.fixed.charStart === h.fixed.charStart &&
+            existingH.fixed.charEnd === h.fixed.charEnd
+          );
+        }
+        if (h.fixed.fmt === "pdf" && existingH.fixed.fmt === "pdf") {
+          return (
+            existingH.fixed.page === h.fixed.page &&
+            (existingH.text.trim() === h.text.trim() ||
+              (h.text.length > 0 && existingH.text.includes(h.text)))
+          );
+        }
+        return false;
+      });
+      if (existing) {
+        await updateHighlightColor(loadedFixed.book.id, existing.id, h.color);
+        if (h.note !== undefined) {
+          await updateHighlightNote(loadedFixed.book.id, existing.id, h.note);
+        }
+        setLoadedFixed((prev) => {
+          if (!prev) return prev;
+          const targetGroup = existing.groupId;
+          return {
+            ...prev,
+            state: {
+              ...prev.state,
+              highlights: prev.state.highlights.map((item) =>
+                item.id === existing.id ||
+                (targetGroup && item.groupId === targetGroup)
+                  ? {
+                      ...item,
+                      color: h.color,
+                      note:
+                        h.note !== undefined
+                          ? h.note.trim() || undefined
+                          : item.note,
+                      ts: Date.now(),
+                    }
+                  : item,
+              ),
+            },
+          };
+        });
+        return;
+      }
       const saved = await saveHighlight(loadedFixed.book.id, {
         chapter: 0,
         paragraphIndex: 0,
@@ -1109,6 +1202,62 @@ function App() {
       );
     },
     [loaded],
+  );
+
+  const editHighlightColor = useCallback(
+    async (highlightId: string, color: HighlightColor) => {
+      if (!loaded) return;
+      const target = loaded.state.highlights.find((h) => h.id === highlightId);
+      if (!target) return;
+      const targetGroup = target.groupId;
+      await updateHighlightColor(loaded.book.id, highlightId, color);
+      setLoaded((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: {
+                ...prev.state,
+                highlights: prev.state.highlights.map((h) =>
+                  h.id === highlightId ||
+                  (targetGroup && h.groupId === targetGroup)
+                    ? { ...h, color, ts: Date.now() }
+                    : h,
+                ),
+              },
+            }
+          : prev,
+      );
+    },
+    [loaded],
+  );
+
+  const editFixedHighlightColor = useCallback(
+    async (highlightId: string, color: HighlightColor) => {
+      if (!loadedFixed) return;
+      const target = loadedFixed.state.highlights.find(
+        (h) => h.id === highlightId,
+      );
+      if (!target) return;
+      const targetGroup = target.groupId;
+      await updateHighlightColor(loadedFixed.book.id, highlightId, color);
+      setLoadedFixed((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: {
+                ...prev.state,
+                highlights: prev.state.highlights.map((h) =>
+                  h.id === highlightId ||
+                  (targetGroup && h.groupId === targetGroup)
+                    ? { ...h, color, ts: Date.now() }
+                    : h,
+                ),
+              },
+            }
+          : prev,
+      );
+    },
+    [loadedFixed],
   );
 
   // Jump from the sidebar to a highlight's exact spot. Reuses the
@@ -1358,6 +1507,7 @@ function App() {
                 onCreateHighlight={createFixedHighlight}
                 onDeleteHighlight={removeFixedHighlight}
                 onUpdateHighlightNote={editFixedHighlightNote}
+                onUpdateHighlightColor={editFixedHighlightColor}
                 layout={isMobile ? "mobile" : "desktop"}
                 uiDir={uiDir}
                 createSource={() => {
@@ -1421,6 +1571,7 @@ function App() {
                   onCreateHighlight={createHighlight}
                   onDeleteHighlight={removeHighlight}
                   onUpdateHighlightNote={editHighlightNote}
+                  onUpdateHighlightColor={editHighlightColor}
                   onJumpToHighlight={jumpToHighlight}
                   nextChapterAvailability="device"
                   onOpenFullSettings={openSettings}
@@ -1449,6 +1600,7 @@ function App() {
                   onCreateHighlight={createHighlight}
                   onDeleteHighlight={removeHighlight}
                   onUpdateHighlightNote={editHighlightNote}
+                  onUpdateHighlightColor={editHighlightColor}
                   onJumpToHighlight={jumpToHighlight}
                   nextChapterAvailability="device"
                   activePanel={activePanel}

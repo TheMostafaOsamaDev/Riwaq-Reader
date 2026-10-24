@@ -49,6 +49,8 @@ interface BaseProps {
   mobile?: boolean;
   /** Navigate to the full Settings page. When provided, a footer link is shown. */
   onOpenFullSettings?: () => void;
+  /** Return to the personal library. */
+  onBack?: () => void;
 }
 
 /** `zoom` is per-session viewer state owned by FixedPageReader rather than a
@@ -72,6 +74,7 @@ export function SettingsPanel(props: Props) {
     side = "right",
     mobile,
     onOpenFullSettings,
+    onBack,
     docxMode,
     onDocxModeChange,
   } = props;
@@ -147,6 +150,22 @@ export function SettingsPanel(props: Props) {
           label={tr("settings.openFull")}
           hint={tr("settings.openFull.hint")}
           onClick={onOpenFullSettings}
+          trailing={
+            <Icon
+              name="chevronR"
+              size={16}
+              className="rtl-flip-x"
+              style={{ opacity: 0.5 }}
+            />
+          }
+        />
+      )}
+      {onBack && (
+        <ActionRow
+          theme={theme}
+          icon={<Icon name="home" size={16} />}
+          label={tr("reader.backToLibrary")}
+          onClick={onBack}
           trailing={
             <Icon
               name="chevronR"

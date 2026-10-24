@@ -1777,3 +1777,22 @@ export async function updateHighlightNote(
     await writeState(state);
   });
 }
+
+export async function updateHighlightColor(
+  id: string,
+  highlightId: string,
+  color: HighlightColor,
+): Promise<void> {
+  await withStateLock(id, async () => {
+    const state = await readState(id);
+    const target = state.highlights.find((h) => h.id === highlightId);
+    if (!target) return;
+    const targetGroup = target.groupId;
+    state.highlights = state.highlights.map((h) =>
+      h.id === highlightId || (targetGroup && h.groupId === targetGroup)
+        ? { ...h, color, ts: Date.now() }
+        : h,
+    );
+    await writeState(state);
+  });
+}

@@ -58,6 +58,8 @@ import { FOCUS_TOAST_MS, FocusLock, FocusPill } from "../chrome/FocusSigns";
 import { isDoubleTap, type Tap } from "../chrome/focusGesture";
 import { TOUCH_SLOP } from "../gestureAxis";
 import { SideSheet } from "../../components/SideSheet";
+import { usePinchZoom } from "../../hooks/usePinchZoom";
+import { ZOOM_MAX, ZOOM_MIN } from "./fixedZoom";
 import { MobileSheet } from "../../components/MobileSheet";
 import { ReaderTopBar } from "../chrome/ReaderTopBar";
 import { ReaderProgressBar } from "../chrome/ReaderProgressBar";
@@ -137,6 +139,7 @@ export interface FixedPageReaderProps {
    *  panel. Absent for PDF and EPUB, which have no second mode. */
   docxMode?: "pages" | "flow";
   onDocxModeChange?: (mode: "pages" | "flow") => void;
+  onUpdateHighlightColor?: (highlightId: string, color: HighlightColor) => void;
   onBack: () => void;
 }
 
@@ -161,6 +164,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     onZoomChange,
     docxMode,
     onDocxModeChange,
+    onUpdateHighlightColor,
     onBack,
   } = props;
   const { tr, locale } = useI18n();
@@ -186,6 +190,15 @@ export function FixedPageReader(props: FixedPageReaderProps) {
     setZoomState(z);
     onZoomChange?.(z);
   };
+  const fixedContainerRef = useRef<HTMLDivElement>(null);
+  usePinchZoom({
+    ref: fixedContainerRef,
+    currentValue: zoom,
+    minValue: ZOOM_MIN,
+    maxValue: ZOOM_MAX,
+    precision: "float",
+    onChange: (z) => setZoom(z),
+  });
   const [progress, setProgress] = useState<{
     page: number;
     fraction: number;
@@ -615,6 +628,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             zoom={zoom}
             onZoomChange={setZoom}
             onOpenFullSettings={onOpenFullSettings}
+            onBack={onBack}
             docxMode={docxMode}
             onDocxModeChange={onDocxModeChange}
           />
@@ -848,6 +862,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             layer, so it fills whatever width is left once Contents has taken
             its strip. */}
         <div
+          ref={fixedContainerRef}
           // MARGINS, not padding. The viewer's scroll layer is `position:
           // absolute; inset: 0`, and an absolutely positioned box resolves its
           // offsets against its containing block's PADDING box — which
@@ -950,6 +965,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
           style={t.readerBar}
           rootRef={barRef}
           hidden={chromeHidden}
+          onBack={onBack}
           frame={{
             ...focus.pin("bottom"),
             ...barLayer,
@@ -1147,6 +1163,13 @@ export function FixedPageReader(props: FixedPageReaderProps) {
                 onUpdateHighlightNote(hl.id, note);
                 setActiveHl(null);
               }}
+              onUpdateColor={
+                onUpdateHighlightColor
+                  ? (color) => {
+                      onUpdateHighlightColor(hl.id, color);
+                    }
+                  : undefined
+              }
               onDismiss={() => setActiveHl(null)}
             />
           ) : null;

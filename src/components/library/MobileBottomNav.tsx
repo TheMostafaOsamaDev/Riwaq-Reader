@@ -80,6 +80,7 @@ function ClassicNav({
   onOpenQueue,
   onImport,
   onOpenSettings,
+  onGoLibrary,
 }: MobileBottomNavProps) {
   const { tr } = useI18n();
   // Read here, not passed down: the update store is app-wide, and the dot is
@@ -87,6 +88,8 @@ function ClassicNav({
   // Selected: the 500 ms status polls re-render the bar only if the dot
   // changes.
   const updateDot = useAndroidUpdateSelect((s) => attentionDot(flowInput(s)));
+  const isLibraryActive =
+    current === "library" && !shelvesActive && tab !== "store";
   return (
     <div
       style={{
@@ -123,6 +126,14 @@ function ClassicNav({
         active={current === "store"}
         onClick={onSetStore}
       />
+      <NavIconButton
+        theme={theme}
+        icon="book"
+        ariaLabel={tr("sidebar.library")}
+        active={isLibraryActive}
+        onClick={onGoLibrary}
+        size={50}
+      />
       <NavFabButton theme={theme} importing={importing} onClick={onImport} />
       <NavIconButton
         theme={theme}
@@ -148,7 +159,7 @@ function ClassicNav({
 
 export interface NavIconButtonProps {
   theme: Theme;
-  icon: "globe" | "download" | "doc" | "settings" | "layers";
+  icon: "globe" | "download" | "doc" | "settings" | "layers" | "book" | "home";
   ariaLabel: string;
   active?: boolean;
   disabled?: boolean;
@@ -156,6 +167,7 @@ export interface NavIconButtonProps {
   /** A waiting update (see attentionDot). Words in the aria-label carry the
    *  meaning; the dot only repeats it. */
   showUpdateDot?: boolean;
+  size?: number;
   onClick: () => void;
 }
 
@@ -167,11 +179,13 @@ export function NavIconButton({
   disabled,
   showQueueBadge,
   showUpdateDot,
+  size = 44,
   onClick,
 }: NavIconButtonProps) {
   const activeCount = useQueuedCount(!!showQueueBadge);
   const showBadge = !!showQueueBadge && activeCount > 0;
   const reduced = useReducedMotion();
+  const iconSize = size >= 50 ? 20 : 18;
   return (
     <button
       onClick={onClick}
@@ -184,23 +198,25 @@ export function NavIconButton({
       className={active && !reduced ? "riwaq-nav-pop" : undefined}
       style={{
         position: "relative",
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
         border: active ? "none" : `0.5px solid ${theme.rule}`,
         background: active ? theme.ink : "transparent",
         color: active ? theme.bg : theme.ink,
+        boxShadow: active ? "0 3px 10px rgba(0,0,0,0.18)" : undefined,
         transition: reduced
           ? "none"
-          : "background 200ms ease, color 200ms ease",
+          : "background 200ms ease, color 200ms ease, box-shadow 200ms ease",
         cursor: disabled ? "not-allowed" : "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         opacity: disabled ? 0.5 : 1,
+        flexShrink: 0,
       }}
     >
-      <Icon name={icon} size={18} />
+      <Icon name={icon} size={iconSize} />
       {showBadge && (
         <span
           style={{

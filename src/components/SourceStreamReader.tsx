@@ -587,7 +587,33 @@ export function SourceStreamReader({
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `h-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setHighlights((prev) => [...prev, { ...input, id, ts: Date.now() }]);
+      setHighlights((prev) => {
+        const existing = prev.find(
+          (h) =>
+            h.chapter === input.chapter &&
+            h.paragraphIndex === input.paragraphIndex &&
+            ((h.charStart === input.charStart && h.charEnd === input.charEnd) ||
+              (input.text.length > 0 &&
+                h.text === input.text &&
+                Math.abs(h.charStart - input.charStart) <= 2)),
+        );
+        if (existing) {
+          return prev.map((h) =>
+            h.id === existing.id
+              ? {
+                  ...h,
+                  color: input.color,
+                  note:
+                    input.note !== undefined
+                      ? input.note.trim() || undefined
+                      : h.note,
+                  ts: Date.now(),
+                }
+              : h,
+          );
+        }
+        return [...prev, { ...input, id, ts: Date.now() }];
+      });
     },
     [],
   );
@@ -606,6 +632,15 @@ export function SourceStreamReader({
       ),
     );
   }, []);
+
+  const onUpdateHighlightColor = useCallback(
+    (id: string, color: HighlightColor) => {
+      setHighlights((prev) =>
+        prev.map((h) => (h.id === id ? { ...h, color, ts: Date.now() } : h)),
+      );
+    },
+    [],
+  );
 
   const onJumpToHighlight = useCallback(
     (h: Highlight) => {
@@ -728,6 +763,7 @@ export function SourceStreamReader({
             onCreateHighlight={onCreateHighlight}
             onDeleteHighlight={onDeleteHighlight}
             onUpdateHighlightNote={onUpdateHighlightNote}
+            onUpdateHighlightColor={onUpdateHighlightColor}
             onJumpToHighlight={onJumpToHighlight}
             tocVolumes={tocVolumes}
             nextChapterAvailability={nextAvailability}
@@ -750,6 +786,7 @@ export function SourceStreamReader({
             onCreateHighlight={onCreateHighlight}
             onDeleteHighlight={onDeleteHighlight}
             onUpdateHighlightNote={onUpdateHighlightNote}
+            onUpdateHighlightColor={onUpdateHighlightColor}
             onJumpToHighlight={onJumpToHighlight}
             tocVolumes={tocVolumes}
             nextChapterAvailability={nextAvailability}

@@ -400,49 +400,48 @@ function renderParagraph(
   themeKey: ThemeKey,
 ): ReactNode {
   if (hs.length === 0) return text;
-  const sorted = [...hs].sort((a, b) => a.charStart - b.charStart);
-  const out: ReactNode[] = [];
-  let cursor = 0;
-  for (const h of sorted) {
-    const start = Math.max(cursor, Math.min(h.charStart, text.length));
+  // If highlights overlap, later ones (by ts) win for the overlap span.
+  const chars: (Highlight | null)[] = new Array(text.length).fill(null);
+  const byTs = [...hs].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+  for (const h of byTs) {
+    const start = Math.max(0, Math.min(h.charStart, text.length));
     const end = Math.max(start, Math.min(h.charEnd, text.length));
-    if (start > cursor) out.push(text.slice(cursor, start));
-    if (end > start) {
+    for (let i = start; i < end; i++) {
+      chars[i] = h;
+    }
+  }
+
+  const out: ReactNode[] = [];
+  let segStart = 0;
+  while (segStart < text.length) {
+    const curH = chars[segStart];
+    let segEnd = segStart + 1;
+    while (segEnd < text.length && chars[segEnd] === curH) {
+      segEnd++;
+    }
+    if (curH === null) {
+      out.push(text.slice(segStart, segEnd));
+    } else {
       out.push(
         <mark
-          key={h.id}
-          data-h-id={h.id}
-          // What a reader's cursor is really asking about when it
-          // stops on a highlight.
-          title={h.note}
+          key={`${curH.id}-${segStart}`}
+          data-h-id={curH.id}
+          title={curH.note}
           style={{
-            background: hlBg(h.color, themeKey),
+            background: hlBg(curH.color, themeKey),
             color: "inherit",
             borderRadius: 2,
-            // No `padding` here. Earlier we used `padding: 0 0.05em` for
-            // a little colored breathing room around the text, but with
-            // `box-decoration-break: clone` the padding is applied to
-            // every wrapped fragment — reflowing the paragraph the
-            // moment a highlight is created and shifting where the user
-            // was reading. Box-shadow paints the same visual extension
-            // without occupying inline-direction layout space.
-            boxShadow: `0.05em 0 0 ${hlBg(h.color, themeKey)}, -0.05em 0 0 ${hlBg(h.color, themeKey)}`,
+            boxShadow: `0.05em 0 0 ${hlBg(curH.color, themeKey)}, -0.05em 0 0 ${hlBg(curH.color, themeKey)}`,
             cursor: "pointer",
-            // Treat the highlight as a complete box on every wrapped
-            // line. Without this, the default `slice` mode renders the
-            // background and box-shadow only on the very first/last
-            // line, and middle lines stretch flush to the line edges —
-            // which visually breaks across line wraps.
             boxDecorationBreak: "clone",
             WebkitBoxDecorationBreak: "clone",
           }}
         >
-          {text.slice(start, end)}
+          {text.slice(segStart, segEnd)}
         </mark>,
       );
     }
-    cursor = end;
+    segStart = segEnd;
   }
-  if (cursor < text.length) out.push(text.slice(cursor));
   return out;
 }
