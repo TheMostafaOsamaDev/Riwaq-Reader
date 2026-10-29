@@ -22,6 +22,7 @@ import {
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
+  resolveTextColor,
   titleFontFor,
   type HighlightColor,
   type Theme,
@@ -881,6 +882,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
               // mobile, the wheel on desktop.
               turnAxis={isMobile ? "x" : "y"}
               theme={theme}
+              textInk={resolveTextColor(themeKey, t.textColor)}
               themeKey={themeKey}
               highlights={highlights}
               onSelect={setSel}
