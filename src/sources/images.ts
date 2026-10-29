@@ -42,7 +42,12 @@ export function optimizedCoverUrl(
 
 function isResizableImage(url: string): boolean {
   const lower = url.toLowerCase().split("?")[0];
-  return /\.(jpe?g|png|webp)$/i.test(lower);
+  // Only WordPress generates `-WxH` variants. Anywhere else the rewrite
+  // names a file that cannot exist, and every cover pays for a 404 before
+  // its fallback loads the original.
+  return (
+    lower.includes("/wp-content/uploads/") && /\.(jpe?g|png|webp)$/.test(lower)
+  );
 }
 
 function alreadyHasThumbnailSuffix(url: string): boolean {
