@@ -580,6 +580,9 @@ export const ar: Messages = {
   "store.noSources": "لا مصادر مثبَّتة بعد.",
   "store.filterWebsites": "بحث في المواقع…",
   "store.noMatchingWebsites": "لا مواقع تطابق «{query}».",
+  "store.noMatchingFilters": "لا مواقع تطابق هذا البحث.",
+  "store.languageFilter": "اللغة",
+  "store.allLanguages": "الكل",
   "store.searchPlaceholder": "بحث…",
   "store.searching": "جارٍ البحث…",
   "store.loadSourceError": "تعذّر تحميل هذا المصدر — {error}",
@@ -602,6 +605,8 @@ export const ar: Messages = {
     "تعذّر تحميل فهرس الإضافات — اضغط إعادة المحاولة. ({error})",
   "extensions.installedHeading": "المثبَّتة",
   "extensions.availableHeading": "المتاحة",
+  "extensions.searchPlaceholder": "بحث في الإضافات…",
+  "extensions.noMatches": "لا إضافات تطابق هذا البحث.",
   "extensions.reposHeading": "المستودعات",
   "extensions.noneInstalled":
     "لا إضافات مثبَّتة بعد — ثبّت واحدة من قائمة المتاحة بالأسفل.",

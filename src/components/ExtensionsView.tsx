@@ -23,8 +23,8 @@
 // `InstallDeps`: it is what lets the tests drive all five card states, and
 // a throwaway browser harness render the view with no Tauri bridge at all.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { CatalogEntry } from "../extensions/catalog";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CatalogEntry, catalogDetails } from "../extensions/catalog";
 import {
   installExtension as realInstall,
   uninstallExtension as realUninstall,
@@ -40,6 +40,8 @@ import {
   resolveAssetUrl,
 } from "../extensions/repos";
 import { useI18n } from "../i18n/useI18n";
+import { pickDescription } from "../sources/description";
+import { languageName, listLanguages, matchesFilter } from "../sources/filter";
 import {
   getExtensionError as realGetError,
   getExtensionStatus as realGetStatus,
@@ -67,6 +69,7 @@ import {
   RepoList,
 } from "./extensions/RepoList";
 import { Icon } from "./Icon";
+import { SiteFilterBar } from "./SiteFilterBar";
 import { ThemedSkeleton } from "./Skeleton";
 
 export interface CatalogData {
@@ -121,8 +124,10 @@ export function ExtensionsView({
   deps = DEFAULT_EXTENSIONS_DEPS,
   layout = "desktop",
 }: Props) {
-  const { tr } = useI18n();
+  const { locale, tr } = useI18n();
   const [data, setData] = useState<CatalogData | null>(null);
+  const [query, setQuery] = useState("");
+  const [language, setLanguage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, CardAction>>({});
   const [cardError, setCardError] = useState<Record<string, string>>({});
@@ -304,25 +309,59 @@ export function ExtensionsView({
     }
   };
 
-  const renderCard = (item: CatalogEntry) => (
-    <ExtensionCard
-      key={item.id}
-      theme={theme}
-      entry={item}
-      status={deps.getExtensionStatus(item.id)}
-      loadError={deps.getExtensionError(item.id)}
-      iconUrl={iconFor(item)}
-      busy={busy[item.id] ?? null}
-      actionError={cardError[item.id]}
-      onInstall={() => void run(item, "install", "extensions.installFailed")}
-      onUpdate={() => void run(item, "update", "extensions.updateFailed")}
-      onRetry={() => void run(item, "update", "extensions.retryFailed")}
-      onRemove={() => setPendingRemove(item)}
-    />
+  const languages = useMemo(
+    () =>
+      listLanguages(
+        (data?.catalog ?? []).map((c) => catalogDetails(c).language),
+        locale,
+      ),
+    [data, locale],
   );
+  // A language can drop out from under the filter — its only repo removed,
+  // say. Its chip goes with it, so keeping it chosen would leave an empty
+  // list with no visible way back to "All".
+  const activeLanguage = languages.some((l) => l.code === language)
+    ? language
+    : null;
+  const shown = (item: CatalogEntry) => {
+    const details = catalogDetails(item);
+    return matchesFilter(
+      {
+        name: item.name,
+        baseUrl: details.baseUrl,
+        description: pickDescription(details.description, locale),
+        language: details.language,
+      },
+      query,
+      activeLanguage,
+    );
+  };
+
+  const renderCard = (item: CatalogEntry) => {
+    const code = catalogDetails(item).language;
+    return (
+      <ExtensionCard
+        key={item.id}
+        theme={theme}
+        entry={item}
+        languageName={code ? languageName(code, locale) : undefined}
+        status={deps.getExtensionStatus(item.id)}
+        loadError={deps.getExtensionError(item.id)}
+        iconUrl={iconFor(item)}
+        busy={busy[item.id] ?? null}
+        actionError={cardError[item.id]}
+        onInstall={() => void run(item, "install", "extensions.installFailed")}
+        onUpdate={() => void run(item, "update", "extensions.updateFailed")}
+        onRetry={() => void run(item, "update", "extensions.retryFailed")}
+        onRemove={() => setPendingRemove(item)}
+      />
+    );
+  };
 
   const installed = data?.catalog.filter((c) => c.installed) ?? [];
   const available = data?.catalog.filter((c) => !c.installed) ?? [];
+  const shownInstalled = installed.filter(shown);
+  const shownAvailable = available.filter(shown);
 
   // What "Update all" would act on. Exactly the set of cards that offer an
   // Update button of their own — a broken extension is offered Retry
@@ -499,6 +538,18 @@ export function ExtensionsView({
             </div>
           )}
 
+          {data.catalog.length > 0 && (
+            <SiteFilterBar
+              theme={theme}
+              query={query}
+              onQueryChange={setQuery}
+              placeholder={tr("extensions.searchPlaceholder")}
+              languages={languages}
+              language={activeLanguage}
+              onLanguageChange={setLanguage}
+            />
+          )}
+
           <Section
             theme={theme}
             title={tr("extensions.installedHeading")}
@@ -522,9 +573,11 @@ export function ExtensionsView({
           >
             {installed.length === 0 ? (
               <Empty theme={theme}>{tr("extensions.noneInstalled")}</Empty>
+            ) : shownInstalled.length === 0 ? (
+              <Empty theme={theme}>{tr("extensions.noMatches")}</Empty>
             ) : (
               <div role="list" style={{ display: "grid", gap: 10 }}>
-                {installed.map(renderCard)}
+                {shownInstalled.map(renderCard)}
               </div>
             )}
           </Section>
@@ -532,9 +585,11 @@ export function ExtensionsView({
           <Section theme={theme} title={tr("extensions.availableHeading")}>
             {available.length === 0 ? (
               <Empty theme={theme}>{tr("extensions.noneAvailable")}</Empty>
+            ) : shownAvailable.length === 0 ? (
+              <Empty theme={theme}>{tr("extensions.noMatches")}</Empty>
             ) : (
               <div role="list" style={{ display: "grid", gap: 10 }}>
-                {available.map(renderCard)}
+                {shownAvailable.map(renderCard)}
               </div>
             )}
           </Section>

@@ -41,6 +41,8 @@ export type CardAction = "install" | "update" | "remove";
 interface Props {
   theme: Theme;
   entry: CatalogEntry;
+  /** The extension's language, already named for the UI locale. */
+  languageName?: string;
   status: ExtensionStatus;
   /** The load error the registry captured, for `broken`. */
   loadError?: string;
@@ -62,6 +64,7 @@ const ACTION_STYLE = { minHeight: 44, minWidth: 44, paddingInline: 14 };
 export function ExtensionCard({
   theme,
   entry,
+  languageName,
   status,
   loadError,
   iconUrl,
@@ -153,6 +156,7 @@ export function ExtensionCard({
             {entry.name}
           </div>
           <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
+            {languageName && `${languageName} · `}
             {/* Only the version string is pinned LTR. Pinning the whole
                 line would drag it to the left edge under RTL, away from
                 the name it belongs to. */}

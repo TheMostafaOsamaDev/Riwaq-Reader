@@ -34,6 +34,22 @@ export interface CatalogEntry {
   record?: InstalledRecord;
 }
 
+/** The descriptive fields to show and filter on. The installed manifest
+ *  wins when there is one — it describes the code that is actually
+ *  running — and the repo's index entry covers everything not installed. */
+export function catalogDetails(c: CatalogEntry): {
+  language?: string;
+  baseUrl?: string;
+  description?: Record<string, string>;
+} {
+  const source = c.record?.manifest ?? c.entry;
+  return {
+    language: source?.language,
+    baseUrl: source?.baseUrl,
+    description: source?.description,
+  };
+}
+
 export interface RepoContents {
   repoUrl: string;
   entries: RepoIndexEntry[];

@@ -682,3 +682,111 @@ describe("ExtensionsView — catalogue load failure", () => {
     expect(card("steady")).not.toBeNull();
   });
 });
+
+describe("ExtensionsView — search and language filter", () => {
+  /** The same entry, declaring `language` in both places a catalogue entry
+   *  can carry it: the repo index entry and, once installed, the manifest. */
+  function inLanguage(entry: CatalogEntry, language: string): CatalogEntry {
+    return {
+      ...entry,
+      entry: entry.entry && { ...entry.entry, language },
+      record: entry.record && {
+        ...entry.record,
+        manifest: { ...entry.record.manifest, language },
+      },
+    };
+  }
+
+  const mixed = () => [
+    inLanguage(installed("kolnovel"), "ar"),
+    inLanguage(available("cenele"), "ar"),
+    inLanguage(available("novelbuddy"), "en"),
+  ];
+
+  function typeSearch(text: string) {
+    const input = host.querySelector(
+      'input[type="search"]',
+    ) as HTMLInputElement;
+    const setValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      setValue?.call(input, text);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  const languageGroup = () =>
+    host.querySelector('[role="group"][aria-label="Language"]');
+
+  const languageChoices = () =>
+    [...(languageGroup()?.querySelectorAll("button") ?? [])].map((b) => ({
+      label: b.textContent?.trim(),
+      pressed: b.getAttribute("aria-pressed"),
+    }));
+
+  it("narrows installed and available extensions to the typed query", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    typeSearch("buddy");
+    expect(card("novelbuddy")).not.toBeNull();
+    expect(card("kolnovel")).toBeNull();
+    expect(card("cenele")).toBeNull();
+  });
+
+  it("matches the query against the site's address", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    typeSearch("cenele.test");
+    expect(card("cenele")).not.toBeNull();
+    expect(card("novelbuddy")).toBeNull();
+  });
+
+  it("offers All plus one choice per language, with All chosen at first", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    expect(languageChoices()).toEqual([
+      { label: "All", pressed: "true" },
+      { label: "Arabic", pressed: "false" },
+      { label: "English", pressed: "false" },
+    ]);
+  });
+
+  it("keeps only the chosen language's extensions", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    click("English", languageGroup() as HTMLElement);
+    expect(card("novelbuddy")).not.toBeNull();
+    expect(card("kolnovel")).toBeNull();
+    expect(card("cenele")).toBeNull();
+    expect(languageChoices()[2]).toEqual({ label: "English", pressed: "true" });
+  });
+
+  it("brings every extension back when All is chosen again", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    click("English", languageGroup() as HTMLElement);
+    click("All", languageGroup() as HTMLElement);
+    expect(card("kolnovel")).not.toBeNull();
+    expect(card("cenele")).not.toBeNull();
+    expect(card("novelbuddy")).not.toBeNull();
+  });
+
+  it("offers no language choice when every extension shares one language", async () => {
+    await mount(
+      makeDeps({ catalog: [installed("kolnovel"), available("cenele")] }),
+    );
+    expect(languageGroup()).toBeNull();
+  });
+
+  it("says a section has no matches rather than leaving it blank", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    typeSearch("nothing like this");
+    expect(host.textContent).toContain("No extensions match");
+    // Not the "nothing installed yet" copy: there is something installed,
+    // the filter is hiding it.
+    expect(host.textContent).not.toContain("No extensions installed yet");
+  });
+
+  it("names each extension's language on its card", async () => {
+    await mount(makeDeps({ catalog: mixed() }));
+    expect(card("novelbuddy").textContent).toContain("English");
+    expect(card("kolnovel").textContent).toContain("Arabic");
+  });
+});
