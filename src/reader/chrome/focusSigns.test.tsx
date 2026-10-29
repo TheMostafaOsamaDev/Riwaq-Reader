@@ -74,8 +74,9 @@ describe("the focus-mode lock", () => {
   });
 
   it("clears the safe area and mirrors with the language", () => {
-    // The Android system bars are hidden in this mode; a display cutout is
-    // not. And it sits opposite the home button in BOTH directions.
+    // The Android system bars are hidden in this mode, but the inset keeps
+    // their strip, and a display cutout's. And it sits opposite the home
+    // button in BOTH directions.
     const html = lock();
     expect(html).toContain("env(safe-area-inset-top");
     expect(html).toContain("inset-inline-end");

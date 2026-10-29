@@ -52,9 +52,10 @@ export function FocusPill({
       role="status"
       style={{
         position: "absolute",
-        // Clear of the gesture bar on a phone that has one. The system bars go
-        // with the chrome, so on Android this usually resolves to 0 and the
-        // 22px is the whole gap.
+        // Clear of the gesture bar on a phone that has one — its strip too,
+        // while it is hidden with the chrome: Android keeps reporting it at
+        // full size (MainActivity.holdSystemBars), so a swipe that brings the
+        // bar back never lands it on the pill.
         bottom: "calc(var(--safe-bottom) + 22px)",
         insetInline: 0,
         display: "flex",
@@ -125,7 +126,9 @@ export function FocusLock({
       className="riwaq-focus-lock"
       style={{
         position: "absolute",
-        // The system bars go with the chrome, but a display cutout does not.
+        // Under the status bar's strip, which the inset keeps while the bar is
+        // hidden with the chrome (MainActivity.holdSystemBars), and under a
+        // display cutout.
         top: "calc(env(safe-area-inset-top, 0px) + 6px)",
         // Logical, so it lands opposite the home button in both directions
         // rather than pinning to one physical side.

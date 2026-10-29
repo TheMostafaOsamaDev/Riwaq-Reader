@@ -136,8 +136,10 @@ const EDGE_SCROLL_MAX = 14;
  *  selection toolbar comes back after that. */
 const SCROLL_SETTLE_MS = 220;
 
-/** Height of the guard over the system's swipe-up edge in full screen, where
- *  the safe-area inset reads 0. Android's gesture strip is 24-32dp. */
+/** Least height of the guard over the system's swipe-up edge in full screen.
+ *  `--safe-bottom` keeps the navigation bar's inset there, but a gesture
+ *  handle's inset can be thinner than the strip that answers the swipe:
+ *  16dp against 24-32dp. */
 const SYSTEM_EDGE_PX = 28;
 // ---- end custom selection helpers ----------------------------------
 
