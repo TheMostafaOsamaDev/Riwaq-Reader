@@ -48,6 +48,9 @@ interface Props {
   chapter: EpubChapter;
   theme: Theme;
   themeKey: ThemeKey;
+  /** The reader's chosen book-text colour (resolveTextColor), for the words
+   *  and the chapter's title. Defaults to `theme.ink`. */
+  textInk?: string;
   fontFamily: FontFamilyKey;
   fontSize: number;
   lineHeight: number;
@@ -128,6 +131,7 @@ export function BookBody({
   chapter,
   theme,
   themeKey,
+  textInk,
   fontFamily,
   fontSize,
   lineHeight,
@@ -173,7 +177,7 @@ export function BookBody({
     fontSize: scaledFontSize,
     lineHeight,
     letterSpacing: `${letterSpacing}em`,
-    color: theme.ink,
+    color: textInk ?? theme.ink,
     width: `${clampedPercent}%`,
     margin: "0 auto",
   };
@@ -240,6 +244,7 @@ export function BookBody({
     >
       <ChapterOpener
         theme={theme}
+        titleInk={textInk}
         order={chapter.order}
         title={chapter.title}
         bodyApparent={fontSize}

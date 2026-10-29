@@ -51,6 +51,10 @@ interface Props {
    *  be locked to one display face, so picking a font changed every word on
    *  the page except the chapter's own name. */
   fontFamily: string;
+  /** The reader's chosen book-text colour, which the title is drawn in so the
+   *  chapter's name matches its words. The marks and the label stay on the
+   *  theme. Defaults to `theme.ink`. */
+  titleInk?: string;
   tr: Tr;
   locale: Locale;
 }
@@ -151,6 +155,7 @@ export function ChapterOpener({
   compact = false,
   faceScale,
   fontFamily,
+  titleInk,
   tr,
   locale,
 }: Props) {
@@ -213,7 +218,7 @@ export function ChapterOpener({
           // computed in apparent size and converted back here.
           fontSize: titleSize,
           fontWeight: 400,
-          color: theme.ink,
+          color: titleInk ?? theme.ink,
           lineHeight: 1.2,
         }}
       >

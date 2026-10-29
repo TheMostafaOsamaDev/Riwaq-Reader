@@ -89,3 +89,13 @@ describe("the chapter opening title", () => {
     for (const r of ratios) expect(r).toBeCloseTo(ratios[0], 6);
   });
 });
+
+describe("chapter opener text color", () => {
+  it("sets the title in the chosen text color and keeps the ornaments on the theme", () => {
+    const html = render({ titleInk: "#3d4a2a" });
+    expect(html).toContain("color:#3d4a2a");
+    // inkAlpha(THEMES.sepia, …): the rules either side of the number stay on
+    // the theme, so only the words change colour.
+    expect(html).toContain("rgba(58,47,31,");
+  });
+});

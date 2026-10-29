@@ -70,6 +70,7 @@ import {
   type Theme,
   type ThemeKey,
   readingSurfaces,
+  resolveTextColor,
   Z,
   readingStack,
 } from "../styles/tokens";
@@ -437,11 +438,13 @@ export function MobileReader({
   // element, so it never inherits from the chrome wrapper below.
   const rtl = isRtlLanguage(book.language);
 
-  // Reading colours come from the theme, full stop. The page sits on the
-  // theme's paper with the surround a shade behind it, so the sheet reads as a
-  // sheet without needing a border.
+  // Reading colours come from the theme. The page sits on the theme's paper
+  // with the surround a shade behind it, so the sheet reads as a sheet without
+  // needing a border; the book's words take the text colour picked for this
+  // theme (BookBody's `textInk`).
   const surfaces = readingSurfaces(theme);
   const contentTheme: Theme = theme;
+  const textInk = resolveTextColor(themeKey, t.textColor);
 
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
@@ -1359,6 +1362,7 @@ export function MobileReader({
           bookId={book.id}
           chapter={chapter}
           theme={contentTheme}
+          textInk={textInk}
           themeKey={themeKey}
           highlights={state.highlights}
           fontFamily={t.fontFamily}
