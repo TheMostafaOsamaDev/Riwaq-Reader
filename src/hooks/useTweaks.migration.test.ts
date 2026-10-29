@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
 import { appVersion } from "virtual:whats-new";
-import { acceptsTweak, DEFAULT_TWEAKS, loadTweaks } from "./useTweaks";
+import { DEFAULT_TEXT_COLORS } from "../styles/tokens";
+import {
+  acceptsTweak,
+  DEFAULT_TWEAKS,
+  loadTweaks,
+  mergeTweaks,
+} from "./useTweaks";
 
 describe("loadTweaks", () => {
   beforeEach(() => localStorage.clear());
@@ -71,5 +77,93 @@ describe("updateOverMobile", () => {
     expect(acceptsTweak("heroStyle", "nope")).toBe(false);
     expect(acceptsTweak("fontSize", 19)).toBe(true);
     expect(acceptsTweak("fontSize", Number.NaN)).toBe(false);
+  });
+});
+
+describe("textColor", () => {
+  beforeEach(() => localStorage.clear());
+  const store = (o: object) =>
+    localStorage.setItem("riwaq:tweaks:v1", JSON.stringify(o));
+
+  it("starts every theme on its own ink", () => {
+    expect(DEFAULT_TWEAKS.textColor).toEqual(DEFAULT_TEXT_COLORS);
+    expect(loadTweaks().textColor).toEqual(DEFAULT_TEXT_COLORS);
+  });
+
+  it("an install from before text color loads the defaults and keeps the rest", () => {
+    store({ fontSize: 19 });
+    const t = loadTweaks();
+    expect(t.textColor).toEqual(DEFAULT_TEXT_COLORS);
+    expect(t.fontSize).toBe(19);
+  });
+
+  it("loads settings saved by the old Text/Page color picker", () => {
+    // The free pickers (removed in cf2c59e) stored raw hex under these keys.
+    // They are not text-colour picks and must not be read as one.
+    store({ inkColor: "#ff0000", paperColor: "#000000", fontSize: 19 });
+    const t = loadTweaks();
+    expect(t.textColor).toEqual(DEFAULT_TEXT_COLORS);
+    expect(t.fontSize).toBe(19);
+  });
+
+  it("keeps valid saved picks and repairs the rest", () => {
+    store({
+      textColor: { light: "navy", dark: "bogus", extra: "x" },
+      fontSize: 19,
+    });
+    expect(loadTweaks().textColor).toEqual({
+      ...DEFAULT_TEXT_COLORS,
+      light: "navy",
+    });
+  });
+
+  it("a saved null or array becomes the defaults", () => {
+    store({ textColor: null });
+    expect(loadTweaks().textColor).toEqual(DEFAULT_TEXT_COLORS);
+    store({ textColor: [] });
+    expect(loadTweaks().textColor).toEqual(DEFAULT_TEXT_COLORS);
+  });
+
+  it("import takes a plain object only", () => {
+    expect(acceptsTweak("textColor", { light: "navy" })).toBe(true);
+    expect(acceptsTweak("textColor", null)).toBe(false);
+    expect(acceptsTweak("textColor", [])).toBe(false);
+  });
+
+  it("an exported textColor imports unchanged", () => {
+    const picks = {
+      light: "navy",
+      sepia: "olive",
+      dark: "amber",
+      oled: "coral",
+    };
+    expect(mergeTweaks(DEFAULT_TWEAKS, { textColor: picks }).textColor).toEqual(
+      picks,
+    );
+  });
+
+  it("an imported textColor is repaired, not trusted", () => {
+    const next = mergeTweaks(DEFAULT_TWEAKS, {
+      textColor: { light: "moon", dark: "amber" },
+      fontSize: 20,
+    });
+    expect(next.textColor).toEqual({ ...DEFAULT_TEXT_COLORS, dark: "amber" });
+    expect(next.fontSize).toBe(20);
+  });
+
+  it("reset puts every theme back on its own ink", () => {
+    const picked = {
+      ...DEFAULT_TWEAKS,
+      textColor: {
+        light: "navy",
+        sepia: "olive",
+        dark: "amber",
+        oled: "coral",
+      } as const,
+    };
+    expect(
+      mergeTweaks(picked, DEFAULT_TWEAKS as unknown as Record<string, unknown>)
+        .textColor,
+    ).toEqual(DEFAULT_TEXT_COLORS);
   });
 });
