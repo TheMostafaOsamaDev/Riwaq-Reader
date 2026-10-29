@@ -191,6 +191,9 @@ export interface FixedPageViewerProps {
    *  that drives it; desktop turns vertically to match the wheel. */
   turnAxis: "x" | "y";
   theme: Theme;
+  /** The reader's chosen book-text colour, for DOCX pages (the only pages
+   *  with text to recolour). Defaults to `theme.ink`. */
+  textInk?: string;
   resume?: { page: number; pageOffset?: number };
   onProgress?: (p: ReaderProgress) => void;
   onLocationChange?: (page: number, pageOffset: number) => void;
@@ -259,6 +262,7 @@ export const FixedPageViewer = forwardRef<
     dir,
     turnAxis: axis,
     theme,
+    textInk,
     resume,
     onProgress,
     onLocationChange,
@@ -2261,9 +2265,12 @@ export const FixedPageViewer = forwardRef<
         // value, so without this the page vanished into its background once
         // the border and the fit-width gutter were gone.
         background: surfaces.surround,
-        // DOCX cards paint themselves from these.
+        // DOCX cards paint themselves from these. Only they read the ink, so
+        // the chosen text colour reaches DOCX text and nothing else; a PDF
+        // page is a picture and ignores it. The tint filter (`hostFilter`)
+        // still applies on top, as it does to the theme ink.
         ...({
-          "--reading-ink": theme.ink,
+          "--reading-ink": textInk ?? theme.ink,
           "--reading-paper": surfaces.page,
           // DOCX pages read this for their `user-select` (DocxPageSource):
           // the phone draws its own selection and must never get a native one.

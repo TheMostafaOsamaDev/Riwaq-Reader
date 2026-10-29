@@ -1,4 +1,9 @@
-import type { FontFamilyKey, ThemePref, UiFontKey } from "../styles/tokens";
+import type {
+  FontFamilyKey,
+  TextColorPicks,
+  ThemePref,
+  UiFontKey,
+} from "../styles/tokens";
 import type { UiLangPref } from "../i18n";
 
 export type ActivePanel = null | "toc" | "highlights" | "settings" | "progress";
@@ -50,6 +55,10 @@ export interface Tweaks {
       four concrete values pin a specific theme. Resolved to a concrete
       ThemeKey at render time via resolveTheme(). */
   theme: ThemePref;
+  /** Book-text colour per theme, by palette id (see TEXT_COLORS). Each theme
+      keeps its own pick; "system" uses the entry of whichever theme it
+      resolves to. */
+  textColor: TextColorPicks;
   /** Style of the "continue reading" card at the top of the library. */
   heroStyle: HeroStyle;
   /** Phone only: the bar that comes up when the reader taps the page. */

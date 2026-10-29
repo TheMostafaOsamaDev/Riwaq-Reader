@@ -74,6 +74,7 @@ import {
   FONT_STACKS,
   isRtlLanguage,
   readingSurfaces,
+  resolveTextColor,
   titleFontFor,
   type Theme,
   type ThemeKey,
@@ -185,11 +186,12 @@ export function DesktopReader({
   // (set on their own elements, so it never inherits from the chrome below).
   const rtl = isRtlLanguage(book.language);
 
-  // Effective reading colors: the user's ink/paper overrides layered over the
-  // active theme ("auto" falls back to theme.ink / theme.bg). `contentTheme`
-  // recolors only the reading surface + text, leaving the chrome on `theme`.
+  // Reading colours: the page and its surround come from the theme; the
+  // book's words (and its chapter titles) take the text colour picked for
+  // this theme, which BookBody gets as `textInk`. The chrome stays on `theme`.
   const surfaces = readingSurfaces(theme);
   const contentTheme: Theme = theme;
+  const textInk = resolveTextColor(themeKey, t.textColor);
 
   // Contents docks beside the reading column instead of covering it, so you
   // can see where you are in the book and keep reading at the same time. The
@@ -1233,6 +1235,7 @@ export function DesktopReader({
                     bookId={book.id}
                     chapter={chapter}
                     theme={contentTheme}
+                    textInk={textInk}
                     themeKey={themeKey}
                     fontFamily={t.fontFamily}
                     fontSize={t.fontSize}
@@ -1304,6 +1307,7 @@ export function DesktopReader({
                   bookId={book.id}
                   chapter={chapter}
                   theme={contentTheme}
+                  textInk={textInk}
                   themeKey={themeKey}
                   fontFamily={t.fontFamily}
                   fontSize={t.fontSize}

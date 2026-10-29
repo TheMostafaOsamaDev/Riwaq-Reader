@@ -293,6 +293,131 @@ export const HIGHLIGHT_COLOR_ORDER = Object.keys(
   HIGHLIGHT_COLORS,
 ) as readonly HighlightColor[];
 
+// ── book text colour ────────────────────────────────────────────────────────
+
+/** PERSISTED (per theme, in `Tweaks.textColor`), so an id can be retuned but
+ *  never renamed or removed. One id used by two themes (`amber`, `sage`)
+ *  shares one translated name. */
+export type TextColorId =
+  | "default"
+  | "soft"
+  | "graphite"
+  | "navy"
+  | "brown"
+  | "deep"
+  | "coffee"
+  | "olive"
+  | "plum"
+  | "paper"
+  | "silver"
+  | "amber"
+  | "sage"
+  | "coral"
+  | "moon";
+
+export const TEXT_COLOR_IDS: readonly TextColorId[] = [
+  "default",
+  "soft",
+  "graphite",
+  "navy",
+  "brown",
+  "deep",
+  "coffee",
+  "olive",
+  "plum",
+  "paper",
+  "silver",
+  "amber",
+  "sage",
+  "coral",
+  "moon",
+];
+
+/** The colours the book text can take, per theme, in picker order.
+ *
+ *  A short fixed list rather than a free picker: the free Text/Page pickers
+ *  were removed because they let you choose pairs that cannot be read. Every
+ *  entry here clears 4.5:1 against the sheet the words sit on
+ *  (`readingSurfaces(theme).page`, lifted above `paper` on the near-black
+ *  themes) AND against that sheet with each highlight tint laid over it —
+ *  textColors.test.ts holds the line. A colour that stops clearing it gets
+ *  retuned (lightness first, keeping its hue); the threshold does not move.
+ *
+ *  `default` carries no hex: it is the theme's own `ink`, read from THEMES,
+ *  so retuning a theme's ink retunes its default text colour with it. */
+export const TEXT_COLORS: Record<
+  ThemeKey,
+  ReadonlyArray<{ id: TextColorId; hex: string | null }>
+> = {
+  light: [
+    { id: "default", hex: null },
+    { id: "soft", hex: "#4a4238" },
+    { id: "graphite", hex: "#2e3338" },
+    { id: "navy", hex: "#1f3a5f" },
+    { id: "brown", hex: "#5b3a1e" },
+  ],
+  sepia: [
+    { id: "default", hex: null },
+    { id: "deep", hex: "#22190e" },
+    { id: "coffee", hex: "#5b3a1e" },
+    { id: "olive", hex: "#3d4a2a" },
+    { id: "plum", hex: "#4a2a3a" },
+  ],
+  dark: [
+    { id: "default", hex: null },
+    { id: "paper", hex: "#ece6da" },
+    { id: "silver", hex: "#c9c1b7" },
+    { id: "amber", hex: "#eabb70" },
+    { id: "sage", hex: "#b8c8a8" },
+  ],
+  // No "dim": OLED's own ink is already as dim as text gets and still reads,
+  // so a readable dim was indistinguishable from it.
+  oled: [
+    { id: "default", hex: null },
+    { id: "sage", hex: "#9fc0a0" },
+    { id: "amber", hex: "#d5a357" },
+    { id: "coral", hex: "#ff8a75" },
+    { id: "moon", hex: "#c8ccd2" },
+  ],
+};
+
+/** The text colour picked for each theme. Each theme keeps its own, so
+ *  switching away and back brings the pick back. */
+export type TextColorPicks = Record<ThemeKey, TextColorId>;
+
+export const DEFAULT_TEXT_COLORS: TextColorPicks = {
+  light: "default",
+  sepia: "default",
+  dark: "default",
+  oled: "default",
+};
+
+/** The book-text colour for a theme. Anything the theme does not offer —
+ *  `default`, or an id that is not in its list — is the theme's own ink. */
+export function resolveTextColor(
+  themeKey: ThemeKey,
+  picks: TextColorPicks,
+): string {
+  const entry = TEXT_COLORS[themeKey].find((c) => c.id === picks[themeKey]);
+  return entry?.hex ?? THEMES[themeKey].ink;
+}
+
+/** A stored or imported `textColor` made safe: a fresh record holding each
+ *  theme's pick only if that theme offers it, `default` otherwise. Anything
+ *  that is not a plain object is the defaults; unknown keys are dropped. */
+export function sanitizeTextColors(v: unknown): TextColorPicks {
+  const src =
+    v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  const out = { ...DEFAULT_TEXT_COLORS };
+  for (const k of Object.keys(out) as ThemeKey[]) {
+    const id = TEXT_COLORS[k].find((c) => c.id === src[k])?.id;
+    if (id) out[k] = id;
+  }
+  return out;
+}
+
 /** Every value `Tweaks.fontFamily` can hold.
  *
  *  `serif` / `sans` / `dyslexic` are LEGACY. They predate the font library and

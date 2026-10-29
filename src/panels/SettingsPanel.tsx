@@ -6,7 +6,9 @@
 //
 // Everything around those controls — the shell, the language row, the theme
 // row, the "All settings" footer — is shared, so the two readers can't drift
-// into feeling like different apps. The controls themselves come from
+// into feeling like different apps. The text-colour row under Theme is shared
+// too, except on a PDF: its pages are pictures, so only a DOCX (whose pages
+// are real text) gets it on the fixed variant. The controls themselves come from
 // components/SettingsSection.tsx, the same module the full Settings page
 // renders from (same components, same `Tweaks` state).
 
@@ -18,6 +20,7 @@ import {
   LanguageField,
   ReadingControls,
   SegRow,
+  TextColorField,
   ThemeField,
 } from "../components/SettingsSection";
 import type { Theme, ThemeKey } from "../styles/tokens";
@@ -99,6 +102,15 @@ export function SettingsPanel(props: Props) {
         pref={t.theme}
         onChange={(p) => setTweak("theme", p)}
       />
+      {(!fixed || docxMode != null) && (
+        <TextColorField
+          theme={theme}
+          themeKey={props.themeKey}
+          picks={t.textColor}
+          fontFamily={t.fontFamily}
+          onChange={(v) => setTweak("textColor", v)}
+        />
+      )}
       {docxMode && onDocxModeChange && (
         <Field label={tr("settings.docxLayout")} theme={theme}>
           <SegRow<"pages" | "flow">

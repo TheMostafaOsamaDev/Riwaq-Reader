@@ -33,6 +33,7 @@ import {
   SectionHeader,
   SegRow,
   Slider,
+  TextColorField,
   ThemeField,
   readingItems,
   renderEntries,
@@ -304,6 +305,19 @@ export function SettingsPage({
             theme={theme}
             pref={t.theme}
             onChange={(p) => setTweak("theme", p)}
+          />
+        ),
+      },
+      {
+        id: "textColor",
+        label: tr("settings.textColor"),
+        node: (
+          <TextColorField
+            theme={theme}
+            themeKey={themeKey}
+            picks={t.textColor}
+            fontFamily={t.fontFamily}
+            onChange={(v) => setTweak("textColor", v)}
           />
         ),
       },

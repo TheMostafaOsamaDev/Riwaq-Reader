@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Tweaks } from "../types/reader";
 import {
+  DEFAULT_TEXT_COLORS,
   FONT_STACKS,
   LEGACY_FONT_FAMILY,
+  sanitizeTextColors,
   UI_FONT_STACKS,
 } from "../styles/tokens";
 import { appVersion } from "virtual:whats-new";
@@ -15,12 +17,19 @@ const STORAGE_KEY = "riwaq:tweaks:v1";
 export const DEFAULT_TWEAKS: Tweaks = {
   uiLang: "system",
   theme: "sepia",
+  // Every theme starts on its own ink, so nobody's books change colour until
+  // they pick one.
+  textColor: DEFAULT_TEXT_COLORS,
   heroStyle: "ambient",
   // Today's bars. A new style is opt-in from Settings ▸ Appearance, so an
   // update never rearranges the controls a reader already knows.
   readerBar: "classic",
   homeBar: "classic",
-  fontFamily: "readex",
+  // Fresh installs only: the whole settings object is saved on first launch,
+  // so anyone who has opened the app keeps the font they already have.
+  // useFontScale corrects Markazi's smaller drawing size, so it reads at the
+  // same apparent size Readex Pro did.
+  fontFamily: "markazi",
   fontSize: 17,
   lineHeight: 1.6,
   letterSpacing: 0,
@@ -63,6 +72,9 @@ export function acceptsTweak(k: string, v: unknown): boolean {
     !(k === "heroStyle" && !isHeroStyle(v)) &&
     !(k === "readerBar" && !isReaderBarStyle(v)) &&
     !(k === "homeBar" && !isHomeBarStyle(v)) &&
+    // `typeof null` and `typeof []` are both "object"; only a plain record is
+    // a set of picks (mergeTweaks then repairs what is inside it).
+    !(k === "textColor" && (v === null || Array.isArray(v))) &&
     !(k === "updateOverMobile" && !UPDATE_OVER_MOBILE.includes(v))
   );
 }
@@ -140,10 +152,30 @@ export function loadTweaks(): Tweaks {
     if (!UPDATE_OVER_MOBILE.includes(merged.updateOverMobile)) {
       merged.updateOverMobile = DEFAULT_TWEAKS.updateOverMobile;
     }
+    // A nested record, so the shallow spread above cannot repair it: a
+    // missing, partial or hand-edited one is rebuilt pick by pick.
+    merged.textColor = sanitizeTextColors(merged.textColor);
     return merged;
   } catch {
     return DEFAULT_TWEAKS;
   }
+}
+
+/** Lay `partial` (an imported settings file, or the defaults on Reset) over
+ *  `prev`, taking only what `acceptsTweak` allows. `textColor` is repaired on
+ *  the way in rather than trusted. */
+export function mergeTweaks(
+  prev: Tweaks,
+  partial: Partial<Tweaks> | Record<string, unknown>,
+): Tweaks {
+  const next: Tweaks = { ...prev };
+  for (const [k, v] of Object.entries(partial)) {
+    if (acceptsTweak(k, v)) {
+      (next as unknown as Record<string, unknown>)[k] =
+        k === "textColor" ? sanitizeTextColors(v) : v;
+    }
+  }
+  return next;
 }
 
 export function useTweaks() {
@@ -165,16 +197,7 @@ export function useTweaks() {
   );
 
   const applyTweaks = useCallback((partial: Partial<Tweaks>) => {
-    setT((prev) => {
-      const next: Tweaks = { ...prev };
-      for (const k of Object.keys(partial) as (keyof Tweaks)[]) {
-        const v = partial[k];
-        if (acceptsTweak(k, v)) {
-          (next as unknown as Record<string, unknown>)[k] = v;
-        }
-      }
-      return next;
-    });
+    setT((prev) => mergeTweaks(prev, partial));
   }, []);
 
   return [t, setTweak, applyTweaks] as const;
