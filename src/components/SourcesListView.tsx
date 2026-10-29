@@ -4,10 +4,10 @@
 // no loading state to manage. Sideloaded extensions (planned future work)
 // would slot in here the same way.
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { pickDescription } from "../sources/description";
-import { languageName, listLanguages, matchesFilter } from "../sources/filter";
+import { languageName, useSiteFilter } from "../sources/filter";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
 import {
@@ -42,40 +42,12 @@ export function SourcesListView({
   layout = "desktop",
 }: Props) {
   const isMobile = layout === "mobile";
-  const { locale, tr } = useI18n();
+  const { tr } = useI18n();
   const sources = useMemo(() => listSources(), []);
-  const [query, setQuery] = useState("");
-  const [language, setLanguage] = useState<string | null>(null);
-  const languages = useMemo(
-    () =>
-      listLanguages(
-        sources.map((s) => s.language),
-        locale,
-      ),
-    [sources, locale],
-  );
-
   // Live filter over the installed sources by name / URL / description,
-  // and by language once one is chosen. An extension ships its
-  // description as a locale map, so resolve it to the display string
-  // before matching — otherwise the user would be searching a stringified
-  // object.
-  const filtered = useMemo(
-    () =>
-      sources.filter((s) =>
-        matchesFilter(
-          {
-            name: s.name,
-            baseUrl: s.baseUrl,
-            description: pickDescription(s.description, locale),
-            language: s.language,
-          },
-          query,
-          language,
-        ),
-      ),
-    [sources, query, language, locale],
-  );
+  // and by language once one is chosen.
+  const filter = useSiteFilter(sources);
+  const filtered = sources.filter(filter.matches);
 
   return (
     <div
@@ -141,12 +113,8 @@ export function SourcesListView({
       {sources.length > 0 && (
         <SiteFilterBar
           theme={theme}
-          query={query}
-          onQueryChange={setQuery}
+          filter={filter}
           placeholder={tr("store.filterWebsites")}
-          languages={languages}
-          language={language}
-          onLanguageChange={setLanguage}
         />
       )}
 
@@ -170,9 +138,7 @@ export function SourcesListView({
             fontSize: 13,
           }}
         >
-          {query.trim()
-            ? tr("store.noMatchingWebsites", { query: query.trim() })
-            : tr("store.noMatchingFilters")}
+          {tr("store.noMatchingWebsites", { query: filter.query.trim() })}
         </div>
       ) : (
         <div

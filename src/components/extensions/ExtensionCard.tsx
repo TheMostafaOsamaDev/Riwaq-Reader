@@ -23,6 +23,7 @@
 
 import type { CatalogEntry } from "../../extensions/catalog";
 import { useI18n } from "../../i18n/useI18n";
+import { languageName } from "../../sources/filter";
 import { API_VERSION } from "../../sources/types";
 import type { Theme } from "../../styles/tokens";
 import { Button } from "../Button";
@@ -41,8 +42,6 @@ export type CardAction = "install" | "update" | "remove";
 interface Props {
   theme: Theme;
   entry: CatalogEntry;
-  /** The extension's language, already named for the UI locale. */
-  languageName?: string;
   status: ExtensionStatus;
   /** The load error the registry captured, for `broken`. */
   loadError?: string;
@@ -64,7 +63,6 @@ const ACTION_STYLE = { minHeight: 44, minWidth: 44, paddingInline: 14 };
 export function ExtensionCard({
   theme,
   entry,
-  languageName,
   status,
   loadError,
   iconUrl,
@@ -75,7 +73,7 @@ export function ExtensionCard({
   onRetry,
   onRemove,
 }: Props) {
-  const { tr } = useI18n();
+  const { locale, tr } = useI18n();
   const installed = entry.installed;
   // "missing" means the registry has not listed this id yet — the moment
   // right after an install, before initExtensions() has re-run. Reading it
@@ -156,7 +154,7 @@ export function ExtensionCard({
             {entry.name}
           </div>
           <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
-            {languageName && `${languageName} · `}
+            {entry.language && `${languageName(entry.language, locale)} · `}
             {/* Only the version string is pinned LTR. Pinning the whole
                 line would drag it to the left edge under RTL, away from
                 the name it belongs to. */}

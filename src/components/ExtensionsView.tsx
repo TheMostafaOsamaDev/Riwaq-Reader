@@ -23,8 +23,8 @@
 // `InstallDeps`: it is what lets the tests drive all five card states, and
 // a throwaway browser harness render the view with no Tauri bridge at all.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type CatalogEntry, catalogDetails } from "../extensions/catalog";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CatalogEntry } from "../extensions/catalog";
 import {
   installExtension as realInstall,
   uninstallExtension as realUninstall,
@@ -39,9 +39,9 @@ import {
   type RepoIndexEntry,
   resolveAssetUrl,
 } from "../extensions/repos";
+import type { MsgKey } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
-import { pickDescription } from "../sources/description";
-import { languageName, listLanguages, matchesFilter } from "../sources/filter";
+import { useSiteFilter } from "../sources/filter";
 import {
   getExtensionError as realGetError,
   getExtensionStatus as realGetStatus,
@@ -118,16 +118,19 @@ interface Props {
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// Stable while the catalogue is loading, so the filter's language list is
+// not rebuilt on every render.
+const NO_ENTRIES: CatalogEntry[] = [];
+
 export function ExtensionsView({
   theme,
   onBack,
   deps = DEFAULT_EXTENSIONS_DEPS,
   layout = "desktop",
 }: Props) {
-  const { locale, tr } = useI18n();
+  const { tr } = useI18n();
   const [data, setData] = useState<CatalogData | null>(null);
-  const [query, setQuery] = useState("");
-  const [language, setLanguage] = useState<string | null>(null);
+  const filter = useSiteFilter(data?.catalog ?? NO_ENTRIES);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, CardAction>>({});
   const [cardError, setCardError] = useState<Record<string, string>>({});
@@ -309,59 +312,40 @@ export function ExtensionsView({
     }
   };
 
-  const languages = useMemo(
-    () =>
-      listLanguages(
-        (data?.catalog ?? []).map((c) => catalogDetails(c).language),
-        locale,
-      ),
-    [data, locale],
+  const renderCard = (item: CatalogEntry) => (
+    <ExtensionCard
+      key={item.id}
+      theme={theme}
+      entry={item}
+      status={deps.getExtensionStatus(item.id)}
+      loadError={deps.getExtensionError(item.id)}
+      iconUrl={iconFor(item)}
+      busy={busy[item.id] ?? null}
+      actionError={cardError[item.id]}
+      onInstall={() => void run(item, "install", "extensions.installFailed")}
+      onUpdate={() => void run(item, "update", "extensions.updateFailed")}
+      onRetry={() => void run(item, "update", "extensions.retryFailed")}
+      onRemove={() => setPendingRemove(item)}
+    />
   );
-  // A language can drop out from under the filter — its only repo removed,
-  // say. Its chip goes with it, so keeping it chosen would leave an empty
-  // list with no visible way back to "All".
-  const activeLanguage = languages.some((l) => l.code === language)
-    ? language
-    : null;
-  const shown = (item: CatalogEntry) => {
-    const details = catalogDetails(item);
-    return matchesFilter(
-      {
-        name: item.name,
-        baseUrl: details.baseUrl,
-        description: pickDescription(details.description, locale),
-        language: details.language,
-      },
-      query,
-      activeLanguage,
-    );
-  };
 
-  const renderCard = (item: CatalogEntry) => {
-    const code = catalogDetails(item).language;
+  /** A section's cards, or why there are none: nothing there at all, or
+   *  nothing the search and language filter let through. */
+  const renderList = (all: CatalogEntry[], noneKey: MsgKey) => {
+    if (all.length === 0) return <Empty theme={theme}>{tr(noneKey)}</Empty>;
+    const shown = all.filter(filter.matches);
+    if (shown.length === 0) {
+      return <Empty theme={theme}>{tr("extensions.noMatches")}</Empty>;
+    }
     return (
-      <ExtensionCard
-        key={item.id}
-        theme={theme}
-        entry={item}
-        languageName={code ? languageName(code, locale) : undefined}
-        status={deps.getExtensionStatus(item.id)}
-        loadError={deps.getExtensionError(item.id)}
-        iconUrl={iconFor(item)}
-        busy={busy[item.id] ?? null}
-        actionError={cardError[item.id]}
-        onInstall={() => void run(item, "install", "extensions.installFailed")}
-        onUpdate={() => void run(item, "update", "extensions.updateFailed")}
-        onRetry={() => void run(item, "update", "extensions.retryFailed")}
-        onRemove={() => setPendingRemove(item)}
-      />
+      <div role="list" style={{ display: "grid", gap: 10 }}>
+        {shown.map(renderCard)}
+      </div>
     );
   };
 
   const installed = data?.catalog.filter((c) => c.installed) ?? [];
   const available = data?.catalog.filter((c) => !c.installed) ?? [];
-  const shownInstalled = installed.filter(shown);
-  const shownAvailable = available.filter(shown);
 
   // What "Update all" would act on. Exactly the set of cards that offer an
   // Update button of their own — a broken extension is offered Retry
@@ -541,12 +525,8 @@ export function ExtensionsView({
           {data.catalog.length > 0 && (
             <SiteFilterBar
               theme={theme}
-              query={query}
-              onQueryChange={setQuery}
+              filter={filter}
               placeholder={tr("extensions.searchPlaceholder")}
-              languages={languages}
-              language={activeLanguage}
-              onLanguageChange={setLanguage}
             />
           )}
 
@@ -571,27 +551,11 @@ export function ExtensionsView({
               )
             }
           >
-            {installed.length === 0 ? (
-              <Empty theme={theme}>{tr("extensions.noneInstalled")}</Empty>
-            ) : shownInstalled.length === 0 ? (
-              <Empty theme={theme}>{tr("extensions.noMatches")}</Empty>
-            ) : (
-              <div role="list" style={{ display: "grid", gap: 10 }}>
-                {shownInstalled.map(renderCard)}
-              </div>
-            )}
+            {renderList(installed, "extensions.noneInstalled")}
           </Section>
 
           <Section theme={theme} title={tr("extensions.availableHeading")}>
-            {available.length === 0 ? (
-              <Empty theme={theme}>{tr("extensions.noneAvailable")}</Empty>
-            ) : shownAvailable.length === 0 ? (
-              <Empty theme={theme}>{tr("extensions.noMatches")}</Empty>
-            ) : (
-              <div role="list" style={{ display: "grid", gap: 10 }}>
-                {shownAvailable.map(renderCard)}
-              </div>
-            )}
+            {renderList(available, "extensions.noneAvailable")}
           </Section>
 
           <Section theme={theme} title={tr("extensions.reposHeading")}>

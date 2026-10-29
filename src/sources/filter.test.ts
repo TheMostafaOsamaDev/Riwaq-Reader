@@ -36,42 +36,51 @@ describe("matchesFilter", () => {
   const novelbuddy = {
     name: "NovelBuddy",
     baseUrl: "https://novelbuddy.me",
-    description: "English web novels",
+    description: { en: "English web novels", ar: "روايات ويب إنجليزية" },
     language: "en",
   };
+  const match = (
+    item: Parameters<typeof matchesFilter>[0],
+    query: string,
+    language: string | null = null,
+    locale: "en" | "ar" = "en",
+  ) => matchesFilter(item, query, language, locale);
 
   it("matches everything when there is no query and no language", () => {
-    expect(matchesFilter(novelbuddy, "", null)).toBe(true);
+    expect(match(novelbuddy, "")).toBe(true);
   });
 
   it("matches the query against name, URL and description, ignoring case", () => {
-    expect(matchesFilter(novelbuddy, "BUDDY", null)).toBe(true);
-    expect(matchesFilter(novelbuddy, "novelbuddy.me", null)).toBe(true);
-    expect(matchesFilter(novelbuddy, "web novels", null)).toBe(true);
-    expect(matchesFilter(novelbuddy, "kolnovel", null)).toBe(false);
+    expect(match(novelbuddy, "BUDDY")).toBe(true);
+    expect(match(novelbuddy, "novelbuddy.me")).toBe(true);
+    expect(match(novelbuddy, "web novels")).toBe(true);
+    expect(match(novelbuddy, "kolnovel")).toBe(false);
+  });
+
+  it("searches the description in the interface's own language", () => {
+    expect(match(novelbuddy, "روايات", null, "ar")).toBe(true);
+    expect(match(novelbuddy, "روايات", null, "en")).toBe(false);
   });
 
   it("ignores surrounding whitespace in the query", () => {
-    expect(matchesFilter(novelbuddy, "  buddy  ", null)).toBe(true);
+    expect(match(novelbuddy, "  buddy  ")).toBe(true);
   });
 
   it("keeps only the chosen language", () => {
-    expect(matchesFilter(novelbuddy, "", "en")).toBe(true);
-    expect(matchesFilter(novelbuddy, "", "ar")).toBe(false);
+    expect(match(novelbuddy, "", "en")).toBe(true);
+    expect(match(novelbuddy, "", "ar")).toBe(false);
   });
 
   it("compares languages by primary subtag", () => {
-    expect(matchesFilter({ ...novelbuddy, language: "en-US" }, "", "en")).toBe(
-      true,
-    );
+    expect(match({ ...novelbuddy, language: "en-US" }, "", "en")).toBe(true);
   });
 
   it("needs both the query and the language to match", () => {
-    expect(matchesFilter(novelbuddy, "buddy", "ar")).toBe(false);
-    expect(matchesFilter(novelbuddy, "buddy", "en")).toBe(true);
+    expect(match(novelbuddy, "buddy", "ar")).toBe(false);
+    expect(match(novelbuddy, "buddy", "en")).toBe(true);
   });
 
   it("drops an item with no language once a language is chosen", () => {
-    expect(matchesFilter({ name: "Mystery" }, "", "en")).toBe(false);
+    expect(match({ name: "Mystery" }, "", "en")).toBe(false);
   });
 });

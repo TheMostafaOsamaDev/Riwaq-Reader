@@ -27,27 +27,17 @@ export interface CatalogEntry {
    *  version — so the Store can render `installedVersion → version`. */
   version: string;
   installed: boolean;
+  /** Language, address and description to show and filter on. Like `name`,
+   *  they come from the installed manifest when there is one — it describes
+   *  the code that is actually running — and from the repo entry otherwise. */
+  language?: string;
+  baseUrl?: string;
+  description?: Record<string, string>;
   installedVersion?: string;
   updateAvailable: boolean;
   repoUrl?: string;
   entry?: RepoIndexEntry;
   record?: InstalledRecord;
-}
-
-/** The descriptive fields to show and filter on. The installed manifest
- *  wins when there is one — it describes the code that is actually
- *  running — and the repo's index entry covers everything not installed. */
-export function catalogDetails(c: CatalogEntry): {
-  language?: string;
-  baseUrl?: string;
-  description?: Record<string, string>;
-} {
-  const source = c.record?.manifest ?? c.entry;
-  return {
-    language: source?.language,
-    baseUrl: source?.baseUrl,
-    description: source?.description,
-  };
 }
 
 export interface RepoContents {
@@ -67,6 +57,9 @@ export function buildCatalog(
       name: record.manifest.name,
       version: record.manifest.version,
       installed: true,
+      language: record.manifest.language,
+      baseUrl: record.manifest.baseUrl,
+      description: record.manifest.description,
       installedVersion: record.manifest.version,
       updateAvailable: false,
       repoUrl: record.origin.repoUrl,
@@ -83,6 +76,9 @@ export function buildCatalog(
           name: entry.name,
           version: entry.version,
           installed: false,
+          language: entry.language,
+          baseUrl: entry.baseUrl,
+          description: entry.description,
           updateAvailable: false,
           repoUrl,
           entry,

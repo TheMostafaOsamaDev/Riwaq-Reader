@@ -662,7 +662,6 @@ export const en = {
   "store.noSources": "No sources installed yet.",
   "store.filterWebsites": "Search websites…",
   "store.noMatchingWebsites": "No websites match “{query}”.",
-  "store.noMatchingFilters": "No websites match these filters.",
   "store.languageFilter": "Language",
   "store.allLanguages": "All",
   "store.searchPlaceholder": "Search…",

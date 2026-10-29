@@ -61,6 +61,8 @@ function available(id: string, version = "1.0.0"): CatalogEntry {
     name: id,
     version,
     installed: false,
+    language: "ar",
+    baseUrl: `https://${id}.test`,
     updateAvailable: false,
     repoUrl: OFFICIAL,
     entry: repoEntry(id, version),
@@ -77,6 +79,8 @@ function installed(
     name: id,
     version: latest,
     installed: true,
+    language: "ar",
+    baseUrl: `https://${id}.test`,
     installedVersion,
     updateAvailable: latest !== installedVersion,
     repoUrl: OFFICIAL,
@@ -165,6 +169,22 @@ function click(label: string, scope: ParentNode = host) {
   }
   act(() => {
     (button as HTMLButtonElement).click();
+  });
+}
+
+/** Type into a controlled input. React installs its own `value` setter to
+ *  track changes; assigning `input.value` directly goes through it and the
+ *  synthetic onChange never fires. Go through the prototype's setter
+ *  instead — the standard way to type into a controlled input from a test. */
+function typeInto(selector: string, text: string) {
+  const input = host.querySelector(selector) as HTMLInputElement;
+  const setValue = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  act(() => {
+    setValue?.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
 
@@ -469,24 +489,6 @@ describe("ExtensionsView — removing an extension", () => {
 });
 
 describe("ExtensionsView — the one-time trust notice", () => {
-  function typeUrl(url: string) {
-    const input = host.querySelector(
-      "#extensions-repo-url",
-    ) as HTMLInputElement;
-    // React installs its own `value` setter to track changes; assigning
-    // `input.value` directly goes through it and the synthetic onChange
-    // never fires. Go through the prototype's setter instead — the standard
-    // way to type into a controlled input from a test.
-    const setValue = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    act(() => {
-      setValue?.call(input, url);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
-
   function submitForm() {
     const form = host.querySelector("form") as HTMLFormElement;
     act(() => {
@@ -502,7 +504,7 @@ describe("ExtensionsView — the one-time trust notice", () => {
       over: { hasAcknowledgedTrustNotice: vi.fn(async () => false) },
     });
     await mount(deps);
-    typeUrl("https://mirror.test/index.min.json");
+    typeInto("#extensions-repo-url", "https://mirror.test/index.min.json");
     submitForm();
     await settle();
 
@@ -528,7 +530,7 @@ describe("ExtensionsView — the one-time trust notice", () => {
     await mount(deps);
     const catalogLoads = vi.mocked(deps.loadCatalog).mock.calls.length;
 
-    typeUrl("https://mirror.test/index.min.json");
+    typeInto("#extensions-repo-url", "https://mirror.test/index.min.json");
     submitForm();
     await settle();
 
@@ -545,7 +547,7 @@ describe("ExtensionsView — the one-time trust notice", () => {
       over: { hasAcknowledgedTrustNotice: vi.fn(async () => false) },
     });
     await mount(deps);
-    typeUrl("https://mirror.test/index.min.json");
+    typeInto("#extensions-repo-url", "https://mirror.test/index.min.json");
     submitForm();
     await settle();
     const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
@@ -558,7 +560,7 @@ describe("ExtensionsView — the one-time trust notice", () => {
   it("does not show the notice again once it has been acknowledged", async () => {
     const deps = makeDeps({ catalog: [] });
     await mount(deps);
-    typeUrl("https://mirror.test/index.min.json");
+    typeInto("#extensions-repo-url", "https://mirror.test/index.min.json");
     submitForm();
     await settle();
     expect(host.querySelector('[role="dialog"]')).toBeNull();
@@ -684,38 +686,16 @@ describe("ExtensionsView — catalogue load failure", () => {
 });
 
 describe("ExtensionsView — search and language filter", () => {
-  /** The same entry, declaring `language` in both places a catalogue entry
-   *  can carry it: the repo index entry and, once installed, the manifest. */
-  function inLanguage(entry: CatalogEntry, language: string): CatalogEntry {
-    return {
-      ...entry,
-      entry: entry.entry && { ...entry.entry, language },
-      record: entry.record && {
-        ...entry.record,
-        manifest: { ...entry.record.manifest, language },
-      },
-    };
-  }
+  const inLanguage = (entry: CatalogEntry, language: string): CatalogEntry => ({
+    ...entry,
+    language,
+  });
 
   const mixed = () => [
     inLanguage(installed("kolnovel"), "ar"),
     inLanguage(available("cenele"), "ar"),
     inLanguage(available("novelbuddy"), "en"),
   ];
-
-  function typeSearch(text: string) {
-    const input = host.querySelector(
-      'input[type="search"]',
-    ) as HTMLInputElement;
-    const setValue = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    act(() => {
-      setValue?.call(input, text);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
 
   const languageGroup = () =>
     host.querySelector('[role="group"][aria-label="Language"]');
@@ -728,7 +708,7 @@ describe("ExtensionsView — search and language filter", () => {
 
   it("narrows installed and available extensions to the typed query", async () => {
     await mount(makeDeps({ catalog: mixed() }));
-    typeSearch("buddy");
+    typeInto('input[type="search"]', "buddy");
     expect(card("novelbuddy")).not.toBeNull();
     expect(card("kolnovel")).toBeNull();
     expect(card("cenele")).toBeNull();
@@ -736,7 +716,7 @@ describe("ExtensionsView — search and language filter", () => {
 
   it("matches the query against the site's address", async () => {
     await mount(makeDeps({ catalog: mixed() }));
-    typeSearch("cenele.test");
+    typeInto('input[type="search"]', "cenele.test");
     expect(card("cenele")).not.toBeNull();
     expect(card("novelbuddy")).toBeNull();
   });
@@ -777,7 +757,7 @@ describe("ExtensionsView — search and language filter", () => {
 
   it("says a section has no matches rather than leaving it blank", async () => {
     await mount(makeDeps({ catalog: mixed() }));
-    typeSearch("nothing like this");
+    typeInto('input[type="search"]', "nothing like this");
     expect(host.textContent).toContain("No extensions match");
     // Not the "nothing installed yet" copy: there is something installed,
     // the filter is hiding it.

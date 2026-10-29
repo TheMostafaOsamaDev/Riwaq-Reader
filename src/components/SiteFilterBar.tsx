@@ -1,7 +1,7 @@
 // A search field with a language filter beside it — the one control row
 // over both lists of sites: the Store's installed sources and the
-// Extensions manager's catalogue. What "matches" means lives in
-// sources/filter.ts; this only draws the controls and reports changes.
+// Extensions manager's catalogue. The state and what "matches" means live
+// in sources/filter.ts (useSiteFilter); this only draws the controls.
 //
 // The language chips appear only when the list holds more than one
 // language. With one, "All" and that language would always show the same
@@ -12,31 +12,19 @@
 // order under `dir="rtl"`, so nothing here is hand-flipped.
 
 import { useI18n } from "../i18n/useI18n";
-import type { LanguageOption } from "../sources/filter";
+import type { SiteFilter } from "../sources/filter";
 import type { Theme } from "../styles/tokens";
 import { Icon } from "./Icon";
 
 interface Props {
   theme: Theme;
-  query: string;
-  onQueryChange: (query: string) => void;
+  filter: SiteFilter;
   placeholder: string;
-  languages: LanguageOption[];
-  /** The chosen language code; null is "All". */
-  language: string | null;
-  onLanguageChange: (language: string | null) => void;
 }
 
-export function SiteFilterBar({
-  theme,
-  query,
-  onQueryChange,
-  placeholder,
-  languages,
-  language,
-  onLanguageChange,
-}: Props) {
+export function SiteFilterBar({ theme, filter, placeholder }: Props) {
   const { tr } = useI18n();
+  const { query, setQuery, languages, language, setLanguage } = filter;
   return (
     <div
       style={{
@@ -68,7 +56,7 @@ export function SiteFilterBar({
         <input
           type="search"
           value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
           style={{
@@ -88,8 +76,8 @@ export function SiteFilterBar({
         {query && (
           <button
             type="button"
-            onClick={() => onQueryChange("")}
-            aria-label={tr("common.close")}
+            onClick={() => setQuery("")}
+            aria-label={tr("store.clear")}
             style={{
               display: "flex",
               flexShrink: 0,
@@ -115,7 +103,7 @@ export function SiteFilterBar({
             theme={theme}
             label={tr("store.allLanguages")}
             selected={language === null}
-            onSelect={() => onLanguageChange(null)}
+            onSelect={() => setLanguage(null)}
           />
           {languages.map((l) => (
             <LanguageChip
@@ -123,7 +111,7 @@ export function SiteFilterBar({
               theme={theme}
               label={l.name}
               selected={language === l.code}
-              onSelect={() => onLanguageChange(l.code)}
+              onSelect={() => setLanguage(l.code)}
             />
           ))}
         </div>
