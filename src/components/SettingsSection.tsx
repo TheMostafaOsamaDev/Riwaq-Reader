@@ -16,9 +16,16 @@ import {
   ACCENT,
   FONT_SERIF_DISPLAY,
   FONT_STACKS,
+  type FontFamilyKey,
+  readingStack,
+  readingSurfaces,
+  resolveTextColor,
+  TEXT_COLORS,
+  type TextColorPicks,
   type Theme,
   type ThemeKey,
   type ThemePref,
+  TOUCH_TARGET_MIN,
 } from "../styles/tokens";
 import { EASE, MOTION, useReducedMotion } from "../styles/motion";
 import type { Tweaks } from "../types/reader";
@@ -114,10 +121,14 @@ export function useThemePreviewGlyph() {
  *  on Arabic — skip both when the UI is Arabic. */
 export function Field({
   label,
+  hint,
   theme,
   children,
 }: {
   label: string;
+  /** Plain-case note at the end of the label line (e.g. which theme a
+   *  per-theme setting is editing). */
+  hint?: string;
   theme: Theme;
   children: ReactNode;
 }) {
@@ -132,15 +143,25 @@ export function Field({
     >
       <div
         style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 8,
           fontSize: 10.5,
           fontWeight: 600,
           color: theme.muted,
-          letterSpacing: isAr ? "normal" : "0.08em",
-          textTransform: isAr ? "none" : "uppercase",
           marginBottom: 10,
         }}
       >
-        {label}
+        <span
+          style={{
+            letterSpacing: isAr ? "normal" : "0.08em",
+            textTransform: isAr ? "none" : "uppercase",
+          }}
+        >
+          {label}
+        </span>
+        {hint && <span style={{ fontWeight: 400 }}>{hint}</span>}
       </div>
       {children}
     </div>
@@ -501,6 +522,102 @@ export function ThemeField({
           </span>
         </span>
       </button>
+    </Field>
+  );
+}
+
+/** The book-text colour for the theme on screen: five chips, each a scrap of
+ *  that theme's page with the preview glyph set in the reading font and drawn
+ *  in its colour. `themeKey` is the RESOLVED theme, so under System the row
+ *  edits (and names) whichever theme System landed on. */
+export function TextColorField({
+  theme,
+  themeKey,
+  picks,
+  fontFamily,
+  onChange,
+}: {
+  theme: Theme;
+  themeKey: ThemeKey;
+  picks: TextColorPicks;
+  fontFamily: FontFamilyKey;
+  onChange: (next: TextColorPicks) => void;
+}) {
+  const { tr } = useI18n();
+  const { previewGlyph } = useThemePreviewGlyph();
+  const page = readingSurfaces(theme).page;
+  const current = picks[themeKey];
+  return (
+    <Field
+      label={tr("settings.textColor")}
+      hint={tr("settings.textColor.for", {
+        theme: tr(`settings.theme.${themeKey}` as MsgKey),
+      })}
+      theme={theme}
+    >
+      <div
+        role="group"
+        aria-label={tr("settings.textColor")}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gap: 6,
+        }}
+      >
+        {TEXT_COLORS[themeKey].map(({ id }) => {
+          const on = current === id;
+          const name = tr(`settings.textColor.${id}` as MsgKey);
+          return (
+            <button
+              key={id}
+              onClick={() => onChange({ ...picks, [themeKey]: id })}
+              aria-pressed={on}
+              aria-label={name}
+              style={{
+                minHeight: TOUCH_TARGET_MIN,
+                border: on
+                  ? `1.5px solid ${theme.ink}`
+                  : `1px solid ${theme.rule}`,
+                background: page,
+                borderRadius: 8,
+                padding: "10px 0 7px",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+                minWidth: 0,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  fontFamily: readingStack(fontFamily),
+                  fontSize: 18,
+                  lineHeight: 1,
+                  color: resolveTextColor(themeKey, {
+                    ...picks,
+                    [themeKey]: id,
+                  }),
+                }}
+              >
+                {previewGlyph}
+              </span>
+              <span
+                aria-hidden="true"
+                style={{
+                  fontFamily: FONT_STACKS.sans,
+                  fontSize: 9,
+                  color: theme.muted,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </Field>
   );
 }
