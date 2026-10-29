@@ -24,7 +24,7 @@ describe("installAndroidInsets", () => {
     dp = 48; // switched to 3-button navigation
     window.dispatchEvent(new Event("riwaq-insets"));
     expect(value()).toBe("48px");
-    dp = 0; // the bar went away (immersive, landscape on some phones)
+    dp = 0; // the bar went away (to the side, in landscape on some phones)
     window.dispatchEvent(new Event("resize"));
     expect(value()).toBe("");
     off();

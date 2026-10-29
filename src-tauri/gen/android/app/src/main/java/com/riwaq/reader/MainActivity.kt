@@ -275,10 +275,11 @@ class MainActivity : TauriActivity() {
         // value from it, and a second one there replaces it. Tried first:
         // the top inset dropped to 0 and every title drew under the status
         // bar. The container sees the same insets on their way down and
-        // passes them on unchanged.
+        // passes them on, with the system bars held at their full size.
         val container = findViewById<android.view.View>(android.R.id.content)
         ViewCompat.setOnApplyWindowInsetsListener(container) { view, windowInsets ->
-            val px = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val held = holdSystemBars(windowInsets)
+            val px = held.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val dp = px / view.resources.displayMetrics.density
             if (dp != insets.bottomDp) {
                 insets.bottomDp = dp
@@ -287,9 +288,41 @@ class MainActivity : TauriActivity() {
                     null,
                 )
             }
-            ViewCompat.onApplyWindowInsets(view, windowInsets)
+            ViewCompat.onApplyWindowInsets(view, held)
         }
         ViewCompat.requestApplyInsets(container)
+    }
+
+    /** [insets] with every system bar at its full size whether it is showing
+     *  or not. This is what the WebView is handed, so it is what every
+     *  `env(safe-area-inset-*)` on the page answers.
+     *
+     *  The reader hides the bars along with its own chrome (setImmersiveMode),
+     *  and Android then reports their insets as 0. Passed on as they were,
+     *  each tap on the page dropped the safe-area insets to 0 and the next put
+     *  them back, and the reader's padding — built on them so the first line
+     *  clears the status bar — carried the whole page up and down by the
+     *  bar's height: 46px each way on a Redmi Pad SE. Phones with a camera
+     *  cutout barely showed it, as the cutout keeps its inset with the bars
+     *  away.
+     *
+     *  A hidden bar still owns its strip of screen — an edge swipe brings it
+     *  back over exactly that strip — so keeping clear of it costs the page
+     *  nothing, and the page stays still.
+     *
+     *  One type at a time: `Builder.setInsets` gives every type in a mask the
+     *  same value, so passing `systemBars()` whole would hand the navigation
+     *  bar the status bar's top. */
+    private fun holdSystemBars(insets: WindowInsetsCompat): WindowInsetsCompat {
+        val builder = WindowInsetsCompat.Builder(insets)
+        for (type in intArrayOf(
+            WindowInsetsCompat.Type.statusBars(),
+            WindowInsetsCompat.Type.navigationBars(),
+            WindowInsetsCompat.Type.captionBar(),
+        )) {
+            builder.setInsets(type, insets.getInsetsIgnoringVisibility(type))
+        }
+        return builder.build()
     }
 
     /** Read from the page's JS thread, written on the UI thread. */
@@ -402,6 +435,8 @@ class MainActivity : TauriActivity() {
          *  a trap — the bars come back for a few seconds on an edge swipe, so
          *  the clock and the back gesture are always one swipe away, and they
          *  retreat again on their own without disturbing the page.
+         *
+         *  The page holds still while they are hidden: see holdSystemBars.
          *
          *  Must touch the window on the UI thread: JNI calls arrive on an
          *  attached Rust thread. Same reasoning as setBarAppearance above.
