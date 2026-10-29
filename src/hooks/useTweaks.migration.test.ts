@@ -167,3 +167,24 @@ describe("textColor", () => {
     ).toEqual(DEFAULT_TEXT_COLORS);
   });
 });
+
+describe("default book font", () => {
+  it("a fresh install reads in Markazi Text; a saved font is kept", () => {
+    localStorage.clear();
+    expect(DEFAULT_TWEAKS.fontFamily).toBe("markazi");
+    expect(loadTweaks().fontFamily).toBe("markazi");
+    // Anyone who has opened the app before has their font saved (the whole
+    // settings object is written on first launch), so they keep it.
+    localStorage.setItem(
+      "riwaq:tweaks:v1",
+      JSON.stringify({ fontFamily: "readex" }),
+    );
+    expect(loadTweaks().fontFamily).toBe("readex");
+    localStorage.setItem(
+      "riwaq:tweaks:v1",
+      JSON.stringify({ fontFamily: "no-such-font" }),
+    );
+    expect(loadTweaks().fontFamily).toBe("markazi");
+    localStorage.clear();
+  });
+});

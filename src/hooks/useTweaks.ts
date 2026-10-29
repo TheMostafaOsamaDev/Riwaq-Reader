@@ -25,7 +25,11 @@ export const DEFAULT_TWEAKS: Tweaks = {
   // update never rearranges the controls a reader already knows.
   readerBar: "classic",
   homeBar: "classic",
-  fontFamily: "readex",
+  // Fresh installs only: the whole settings object is saved on first launch,
+  // so anyone who has opened the app keeps the font they already have.
+  // useFontScale corrects Markazi's smaller drawing size, so it reads at the
+  // same apparent size Readex Pro did.
+  fontFamily: "markazi",
   fontSize: 17,
   lineHeight: 1.6,
   letterSpacing: 0,
