@@ -239,8 +239,23 @@ describe("closing", () => {
   it("tapping the scrim closes the sheet", () => {
     const onClose = vi.fn();
     show(sheet({ open: true, onClose }));
-    act(() => q("[data-sheet-scrim]").click());
+    const scrim = q("[data-sheet-scrim]");
+    act(() => {
+      scrim.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      scrim.click();
+    });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  // Found on the A73: a long-press opened the library's book menu, and the
+  // click that followed the lift landed on the scrim now covering the book —
+  // closing the menu the press had just opened. Only a press that began on
+  // the scrim closes the sheet.
+  it("the press that opened the sheet cannot close it through the scrim", () => {
+    const onClose = vi.fn();
+    show(sheet({ open: true, onClose }));
+    act(() => q("[data-sheet-scrim]").click());
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("with reduced motion, close unmounts and fires onExited", () => {

@@ -103,10 +103,22 @@ describe("ContextMenu on touch", () => {
   it("tapping the dimmed library closes it", () => {
     const h = handlers();
     render(h);
+    const scrim = document.querySelector<HTMLElement>("[data-sheet-scrim]");
+    act(() => {
+      scrim?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      scrim?.click();
+    });
+    expect(h.onClose).toHaveBeenCalledOnce();
+    expect(h.onDelete).not.toHaveBeenCalled();
+  });
+
+  it("the long-press's own lift does not close it", () => {
+    // The click after the lift lands on the scrim now covering the book.
+    const h = handlers();
+    render(h);
     act(() =>
       document.querySelector<HTMLElement>("[data-sheet-scrim]")?.click(),
     );
-    expect(h.onClose).toHaveBeenCalledOnce();
-    expect(h.onDelete).not.toHaveBeenCalled();
+    expect(h.onClose).not.toHaveBeenCalled();
   });
 });

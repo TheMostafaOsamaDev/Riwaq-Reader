@@ -207,6 +207,7 @@ function SheetFrame({
   const contentRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement | null>(null);
   const ctrlRef = useRef<SheetController | null>(null);
+  const scrimPressedRef = useRef(false);
   const [footerSlot, setFooterSlot] = useState<HTMLElement | null>(null);
   const setFooter = useCallback((el: HTMLDivElement | null) => {
     footerRef.current = el;
@@ -335,11 +336,21 @@ function SheetFrame({
         overflow: "hidden",
       }}
     >
-      {/* opacity is written by the engine, never by React. */}
+      {/* opacity is written by the engine, never by React. Only a press that
+          began here closes the sheet: the click that follows a long-press's
+          lift lands here too, once the sheet that press opened covers the
+          spot, and must not close it. */}
       <div
         ref={scrimRef}
         data-sheet-scrim
-        onClick={() => onCloseRef.current()}
+        onPointerDown={() => {
+          scrimPressedRef.current = true;
+        }}
+        onClick={() => {
+          if (!scrimPressedRef.current) return;
+          scrimPressedRef.current = false;
+          onCloseRef.current();
+        }}
         style={{
           position: "absolute",
           inset: 0,
