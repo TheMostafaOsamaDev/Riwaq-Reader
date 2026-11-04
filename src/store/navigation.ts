@@ -119,7 +119,9 @@ const listeners = new Set<() => void>();
 // popped yet. A dead entry is skipped (popped again) whenever history lands
 // on it, so the user never spends a Back press on a sheet that is gone.
 interface LayerRecord {
-  id: string;
+  /** Which pushLayer call owns the record, so a stale `release` cannot drop
+   *  a newer layer that reused the same entry. */
+  id: number;
   onBack: (() => void) | null;
 }
 const layers = new Map<number, LayerRecord>();
@@ -134,8 +136,6 @@ const deferred: Array<() => void> = [];
 interface StampedState {
   navIndex: number;
   snapshot: NavSnapshot;
-  /** Present on a layer entry: the id of the layer that pushed it. */
-  layer?: string;
 }
 
 function isStamped(s: unknown): s is StampedState {
@@ -283,12 +283,15 @@ export function navigate(
     return;
   }
   if (!opts?.replace && snapshotsEqual(next, snapshot)) return;
-  if (layers.has(index)) {
+  const top = layers.get(index);
+  if (top) {
     // A sheet's entry is on top. Take it over for the destination rather than
     // stacking on it: "Open full settings" closes the reader's settings sheet
     // and navigates in one handler, before the sheet's own close could pop
     // its entry, and that pop would otherwise undo the navigation. No A→B→A
-    // collapse here either: stepping back would only pop the sheet.
+    // collapse here either: stepping back would only pop the sheet. The sheet
+    // is told to close (a no-op when it already is), so it can never sit open
+    // without a Back step of its own.
     layers.delete(index);
     window.history.replaceState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
@@ -296,6 +299,7 @@ export function navigate(
     entries[index] = next;
     move = opts?.replace ? "replace" : "push";
     commit();
+    top.onBack?.();
     return;
   }
   if (opts?.replace) {
@@ -348,15 +352,15 @@ export function forward(): void {
 /** Give a bottom sheet a history entry of its own, so the system Back (and
  *  back() from a mouse side button or Alt+←) closes it rather than leaving the
  *  screen under it. Call when the sheet opens; `onBack` runs when Back pops
- *  the entry. Returns `release`, to call when the sheet closes any other way:
- *  it drops the entry without calling `onBack` and without navigating, and is
- *  safe to call twice or after Back already popped the entry. */
+ *  the entry, and when a navigation takes the entry over (the sheet must
+ *  close then; for a sheet already closing it is a no-op). Returns `release`,
+ *  to call when the sheet closes any other way: it drops the entry without
+ *  calling `onBack` and without navigating, and is safe to call twice or after
+ *  the entry is already gone. Most callers want `useBackLayer`. */
 export function pushLayer(onBack: () => void): () => void {
   init();
   layerSeq += 1;
-  // Random suffix: module instances reloaded in dev (or tests) must never
-  // mistake each other's entries for their own.
-  const id = `${layerSeq}-${Math.random().toString(36).slice(2)}`;
+  const id = layerSeq;
   let at = -1;
   let placed = false;
   let released = false;
@@ -366,12 +370,12 @@ export function pushLayer(onBack: () => void): () => void {
     const here = layers.get(index);
     if (here && here.onBack === null) {
       // A dead layer's entry is on top: reuse it rather than stacking.
-      window.history.replaceState({ navIndex: index, snapshot, layer: id }, "");
+      window.history.replaceState({ navIndex: index, snapshot }, "");
     } else {
       index += 1;
       entries.length = index;
       entries[index] = snapshot;
-      window.history.pushState({ navIndex: index, snapshot, layer: id }, "");
+      window.history.pushState({ navIndex: index, snapshot }, "");
     }
     layers.set(index, { id, onBack });
     at = index;

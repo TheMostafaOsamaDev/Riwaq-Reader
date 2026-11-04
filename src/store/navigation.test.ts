@@ -171,13 +171,16 @@ describe("layers", () => {
     expect(view()).toEqual(reader);
   });
 
-  it("navigating with a layer open reuses its entry", () => {
+  it("navigating with a layer open reuses its entry and closes the layer", () => {
     nav.goReader("b1");
     const onBack = vi.fn();
     const release = nav.pushLayer(onBack);
     nav.goSettings();
+    // The sheet's entry now belongs to Settings: the sheet is told to close,
+    // so it can never sit open without a Back step of its own.
+    expect(onBack).toHaveBeenCalledOnce();
     release();
-    expect(onBack).not.toHaveBeenCalled();
+    expect(onBack).toHaveBeenCalledOnce();
     expect(navIndex()).toBe(2);
     expect(nav.getState().snapshot.base).toEqual({ screen: "settings" });
     expect(nav.getState().move).toBe("push");
