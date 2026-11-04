@@ -139,7 +139,7 @@ describe("springSamples", () => {
   it("starts at from, ends exactly at to, and does not overshoot from rest", () => {
     const s = springSamples(160, 0, 0);
     expect(s[0]).toBe(160);
-    expect(s.at(-1)).toBe(0);
+    expect(s[s.length - 1]).toBe(0);
     expect(Math.min(...s)).toBeGreaterThanOrEqual(-0.5);
     expect(s.length).toBeGreaterThan(10);
     expect(s.length).toBeLessThanOrEqual(120);
@@ -158,7 +158,7 @@ describe("easeSamples", () => {
   it("follows the curve between from and to", () => {
     const s = easeSamples(760, 160, 240, [0.32, 0.72, 0, 1]);
     expect(s[0]).toBe(760);
-    expect(s.at(-1)).toBe(160);
+    expect(s[s.length - 1]).toBe(160);
     expect(s.length).toBe(16);
     // Decelerating: the first step is the biggest.
     expect(s[0] - s[1]).toBeGreaterThan(s[14] - s[15]);
