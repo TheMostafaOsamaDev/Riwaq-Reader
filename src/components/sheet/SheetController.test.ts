@@ -251,6 +251,53 @@ describe("clicks", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  // Found on the phone: touching Contents while it slid open stopped it, and
+  // lifting the finger then opened the chapter under it and closed the sheet.
+  // A touch that stops something moving is consumed, as it is natively.
+  it("a tap that catches the sheet mid-animation is not a click on what is under it", () => {
+    setReduceMotionOverride("auto");
+    const never = { finished: new Promise(() => {}), cancel: vi.fn() };
+    HTMLElement.prototype.animate = vi.fn(
+      () => never,
+    ) as unknown as typeof HTMLElement.prototype.animate;
+    try {
+      c.attach();
+      c.open();
+      const t = performance.now();
+      c.touchStart(pt(0, 700, t));
+      c.touchEnd({ id: 1, t: t + 80 });
+      const onClick = vi.fn();
+      bodyRow.addEventListener("click", onClick);
+      bodyRow.click();
+      expect(onClick).not.toHaveBeenCalled();
+    } finally {
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    }
+  });
+
+  it("a tap that stops a coasting list is not a click either", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((f) => {
+      frames.push(f);
+      return frames.length;
+    });
+    c.attach();
+    const t0 = performance.now();
+    c.open();
+    c.touchStart(pt(0, 500, t0));
+    c.touchMove(mv(0, 300, t0 + 40));
+    c.touchMove(mv(0, 250, t0 + 56));
+    c.touchEnd({ id: 1, t: t0 + 60 });
+    // Spend the drag's own one-shot click window first.
+    bodyRow.click();
+    c.touchStart(pt(0, 400, t0 + 100));
+    c.touchEnd({ id: 1, t: t0 + 160 });
+    const onClick = vi.fn();
+    bodyRow.addEventListener("click", onClick);
+    bodyRow.click();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it("a tap is not swallowed", () => {
     c.attach();
     c.open();

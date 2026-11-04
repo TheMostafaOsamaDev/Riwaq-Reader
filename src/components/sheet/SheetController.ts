@@ -88,6 +88,8 @@ interface Pending {
   region: Region;
   targetKind: TargetKind;
   body: HTMLElement;
+  /** The touch stopped the sheet or its list mid-motion. */
+  caught: boolean;
 }
 
 interface Drag {
@@ -265,6 +267,9 @@ export class SheetController {
     if (!g || this.exiting) return;
     // One finger at a time: a second touch is ignored until the first ends.
     if (this.gesture) return;
+    // A touch that stops something moving (the sheet mid-animation, or a list
+    // still coasting) is consumed: lifting it must not tap what is under it.
+    const caught = this.momentumFrame !== 0 || this.playback !== null;
     this.stopMomentum();
     if (this.playback) {
       // Caught mid-flight: stop under the finger and carry on from there.
@@ -283,6 +288,7 @@ export class SheetController {
       region,
       targetKind: kind,
       body,
+      caught,
     };
   }
 
@@ -354,6 +360,9 @@ export class SheetController {
     this.gesture = null;
     if (!g || this.exiting) return;
     if (gs.kind !== "drag") {
+      if (gs.kind === "pending" && gs.caught) {
+        this.suppressClickUntil = p.t + CLICK_SUPPRESS_MS;
+      }
       // A tap (or a native scroll) that caught the sheet mid-animation:
       // finish going where it was going.
       if (!this.resting) {
