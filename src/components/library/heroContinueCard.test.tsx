@@ -28,7 +28,9 @@ function book(over: Partial<BookIndexEntry>): BookIndexEntry {
     chapterCount: 114,
     addedAt: 0,
     lastReadAt: Date.now() - 19 * 60_000,
-    progress: 5 / 114,
+    // Halfway through chapter 5: (chapter index + fraction read) / count,
+    // the encoding reader/bookProgress.ts writes.
+    progress: 4.5 / 114,
     ...over,
   };
 }

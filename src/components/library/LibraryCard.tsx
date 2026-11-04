@@ -11,6 +11,7 @@ import {
 } from "../../styles/tokens";
 import { useI18n } from "../../i18n/useI18n";
 import { CARD_INTRINSIC_H, sourceCornerMarker } from "./cardChrome";
+import { wholePercent } from "../../reader/bookProgress";
 
 export const LibraryCard = memo(function LibraryCard({
   theme,
@@ -182,7 +183,7 @@ export const LibraryCard = memo(function LibraryCard({
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {Math.round(book.progress * 100)}%
+                {wholePercent(book.progress)}%
               </span>
             </>
           ) : null}

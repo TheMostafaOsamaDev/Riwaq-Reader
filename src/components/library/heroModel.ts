@@ -1,6 +1,7 @@
 // What the "continue reading" card shows, worked out from a library entry.
 // No JSX, so the arithmetic is testable without rendering anything.
 
+import { chapterAtBookFraction, wholePercent } from "../../reader/bookProgress";
 import type { BookIndexEntry } from "../../store/library";
 import type { HeroStyle } from "../../types/reader";
 
@@ -26,23 +27,26 @@ export interface ReadingPosition {
 
 /** The chapter (or page, for PDF/DOCX) the reader is on.
  *
- *  The index stores only `progress`, written as (current + 1) / total by
- *  every reader, so multiplying back recovers the 1-based position exactly.
- *  Rounding absorbs the float error; the clamp covers a progress of 0 (a
- *  book opened but never moved) and a total that shrank after a re-import. */
+ *  The index stores only `progress`, so the position is decoded from it.
+ *  Reflowable books write (chapter + fraction read) / total
+ *  (reader/bookProgress.ts): the chapter is whichever span that falls in.
+ *  Fixed-layout books write (page + 1) / pages, so multiplying back recovers
+ *  the 1-based page; rounding absorbs the float error, and the clamp covers a
+ *  progress of 0 and a total that shrank after a re-import. */
 export function readingPosition(book: BookIndexEntry): ReadingPosition | null {
   const fixed = book.kind === "pdf" || book.kind === "docx";
   const total = fixed ? (book.pageCount ?? 0) : book.chapterCount;
   if (!total || total < 1) return null;
-  const n = Math.min(total, Math.max(1, Math.round(book.progress * total)));
+  const n = fixed
+    ? Math.min(total, Math.max(1, Math.round(book.progress * total)))
+    : chapterAtBookFraction(book.progress, total) + 1;
   return { unit: fixed ? "page" : "chapter", n, total };
 }
 
 /** Whole percent, never 0 once a book has been opened — "0%" next to
  *  "Continue reading" reads as a bug. */
 export function percentRead(progress: number): number {
-  const p = Math.round(progress * 100);
-  return progress > 0 ? Math.max(1, Math.min(100, p)) : 0;
+  return progress > 0 ? Math.max(1, wholePercent(progress)) : 0;
 }
 
 /** Other books the reader has open: read at least once, not finished,

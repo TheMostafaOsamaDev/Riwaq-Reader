@@ -49,6 +49,8 @@ import {
 } from "./nativeStaging";
 import type { EpubBook } from "../epub/types";
 import { withIndexLock } from "./indexLock";
+import { bookProgress } from "../reader/bookProgress";
+import { clamp01 } from "../components/readerProgress";
 import { writeCoverThumb, writeCoverThumbFromBytes } from "./coverThumb";
 import type { TocEntry } from "../types/reader";
 import { makeTr, type Locale } from "../i18n";
@@ -1615,8 +1617,9 @@ export async function updateReadingPosition(
     const idx = await readIndex();
     const entry = idx.books.find((b) => b.id === id);
     if (entry) {
-      entry.progress =
-        chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
+      // Where the chapter STARTS — not `(chapter + 1) / count`, which ran a
+      // whole chapter ahead of the reader. See reader/bookProgress.ts.
+      entry.progress = bookProgress(currentChapter, 0, chapterCount);
       entry.lastReadAt = Date.now();
       await writeIndex(idx);
     }
@@ -1644,8 +1647,28 @@ export async function updateSourceReadingPosition(
     const idx = await readIndex();
     const entry = idx.books.find((b) => b.id === id);
     if (!entry) return;
-    entry.progress =
-      chapterCount > 0 ? Math.min(1, (currentChapter + 1) / chapterCount) : 0;
+    entry.progress = bookProgress(currentChapter, 0, chapterCount);
+    entry.lastReadAt = Date.now();
+    await writeIndex(idx);
+  });
+}
+
+/**
+ * Record how far through the book the reader is, as the reader measured it —
+ * the chapter plus the fraction of it read (reader/bookProgress.ts). Written
+ * alongside the reading position, so the library card shows the number the
+ * reader's own bar showed when the reader left. Local books and web-novel
+ * entries alike; no-op when the entry is missing.
+ */
+export async function updateBookProgress(
+  id: string,
+  progress: number,
+): Promise<void> {
+  return withIndexLock(async () => {
+    const idx = await readIndex();
+    const entry = idx.books.find((b) => b.id === id);
+    if (!entry) return;
+    entry.progress = clamp01(progress);
     entry.lastReadAt = Date.now();
     await writeIndex(idx);
   });

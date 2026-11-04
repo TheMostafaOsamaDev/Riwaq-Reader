@@ -73,6 +73,7 @@ import {
   updatePagePosition,
   updateFixedZoom,
   updatePageProgress,
+  updateBookProgress,
   updateParagraphPosition,
   updateReadingPosition,
   type BookState,
@@ -81,6 +82,8 @@ import {
   type Highlight,
   type PdfHighlightAnchor,
 } from "./store/library";
+import { createPositionSaver } from "./store/positionSaver";
+import { wholePercent } from "./reader/bookProgress";
 import {
   MOTION,
   setReduceMotionOverride,
@@ -97,7 +100,7 @@ import {
   Z,
   resolveTheme,
 } from "./styles/tokens";
-import type { ActivePanel } from "./types/reader";
+import type { ActivePanel, OnParagraphChange } from "./types/reader";
 import { I18nProvider } from "./i18n/I18nProvider";
 import { detectLocale, DIR_FOR, makeTr } from "./i18n";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
@@ -755,35 +758,60 @@ function App() {
   // effect above clears the loaded book once the base leaves the reader.
   const closeBook = useCallback(() => back(), []);
 
-  const changeChapter = useCallback((order: number) => {
-    setLoaded((prev) => {
-      if (!prev) return prev;
-      const clamped = Math.max(
-        0,
-        Math.min(prev.book.chapters.length - 1, order),
-      );
-      void updateReadingPosition(
-        prev.book.id,
-        clamped,
-        prev.book.chapters.length,
-      );
-      // New chapter starts at the top — clear any pending paragraph save
-      // and reset the resume hint so the reader scrolls to paragraph 0.
-      if (paragraphSaveTimer.current) {
-        clearTimeout(paragraphSaveTimer.current);
-        paragraphSaveTimer.current = null;
-      }
-      return {
-        ...prev,
-        currentChapter: clamped,
-        resumeParagraph: 0,
-        resumeOffset: 0,
-      };
-    });
+  // The reflow reader's position, debounced and flushed (store/positionSaver),
+  // with the library card's progress beside it. library.json is rewritten
+  // only when the card's whole percent changes: a position save happens at
+  // nearly every pause in scrolling, and the index is shared by every book.
+  const positionSaver = useMemo(() => {
+    const cardPercent = new Map<string, number>();
+    return createPositionSaver(
+      async ({ bookId, paragraph, offset, progress }) => {
+        const percent = progress === undefined ? null : wholePercent(progress);
+        const writeCard =
+          percent !== null && cardPercent.get(bookId) !== percent;
+        if (writeCard) cardPercent.set(bookId, percent);
+        await Promise.all([
+          updateParagraphPosition(bookId, paragraph, offset),
+          writeCard && progress !== undefined
+            ? updateBookProgress(bookId, progress)
+            : undefined,
+        ]);
+      },
+      600,
+    );
   }, []);
+  // The book the reader reports for. Deliberately NOT cleared on close: the
+  // reader's final report arrives as it unmounts, after `loaded` is null.
+  const lastBookId = useRef<string | null>(null);
+  if (loaded) lastBookId.current = loaded.book.id;
 
-  // Debounce paragraph saves so we don't hammer disk on every scroll event.
-  const paragraphSaveTimer = useRef<number | null>(null);
+  const changeChapter = useCallback(
+    (order: number) => {
+      setLoaded((prev) => {
+        if (!prev) return prev;
+        const clamped = Math.max(
+          0,
+          Math.min(prev.book.chapters.length - 1, order),
+        );
+        void updateReadingPosition(
+          prev.book.id,
+          clamped,
+          prev.book.chapters.length,
+        );
+        // New chapter starts at the top — drop any pending paragraph save
+        // and reset the resume hint so the reader scrolls to paragraph 0.
+        positionSaver.cancel();
+        return {
+          ...prev,
+          currentChapter: clamped,
+          resumeParagraph: 0,
+          resumeOffset: 0,
+        };
+      });
+    },
+    [positionSaver],
+  );
+
   // Where the reader is right now, ahead of the debounced save. A layout flip
   // mounts a fresh reader, and it has to start here — see the reseed below.
   // Stamped with the book, chapter and jump it was reported under: opening a
@@ -799,36 +827,33 @@ function App() {
   } | null>(null);
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
-  const onParagraphChange = useCallback((idx: number, offset?: number) => {
-    const l = loadedRef.current;
-    if (l) {
-      livePara.current = {
-        bookId: l.book.id,
-        chapter: l.currentChapter,
-        jumpNonce: l.jumpNonce,
-        idx,
-        off: offset ?? 0,
-      };
-    }
-    if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
-    paragraphSaveTimer.current = window.setTimeout(() => {
-      paragraphSaveTimer.current = null;
-      setLoaded((prev) => {
-        if (!prev) return prev;
-        const off = offset ?? 0;
-        if (
-          prev.state.paragraphIndex === idx &&
-          (prev.state.paragraphOffset ?? 0) === off
-        )
-          return prev;
-        void updateParagraphPosition(prev.book.id, idx, off);
-        return {
-          ...prev,
-          state: { ...prev.state, paragraphIndex: idx, paragraphOffset: off },
+  const onParagraphChange = useCallback<OnParagraphChange>(
+    (idx, offset, report) => {
+      const l = loadedRef.current;
+      if (l) {
+        livePara.current = {
+          bookId: l.book.id,
+          chapter: l.currentChapter,
+          jumpNonce: l.jumpNonce,
+          idx,
+          off: offset ?? 0,
         };
+      }
+      const bookId = lastBookId.current;
+      if (!bookId) return;
+      positionSaver.schedule({
+        bookId,
+        paragraph: idx,
+        offset: offset ?? 0,
+        progress: report?.bookFraction,
       });
-    }, 600);
-  }, []);
+      // Leaving, or hidden already: a timer armed now runs late or never —
+      // the OS may freeze or kill a backgrounded app — so write at once.
+      if (report?.final || document.visibilityState === "hidden")
+        positionSaver.flush();
+    },
+    [positionSaver],
+  );
 
   // Position reports are taken only from the reader of the CURRENT layout.
   // A layout flip crossfades the two readers, and the outgoing one stays
@@ -840,22 +865,23 @@ function App() {
   const isMobileRef = useRef(isMobile);
   isMobileRef.current = isMobile;
   const reportFrom = useMemo(
-    () => ({
-      mobile: (idx: number, offset?: number) => {
-        if (isMobileRef.current) onParagraphChange(idx, offset);
+    (): { mobile: OnParagraphChange; desktop: OnParagraphChange } => ({
+      mobile: (...report) => {
+        if (isMobileRef.current) onParagraphChange(...report);
       },
-      desktop: (idx: number, offset?: number) => {
-        if (!isMobileRef.current) onParagraphChange(idx, offset);
+      desktop: (...report) => {
+        if (!isMobileRef.current) onParagraphChange(...report);
       },
     }),
     [onParagraphChange],
   );
 
+  // Leaving the app altogether: write what's pending rather than drop it.
   useEffect(() => {
     return () => {
-      if (paragraphSaveTimer.current) clearTimeout(paragraphSaveTimer.current);
+      positionSaver.flush();
     };
-  }, []);
+  }, [positionSaver]);
 
   // Debounced persistence of fixed-page (PDF/DOCX) reading position + progress.
   const pageSaveTimer = useRef<number | null>(null);
@@ -1122,10 +1148,7 @@ function App() {
         h.chapter,
         loaded.book.chapters.length,
       );
-      if (paragraphSaveTimer.current) {
-        clearTimeout(paragraphSaveTimer.current);
-        paragraphSaveTimer.current = null;
-      }
+      positionSaver.cancel();
       setLoaded((prev) =>
         prev
           ? {
@@ -1143,7 +1166,7 @@ function App() {
           : prev,
       );
     },
-    [loaded],
+    [loaded, positionSaver],
   );
 
   // Settings is drawn in two places — its own screen on desktop, a tab of

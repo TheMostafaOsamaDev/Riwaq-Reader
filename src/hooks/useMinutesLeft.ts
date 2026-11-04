@@ -8,7 +8,7 @@
 // position inside the chapter, so it says nothing.
 
 import { type RefObject, useEffect, useMemo, useState } from "react";
-import { chapterScrollFraction } from "../components/readerProgress";
+import { chapterReadFraction } from "../reader/scroll/usePositionReporter";
 import { type EpubChapter, isImageItem } from "../epub/types";
 import { minutesLeft, wordCount } from "../reader/chrome/barStyles";
 
@@ -45,11 +45,7 @@ export function useMinutesLeft({
     let raf = 0;
     const update = () => {
       raf = 0;
-      const f = chapterScrollFraction(
-        el.scrollTop,
-        el.scrollHeight,
-        el.clientHeight,
-      );
+      const f = chapterReadFraction(el);
       const m = minutesLeft(words, f);
       setLeft((prev) => (prev === m ? prev : m));
     };

@@ -191,3 +191,24 @@ export type FixedFlow = "scroll" | "paged";
 export type FixedFit = "width" | "page";
 /** Fixed-page tint: keep colors, dim (dark-theme glare), or invert (text PDFs). */
 export type FixedPageTint = "none" | "dim" | "invert";
+
+/** What a reflow reader sends with a position report, beyond the paragraph
+ *  and the offset into it. */
+export interface PositionReport {
+  /** The reader is going away — unmounted, switched off, or the app
+   *  backgrounded — so the position must be written now, not debounced. */
+  final?: boolean;
+  /** 0..1 of the current chapter's text read; 1 once its last line is on
+   *  screen. See reader/bookProgress.ts. */
+  chapterFraction?: number;
+  /** 0..1 through the book, on the same scale as the reader's own bar. */
+  bookFraction?: number;
+}
+
+/** How a reflow reader tells its host where it is: the paragraph at the top
+ *  of the page, how far into it, and the report above. */
+export type OnParagraphChange = (
+  idx: number,
+  offset?: number,
+  report?: PositionReport,
+) => void;
