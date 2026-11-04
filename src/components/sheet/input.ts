@@ -38,6 +38,8 @@ export interface SheetInput {
   wheel(deltaY: number, target: Element): boolean;
   /** One-shot: true for the first click inside the window after a drag. */
   suppressesClick(t: number): boolean;
+  /** Focus moved to `target`, inside the sheet. */
+  focusIn(target: Element): void;
 }
 
 const MOUSE_ID = -1;
@@ -156,6 +158,14 @@ export function bindSheetInput(
       }
     },
     { capture: true, signal },
+  );
+
+  box.addEventListener(
+    "focusin",
+    (e) => {
+      if (e.target instanceof Element) sheet.focusIn(e.target);
+    },
+    { signal },
   );
 
   return () => {

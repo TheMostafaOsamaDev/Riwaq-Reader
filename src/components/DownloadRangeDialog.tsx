@@ -12,7 +12,14 @@
 // <select>s) so the user gets search, per-volume context, and a downloaded ✓
 // on chapters already on disk.
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getSource } from "../sources/registry";
 import {
   readSnapshot,
@@ -26,7 +33,7 @@ import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { MobileSheet } from "./MobileSheet";
-import { SheetFooter } from "./sheet/SheetContext";
+import { SheetFooter, useSheet } from "./sheet/SheetContext";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
@@ -628,11 +635,24 @@ function ChapterRangeField({
   const isAr = locale === "ar";
   const [query, setQuery] = useState("");
   const selected = options.find((o) => o.id === value) ?? null;
+  const listRef = useRef<HTMLDivElement>(null);
+  const sheet = useSheet();
 
   // Reset the search whenever the list collapses so reopening starts clean.
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
+
+  // On a phone the opened list can sit below the screen at the sheet's
+  // default height: ask the sheet to bring all of it into view (it expands
+  // first when it can). After layout, so the list has its size.
+  useEffect(() => {
+    if (!open || !sheet) return;
+    const raf = requestAnimationFrame(() => {
+      if (listRef.current) sheet.reveal(listRef.current);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open, sheet]);
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -714,6 +734,7 @@ function ChapterRangeField({
       </button>
       {open && (
         <div
+          ref={listRef}
           style={{
             border: `0.5px solid ${theme.rule}`,
             borderRadius: 10,

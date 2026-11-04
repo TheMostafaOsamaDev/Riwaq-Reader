@@ -275,10 +275,13 @@ export class SheetController implements SheetInput {
     const g = this.g;
     if (!g || this.exiting) return;
     const limit = g.viewportH - this.els.footer.offsetHeight - REVEAL_MARGIN_PX;
-    let bottom = el.getBoundingClientRect().bottom;
+    // Measured where the sheet will rest, not where it is drawn: two reveals
+    // can land in one expand (a focused search box, then the list it opens).
+    const resting = snapY(this.current, g);
+    let bottom = el.getBoundingClientRect().bottom + resting - this.currentY();
     if (bottom <= limit) return;
     if (g.expandable && this.current !== "full") {
-      bottom += snapY("full", g) - this.currentY();
+      bottom += snapY("full", g) - resting;
       this.expand();
     }
     const over = bottom - limit;
@@ -386,6 +389,16 @@ export class SheetController implements SheetInput {
     if (classifyTarget(target, body).region === "nested") return false;
     this.expand();
     return true;
+  }
+
+  /** Focus moved to `target`. A control in the part of the list below the
+   *  screen (Tab at the default snap) is brought into view: the browser's own
+   *  focus scrolling only scrolls the list within its box, and that box
+   *  hangs below the screen until the sheet expands. */
+  focusIn(target: Element): void {
+    const body = findBody(this.els.content);
+    if (target === body || !body.contains(target)) return;
+    if (target instanceof HTMLElement) this.reveal(target);
   }
 
   suppressesClick(t: number): boolean {

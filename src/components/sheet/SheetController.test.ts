@@ -421,6 +421,52 @@ describe("reveal", () => {
     expect(c.snap).toBe("default");
     expect(scrollTo).not.toHaveBeenCalled();
   });
+
+  it("measures from where the sheet is going, not where it is mid-animation", () => {
+    setReduceMotionOverride("auto");
+    const never = { finished: new Promise(() => {}), cancel: vi.fn() };
+    HTMLElement.prototype.animate = vi.fn(
+      () => never,
+    ) as unknown as typeof HTMLElement.prototype.animate;
+    try {
+      c.open();
+      c.expand();
+      // Halfway up: drawn 80px below full, where it will rest.
+      box.style.transform = "translateY(80px)";
+      const scrollTo = vi.fn();
+      body.scrollTo = scrollTo as typeof body.scrollTo;
+      // Bottom 900 now, so 820 once at full; the line is 788: 32px to go.
+      c.reveal(target(900));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 32, behavior: "smooth" });
+    } finally {
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    }
+  });
+
+  // Review M3: keyboard focus can land on a control in the part of the list
+  // below the screen at the default snap, which the browser's own focus
+  // scrolling cannot bring into view (it cannot move the sheet).
+  it("focus moving into the hidden part of the list brings it into view", () => {
+    c.attach();
+    c.open();
+    const scrollTo = vi.fn();
+    body.scrollTo = scrollTo as typeof body.scrollTo;
+    const el = target(1000);
+    el.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(c.snap).toBe("full");
+    expect(scrollTo).toHaveBeenCalledWith({ top: 52, behavior: "instant" });
+  });
+
+  it("focus on the sheet's chrome or on visible content moves nothing", () => {
+    c.attach();
+    c.open();
+    const scrollTo = vi.fn();
+    body.scrollTo = scrollTo as typeof body.scrollTo;
+    grabber.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    target(700).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(c.snap).toBe("default");
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
 });
 
 describe("listeners", () => {
