@@ -26,6 +26,7 @@ import {
 } from "../styles/tokens";
 import { useFontScale } from "../hooks/useFontScale";
 import { ScrollArea } from "./ScrollArea";
+import { useSheet } from "./sheet/SheetContext";
 import { useI18n } from "../i18n/useI18n";
 import type { MsgKey } from "../i18n";
 
@@ -226,11 +227,29 @@ export function FontSelect({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
+  const sheet = useSheet();
+
+  // Inside a bottom sheet, a list opened near the sheet's lower edge could
+  // run off the screen: ask the sheet to bring all of it into view (it
+  // expands first when it can). After layout, so the list has its size.
+  useEffect(() => {
+    if (!open || !sheet) return;
+    const raf = requestAnimationFrame(() => {
+      const pop = ref.current?.querySelector<HTMLElement>(
+        ".riwaq-font-popover",
+      );
+      if (pop) sheet.reveal(pop);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open, sheet]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key !== "Escape") return;
+      // Claim the key: Esc closes this list, not the sheet around it.
+      e.preventDefault();
+      close();
     };
     const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) close();
@@ -288,6 +307,7 @@ export function FontSelect({
       {open && (
         <ScrollArea
           alwaysVisible
+          className="riwaq-font-popover"
           color={theme.muted}
           style={{
             position: "absolute",
@@ -310,7 +330,14 @@ export function FontSelect({
             boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
             overflow: "hidden",
           }}
-          scrollStyle={{ maxHeight: 300, height: "auto", paddingBlock: 6 }}
+          scrollStyle={{
+            maxHeight: 300,
+            height: "auto",
+            paddingBlock: 6,
+            // Reaching either end stops here. Without it the rest of the
+            // swipe chained into the settings panel behind and scrolled it.
+            overscrollBehaviorY: "contain",
+          }}
         >
           <div role="listbox" aria-label={tr("settings.font")}>
             {groups.map(([g, items]) => (
