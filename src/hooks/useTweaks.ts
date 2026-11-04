@@ -36,7 +36,7 @@ export const DEFAULT_TWEAKS: Tweaks = {
   textAlign: "auto",
   readingMode: "scroll",
   focusMode: false,
-  contentWidth: 100,
+  contentWidth: 95,
   uiFont: "readex",
   paragraphSpacing: 1.1,
   hyphenation: false,
