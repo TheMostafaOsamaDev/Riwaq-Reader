@@ -22,7 +22,6 @@ import {
 } from "../reader/chrome/useInsetGlide";
 import { ReaderTopBar } from "../reader/chrome/ReaderTopBar";
 import {
-  MAX_TICKS,
   ReaderProgressBar,
   type ReaderProgressBarProps,
 } from "../reader/chrome/ReaderProgressBar";
@@ -32,12 +31,7 @@ import { ReaderIconButton } from "../reader/chrome/ReaderIconButton";
 import { BookBody, readingGutter } from "./BookBody";
 import { ChapterEndCard, ChapterStartLink } from "./ChapterEnd";
 import { PaginatedView, type PaginatedAPI } from "./PaginatedView";
-import {
-  chapterScrollFraction,
-  paragraphScrollOffset,
-  restoreScrollTop,
-  landingAppliesTo,
-} from "./readerProgress";
+import { restoreScrollTop, landingAppliesTo } from "./readerProgress";
 import { ReaderDiagnostics } from "./ReaderDiagnostics";
 import { jumpScrollTop } from "./scrollJump";
 import { ReaderLogMarker } from "./ReaderLogMarker";
@@ -95,9 +89,17 @@ import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
 import type { Tap } from "../reader/chrome/focusGesture";
 import { pagedTouchTurn } from "../reader/pagedTouch";
-import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
+import type {
+  ActivePanel,
+  OnParagraphChange,
+  PositionReport,
+  TocVolume,
+  Tweaks,
+} from "../types/reader";
 import { isTextEntry } from "../lib/isTextEntry";
 import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
+import { chapterReadFraction } from "../reader/scroll/usePositionReporter";
+import { useReadingProgress } from "../reader/useReadingProgress";
 
 interface Props {
   theme: Theme;
@@ -118,7 +120,7 @@ interface Props {
    *  didn't change. */
   jumpNonce: number;
   onChapterChange: (order: number) => void;
-  onParagraphChange: (idx: number, offset?: number) => void;
+  onParagraphChange: OnParagraphChange;
   onCreateHighlight: (input: {
     chapter: number;
     paragraphIndex: number;
@@ -298,10 +300,10 @@ export function DesktopReader({
   const landAtStartRef = useRef<number | null>(null);
 
   const handleParagraphChange = useCallback(
-    (idx: number, offset?: number) => {
+    (idx: number, offset?: number, report?: PositionReport) => {
       livePara.current = idx;
       if (offset !== undefined) liveOffset.current = offset;
-      onParagraphChange(idx, offset);
+      onParagraphChange(idx, offset, report);
     },
     [onParagraphChange],
   );
@@ -441,43 +443,25 @@ export function DesktopReader({
     book.chapters[currentChapter]?.id,
   ]);
 
-  // Throttled scroll listener — find the topmost-visible paragraph and
-  // bubble its index up to the App state for persistence. Only runs in
-  // scroll mode; paginated mode reports paragraphs through PaginatedView.
-  useEffect(() => {
-    if (mode !== "scroll") return;
-    const el = scrollRef.current;
-    if (!el) return;
-    let queued = false;
-    const handler = () => {
-      if (queued) return;
-      queued = true;
-      window.setTimeout(() => {
-        queued = false;
-        const ps = el.querySelectorAll<HTMLElement>("[data-p-index]");
-        if (ps.length === 0) return;
-        const containerTop = el.getBoundingClientRect().top;
-        let best = 0;
-        let bestEl: HTMLElement | null = null;
-        for (const p of ps) {
-          const offset = p.getBoundingClientRect().top - containerTop;
-          if (offset > 8) break;
-          best = Number(p.dataset.pIndex);
-          bestEl = p;
-        }
-        const intoPara = bestEl
-          ? paragraphScrollOffset(
-              el.scrollTop,
-              bestEl.offsetTop,
-              bestEl.offsetHeight,
-            )
-          : 0;
-        onParagraphChangeRef.current(best, intoPara);
-      }, 250);
-    };
-    el.addEventListener("scroll", handler, { passive: true });
-    return () => el.removeEventListener("scroll", handler);
-  }, [mode]);
+  // Reports where the reader is to App (scroll mode; the paginated modes
+  // report paragraphs through PaginatedView), and holds the book progress the
+  // footer, the status line and the Progress panel show.
+  const progress = useReadingProgress({
+    scrollRef,
+    scrolling: mode === "scroll",
+    currentChapter,
+    chapterCount,
+    onParagraphChange: handleParagraphChange,
+  });
+  // Stable, so PaginatedView's progress effect only re-fires on page changes.
+  const { reportChapterRead } = progress;
+  const onPaginatedProgress = useCallback(
+    (f: number) => {
+      paintProgress(f);
+      reportChapterRead(f);
+    },
+    [paintProgress, reportChapterRead],
+  );
 
   // Live within-chapter progress for the header bar. Separate from the 250ms
   // paragraph listener (too coarse for a smooth bar) and written imperatively
@@ -489,9 +473,7 @@ export function DesktopReader({
     let raf = 0;
     const paint = () => {
       raf = 0;
-      paintProgress(
-        chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
-      );
+      paintProgress(chapterReadFraction(el));
     };
     const onScroll = () => {
       if (raf) return;
@@ -773,25 +755,9 @@ export function DesktopReader({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Chapter landmarks on the bottom progress bar. The bar's fraction is
-  // `chapter / (count - 1)` — chapter 0 at the start, the last chapter at the
-  // end — so it round-trips through a seek and a landmark sits exactly where
-  // its chapter begins. The first and last are the track's own ends, so they
-  // are dropped rather than drawn under the caps.
-  const chapterAt = (f: number) =>
-    Math.min(
-      chapterCount - 1,
-      Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))),
-    );
-  const barFraction =
-    chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
-  const ticks =
-    chapterCount > 2 && chapterCount - 2 <= MAX_TICKS
-      ? Array.from(
-          { length: chapterCount - 2 },
-          (_, i) => (i + 1) / (chapterCount - 1),
-        )
-      : [];
+  // The bar's position, landmarks and seeks, on the scale every progress
+  // readout shares (reader/bookProgress.ts).
+  const { chapterAt, ticks, fraction: barFraction } = progress;
 
   // "8 min left" for the Status line style, in scroll mode — the paginated
   // modes have no scroll position inside the chapter to count from.
@@ -1180,6 +1146,7 @@ export function DesktopReader({
               <ProgressOverlay
                 theme={theme}
                 themeKey={themeKey}
+                percent={progress.percent}
                 currentChapter={currentChapter}
                 chapterCount={chapterCount}
                 chapterTitle={chapter.title}
@@ -1227,7 +1194,7 @@ export function DesktopReader({
                 onApi={onPaginatedApi}
                 // Stable, so PaginatedView's progress effect only re-fires
                 // on page changes, not on every re-render.
-                onChapterProgress={paintProgress}
+                onChapterProgress={onPaginatedProgress}
                 pageTurnAnimation={t.pageTurnAnimation}
               >
                 <div key={chapter.id}>

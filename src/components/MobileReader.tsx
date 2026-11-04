@@ -10,18 +10,10 @@ import { BookBody, readingGutter } from "./BookBody";
 import { ChapterEndCard, ChapterStartLink } from "./ChapterEnd";
 import { jumpScrollTop } from "./scrollJump";
 import { ChapterProgressBar } from "./ChapterProgressBar";
-import {
-  chapterScrollFraction,
-  landingAppliesTo,
-  paragraphScrollOffset,
-  restoreScrollTop,
-} from "./readerProgress";
+import { landingAppliesTo, restoreScrollTop } from "./readerProgress";
 import { MobileSheet } from "./MobileSheet";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import {
-  MAX_TICKS,
-  ReaderProgressBar,
-} from "../reader/chrome/ReaderProgressBar";
+import { ReaderProgressBar } from "../reader/chrome/ReaderProgressBar";
 import { ReaderBottomBar } from "../reader/chrome/ReaderBottomBar";
 import { PanelSwitcher } from "../reader/chrome/PanelSwitcher";
 import { panelsInContents } from "../reader/chrome/barStyles";
@@ -41,6 +33,8 @@ import {
 } from "../reader/chrome/pageTap";
 import { glassBar, phoneBarMotion } from "../reader/chrome/glass";
 import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
+import { chapterReadFraction } from "../reader/scroll/usePositionReporter";
+import { useReadingProgress } from "../reader/useReadingProgress";
 import {
   attachTouchPanFallback,
   movesThePage,
@@ -89,7 +83,12 @@ import { HighlightsPanel } from "../panels/HighlightsPanel";
 import { ProgressOverlay } from "../panels/ProgressOverlay";
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { TOCPanel } from "../panels/TOCPanel";
-import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
+import type {
+  ActivePanel,
+  OnParagraphChange,
+  TocVolume,
+  Tweaks,
+} from "../types/reader";
 
 // ---- Custom selection helpers --------------------------------------
 // We replace native text selection on mobile with a hand-rolled
@@ -161,7 +160,7 @@ interface Props {
    *  didn't change. */
   jumpNonce: number;
   onChapterChange: (order: number) => void;
-  onParagraphChange: (idx: number, offset?: number) => void;
+  onParagraphChange: OnParagraphChange;
   onCreateHighlight: (input: {
     chapter: number;
     paragraphIndex: number;
@@ -446,9 +445,6 @@ export function MobileReader({
   const contentTheme: Theme = theme;
   const textInk = resolveTextColor(themeKey, t.textColor);
 
-  const onParagraphChangeRef = useRef(onParagraphChange);
-  onParagraphChangeRef.current = onParagraphChange;
-
   // useLayoutEffect, not useEffect: positioning has to happen before the
   // browser paints the new chapter. Painting at the top and scrolling
   // afterwards leaves the revealed region unpainted in WKWebView — a chapter
@@ -507,39 +503,15 @@ export function MobileReader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChapter, book.id, jumpNonce, book.chapters[currentChapter]?.id]);
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    let queued = false;
-    const handler = () => {
-      if (queued) return;
-      queued = true;
-      window.setTimeout(() => {
-        queued = false;
-        const ps = el.querySelectorAll<HTMLElement>("[data-p-index]");
-        if (ps.length === 0) return;
-        const containerTop = el.getBoundingClientRect().top;
-        let best = 0;
-        let bestEl: HTMLElement | null = null;
-        for (const p of ps) {
-          const offset = p.getBoundingClientRect().top - containerTop;
-          if (offset > 8) break;
-          best = Number(p.dataset.pIndex);
-          bestEl = p;
-        }
-        const intoPara = bestEl
-          ? paragraphScrollOffset(
-              el.scrollTop,
-              bestEl.offsetTop,
-              bestEl.offsetHeight,
-            )
-          : 0;
-        onParagraphChangeRef.current(best, intoPara);
-      }, 250);
-    };
-    el.addEventListener("scroll", handler, { passive: true });
-    return () => el.removeEventListener("scroll", handler);
-  }, []);
+  // Reports where the reader is to the host, and holds the book progress the
+  // footer, the status line and the Progress panel show.
+  const progress = useReadingProgress({
+    scrollRef,
+    scrolling: true,
+    currentChapter,
+    chapterCount: book.chapters.length,
+    onParagraphChange,
+  });
 
   // Live within-chapter progress for the header bar. Separate from the 250ms
   // paragraph listener (too coarse for a smooth bar) and written imperatively
@@ -550,9 +522,7 @@ export function MobileReader({
     let raf = 0;
     const paint = () => {
       raf = 0;
-      paintProgress(
-        chapterScrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
-      );
+      paintProgress(chapterReadFraction(el));
     };
     const onScroll = () => {
       if (raf) return;
@@ -570,27 +540,10 @@ export function MobileReader({
   const chapter = book.chapters[currentChapter] ?? book.chapters[0];
   const chapterCount = book.chapters.length;
 
-  // Chapter landmarks and the bar's own position. The fraction is
-  // `chapter / (count - 1)` — chapter 0 at the start, the last chapter at the
-  // end — so it round-trips through a seek and a landmark sits exactly where
-  // its chapter begins. The drag itself now lives in ReaderProgressBar, which
-  // previews under the finger and commits on release; this reader used to
-  // carry its own copy of that logic, and the desktop one carried a different
-  // copy that committed on every move.
-  const chapterAt = (f: number) =>
-    Math.min(
-      chapterCount - 1,
-      Math.max(0, Math.round(f * Math.max(0, chapterCount - 1))),
-    );
-  const barFraction =
-    chapterCount > 1 ? currentChapter / (chapterCount - 1) : 0;
-  const ticks =
-    chapterCount > 2 && chapterCount - 2 <= MAX_TICKS
-      ? Array.from(
-          { length: chapterCount - 2 },
-          (_, i) => (i + 1) / (chapterCount - 1),
-        )
-      : [];
+  // The bar's position, landmarks and seeks, on the scale every progress
+  // readout shares (reader/bookProgress.ts). The drag itself lives in
+  // ReaderProgressBar, which previews under the finger and commits on release.
+  const { chapterAt, ticks, fraction: barFraction } = progress;
 
   /** "Chapter 5 — The Long Night": what a slider position would open. */
   const chapterLabelAt = (f: number) =>
@@ -1490,7 +1443,7 @@ export function MobileReader({
             n: currentChapter + 1,
             total: chapterCount,
           }),
-          percent: `${formatNum(Math.round(barFraction * 100), locale)}%`,
+          percent: `${formatNum(progress.percent, locale)}%`,
           detail:
             minLeft === null
               ? undefined
@@ -1611,6 +1564,7 @@ export function MobileReader({
               <ProgressOverlay
                 theme={theme}
                 themeKey={themeKey}
+                percent={progress.percent}
                 currentChapter={currentChapter}
                 chapterCount={chapterCount}
                 chapterTitle={chapter.title}

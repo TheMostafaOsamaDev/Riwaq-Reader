@@ -5,10 +5,14 @@ import {
   type ThemeKey,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
+import { chapterStartTicks } from "../reader/bookProgress";
 
 interface Props {
   theme: Theme;
   themeKey: ThemeKey;
+  /** Whole percent through the book, as the reader measured it — the same
+   *  number its bar shows. See reader/bookProgress.ts. */
+  percent: number;
   currentChapter: number;
   chapterCount: number;
   chapterTitle: string;
@@ -17,29 +21,20 @@ interface Props {
 export function ProgressOverlay({
   theme,
   themeKey,
+  percent,
   currentChapter,
   chapterCount,
   chapterTitle,
 }: Props) {
   const { tr, locale } = useI18n();
   const isAr = locale === "ar";
-  const pct =
-    chapterCount > 0
-      ? Math.round(((currentChapter + 1) / chapterCount) * 100)
-      : 0;
   const chaptersLeft = Math.max(0, chapterCount - currentChapter - 1);
 
   const shadow = themeKey === "light" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.5)";
 
-  // Evenly-spaced chapter ticks — skip the tick at the current position so
-  // the scrubber reads cleanly on top of it.
-  const ticks =
-    chapterCount > 1
-      ? Array.from(
-          { length: chapterCount - 1 },
-          (_, i) => (i + 1) / chapterCount,
-        )
-      : [];
+  // Where each chapter after the first begins, on the same scale as the
+  // percent above.
+  const ticks = chapterStartTicks(chapterCount, Number.POSITIVE_INFINITY);
 
   return (
     <div
@@ -86,7 +81,7 @@ export function ProgressOverlay({
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          {pct}
+          {percent}
         </span>
         <span style={{ fontSize: 18, color: theme.muted, fontWeight: 400 }}>
           %
@@ -148,7 +143,7 @@ export function ProgressOverlay({
           style={{
             position: "absolute",
             inset: 0,
-            width: `${pct}%`,
+            width: `${percent}%`,
             background: theme.ink,
             borderRadius: 3,
           }}

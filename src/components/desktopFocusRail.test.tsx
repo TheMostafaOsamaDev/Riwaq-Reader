@@ -101,10 +101,16 @@ function surface(): HTMLElement {
   return el;
 }
 
-/** happy-dom has no layout: give the surface a chapter-sized geometry. */
+/** happy-dom has no layout: give the surface a chapter-sized geometry. The
+ *  rails measure to the end of the chapter's TEXT (reader/bookProgress.ts),
+ *  so the last paragraph is placed to end at `scrollHeight` too. */
 function setGeometry(el: HTMLElement, scrollHeight: number, client: number) {
   Object.defineProperty(el, "scrollHeight", { value: scrollHeight });
   Object.defineProperty(el, "clientHeight", { value: client });
+  const ps = el.querySelectorAll<HTMLElement>("[data-p-index]");
+  const last = ps[ps.length - 1];
+  Object.defineProperty(last, "offsetTop", { value: scrollHeight - 100 });
+  Object.defineProperty(last, "offsetHeight", { value: 100 });
 }
 
 describe("desktop reader position indicators", () => {

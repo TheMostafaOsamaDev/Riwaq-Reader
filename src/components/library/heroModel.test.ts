@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { bookProgress } from "../../reader/bookProgress";
 import type { BookIndexEntry } from "../../store/library";
 import {
   alsoReading,
@@ -22,15 +23,25 @@ function book(over: Partial<BookIndexEntry>): BookIndexEntry {
 }
 
 describe("readingPosition", () => {
-  it("inverts the (current + 1) / total the readers write", () => {
-    // Every chapter of a 114-chapter book round-trips, which is where float
-    // error in progress would show up first.
+  it("names the chapter the reader is in, wherever in it they are", () => {
+    // Reflowable books store (chapter + fraction read) / total. Rounding that
+    // back named the PREVIOUS chapter for anyone less than halfway through
+    // one. Every chapter of a 114-chapter book, at its start, middle and end.
     for (let current = 0; current < 114; current++) {
-      const pos = readingPosition(
-        book({ chapterCount: 114, progress: (current + 1) / 114 }),
-      );
-      expect(pos).toEqual({ unit: "chapter", n: current + 1, total: 114 });
+      for (const read of [0, 0.3, 0.7, 0.999]) {
+        const pos = readingPosition(
+          book({
+            chapterCount: 114,
+            progress: bookProgress(current, read, 114),
+          }),
+        );
+        expect(pos).toEqual({ unit: "chapter", n: current + 1, total: 114 });
+      }
     }
+  });
+
+  it("puts a finished book on its last chapter", () => {
+    expect(readingPosition(book({ progress: 1 }))?.n).toBe(10);
   });
 
   it("counts pages for fixed-layout books, not chapters", () => {
@@ -57,6 +68,13 @@ describe("percentRead", () => {
     expect(percentRead(0)).toBe(0);
     expect(percentRead(0.044)).toBe(4);
     expect(percentRead(1)).toBe(100);
+  });
+
+  it("shows the number the reader's own bar shows", () => {
+    // The reader floors (100% only at the very end); rounding here put the
+    // card a point ahead of it.
+    expect(percentRead(0.456)).toBe(45);
+    expect(percentRead(0.995)).toBe(99);
   });
 });
 

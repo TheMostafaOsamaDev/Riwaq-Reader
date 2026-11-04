@@ -9,22 +9,6 @@ export function clamp01(n: number): number {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
-/** Fraction (0..1) of the current chapter scrolled through, in scroll mode.
- *  When there's nothing to scroll — the chapter fits on screen, or (commonly)
- *  its body hasn't laid out yet because a streamed chapter's content loads
- *  async — the reader is still at the top, so this is 0. Returning a full bar
- *  here is wrong: it makes every freshly-opened chapter flash 100% until the
- *  first scroll. The bar grows toward 1 as the user scrolls to the end. */
-export function chapterScrollFraction(
-  scrollTop: number,
-  scrollHeight: number,
-  clientHeight: number,
-): number {
-  const scrollable = scrollHeight - clientHeight;
-  if (scrollable <= 0) return 0;
-  return clamp01(scrollTop / scrollable);
-}
-
 /** Fraction (0..1) of the way the viewport top sits INTO a paragraph.
  *  0 = the paragraph's top is at the viewport top; 1 = its bottom. Normalized
  *  to the paragraph, so it survives reflow (font size / column width changes)

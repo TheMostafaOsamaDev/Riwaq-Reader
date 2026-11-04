@@ -35,7 +35,11 @@ import type { BookState, Highlight } from "../store/library";
 import { getSource } from "../sources/registry";
 import { useLoadedExtensions } from "../sources/useExtensions";
 import { loadMissingVolumes } from "../sources/lazyVolumes";
-import { findSourceEntry, updateSourceReadingPosition } from "../store/library";
+import {
+  findSourceEntry,
+  updateBookProgress,
+  updateSourceReadingPosition,
+} from "../store/library";
 import {
   chapterImageSrc,
   markChapterRead,
@@ -59,7 +63,12 @@ import {
   Z_LOCAL,
 } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
-import type { ActivePanel, TocVolume, Tweaks } from "../types/reader";
+import type {
+  ActivePanel,
+  OnParagraphChange,
+  TocVolume,
+  Tweaks,
+} from "../types/reader";
 import type { HighlightColor } from "../styles/tokens";
 import { LoadingRing, usePresence } from "./LoadingRing";
 import { migrateStorageKey } from "../lib/legacyStorage";
@@ -550,27 +559,70 @@ export function SourceStreamReader({
     [book, currentChapter, libraryEntryId, flat],
   );
 
-  const onParagraphChange = useCallback(
-    (idx: number, offset?: number) => {
+  const onParagraphChange = useCallback<OnParagraphChange>(
+    (idx, offset = 0, report) => {
       setParagraphIndex(idx);
-      setParagraphOffset(offset ?? 0);
-      // Hitting the last paragraph of a chapter is the second "read"
-      // signal — the user scrolled all the way through. We persist
-      // here too so a chapter the user finishes without advancing to
-      // the next (e.g. the last chapter, or pausing at the end)
-      // still gets dimmed in the volumes accordion.
-      if (!libraryEntryId || !book) return;
+      setParagraphOffset(offset);
+      if (!book) return;
+      if (report?.final) {
+        // The reader's last report arrives as it unmounts — the same commit
+        // that unmounts this component — and the state above is then dropped
+        // before the persistence effect can write it. Write it straight
+        // through, with the library card's progress (reader/bookProgress.ts).
+        writePersisted(persistKey, {
+          currentChapter,
+          paragraphIndex: idx,
+          paragraphOffset: offset,
+          highlights,
+        });
+        if (libraryEntryId && report.bookFraction !== undefined)
+          void updateBookProgress(libraryEntryId, report.bookFraction);
+      }
+      if (!libraryEntryId) return;
+      // Reaching the end of a chapter is the second "read" signal — the user
+      // scrolled all the way through. Persisted here too so a chapter the user
+      // finishes without advancing to the next (the last chapter, or pausing
+      // at the end) still gets dimmed in the volumes accordion.
+      //
+      // "The end" is the reader saying the chapter's last line is on screen.
+      // The reported paragraph is the one at the TOP of the screen, and the
+      // last one never gets there: scrolled to the very bottom it read 166 of
+      // 169, so a chapter finished by scrolling was never marked. Reports
+      // that carry no fraction (the paginated view) keep the paragraph rule.
       const ch = book.chapters[currentChapter];
       if (!ch) return;
       const last = (ch.paragraphs?.length ?? 0) - 1;
-      if (last >= 0 && idx >= last) {
+      const reachedEnd =
+        report?.chapterFraction !== undefined
+          ? report.chapterFraction >= 1
+          : last >= 0 && idx >= last;
+      if (reachedEnd) {
         const stub = flat[currentChapter];
         if (stub) {
           void markChapterRead(libraryEntryId, stub.sourceId);
         }
       }
     },
-    [book, currentChapter, libraryEntryId, flat],
+    [book, currentChapter, libraryEntryId, flat, persistKey, highlights],
+  );
+
+  // Reports are taken only from the reader of the CURRENT layout. On a flip
+  // the outgoing reader's last report is measured after its text has
+  // reflowed to the new size, and would be saved over the real position —
+  // the same guard as App's `reportFrom`. Read through a ref, so a report
+  // landing in the flip's own commit is judged by the layout it lands in.
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const reportFrom = useMemo(
+    (): { mobile: OnParagraphChange; desktop: OnParagraphChange } => ({
+      mobile: (...report) => {
+        if (layoutRef.current === "mobile") onParagraphChange(...report);
+      },
+      desktop: (...report) => {
+        if (layoutRef.current === "desktop") onParagraphChange(...report);
+      },
+    }),
+    [onParagraphChange],
   );
 
   const onCreateHighlight = useCallback(
@@ -724,7 +776,7 @@ export function SourceStreamReader({
             resumeOffset={resumeOffset}
             jumpNonce={jumpNonce}
             onChapterChange={onChapterChange}
-            onParagraphChange={onParagraphChange}
+            onParagraphChange={reportFrom.mobile}
             onCreateHighlight={onCreateHighlight}
             onDeleteHighlight={onDeleteHighlight}
             onUpdateHighlightNote={onUpdateHighlightNote}
@@ -746,7 +798,7 @@ export function SourceStreamReader({
             resumeOffset={resumeOffset}
             jumpNonce={jumpNonce}
             onChapterChange={onChapterChange}
-            onParagraphChange={onParagraphChange}
+            onParagraphChange={reportFrom.desktop}
             onCreateHighlight={onCreateHighlight}
             onDeleteHighlight={onDeleteHighlight}
             onUpdateHighlightNote={onUpdateHighlightNote}
