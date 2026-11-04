@@ -414,8 +414,11 @@ export class SheetController {
       box.addEventListener(type, fn, opts);
       this.cleanups.push(() => box.removeEventListener(type, fn, opts));
     };
+    // Synthetic touch events (tests, other code poking the reader) can arrive
+    // without touch lists; they are not gestures.
     const touchOf = (e: TouchEvent): Touch | null => {
       const list = e.changedTouches;
+      if (!list) return null;
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
         if (!this.gesture || t.identifier === this.gesture.id) return t;
@@ -425,7 +428,7 @@ export class SheetController {
     on(
       "touchstart",
       (e) => {
-        const t = e.changedTouches[0];
+        const t = e.changedTouches?.[0];
         if (!t) return;
         this.touchStart({
           id: t.identifier,

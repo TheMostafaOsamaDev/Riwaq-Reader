@@ -317,6 +317,17 @@ describe("reveal", () => {
 });
 
 describe("listeners", () => {
+  it("a synthetic touch event with no touch lists is ignored, not thrown on", () => {
+    c.attach();
+    c.open();
+    for (const type of ["touchstart", "touchmove", "touchend"]) {
+      expect(() =>
+        box.dispatchEvent(new Event(type, { bubbles: true, cancelable: true })),
+      ).not.toThrow();
+    }
+    expect(c.y).toBe(160);
+  });
+
   it("attach registers nothing on document or window, and destroy removes all it added", () => {
     const docAdd = vi.spyOn(document, "addEventListener");
     const winAdd = vi.spyOn(window, "addEventListener");

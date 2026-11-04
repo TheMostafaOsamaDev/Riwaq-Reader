@@ -139,7 +139,7 @@ export interface PanSample {
  *  a least-squares line through the last VELOCITY_HORIZON_MS of samples, or 0
  *  when the finger had stopped before it lifted.
  *
- *  Not sheetSnap's `velocityFromSamples`, which takes the window's two ends:
+ *  Not sheet/physics.ts's `velocityFromSamples`, which takes the window's two ends:
  *  that is enough to pick a snap point, but a fling launches at exactly this
  *  number, so one jittery end sample would throw the page, and a finger that
  *  paused before lifting must not throw it at all. */
