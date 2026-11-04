@@ -139,19 +139,16 @@ export function PanelShell({
           // so relying on env() alone would add nothing on Android. Note the
           // env() fallback argument cannot help either — a fallback applies
           // only when env() is unsupported, not when it resolves to 0.
-          // `--sheet-overhang` is how far the enclosing bottom sheet hangs
-          // below the visible viewport at its current snap (MobileSheet sets
-          // it; it is 0/absent for docked desktop panels). Without it the tail
-          // of this list scrolls into the off-screen part of the sheet and the
-          // last control cannot be reached at all — which no amount of
-          // safe-area padding fixes, because the space it needs is below the
-          // screen rather than behind the system bar.
-          paddingBottom:
-            "calc(var(--sheet-overhang, 0px) + max(40px, calc(var(--safe-bottom) + 24px)))",
+          //
+          // Nothing here for the part of a bottom sheet below the screen at
+          // its default snap: a swipe up raises the sheet to full before this
+          // list scrolls, so the tail is always reached with the sheet fully
+          // on screen.
+          paddingBottom: "max(40px, calc(var(--safe-bottom) + 24px))",
           // Stop the inner list from chaining its overscroll into the sheet /
           // page, which is what made hitting the end feel like a stutter.
-          // MobileSheet's drag handoff reads scrollTop in JS rather than
-          // relying on chaining, so drag-to-dismiss is unaffected.
+          // MobileSheet's engine moves the list itself when a gesture spans
+          // list and sheet, so it never relies on chaining.
           overscrollBehaviorY: "contain",
           WebkitOverflowScrolling: "touch",
         }}

@@ -139,10 +139,11 @@ export interface PanSample {
  *  a least-squares line through the last VELOCITY_HORIZON_MS of samples, or 0
  *  when the finger had stopped before it lifted.
  *
- *  Not sheetSnap's `velocityFromSamples`, which takes the window's two ends:
- *  that is enough to pick a snap point, but a fling launches at exactly this
- *  number, so one jittery end sample would throw the page, and a finger that
- *  paused before lifting must not throw it at all. */
+ *  A line fit rather than the window's two ends: a fling launches at exactly
+ *  this number, so one jittery end sample would throw the page, and a finger
+ *  that paused before lifting must not throw it at all. The bottom sheet
+ *  (components/sheet) uses it too, for its snaps and its flings, so a sheet
+ *  and the page under it read a release the same way. */
 export function releaseVelocity(samples: PanSample[], upT: number): number {
   if (samples.length < 2) return 0;
   const last = samples[samples.length - 1];

@@ -8,9 +8,10 @@ import {
 } from "react";
 import { Icon } from "./Icon";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { MobileSheet } from "./MobileSheet";
 import type { BookStatus } from "../store/library";
 import { EASE, MOTION } from "../styles/motion";
-import { FONT_STACKS, type Theme, Z, scrimUnder } from "../styles/tokens";
+import { FONT_STACKS, type Theme, Z } from "../styles/tokens";
 import { useI18n } from "../i18n/useI18n";
 import type { Tr } from "../i18n";
 
@@ -133,12 +134,13 @@ export function ContextMenu({
   const [submenuMounted, setSubmenuMounted] = useState(false);
   const [submenuLeaving, setSubmenuLeaving] = useState(false);
   const [submenuMeasured, setSubmenuMeasured] = useState(false);
-  // Sheet stays mounted while leaving so the slide-out plays before onClose().
+  // Desktop: the popover stays mounted while leaving so its pop-out plays
+  // before onClose().
   const [leaving, setLeaving] = useState(false);
-  // Drives the enter animation. Starts false so the first frame paints the
-  // sheet off-screen (translateY 100%), then we flip to true on the next
-  // animation frame so the browser interpolates to translateY 0.
-  const [entered, setEntered] = useState(false);
+  // Touch: whether the bottom sheet is open, and the action a row chose, run
+  // once the sheet has slid away.
+  const [sheetOpen, setSheetOpen] = useState(true);
+  const pendingActionRef = useRef<(() => void) | null>(null);
   const closingRef = useRef(false);
 
   // Desktop-only: which row is currently highlighted. Both mouse hover and
@@ -214,37 +216,45 @@ export function ContextMenu({
     return () => cancelAnimationFrame(raf);
   }, [isTouch, panelHeight, heightTransitionOn]);
 
-  // Trigger the entrance slide one frame after mount. The first paint shows
-  // the sheet at translateY(100%) (off-screen below); then `entered` flips to
-  // true and the transition slides it up to translateY(0).
-  useEffect(() => {
-    if (!isTouch) {
-      setEntered(true);
-      return;
-    }
-    const raf = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(raf);
-  }, [isTouch]);
+  // Touch: the sheet's own exit animation decides when the menu is gone.
+  // `requestClose` and `runWithExit` slide it away; `handleExited` then runs
+  // the chosen action (if any) and unmounts the menu, in that order, as the
+  // desktop path does after its timer.
+  const handleExited = useCallback(() => {
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    action?.();
+    onClose();
+  }, [onClose]);
 
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
+    if (isTouch) {
+      setSheetOpen(false);
+      return;
+    }
     setLeaving(true);
     window.setTimeout(() => onClose(), EXIT_MS);
-  }, [onClose]);
+  }, [onClose, isTouch]);
 
   const runWithExit = useCallback(
     (action: () => void) => {
       if (closingRef.current) return;
       closingRef.current = true;
       tapHaptic();
+      if (isTouch) {
+        pendingActionRef.current = action;
+        setSheetOpen(false);
+        return;
+      }
       setLeaving(true);
       window.setTimeout(() => {
         action();
         onClose();
       }, EXIT_MS);
     },
-    [onClose],
+    [onClose, isTouch],
   );
 
   const handleEdit = useCallback(
@@ -263,30 +273,26 @@ export function ContextMenu({
     [runWithExit, onPickStatus],
   );
 
-  // Outside-click dismiss. pointerdown fires on both touchstart and mousedown
-  // so the menu closes the moment a finger or cursor lands outside it.
+  // Outside-click dismiss for the desktop popover. pointerdown fires on both
+  // touchstart and mousedown so it closes the moment a cursor lands outside.
+  // The touch sheet has a scrim for this; listening here as well would close
+  // it on the grabber, which sits outside the menu's rows.
   useEffect(() => {
+    if (isTouch) return;
     const onDocPointer = (e: PointerEvent) => {
       const el = menuRef.current;
       if (el && !el.contains(e.target as Node)) requestClose();
     };
     document.addEventListener("pointerdown", onDocPointer);
     return () => document.removeEventListener("pointerdown", onDocPointer);
-  }, [requestClose]);
+  }, [requestClose, isTouch]);
 
-  // Keyboard handler — touch gets a minimal Esc-closes; desktop gets full
-  // arrow navigation, Enter to activate, letter shortcuts, and right/left
-  // for submenu traversal.
+  // Keyboard handler for the desktop popover: arrow navigation, Enter to
+  // activate, letter shortcuts, and right/left for submenu traversal. The
+  // touch sheet's Esc is MobileSheet's.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (leaving) return;
-      if (isTouch) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          requestClose();
-        }
-        return;
-      }
+      if (leaving || isTouch) return;
       const inSubmenu = subFocus >= 0;
       const n = STATUS_OPTIONS.length;
       // Under RTL the submenu flyout opens toward the inline-start (visually
@@ -783,57 +789,37 @@ export function ContextMenu({
   );
 
   if (isTouch) {
-    const slideTransform =
-      entered && !leaving ? "translateY(0)" : "translateY(100%)";
-    const slideTransition = `transform ${leaving ? EXIT_MS : ENTER_MS}ms ${
-      leaving ? EXIT_EASE : ENTER_EASE
-    }`;
-    const backdropOpacity = entered && !leaving ? 1 : 0;
-    const backdropTransition = `opacity ${
-      leaving ? EXIT_MS : ENTER_MS
-    }ms ease, backdrop-filter ${leaving ? EXIT_MS : ENTER_MS}ms ease`;
+    // The shared bottom sheet, like the ⋮ menus: it drags, springs, and
+    // closes on Back, the scrim or a downward flick. MobileSheet positions
+    // itself over its parent; this fixed layer lifts it over the library,
+    // and lets taps through while it slides away.
     return (
-      <>
-        <style>{KEYFRAMES}</style>
-        {/* Blur backdrop. backdrop-filter is widely supported on modern
-            mobile browsers; the rgba dim is the fallback if it isn't. */}
-        <div
-          onClick={requestClose}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.32)",
-            backdropFilter: entered && !leaving ? "blur(6px)" : "blur(0px)",
-            WebkitBackdropFilter:
-              entered && !leaving ? "blur(6px)" : "blur(0px)",
-            zIndex: scrimUnder(Z.menu),
-            opacity: backdropOpacity,
-            transition: backdropTransition,
-          }}
-        />
-        {/* Bottom-anchored container holding the two cards. */}
-        <div
-          style={{
-            position: "fixed",
-            insetInlineStart: 0,
-            insetInlineEnd: 0,
-            bottom: 0,
-            zIndex: Z.menu,
-            padding: 10,
-            paddingBottom: `max(10px, var(--safe-bottom))`,
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            transform: slideTransform,
-            transition: slideTransition,
-            pointerEvents: leaving ? "none" : "auto",
-          }}
-          ref={menuRef}
-          role="menu"
-          onContextMenu={(e) => e.preventDefault()}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: Z.menu,
+          pointerEvents: sheetOpen ? "auto" : "none",
+        }}
+      >
+        <MobileSheet
+          theme={theme}
+          open={sheetOpen}
+          onClose={requestClose}
+          onExited={handleExited}
+          fitContent
+          label={title || tr("common.untitled")}
         >
-          {/* Actions card. */}
-          <SheetCard theme={theme}>
+          <div
+            ref={menuRef}
+            role="menu"
+            onContextMenu={(e) => e.preventDefault()}
+            style={{
+              fontFamily: FONT_STACKS.sans,
+              WebkitTouchCallout: "none",
+              paddingBottom: "max(10px, var(--safe-bottom))",
+            }}
+          >
             {/* Header — book title + author. Only shows if title was passed. */}
             {(title || author) && (
               <>
@@ -916,24 +902,9 @@ export function ContextMenu({
                 </div>
               </div>
             </div>
-          </SheetCard>
-          {/* Cancel card — separate group, classic iOS pattern. */}
-          <SheetCard theme={theme}>
-            <SheetRow
-              theme={theme}
-              suppressHover
-              onClick={() => {
-                tapHaptic();
-                requestClose();
-              }}
-              centered
-              bold
-            >
-              {tr("common.cancel")}
-            </SheetRow>
-          </SheetCard>
-        </div>
-      </>
+          </div>
+        </MobileSheet>
+      </div>
     );
   }
 
@@ -983,25 +954,6 @@ function labelFor(s: BookStatus, tr: Tr): string {
       : tr("sidebar.wishlist");
 }
 
-function SheetCard({ theme, children }: { theme: Theme; children: ReactNode }) {
-  return (
-    <div
-      style={{
-        background: theme.bg,
-        color: theme.ink,
-        borderRadius: 14,
-        border: `0.5px solid ${theme.rule}`,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-        fontFamily: FONT_STACKS.sans,
-        overflow: "hidden",
-        WebkitTouchCallout: "none",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 function SheetDivider({ theme, inset = 0 }: { theme: Theme; inset?: number }) {
   return (
     <div
@@ -1029,8 +981,6 @@ interface SheetRowProps {
   iconClassName?: string;
   trailing?: ReactNode;
   destructive?: boolean;
-  centered?: boolean;
-  bold?: boolean;
   muted?: boolean;
   /** Skip the hover-state background swap. Set on coarse-pointer devices so a
       synthetic mouseenter from the touch that opened the menu can't auto-
@@ -1056,8 +1006,6 @@ function SheetRow({
   iconClassName,
   trailing,
   destructive,
-  centered,
-  bold,
   muted,
   suppressHover,
   compact,
@@ -1103,12 +1051,12 @@ function SheetRow({
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        justifyContent: centered ? "center" : "space-between",
+        justifyContent: "space-between",
         gap: 12,
         color: labelColor,
         background: bg,
         fontSize,
-        fontWeight: bold ? 600 : 400,
+        fontWeight: 400,
         // Pressed transitions instantly in, eases out — feels responsive on
         // tap, gentle on release.
         transition: pressed ? "background 0ms" : "background 160ms ease",
@@ -1120,8 +1068,8 @@ function SheetRow({
           alignItems: "center",
           gap: 14,
           minWidth: 0,
-          flex: centered ? "none" : "1 1 auto",
-          justifyContent: centered ? "center" : "flex-start",
+          flex: "1 1 auto",
+          justifyContent: "flex-start",
         }}
       >
         {icon && (

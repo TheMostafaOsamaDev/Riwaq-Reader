@@ -121,7 +121,7 @@ const SNAP_FRACTION = 0.25;
 const FLING_PX_MS = 0.45;
 // Only the tail of a drag counts toward the fling test, so a long slow pan that
 // ends in a flick still throws the page — averaging over the whole gesture
-// would drown the flick. (MobileSheet's sheetSnap does the same for its own
+// would drown the flick. (MobileSheet's sheet/physics.ts does the same for its own
 // vertical axis; the two aren't shared because the axes and units differ.)
 const VELOCITY_WINDOW_MS = 100;
 // How long to let the current page settle before warming its neighbours. Short

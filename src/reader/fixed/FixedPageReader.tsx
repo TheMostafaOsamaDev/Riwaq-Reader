@@ -1094,7 +1094,7 @@ export function FixedPageReader(props: FixedPageReaderProps) {
             active={panel}
             onSelect={setPanel}
           />
-          <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+          <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
             {renderPanelBody()}
           </div>
         </MobileSheet>

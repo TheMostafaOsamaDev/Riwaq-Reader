@@ -287,6 +287,18 @@ describe("UpdateSheet", () => {
     expect(button("Cancel")).toBeTruthy();
     expect(button("Hide")).toBeTruthy();
   });
+
+  it("the action buttons render in the sheet footer", async () => {
+    // Pinned to the visible bottom at every snap, so "Update" is reachable
+    // at the default height without expanding the notes first.
+    await setup();
+    await sheet();
+    await act(async () => store.openSheet("notes"));
+    const footer = document.querySelector("[data-sheet-footer]");
+    const later = button("Later");
+    expect(later).toBeTruthy();
+    expect(footer?.contains(later ?? null)).toBe(true);
+  });
 });
 
 describe("UpdatePill", () => {

@@ -114,11 +114,18 @@ export function ActionsMenu<Id extends string>({
         open={open}
         onClose={onClose}
         label={label}
-        // Sized to its content: a header plus three rows. The percentage
-        // still bounds it on short phones.
-        height="min(46%, 320px)"
+        // Sized to its content: a header plus a few rows, with nothing to
+        // expand into. The sheet caps it on short phones.
+        fitContent
       >
-        <div style={{ paddingBlock: "4px 16px", paddingInline: 8 }}>
+        {/* The bottom padding clears the gesture bar: content-sized, the
+            last row would otherwise sit right on the screen edge. */}
+        <div
+          style={{
+            paddingBlock: "4px max(16px, calc(var(--safe-bottom) + 8px))",
+            paddingInline: 8,
+          }}
+        >
           {title && (
             <div style={{ paddingBlock: "0 12px", paddingInline: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div>

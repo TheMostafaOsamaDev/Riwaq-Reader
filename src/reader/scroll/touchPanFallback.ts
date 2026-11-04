@@ -28,12 +28,8 @@
  * slow drag would not move the page at all.
  */
 
-import {
-  createPanGesture,
-  flingOffset,
-  type PanDownOptions,
-  planFling,
-} from "./touchPan";
+import { type Fling, flingScroller } from "./flingScroller";
+import { createPanGesture, type PanDownOptions } from "./touchPan";
 
 /** Is a gesture starting on `target` one that moves the PAGE?
  *
@@ -77,10 +73,10 @@ export function attachTouchPanFallback(
    *  on the next read means somebody else moved the page. */
   let lastRead = 0;
 
-  let raf = 0;
+  let running: Fling | null = null;
   const stopFling = () => {
-    if (raf) window.cancelAnimationFrame(raf);
-    raf = 0;
+    running?.cancel();
+    running = null;
   };
 
   /** Write `next`, clamped to the scroller. False when the clamp bit, i.e.
@@ -96,17 +92,7 @@ export function attachTouchPanFallback(
   const movedByOthers = () => Math.abs(scroller.scrollTop - lastRead) > 1;
 
   const fling = (velocity: number, t0: number) => {
-    const plan = planFling(velocity);
-    if (!plan) return;
-    const from = pos;
-    const frame = (now: number) => {
-      raf = 0;
-      if (movedByOthers()) return;
-      const inBounds = drive(from + flingOffset(plan, now - t0));
-      if (!inBounds || now - t0 >= plan.durationMs) return;
-      raf = window.requestAnimationFrame(frame);
-    };
-    raf = window.requestAnimationFrame(frame);
+    running = flingScroller(scroller, velocity, t0, pos);
   };
 
   const release = () => {
