@@ -9,8 +9,6 @@
 // linear easing between samples; every track gets the same sample count and
 // duration, so the sheet, its scrim and its footer stay locked together.
 
-import { isReducedMotion } from "../../styles/motion";
-
 export interface Track {
   el: HTMLElement;
   prop: "transform" | "opacity";
@@ -28,9 +26,10 @@ export function playTracks(tracks: Track[], durationMs: number): Playback {
   const finalize = () => {
     for (const t of tracks) t.el.style[t.prop] = t.values[t.values.length - 1];
   };
+  // Reduced motion is the caller's to decide (SheetController jumps to the
+  // end synchronously); this only covers an engine without WAAPI.
   const canAnimate =
     durationMs > 0 &&
-    !isReducedMotion() &&
     tracks.every(
       (t) => t.values.length > 1 && typeof t.el.animate === "function",
     );

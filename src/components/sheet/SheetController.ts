@@ -10,37 +10,47 @@
 //
 // Behaviour is the spec's: docs/superpowers/specs/2026-11-04-native-feel-
 // sheets-design.md. Who owns a touch is gesture.ts; the numbers are
-// physics.ts.
+// physics.ts; the DOM events are input.ts. The release velocity and the
+// coast after an "expand, then keep scrolling" swipe are the reader's own
+// (reader/scroll), so a list moved by the sheet decelerates exactly like the
+// native one beside it.
 
+import { canScrollY } from "../../lib/scrollable";
+import { stayedPut } from "../../reader/gestureAxis";
+import { type Fling, flingScroller } from "../../reader/scroll/flingScroller";
+import { type PanSample, releaseVelocity } from "../../reader/scroll/touchPan";
 import { EASE_POINTS, isReducedMotion, MOTION } from "../../styles/motion";
 import { type Playback, playTracks } from "./animate";
 import {
   classifyTarget,
   decideOwner,
   findBody,
-  isScrollableY,
   type Region,
   readTranslateY,
   type TargetKind,
 } from "./gesture";
 import {
+  bindSheetInput,
+  type MovePoint,
+  type SheetInput,
+  type TouchPoint,
+} from "./input";
+import {
   displayY,
   distribute,
   easeSamples,
   footerOffset,
-  MOMENTUM_DECAY_PER_MS,
-  type MoveSample,
   pickSnap,
+  type Samples,
   type SheetGeometry,
-  SLOP_PX,
   type Snap,
   scrimOpacity,
   snapY,
   springSamples,
   topSnap,
-  VELOCITY_WINDOW_MS,
-  velocityFromSamples,
 } from "./physics";
+
+export type { TouchPoint } from "./input";
 
 export interface SheetElements {
   /** The sheet itself: the element that is translated. */
@@ -59,26 +69,14 @@ export interface SheetCallbacks {
   onExitFinished(): void;
 }
 
-export interface TouchPoint {
-  id: number;
-  x: number;
-  y: number;
-  /** performance.now() time base, ms. */
-  t: number;
-  target: Element;
-  /** A mouse drag: accepted on chrome only. */
-  mouse?: boolean;
-}
-
-const FRAME_MS = 1000 / 60;
 /** How long after a drag a click is still treated as part of it. */
 const CLICK_SUPPRESS_MS = 400;
 /** Gap kept between a revealed element and the visible bottom. */
 const REVEAL_MARGIN_PX = 12;
-const MOMENTUM_STOP_PX_PER_S = 20;
-const SAMPLE_KEEP_MS = VELOCITY_WINDOW_MS + 80;
-const MOUSE_ID = -1;
+/** Samples kept for the release velocity (touchPan reads the last 100ms). */
+const SAMPLE_KEEP_MS = 200;
 
+/** A finger down, not yet past the slop. */
 interface Pending {
   kind: "pending";
   id: number;
@@ -92,13 +90,14 @@ interface Pending {
   caught: boolean;
 }
 
+/** The sheet owns the gesture. */
 interface Drag {
   kind: "drag";
   id: number;
   lastY: number;
   /** Position before rubber-banding. */
   rawY: number;
-  samples: MoveSample[];
+  samples: PanSample[];
   body: HTMLElement;
   bodyLinked: boolean;
   maxScroll: number;
@@ -106,18 +105,13 @@ interface Drag {
   mover: "sheet" | "body" | null;
 }
 
-interface Passed {
-  kind: "pass";
-  id: number;
-}
-
-/** A downward native scroll of the list. Watched rather than owned: if the
+/** A native downward scroll of the list, watched rather than owned: if the
  *  list reaches its top while the finger keeps pulling, the sheet takes the
  *  rest of the pull, as native sheets do. The moves can no longer be
  *  cancelled by then, so the sheet only follows them; measured on the A73,
  *  they keep arriving at the input rate after the top. */
-interface NativeScroll {
-  kind: "native";
+interface Watch {
+  kind: "watch";
   id: number;
   body: HTMLElement;
   lastY: number;
@@ -126,27 +120,35 @@ interface NativeScroll {
   /** Where the sheet was when it took over; it never rises above this. */
   startY: number;
   rawY: number;
-  samples: MoveSample[];
   /** The list's own inline overflow-y, restored when the pull ends. */
   prevOverflowY: string;
 }
 
-export class SheetController {
+/** The browser's gesture (a sideways swipe, a slider, a text selection, an
+ *  upward list scroll): the sheet stays out of it. */
+interface Passed {
+  kind: "pass";
+  id: number;
+}
+
+type Gesture = Pending | Drag | Watch | Passed;
+
+export class SheetController implements SheetInput {
   private readonly els: SheetElements;
   private readonly cb: SheetCallbacks;
   private g: SheetGeometry | null = null;
   /** The snap the sheet rests at, or is animating to. */
   private current: Snap = "dismissed";
   private shownY = 0;
-  /** False while dragged, or after being caught mid-animation. */
-  private resting = true;
+  /** A finger has moved the sheet off `current`, or caught it mid-flight:
+   *  it is not on its way anywhere until a release settles it. */
+  private displaced = false;
   private exiting = false;
   private playback: Playback | null = null;
-  private gesture: Pending | Drag | Passed | NativeScroll | null = null;
-  private momentumFrame = 0;
+  private gesture: Gesture | null = null;
+  private fling: Fling | null = null;
   private suppressClickUntil = 0;
-  private cleanups: Array<() => void> = [];
-  private mouseCleanup: (() => void) | null = null;
+  private unbind: (() => void) | null = null;
 
   constructor(els: SheetElements, cb: SheetCallbacks) {
     this.els = els;
@@ -162,34 +164,52 @@ export class SheetController {
     return this.shownY;
   }
 
+  /** Start listening to the sheet box (see input.ts). */
+  attach(): void {
+    this.unbind ??= bindSheetInput(this.els.box, this);
+  }
+
+  destroy(): void {
+    this.unbind?.();
+    this.unbind = null;
+    this.dropGesture();
+    this.stopFling();
+    this.playback?.cancel();
+    this.playback = null;
+  }
+
+  /** Take a new layout. The box has just been re-laid out for `g`, so the
+   *  drawn position is carried over keeping the sheet's top edge where it
+   *  was; from there it moves to its snap — animated when asked (a `height`
+   *  change), or already mid-animation. Otherwise a resize (the update sheet
+   *  going 52% → 86%) would start from a position that only meant something
+   *  in the old layout. */
   setGeometry(g: SheetGeometry, animate = false): void {
     const prev = this.g;
     this.g = g;
     if (prev && sameGeometry(prev, g)) return;
-    if (this.gesture?.kind === "drag") return;
-    if (this.current === "full" && !g.expandable) this.current = "default";
-    const to = snapY(this.current, g);
-    if (this.exiting) {
-      if (this.playback) {
-        this.play(
-          easeSamples(this.currentY(), to, MOTION.fast, EASE_POINTS.exit),
-          MOTION.fast,
-          () => this.cb.onExitFinished(),
-        );
-      } else {
-        this.apply(to);
-      }
+    const shift = prev
+      ? g.boxH - prev.boxH - (g.viewportH - prev.viewportH)
+      : 0;
+    const gs = this.gesture;
+    if (gs?.kind === "drag" || (gs?.kind === "watch" && gs.handed)) {
+      gs.rawY += shift;
+      if (gs.kind === "watch") gs.startY += shift;
+      this.apply(displayY(gs.rawY, g));
       return;
     }
-    // A running enter/settle is retargeted rather than cut short: the first
-    // ResizeObserver callback lands right after mount, mid-enter.
-    if (animate || this.playback) {
-      this.play(
-        easeSamples(this.currentY(), to, MOTION.med, EASE_POINTS.enter),
-        MOTION.med,
-      );
-    } else {
+    if (this.current === "full" && !g.expandable) this.current = "default";
+    const to = snapY(this.current, g);
+    if (!animate && !this.playback) {
       this.apply(to);
+      return;
+    }
+    const from = this.currentY() + shift;
+    this.apply(from);
+    if (this.exiting) {
+      this.play(this.ease("exit", from, to), this.cb.onExitFinished);
+    } else {
+      this.play(this.ease("enter", from, to));
     }
   }
 
@@ -197,14 +217,11 @@ export class SheetController {
     const g = this.g;
     if (!g) return;
     this.exiting = false;
-    this.resting = true;
+    this.displaced = false;
     this.current = "default";
     const from = snapY("dismissed", g);
     this.apply(from);
-    this.play(
-      easeSamples(from, snapY("default", g), MOTION.med, EASE_POINTS.enter),
-      MOTION.med,
-    );
+    this.play(this.ease("enter", from, snapY("default", g)));
   }
 
   /** Slide off the bottom. With a release velocity it is a spring that
@@ -217,46 +234,37 @@ export class SheetController {
     }
     if (this.exiting) return;
     this.exiting = true;
-    this.resting = true;
+    this.displaced = false;
     this.current = "dismissed";
-    this.cancelGesture();
-    this.stopMomentum();
+    this.dropGesture();
+    this.stopFling();
     const from = this.currentY();
     const to = snapY("dismissed", g);
-    const done = () => this.cb.onExitFinished();
-    if (velocity) {
-      const s = springSamples(from, to, velocity);
-      this.play(s, (s.length - 1) * FRAME_MS, done);
-    } else {
-      this.play(
-        easeSamples(from, to, MOTION.fast, EASE_POINTS.exit),
-        MOTION.fast,
-        done,
-      );
-    }
+    this.play(
+      velocity
+        ? springSamples(from, to, velocity)
+        : this.ease("exit", from, to),
+      this.cb.onExitFinished,
+    );
   }
 
   settleTo(snap: "full" | "default", velocity: number): void {
     const g = this.g;
     if (!g) return;
     this.exiting = false;
-    this.resting = true;
+    this.displaced = false;
     this.current = snap === "full" && !g.expandable ? "default" : snap;
-    const s = springSamples(this.currentY(), snapY(this.current, g), velocity);
-    this.play(s, (s.length - 1) * FRAME_MS);
+    this.play(springSamples(this.currentY(), snapY(this.current, g), velocity));
   }
 
   /** Programmatic expand (wheel, reveal): the open ease, not a spring. */
   expand(): void {
     const g = this.g;
     if (!g || !g.expandable || this.exiting) return;
-    if (this.current === "full" && this.resting && !this.playback) return;
+    if (this.current === "full" && !this.displaced && !this.playback) return;
     this.current = "full";
-    this.resting = true;
-    this.play(
-      easeSamples(this.currentY(), 0, MOTION.med, EASE_POINTS.enter),
-      MOTION.med,
-    );
+    this.displaced = false;
+    this.play(this.ease("enter", this.currentY(), 0));
   }
 
   /** Bring `el` (inside the sheet's list) fully into view: expand first when
@@ -282,23 +290,24 @@ export class SheetController {
     });
   }
 
+  // ── Input (see input.ts for the DOM side) ────────────────────────────────
+
   touchStart(p: TouchPoint): void {
-    const g = this.g;
-    if (!g || this.exiting) return;
-    // One finger at a time: a second touch is ignored until the first ends.
-    if (this.gesture) return;
+    if (!this.g || this.exiting || this.gesture) return;
+    const body = findBody(this.els.content);
+    const { region, kind } = classifyTarget(p.target, body);
+    // A mouse press on the list is a click or a text selection, never a
+    // drag: leave everything — a running settle included — alone.
+    if (p.mouse && region !== "chrome") return;
     // A touch that stops something moving (the sheet mid-animation, or a list
     // still coasting) is consumed: lifting it must not tap what is under it.
-    const caught = this.momentumFrame !== 0 || this.playback !== null;
-    this.stopMomentum();
+    const caught = this.fling?.active === true || this.playback !== null;
+    this.stopFling();
     if (this.playback) {
       // Caught mid-flight: stop under the finger and carry on from there.
       this.stopPlayback();
-      this.resting = false;
+      this.displaced = true;
     }
-    const body = findBody(this.els.content);
-    const { region, kind } = classifyTarget(p.target, body);
-    if (p.mouse && region !== "chrome") return;
     this.gesture = {
       kind: "pending",
       id: p.id,
@@ -312,145 +321,73 @@ export class SheetController {
     };
   }
 
-  /** Returns true when the caller must preventDefault the move. */
-  touchMove(p: Omit<TouchPoint, "target"> & { cancelable: boolean }): boolean {
+  touchMove(p: MovePoint): boolean {
     const g = this.g;
     const gs = this.gesture;
-    if (!g || !gs || gs.id !== p.id || gs.kind === "pass") return false;
-    if (gs.kind === "native") {
-      this.followNativePull(gs, p, g);
-      return false;
-    }
-    if (gs.kind === "pending") {
-      const dx = p.x - gs.x0;
-      const dy = p.y - gs.y0;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < SLOP_PX) return false;
-      const owner = decideOwner({
-        region: gs.region,
-        kind: gs.targetKind,
-        dx,
-        dy,
-        cancelable: p.cancelable,
-        atTopSnap: this.resting && this.current === topSnap(g),
-        expandable: g.expandable,
-        bodyScrollTop: gs.body.scrollTop,
-        bodyScrollable: isScrollableY(gs.body),
-      });
-      if (owner === "pass") {
-        this.gesture =
-          gs.region === "body" && dy > 0
-            ? {
-                kind: "native",
-                id: gs.id,
-                body: gs.body,
-                lastY: p.y,
-                handed: false,
-                startY: this.shownY,
-                rawY: this.shownY,
-                samples: [],
-                prevOverflowY: "",
-              }
-            : { kind: "pass", id: gs.id };
+    if (!g || !gs || gs.id !== p.id) return false;
+    switch (gs.kind) {
+      case "pass":
         return false;
+      case "watch":
+        this.followWatch(gs, p, g);
+        return false;
+      case "drag":
+        return this.dragTo(gs, p, g);
+      case "pending": {
+        const next = this.decide(gs, p, g);
+        if (!next) return false;
+        this.gesture = next;
+        return next.kind === "drag" ? this.dragTo(next, p, g) : false;
       }
-      this.resting = false;
-      this.gesture = {
-        kind: "drag",
-        id: gs.id,
-        lastY: gs.y0,
-        rawY: this.shownY,
-        samples: [{ y: gs.y0, t: gs.t0 }],
-        body: gs.body,
-        bodyLinked: gs.region === "body" && isScrollableY(gs.body),
-        maxScroll: Math.max(0, gs.body.scrollHeight - gs.body.clientHeight),
-        mover: null,
-      };
     }
-    const d = this.gesture as Drag;
-    const delta = p.y - d.lastY;
-    d.lastY = p.y;
-    const r = distribute({
-      delta,
-      sheetY: d.rawY,
-      minY: snapY(topSnap(g), g),
-      scrollTop: d.body.scrollTop,
-      maxScroll: d.maxScroll,
-      bodyLinked: d.bodyLinked,
-    });
-    d.rawY = r.sheetY;
-    if (d.bodyLinked && r.scrollTop !== d.body.scrollTop) {
-      d.body.scrollTop = r.scrollTop;
-    }
-    if (r.mover) d.mover = r.mover;
-    d.samples.push({ y: p.y, t: p.t });
-    while (d.samples.length > 2 && p.t - d.samples[0].t > SAMPLE_KEEP_MS) {
-      d.samples.shift();
-    }
-    this.apply(displayY(d.rawY, g));
-    return true;
   }
 
   touchEnd(p: { id: number; t: number }): void {
-    const g = this.g;
     const gs = this.gesture;
     if (!gs || gs.id !== p.id) return;
     this.gesture = null;
-    if (gs.kind === "native") this.unfreezeList(gs);
-    if (!g || this.exiting) return;
-    if (gs.kind === "native" && gs.handed && gs.rawY > gs.startY + 0.5) {
-      const v = this.releaseVelocity(gs.samples, p.t);
-      const target = pickSnap(this.shownY, v, g);
-      if (target === "dismissed") {
-        this.cb.onDismiss();
-        this.close(v);
-      } else {
-        this.settleTo(target, v);
-      }
+    if (gs.kind === "watch") this.unfreezeList(gs);
+    if (!this.g || this.exiting) return;
+    if (gs.kind === "drag") {
+      this.releaseDrag(gs, p.t);
       return;
     }
-    if (gs.kind !== "drag") {
-      if (gs.kind === "pending" && gs.caught) {
-        this.suppressClickUntil = p.t + CLICK_SUPPRESS_MS;
-      }
-      // A tap (or a native scroll) that caught the sheet mid-animation:
-      // finish going where it was going.
-      if (!this.resting) {
-        this.settleTo(this.current === "full" ? "full" : "default", 0);
-      }
+    if (gs.kind === "pending" && gs.caught) {
+      this.suppressClickUntil = p.t + CLICK_SUPPRESS_MS;
+    }
+    if (gs.kind === "watch" && gs.handed) {
+      // A pull handed over from a native scroll never counts its speed: "a
+      // fast flick through the list never closes the sheet" holds even when
+      // the list runs out mid-flick. Only where it was pulled to decides.
+      this.release(0);
       return;
     }
-    this.suppressClickUntil = p.t + CLICK_SUPPRESS_MS;
-    const v = this.releaseVelocity(gs.samples, p.t);
-    const top = snapY(topSnap(g), g);
-    if (gs.mover === "body" && gs.rawY === top) {
-      // "Expand, then keep scrolling": the sheet rests at its top snap and
-      // the list keeps the fling.
-      this.current = topSnap(g);
-      this.resting = true;
-      this.apply(top);
-      if (v !== 0) this.startMomentum(gs.body, -v, p.t);
-      return;
+    // A tap (or a native scroll) that caught the sheet mid-animation: finish
+    // going where it was going.
+    if (this.displaced) {
+      this.settleTo(this.current === "full" ? "full" : "default", 0);
     }
-    const target = pickSnap(this.shownY, v, g);
-    if (target === "dismissed") {
-      // Tell the owner first so its open=false finds the exit running.
-      this.cb.onDismiss();
-      this.close(v);
-      return;
-    }
-    this.settleTo(target, v);
   }
 
-  /** Returns true when the caller must preventDefault the wheel event. */
-  wheel(deltaY: number): boolean {
+  abandonGesture(): void {
+    const displacedByIt =
+      this.gesture?.kind === "drag" ||
+      (this.gesture?.kind === "watch" && this.gesture.handed);
+    this.dropGesture();
+    if (displacedByIt && !this.exiting) this.release(0);
+  }
+
+  wheel(deltaY: number, target: Element): boolean {
     const g = this.g;
     if (!g || !g.expandable || this.exiting || deltaY <= 0) return false;
     if (this.current === "full") return false;
+    // Over an inner list (the open font picker) the wheel scrolls that list.
+    const body = findBody(this.els.content);
+    if (classifyTarget(target, body).region === "nested") return false;
     this.expand();
     return true;
   }
 
-  /** One-shot: true for the first click inside the window after a drag. */
   suppressesClick(t: number): boolean {
     if (t < this.suppressClickUntil) {
       this.suppressClickUntil = 0;
@@ -459,134 +396,144 @@ export class SheetController {
     return false;
   }
 
-  attach(): void {
-    const box = this.els.box;
-    const on = <K extends keyof HTMLElementEventMap>(
-      type: K,
-      fn: (e: HTMLElementEventMap[K]) => void,
-      opts: AddEventListenerOptions,
-    ) => {
-      box.addEventListener(type, fn, opts);
-      this.cleanups.push(() => box.removeEventListener(type, fn, opts));
-    };
-    // Synthetic touch events (tests, other code poking the reader) can arrive
-    // without touch lists; they are not gestures.
-    const touchOf = (e: TouchEvent): Touch | null => {
-      const list = e.changedTouches;
-      if (!list) return null;
-      for (let i = 0; i < list.length; i++) {
-        const t = list[i];
-        if (!this.gesture || t.identifier === this.gesture.id) return t;
-      }
-      return null;
-    };
-    on(
-      "touchstart",
-      (e) => {
-        const t = e.changedTouches?.[0];
-        if (!t) return;
-        this.touchStart({
-          id: t.identifier,
-          x: t.clientX,
-          y: t.clientY,
-          t: performance.now(),
-          target: e.target as Element,
-        });
-      },
-      { passive: true },
-    );
-    // The one blocking listener: it must be able to preventDefault the first
-    // move of a gesture the sheet owns. On the sheet, never on document, and
-    // only while the sheet is mounted.
-    on(
-      "touchmove",
-      (e) => {
-        const t = touchOf(e);
-        if (!t) return;
-        const claimed = this.touchMove({
-          id: t.identifier,
-          x: t.clientX,
-          y: t.clientY,
-          t: performance.now(),
-          cancelable: e.cancelable,
-        });
-        if (claimed && e.cancelable) e.preventDefault();
-      },
-      { passive: false },
-    );
-    const end = (e: TouchEvent) => {
-      const t = touchOf(e);
-      if (t) this.touchEnd({ id: t.identifier, t: performance.now() });
-    };
-    on("touchend", end, { passive: true });
-    on("touchcancel", end, { passive: true });
-    on(
-      "pointerdown",
-      (e) => {
-        if (e.pointerType !== "mouse" || e.button !== 0) return;
-        this.touchStart({
-          id: MOUSE_ID,
-          x: e.clientX,
-          y: e.clientY,
-          t: performance.now(),
-          target: e.target as Element,
-          mouse: true,
-        });
-        if (this.gesture?.id !== MOUSE_ID) return;
-        const move = (ev: PointerEvent) => {
-          const claimed = this.touchMove({
-            id: MOUSE_ID,
-            x: ev.clientX,
-            y: ev.clientY,
-            t: performance.now(),
-            cancelable: true,
-          });
-          if (claimed) ev.preventDefault();
-        };
-        const up = () => {
-          this.touchEnd({ id: MOUSE_ID, t: performance.now() });
-          cleanup();
-        };
-        const cleanup = () => {
-          window.removeEventListener("pointermove", move);
-          window.removeEventListener("pointerup", up);
-          window.removeEventListener("pointercancel", up);
-          this.mouseCleanup = null;
-        };
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", up);
-        window.addEventListener("pointercancel", up);
-        this.mouseCleanup = cleanup;
-      },
-      { passive: true },
-    );
-    on(
-      "wheel",
-      (e) => {
-        if (this.wheel(e.deltaY)) e.preventDefault();
-      },
-      { passive: false },
-    );
-    on(
-      "click",
-      (e) => {
-        if (this.suppressesClick(performance.now())) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      },
-      { capture: true },
-    );
+  // ── Gesture steps ────────────────────────────────────────────────────────
+
+  /** What a pending touch becomes once it has left the slop, or null while
+   *  it is still inside it. */
+  private decide(gs: Pending, p: MovePoint, g: SheetGeometry): Gesture | null {
+    const dx = p.x - gs.x0;
+    const dy = p.y - gs.y0;
+    if (stayedPut(dx, dy)) return null;
+    const owner = decideOwner({
+      region: gs.region,
+      kind: gs.targetKind,
+      dx,
+      dy,
+      cancelable: p.cancelable,
+      atTopSnap: !this.displaced && this.current === topSnap(g),
+      expandable: g.expandable,
+      bodyScrollTop: gs.body.scrollTop,
+      bodyScrollable: canScrollY(gs.body),
+    });
+    if (owner === "sheet") return this.beginDrag(gs);
+    if (owner === "scroll" && dy > 0) {
+      return {
+        kind: "watch",
+        id: gs.id,
+        body: gs.body,
+        lastY: p.y,
+        handed: false,
+        startY: 0,
+        rawY: 0,
+        prevOverflowY: "",
+      };
+    }
+    return { kind: "pass", id: gs.id };
   }
 
-  destroy(): void {
-    for (const off of this.cleanups) off();
-    this.cleanups = [];
-    this.cancelGesture();
-    this.stopMomentum();
-    this.playback?.cancel();
-    this.playback = null;
+  private beginDrag(gs: Pending): Drag {
+    this.displaced = true;
+    return {
+      kind: "drag",
+      id: gs.id,
+      lastY: gs.y0,
+      rawY: this.shownY,
+      samples: [{ y: gs.y0, t: gs.t0 }],
+      body: gs.body,
+      bodyLinked: gs.region === "body" && canScrollY(gs.body),
+      maxScroll: Math.max(0, gs.body.scrollHeight - gs.body.clientHeight),
+      mover: null,
+    };
   }
+
+  private dragTo(d: Drag, p: MovePoint, g: SheetGeometry): boolean {
+    const r = distribute({
+      delta: p.y - d.lastY,
+      sheetY: d.rawY,
+      minY: snapY(topSnap(g), g),
+      scrollTop: d.body.scrollTop,
+      maxScroll: d.maxScroll,
+      bodyLinked: d.bodyLinked,
+    });
+    d.lastY = p.y;
+    d.rawY = r.sheetY;
+    if (d.bodyLinked && r.scrollTop !== d.body.scrollTop) {
+      d.body.scrollTop = r.scrollTop;
+    }
+    if (r.mover) d.mover = r.mover;
+    pushSample(d.samples, p);
+    this.apply(displayY(d.rawY, g));
+    return true;
+  }
+
+  private releaseDrag(d: Drag, t: number): void {
+    const g = this.g;
+    if (!g) return;
+    this.suppressClickUntil = t + CLICK_SUPPRESS_MS;
+    const v = releaseVelocity(d.samples, t);
+    const top = snapY(topSnap(g), g);
+    if (d.mover === "body" && d.rawY === top) {
+      // "Expand, then keep scrolling": the sheet rests at its top snap and
+      // the list keeps the fling.
+      this.current = topSnap(g);
+      this.displaced = false;
+      this.apply(top);
+      this.fling = flingScroller(d.body, -v, t);
+      return;
+    }
+    this.release(v);
+  }
+
+  /** Settle a released sheet where its position and speed send it. */
+  private release(velocity: number): void {
+    const g = this.g;
+    if (!g) return;
+    const target = pickSnap(this.shownY, velocity, g);
+    if (target === "dismissed") {
+      // Tell the owner first so its open=false finds the exit running.
+      this.cb.onDismiss();
+      this.close(velocity);
+    } else {
+      this.settleTo(target, velocity);
+    }
+  }
+
+  private followWatch(gs: Watch, p: MovePoint, g: SheetGeometry): void {
+    const delta = p.y - gs.lastY;
+    gs.lastY = p.y;
+    if (!gs.handed) {
+      // Still the list's scroll until it is at its top and the finger keeps
+      // pulling down. This move's travel went into the list; the sheet takes
+      // over from the next one.
+      if (delta <= 0 || gs.body.scrollTop > 0) return;
+      gs.handed = true;
+      gs.startY = gs.rawY = this.shownY;
+      this.displaced = true;
+      // Freeze the list while the sheet is off its snap: the browser still
+      // owns this gesture, and a reversal would otherwise scroll the list
+      // underneath the moving sheet.
+      gs.prevOverflowY = gs.body.style.overflowY;
+      gs.body.style.overflowY = "hidden";
+      return;
+    }
+    gs.rawY = Math.min(
+      snapY("dismissed", g),
+      Math.max(gs.startY, gs.rawY + delta),
+    );
+    this.apply(gs.rawY);
+  }
+
+  private unfreezeList(gs: Watch): void {
+    if (gs.handed) gs.body.style.overflowY = gs.prevOverflowY;
+  }
+
+  /** Forget the gesture without settling anything. */
+  private dropGesture(): void {
+    if (this.gesture?.kind === "watch") this.unfreezeList(this.gesture);
+    this.gesture = null;
+  }
+
+  // ── Drawing ──────────────────────────────────────────────────────────────
 
   private apply(y: number): void {
     const g = this.g;
@@ -602,6 +549,13 @@ export class SheetController {
     return this.playback ? readTranslateY(this.els.box) : this.shownY;
   }
 
+  /** The app's open (enter) or close (exit) ease between two positions. */
+  private ease(kind: "enter" | "exit", from: number, to: number): Samples {
+    return kind === "enter"
+      ? easeSamples(from, to, MOTION.med, EASE_POINTS.enter)
+      : easeSamples(from, to, MOTION.fast, EASE_POINTS.exit);
+  }
+
   private stopPlayback(): void {
     if (!this.playback) return;
     const y = readTranslateY(this.els.box);
@@ -610,10 +564,13 @@ export class SheetController {
     this.apply(y);
   }
 
-  private play(values: number[], durationMs: number, onDone?: () => void) {
+  /** Animate through `s`: the sheet, its scrim and its footer from the same
+   *  samples, on the compositor. With reduced motion, jump to the end. */
+  private play(s: Samples, onDone?: () => void): void {
     const g = this.g;
     if (!g) return;
     this.stopPlayback();
+    const { values } = s;
     const end = values[values.length - 1];
     if (isReducedMotion() || values.length < 2) {
       this.apply(end);
@@ -638,7 +595,7 @@ export class SheetController {
           values: values.map((v) => `translateY(${footerOffset(v, g)}px)`),
         },
       ],
-      durationMs,
+      s.durationMs,
     );
     this.playback = pb;
     this.shownY = end;
@@ -649,84 +606,17 @@ export class SheetController {
     });
   }
 
-  private startMomentum(body: HTMLElement, v: number, t0: number): void {
-    this.stopMomentum();
-    let vel = v;
-    let last = t0;
-    const step = (now: number) => {
-      const dt = Math.max(0, now - last);
-      last = now;
-      const max = Math.max(0, body.scrollHeight - body.clientHeight);
-      const next = Math.min(
-        max,
-        Math.max(0, body.scrollTop + (vel * dt) / 1000),
-      );
-      body.scrollTop = next;
-      vel *= MOMENTUM_DECAY_PER_MS ** dt;
-      if (next <= 0 || next >= max || Math.abs(vel) < MOMENTUM_STOP_PX_PER_S) {
-        this.momentumFrame = 0;
-        return;
-      }
-      this.momentumFrame = requestAnimationFrame(step);
-    };
-    this.momentumFrame = requestAnimationFrame(step);
+  private stopFling(): void {
+    this.fling?.cancel();
+    this.fling = null;
   }
+}
 
-  private stopMomentum(): void {
-    if (this.momentumFrame) cancelAnimationFrame(this.momentumFrame);
-    this.momentumFrame = 0;
-  }
-
-  private cancelGesture(): void {
-    if (this.gesture?.kind === "native") this.unfreezeList(this.gesture);
-    this.gesture = null;
-    this.mouseCleanup?.();
-  }
-
-  /** A finger that stopped before lifting carries no velocity. */
-  private releaseVelocity(samples: MoveSample[], t: number): number {
-    const last = samples[samples.length - 1];
-    if (!last || t - last.t > VELOCITY_WINDOW_MS) return 0;
-    return velocityFromSamples(samples);
-  }
-
-  private followNativePull(
-    gs: NativeScroll,
-    p: { y: number; t: number },
-    g: SheetGeometry,
-  ): void {
-    const delta = p.y - gs.lastY;
-    gs.lastY = p.y;
-    if (!gs.handed) {
-      // Still the list's scroll until it is at its top and the finger keeps
-      // pulling down. This move's travel went into the list; the sheet takes
-      // over from the next one.
-      if (delta <= 0 || gs.body.scrollTop > 0) return;
-      gs.handed = true;
-      gs.startY = this.shownY;
-      gs.rawY = this.shownY;
-      gs.samples = [{ y: p.y, t: p.t }];
-      this.resting = false;
-      // Freeze the list while the sheet is off its snap: the browser still
-      // owns this gesture, and a reversal would otherwise scroll the list
-      // underneath the moving sheet.
-      gs.prevOverflowY = gs.body.style.overflowY;
-      gs.body.style.overflowY = "hidden";
-      return;
-    }
-    gs.rawY = Math.min(
-      snapY("dismissed", g),
-      Math.max(gs.startY, gs.rawY + delta),
-    );
-    gs.samples.push({ y: p.y, t: p.t });
-    while (gs.samples.length > 2 && p.t - gs.samples[0].t > SAMPLE_KEEP_MS) {
-      gs.samples.shift();
-    }
-    this.apply(gs.rawY);
-  }
-
-  private unfreezeList(gs: NativeScroll): void {
-    if (gs.handed) gs.body.style.overflowY = gs.prevOverflowY;
+/** Record a finger sample, keeping only what the release velocity reads. */
+function pushSample(samples: PanSample[], p: { y: number; t: number }): void {
+  samples.push({ y: p.y, t: p.t });
+  while (samples.length > 2 && p.t - samples[0].t > SAMPLE_KEEP_MS) {
+    samples.shift();
   }
 }
 

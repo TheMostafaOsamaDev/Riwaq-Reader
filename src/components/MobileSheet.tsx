@@ -3,21 +3,16 @@
 // ⋮ action menus, the library's long-press book menu, the download-range
 // picker, the update sheet and What's new.
 //
-// This component is lifecycle and layout only. Where the sheet is and how
-// it moves belong to SheetController (sheet/SheetController.ts), which writes
-// transform and opacity straight to the DOM: a drag never re-renders the
-// sheet or its contents. Behaviour is specified in
+// This component is lifecycle only: mount, measure, open, close, unmount.
+// Where the sheet is and how it moves belong to SheetController
+// (sheet/SheetController.ts), which writes transform and opacity straight to
+// the DOM, so a drag never re-renders the sheet or its contents; sizing is
+// sheet/measure.ts. Behaviour is specified in
 // docs/superpowers/specs/2026-11-04-native-feel-sheets-design.md.
-//
-// Layout. An expandable sheet's box is laid out at full height (top edge on
-// the safe-area inset) and translated down to its default snap, so expanding
-// is a transform with no relayout. A sheet that cannot expand is laid out
-// exactly as tall as its default snap. Either way the box reaches OVERDRAW_PX
-// below the screen edge in the sheet colour, so a rubber-band or spring
-// overshoot past the top never lifts its bottom off the screen.
 
 import {
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -25,18 +20,20 @@ import {
   useRef,
   useState,
 } from "react";
-import { pushLayer } from "../store/navigation";
+import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useBackLayer } from "../store/useBackLayer";
 import type { Theme } from "../styles/tokens";
 import { Z } from "../styles/tokens";
 import {
-  AUTO_HEIGHT_CAP,
-  OVERDRAW_PX,
-  type SheetGeometry,
-} from "./sheet/physics";
+  layOutSheet,
+  readSafeAreaInsetTop,
+  type SheetSizing,
+} from "./sheet/measure";
+import { OVERDRAW_PX } from "./sheet/physics";
 import { SheetController } from "./sheet/SheetController";
-import { type SheetApi, SheetContext } from "./sheet/SheetContext";
+import { type SheetApi, SheetProvider } from "./sheet/SheetContext";
 
-interface Props {
+interface CommonProps {
   theme: Theme;
   /** Controls visibility. Flip to false to dismiss with animation. */
   open: boolean;
@@ -44,85 +41,36 @@ interface Props {
    *  flicks the sheet closed. */
   onClose: () => void;
   children: ReactNode;
-  /** Visible height at the default snap: "82%", "min(80%, 500px)", any CSS
-   *  length, or "auto" to fit the content (capped at 90% of the screen).
-   *  Default "82%". */
-  height?: string;
-  /** Whether the sheet can be raised to full screen. Default true; always
-   *  false for height="auto". */
-  expandable?: boolean;
   /** aria-label for the dialog. */
   label?: string;
   /** After the exit animation has finished and the sheet has unmounted. */
   onExited?: () => void;
 }
 
-const FULL_INSET_TOP_FALLBACK = 24;
+/** Either as tall as its content (a menu: capped at 90% of the screen, never
+ *  expands), or a set height with an optional full snap above it. */
+type SizingProps =
+  | { fitContent: true; height?: never; expandable?: never }
+  | {
+      fitContent?: false;
+      /** Visible height at the default snap: "82%", "500px",
+       *  "min(80%, 500px)" — any CSS length. Default "82%". */
+      height?: string;
+      /** Whether the sheet can be raised to full screen. Default true. */
+      expandable?: boolean;
+    };
 
-/** Read `env(safe-area-inset-top)` off a probe element, so the value matches
- *  what the browser actually applies. */
-function readSafeAreaInsetTop(): number {
-  if (typeof document === "undefined") return FULL_INSET_TOP_FALLBACK;
-  const probe = document.createElement("div");
-  probe.style.position = "fixed";
-  probe.style.top = "0";
-  probe.style.left = "0";
-  probe.style.height = `env(safe-area-inset-top, ${FULL_INSET_TOP_FALLBACK}px)`;
-  probe.style.visibility = "hidden";
-  document.body.appendChild(probe);
-  const px = probe.getBoundingClientRect().height;
-  document.body.removeChild(probe);
-  return px > 0 ? px : FULL_INSET_TOP_FALLBACK;
-}
+type Props = CommonProps & SizingProps;
 
-function parseHeightPx(heightProp: string, viewportH: number): number {
-  const trimmed = heightProp.trim();
-  if (trimmed.endsWith("%")) {
-    const pct = Number.parseFloat(trimmed.slice(0, -1));
-    if (Number.isFinite(pct)) return (pct / 100) * viewportH;
-  }
-  if (trimmed.endsWith("px")) {
-    const px = Number.parseFloat(trimmed.slice(0, -2));
-    if (Number.isFinite(px)) return px;
-  }
-  // Anything else — `min(70%, 460px)`, `clamp(...)`, `40vh` — is resolved by
-  // the browser off a throwaway element. A short form sheet wants "as tall
-  // as its content, but never more than N% of the screen", which no single
-  // unit can express.
-  const measured = measureCssLengthPx(trimmed, viewportH);
-  if (measured !== null) return measured;
-  // Unresolvable — fall back to 82% so the sheet still works.
-  return 0.82 * viewportH;
-}
+export function MobileSheet(props: Props) {
+  const { theme, open, onClose, children, label, onExited } = props;
+  const sizing: SheetSizing = props.fitContent
+    ? { fitContent: true }
+    : {
+        height: props.height ?? "82%",
+        expandable: props.expandable ?? true,
+      };
 
-/** Resolve a CSS length to pixels by letting the browser compute it, with
- *  percentages taken against the viewport height. Null without a DOM or for
- *  an invalid value. */
-function measureCssLengthPx(value: string, viewportH: number): number | null {
-  if (typeof document === "undefined" || !document.body) return null;
-  const parent = document.createElement("div");
-  parent.style.cssText =
-    "position:absolute;visibility:hidden;pointer-events:none;left:-9999px;top:0;width:0;";
-  parent.style.height = `${viewportH}px`;
-  const probe = document.createElement("div");
-  probe.style.height = value;
-  parent.appendChild(probe);
-  document.body.appendChild(parent);
-  const px = probe.getBoundingClientRect().height;
-  document.body.removeChild(parent);
-  return Number.isFinite(px) && px > 0 ? px : null;
-}
-
-export function MobileSheet({
-  theme,
-  open,
-  onClose,
-  children,
-  height = "82%",
-  expandable = true,
-  label,
-  onExited,
-}: Props) {
   const [mounted, setMounted] = useState(open);
   // Mount as soon as `open` turns true; the frame below animates it in.
   if (open && !mounted) setMounted(true);
@@ -137,25 +85,10 @@ export function MobileSheet({
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
 
-  // Back: while open, the sheet owns a history entry, so the system Back
-  // (and a mouse back button) closes it instead of leaving the screen.
-  useEffect(() => {
-    if (!open) return;
-    return pushLayer(() => onCloseRef.current());
-  }, [open]);
-
-  // Esc. On window, so a control inside the sheet (an open dropdown) that
-  // handles Esc on the document first can claim it with preventDefault.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      e.preventDefault();
-      onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  // While open the sheet owns a history entry and Esc, so Back and Esc close
+  // it instead of acting on the screen under it.
+  useBackLayer(open, () => onCloseRef.current());
+  useEscapeKey(open, () => onCloseRef.current());
 
   const handleExited = useCallback(() => {
     setMounted(false);
@@ -163,14 +96,11 @@ export function MobileSheet({
   }, []);
 
   if (!mounted) return null;
-  const fit = height.trim() === "auto";
   return (
     <SheetFrame
       theme={theme}
       open={open}
-      height={height}
-      fit={fit}
-      expandable={expandable && !fit}
+      sizing={sizing}
       label={label}
       onCloseRef={onCloseRef}
       onExited={handleExited}
@@ -183,9 +113,7 @@ export function MobileSheet({
 function SheetFrame({
   theme,
   open,
-  height,
-  fit,
-  expandable,
+  sizing,
   label,
   onCloseRef,
   onExited,
@@ -193,11 +121,9 @@ function SheetFrame({
 }: {
   theme: Theme;
   open: boolean;
-  height: string;
-  fit: boolean;
-  expandable: boolean;
+  sizing: SheetSizing;
   label?: string;
-  onCloseRef: { current: () => void };
+  onCloseRef: RefObject<() => void>;
   onExited: () => void;
   children: ReactNode;
 }) {
@@ -214,39 +140,26 @@ function SheetFrame({
     setFooterSlot(el);
   }, []);
 
-  const layoutRef = useRef({ height, fit, expandable });
-  layoutRef.current = { height, fit, expandable };
+  const sizingRef = useRef(sizing);
+  sizingRef.current = sizing;
+  const sizingKey = sizing.fitContent
+    ? "fit"
+    : `${sizing.height}|${sizing.expandable}`;
+  // The safe-area inset is read off a probe node: cached, and re-read only
+  // when the window itself changes (rotation, system bars).
+  const safeTopRef = useRef(0);
 
-  /** Measure the screen, size the box, and hand the geometry to the engine. */
+  /** Size the box for its container and hand the geometry to the engine. */
   const measure = useCallback((animate: boolean) => {
+    const root = rootRef.current;
     const box = boxRef.current;
     const ctrl = ctrlRef.current;
-    if (!box || !ctrl) return;
-    const { height: h, fit: f, expandable: x } = layoutRef.current;
-    const viewportH = window.innerHeight || 0;
-    const insetTop = readSafeAreaInsetTop();
-    const full = Math.max(0, viewportH - insetTop);
-    let g: SheetGeometry;
-    if (f) {
-      // Content-sized: let layout decide, capped, then read it back.
-      box.style.height = "auto";
-      box.style.maxHeight = `${Math.min(full, Math.round(viewportH * AUTO_HEIGHT_CAP)) + OVERDRAW_PX}px`;
-      const boxH = Math.max(0, box.offsetHeight - OVERDRAW_PX);
-      g = {
-        viewportH,
-        insetTop,
-        boxH,
-        defaultVisibleH: boxH,
-        expandable: false,
-      };
-    } else {
-      const def = Math.min(full, parseHeightPx(h, viewportH));
-      const boxH = x ? full : def;
-      box.style.height = `${boxH + OVERDRAW_PX}px`;
-      box.style.maxHeight = "";
-      g = { viewportH, insetTop, boxH, defaultVisibleH: def, expandable: x };
-    }
-    ctrl.setGeometry(g, animate);
+    if (!root || !box || !ctrl) return;
+    if (!safeTopRef.current) safeTopRef.current = readSafeAreaInsetTop();
+    ctrl.setGeometry(
+      layOutSheet(root, box, safeTopRef.current, sizingRef.current),
+      animate,
+    );
   }, []);
 
   // The engine, created once per mount, before the first paint.
@@ -270,52 +183,53 @@ function SheetFrame({
     };
   }, [measure, onCloseRef, onExited]);
 
-  // `open` after mount: close, or come back if reopened mid-exit.
-  const firstOpenRef = useRef(true);
+  // `open` after mount: close, or come back if reopened mid-exit. Compared
+  // with the previous value rather than skipped once, so StrictMode's second
+  // effect run is a no-op instead of a spurious settle.
+  const prevOpenRef = useRef(open);
   useLayoutEffect(() => {
-    if (firstOpenRef.current) {
-      firstOpenRef.current = false;
-      return;
-    }
+    if (prevOpenRef.current === open) return;
+    prevOpenRef.current = open;
     const ctrl = ctrlRef.current;
     if (!ctrl) return;
     if (open) ctrl.settleTo("default", 0);
     else ctrl.close();
   }, [open]);
 
-  // A new height while open (the update sheet switching views) animates.
-  const lastHeightRef = useRef(height);
+  // New sizing while open (the update sheet switching views) animates.
+  const prevSizingKeyRef = useRef(sizingKey);
   useLayoutEffect(() => {
-    if (lastHeightRef.current === height) return;
-    lastHeightRef.current = height;
+    if (prevSizingKeyRef.current === sizingKey) return;
+    prevSizingKeyRef.current = sizingKey;
     measure(true);
-  }, [height, measure]);
+  }, [sizingKey, measure]);
 
-  // Rotation, the keyboard, immersive mode toggling the system bars, and
-  // (for "auto") the content changing height.
+  // The container resizing (rotation, immersive mode toggling the system
+  // bars) and, for a content-sized sheet, the box following its content —
+  // footer included. A soft keyboard does not appear here: measured on the
+  // tablet, it shrinks only the visual viewport, and the WebView pans the
+  // focused field into view without any layout change.
   useEffect(() => {
-    const onResize = () => measure(false);
-    window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
+    const onWindowResize = () => {
+      safeTopRef.current = readSafeAreaInsetTop();
+      measure(false);
+    };
+    window.addEventListener("resize", onWindowResize);
     const ro =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(onResize);
+        : new ResizeObserver(() => measure(false));
     if (rootRef.current) ro?.observe(rootRef.current);
-    if (fit && contentRef.current) ro?.observe(contentRef.current);
+    if (sizingKey === "fit" && boxRef.current) ro?.observe(boxRef.current);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", onWindowResize);
       ro?.disconnect();
     };
-  }, [fit, measure]);
+  }, [sizingKey, measure]);
 
   const api = useMemo<SheetApi>(
-    () => ({
-      reveal: (el) => ctrlRef.current?.reveal(el),
-      footerSlot,
-    }),
-    [footerSlot],
+    () => ({ reveal: (el) => ctrlRef.current?.reveal(el) }),
+    [],
   );
 
   return (
@@ -326,6 +240,8 @@ function SheetFrame({
     // shoving the page up as the sheet opened. `.riwaq-clip-window`
     // (global.css) upgrades `hidden` to `overflow: clip`, which also stops
     // this element from being scrolled by a scrollIntoView inside the sheet.
+    // While the sheet slides away it takes no taps: a re-tap on ⋮ must reach
+    // ⋮, not the departing scrim.
     <div
       ref={rootRef}
       className="riwaq-clip-window"
@@ -334,6 +250,7 @@ function SheetFrame({
         inset: 0,
         zIndex: Z.panel,
         overflow: "hidden",
+        pointerEvents: open ? "auto" : "none",
       }}
     >
       {/* opacity is written by the engine, never by React. Only a press that
@@ -345,6 +262,9 @@ function SheetFrame({
         data-sheet-scrim
         onPointerDown={() => {
           scrimPressedRef.current = true;
+        }}
+        onPointerCancel={() => {
+          scrimPressedRef.current = false;
         }}
         onClick={() => {
           if (!scrimPressedRef.current) return;
@@ -409,7 +329,7 @@ function SheetFrame({
           ref={contentRef}
           data-sheet-content
           style={{
-            flex: fit ? "0 1 auto" : "1 1 0",
+            flex: sizing.fitContent ? "0 1 auto" : "1 1 0",
             minHeight: 0,
             overflowY: "auto",
             overscrollBehaviorY: "contain",
@@ -417,7 +337,9 @@ function SheetFrame({
             flexDirection: "column",
           }}
         >
-          <SheetContext.Provider value={api}>{children}</SheetContext.Provider>
+          <SheetProvider api={api} footerSlot={footerSlot}>
+            {children}
+          </SheetProvider>
         </div>
         {/* SheetFooter portals here; transform is written by the engine. */}
         <div

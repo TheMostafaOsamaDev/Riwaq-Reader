@@ -10,7 +10,6 @@ import {
   classifyTarget,
   decideOwner,
   findBody,
-  isScrollableY,
   type OwnerInput,
   readTranslateY,
 } from "./gesture";
@@ -37,7 +36,7 @@ describe("decideOwner", () => {
   });
 
   it("swipe up on the body at full is a native scroll", () => {
-    expect(decideOwner({ ...base, atTopSnap: true })).toBe("pass");
+    expect(decideOwner({ ...base, atTopSnap: true })).toBe("scroll");
   });
 
   it("pull down with the body at its top belongs to the sheet at either snap", () => {
@@ -46,10 +45,10 @@ describe("decideOwner", () => {
   });
 
   it("pull down with the body scrolled is a native scroll at either snap", () => {
-    expect(decideOwner({ ...base, dy: 10, bodyScrollTop: 40 })).toBe("pass");
+    expect(decideOwner({ ...base, dy: 10, bodyScrollTop: 40 })).toBe("scroll");
     expect(
       decideOwner({ ...base, dy: 10, bodyScrollTop: 40, atTopSnap: true }),
-    ).toBe("pass");
+    ).toBe("scroll");
   });
 
   it("chrome always drags", () => {
@@ -68,6 +67,17 @@ describe("decideOwner", () => {
     expect(decideOwner({ ...base, cancelable: false })).toBe("pass");
   });
 
+  // Only "scroll" is ever handed from the list to the sheet mid-gesture, so
+  // nothing that passes for another reason may be called one.
+  it("only a plain vertical list scroll is a 'scroll'", () => {
+    const down = { ...base, dy: 10, bodyScrollTop: 40 };
+    expect(decideOwner({ ...down, dx: 12 })).toBe("pass");
+    expect(decideOwner({ ...down, kind: "slider", dx: 8 })).toBe("pass");
+    expect(decideOwner({ ...down, kind: "editing" })).toBe("pass");
+    expect(decideOwner({ ...down, region: "nested" })).toBe("pass");
+    expect(decideOwner({ ...down, cancelable: false })).toBe("pass");
+  });
+
   it("a slider is claimed only by a clearly vertical move", () => {
     expect(decideOwner({ ...base, kind: "slider", dx: 6, dy: -10 })).toBe(
       "pass",
@@ -79,7 +89,7 @@ describe("decideOwner", () => {
 
   it("a non-expandable sheet claims up only when its body can't scroll", () => {
     const f = { ...base, expandable: false, atTopSnap: true };
-    expect(decideOwner(f)).toBe("pass");
+    expect(decideOwner(f)).toBe("scroll");
     expect(decideOwner({ ...f, bodyScrollable: false })).toBe("sheet");
   });
 
@@ -143,14 +153,6 @@ describe("DOM helpers", () => {
     build();
     inner.setAttribute("data-sheet-scrollable", "");
     expect(findBody(content)).toBe(body);
-  });
-
-  it("isScrollableY needs both a scrolling overflow and range", () => {
-    build();
-    expect(isScrollableY(body)).toBe(true);
-    body.style.overflowY = "hidden";
-    expect(isScrollableY(body)).toBe(false);
-    expect(isScrollableY(header)).toBe(false);
   });
 
   it("classifies chrome, body and nested regions", () => {

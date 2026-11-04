@@ -374,14 +374,14 @@ describe("clicks", () => {
 describe("wheel", () => {
   it("wheel down at default expands first, then scrolls natively", () => {
     c.open();
-    expect(c.wheel(40)).toBe(true);
+    expect(c.wheel(40, bodyRow)).toBe(true);
     expect(c.snap).toBe("full");
-    expect(c.wheel(40)).toBe(false);
+    expect(c.wheel(40, bodyRow)).toBe(false);
   });
 
   it("wheel up at default is left alone", () => {
     c.open();
-    expect(c.wheel(-40)).toBe(false);
+    expect(c.wheel(-40, bodyRow)).toBe(false);
     expect(c.snap).toBe("default");
   });
 });
@@ -435,11 +435,10 @@ describe("listeners", () => {
     expect(c.y).toBe(160);
   });
 
-  it("attach registers nothing on document or window, and destroy removes all it added", () => {
+  it("attach registers one blocking touchmove, on the box only", () => {
     const docAdd = vi.spyOn(document, "addEventListener");
     const winAdd = vi.spyOn(window, "addEventListener");
     const boxAdd = vi.spyOn(box, "addEventListener");
-    const boxRemove = vi.spyOn(box, "removeEventListener");
     c.attach();
     expect(docAdd).not.toHaveBeenCalled();
     expect(winAdd).not.toHaveBeenCalled();
@@ -449,9 +448,179 @@ describe("listeners", () => {
         (opts as AddEventListenerOptions | undefined)?.passive === false,
     );
     expect(blocking).toHaveLength(1);
+  });
+
+  it("destroy detaches: later touches do nothing", () => {
+    c.attach();
+    c.open();
     c.destroy();
-    expect(boxRemove.mock.calls.map(([type]) => type).sort()).toEqual(
-      boxAdd.mock.calls.map(([type]) => type).sort(),
-    );
+    const fire = (type: string, y: number) => {
+      const ev = new Event(type, { bubbles: true, cancelable: true });
+      const t = { identifier: 1, clientX: 0, clientY: y, target: grabber };
+      Object.defineProperty(ev, "changedTouches", { value: [t] });
+      Object.defineProperty(ev, "touches", { value: [t] });
+      grabber.dispatchEvent(ev);
+      return ev;
+    };
+    fire("touchstart", 400);
+    expect(fire("touchmove", 340).defaultPrevented).toBe(false);
+    expect(c.y).toBe(160);
+  });
+});
+
+// Findings of the whole-branch review, each pinned before its fix.
+describe("review findings", () => {
+  /** A focused text field, a range input, or a nested scroller in the list. */
+  function control(kind: "range" | "text"): HTMLInputElement {
+    const el = document.createElement("input");
+    el.type = kind;
+    body.append(el);
+    return el;
+  }
+
+  // C1: only a native vertical scroll of the list may be handed to the sheet.
+  it("a slider drag drifting down never moves the sheet", () => {
+    c.open();
+    const slider = control("range");
+    c.touchStart(pt(0, 300, 0, slider));
+    expect(c.touchMove(mv(30, 304, 16))).toBe(false);
+    c.touchMove({ ...mv(40, 340, 32), cancelable: false });
+    c.touchMove({ ...mv(50, 380, 48), cancelable: false });
+    expect(c.y).toBe(160);
+    expect(body.style.overflowY).toBe("auto");
+  });
+
+  it("a sideways swipe on the list never moves the sheet", () => {
+    c.open();
+    c.touchStart(pt(0, 300, 0));
+    expect(c.touchMove(mv(20, 304, 16))).toBe(false);
+    c.touchMove({ ...mv(40, 340, 32), cancelable: false });
+    c.touchMove({ ...mv(60, 380, 48), cancelable: false });
+    expect(c.y).toBe(160);
+  });
+
+  it("a drag in a focused text field never moves the sheet", () => {
+    c.open();
+    const field = control("text");
+    field.focus();
+    c.touchStart(pt(0, 300, 0, field));
+    expect(c.touchMove(mv(0, 320, 16))).toBe(false);
+    c.touchMove({ ...mv(0, 350, 32), cancelable: false });
+    c.touchMove({ ...mv(0, 390, 48), cancelable: false });
+    expect(c.y).toBe(160);
+  });
+
+  // I2: the spec's "a fast flick through the list never closes the sheet"
+  // holds even when the list reaches its top mid-flick.
+  function flickThroughNearlyTopList(endY: number, endT: number) {
+    c.open();
+    body.scrollTop = 60;
+    c.touchStart(pt(0, 300, 0));
+    c.touchMove(mv(0, 320, 8));
+    body.scrollTop = 0;
+    c.touchMove({ ...mv(0, 380, 16), cancelable: false });
+    c.touchMove({ ...mv(0, endY, 24), cancelable: false });
+    c.touchEnd({ id: 1, t: endT });
+  }
+
+  it("a fast flick that reaches the list's top does not close the sheet", () => {
+    flickThroughNearlyTopList(530, 26);
+    expect(cb.onDismiss).not.toHaveBeenCalled();
+    expect(c.snap).toBe("default");
+  });
+
+  it("a long deliberate pull through the list's top can still close it", () => {
+    flickThroughNearlyTopList(720, 600);
+    expect(cb.onDismiss).toHaveBeenCalledOnce();
+  });
+
+  // I3: a mouse press that is not on the sheet's chrome is not a gesture,
+  // and must not stop the sheet halfway either.
+  it("a mouse press on the list mid-animation does not strand the sheet", () => {
+    setReduceMotionOverride("auto");
+    const never = { finished: new Promise(() => {}), cancel: vi.fn() };
+    HTMLElement.prototype.animate = vi.fn(
+      () => never,
+    ) as unknown as typeof HTMLElement.prototype.animate;
+    try {
+      c.open();
+      c.touchStart({ ...pt(0, 700, 0), mouse: true });
+      expect(c.y).toBe(160);
+      expect(never.cancel).not.toHaveBeenCalled();
+    } finally {
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    }
+  });
+
+  // M1: a touch whose end never reached the sheet (its row was recycled by a
+  // virtual list mid-touch) must not lock out every later touch.
+  it("a lost touchend does not lock out the next touch", () => {
+    c.attach();
+    c.open();
+    const fire = (type: string, id: number, y: number, touches: number) => {
+      const ev = new Event(type, { bubbles: true, cancelable: true });
+      const t = { identifier: id, clientX: 0, clientY: y, target: grabber };
+      Object.defineProperty(ev, "changedTouches", { value: [t] });
+      Object.defineProperty(ev, "touches", {
+        value: Array.from({ length: touches }, () => t),
+      });
+      grabber.dispatchEvent(ev);
+      return ev;
+    };
+    fire("touchstart", 1, 400, 1);
+    // …its touchend went to a node that has since left the document.
+    fire("touchstart", 2, 400, 1);
+    const move = fire("touchmove", 2, 360, 1);
+    expect(move.defaultPrevented).toBe(true);
+    expect(c.y).toBe(120);
+  });
+
+  // M2: the wheel over the open font list scrolls the font list.
+  it("wheel over a nested list is left to that list", () => {
+    c.open();
+    const inner = document.createElement("div");
+    inner.style.overflowY = "auto";
+    Object.defineProperty(inner, "scrollHeight", { value: 900 });
+    Object.defineProperty(inner, "clientHeight", { value: 300 });
+    const leaf = document.createElement("span");
+    inner.append(leaf);
+    body.append(inner);
+    expect(c.wheel(40, leaf)).toBe(false);
+    expect(c.snap).toBe("default");
+  });
+
+  // I1: a geometry change (the update sheet going 52% → 86%) keeps the
+  // sheet's top edge where it is and animates from there.
+  it("a new layout animates from where the sheet is drawn, not from a stale offset", () => {
+    setReduceMotionOverride("auto");
+    const never = { finished: new Promise(() => {}), cancel: vi.fn() };
+    const animate = vi.fn(() => never);
+    HTMLElement.prototype.animate =
+      animate as unknown as typeof HTMLElement.prototype.animate;
+    try {
+      const small: SheetGeometry = {
+        viewportH: 800,
+        insetTop: 40,
+        boxH: 300,
+        defaultVisibleH: 300,
+        expandable: false,
+      };
+      c.setGeometry(small);
+      c.open();
+      // Settled at default: y 0, top edge at 800 − 300 = 500.
+      animate.mockClear();
+      box.style.transform = "translateY(0px)";
+      c.setGeometry(G, true);
+      const frames = (
+        animate.mock.calls.find(
+          (_c, i) => animate.mock.contexts[i] === box,
+        ) as unknown as [Array<{ transform: string }>]
+      )[0];
+      // In the 760px box the same top edge (500) is y 500 − (800 − 760).
+      expect(frames[0].transform).toBe("translateY(460px)");
+      expect(frames[frames.length - 1].transform).toBe("translateY(160px)");
+    } finally {
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    }
   });
 });

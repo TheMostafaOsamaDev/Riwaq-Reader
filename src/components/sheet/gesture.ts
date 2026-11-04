@@ -1,11 +1,18 @@
 // Who owns a touch on a bottom sheet, and the small DOM reads that decision
 // needs.
 //
-// A touch is decided once, on its first move past the slop: either the SHEET
-// owns it (the sheet moves, and the controller calls preventDefault so the
-// browser does not also scroll), or it PASSES to the browser as an ordinary
-// native scroll / slider drag / text selection. The rules are the ownership
-// table in docs/superpowers/specs/2026-11-04-native-feel-sheets-design.md:
+// A touch is decided once, on its first move past the slop, into one of:
+//
+//  - "sheet": the sheet owns it. It moves, and the caller preventDefaults the
+//    touchmove so the browser does not also scroll.
+//  - "scroll": a native vertical scroll of the sheet's list. The browser owns
+//    it, but the sheet watches a downward one: if the list reaches its top
+//    with the finger still pulling, the sheet takes the rest of the pull.
+//  - "pass": anything else the browser handles — a sideways swipe, a slider
+//    drag, a text selection, a scroll inside an inner list. Never watched.
+//
+// The rules are the ownership table in
+// docs/superpowers/specs/2026-11-04-native-feel-sheets-design.md:
 //
 //  - Up below full is the sheet's: native sheets expand before their list
 //    scrolls.
@@ -14,8 +21,12 @@
 //    snap (the Contents panel opens scrolled to the current chapter).
 //  - Inner scroll boxes (the font picker) are never the sheet's.
 
+import { canScrollY } from "../../lib/scrollable";
+import { gestureAxis } from "../../reader/gestureAxis";
+
 export type Region = "chrome" | "body" | "nested";
 export type TargetKind = "plain" | "slider" | "editing";
+export type Owner = "sheet" | "scroll" | "pass";
 
 export interface OwnerInput {
   /** chrome = outside the list (grabber, headers, footer); body = the list;
@@ -35,23 +46,25 @@ export interface OwnerInput {
   bodyScrollable: boolean;
 }
 
-export function decideOwner(i: OwnerInput): "sheet" | "pass" {
+export function decideOwner(i: OwnerInput): Owner {
   if (!i.cancelable) return "pass";
   if (i.kind === "editing") return "pass";
-  const ax = Math.abs(i.dx);
-  const ay = Math.abs(i.dy);
-  if (ax > ay) return "pass";
+  // The reader's own axis rule, so a sheet and the page under it can never
+  // disagree about which way a finger is going.
+  if (gestureAxis(i.dx, i.dy) !== "y") return "pass";
   // A slider takes horizontal drags; only a clearly vertical move is the
   // sheet's, so a slightly diagonal slider drag still moves the slider.
-  if (i.kind === "slider" && !(ay > 2 * ax)) return "pass";
+  if (i.kind === "slider" && !(Math.abs(i.dy) > 2 * Math.abs(i.dx))) {
+    return "pass";
+  }
   if (i.region === "nested") return "pass";
   if (i.region === "chrome") return "sheet";
   if (i.dy < 0) {
     if (i.expandable && !i.atTopSnap) return "sheet";
     if (!i.bodyScrollable) return "sheet";
-    return "pass";
+    return "scroll";
   }
-  return i.bodyScrollTop <= 0 ? "sheet" : "pass";
+  return i.bodyScrollTop <= 0 ? "sheet" : "scroll";
 }
 
 /** The sheet's main list: the outermost `[data-sheet-scrollable]` inside the
@@ -61,13 +74,6 @@ export function findBody(content: HTMLElement): HTMLElement {
   return (
     content.querySelector<HTMLElement>("[data-sheet-scrollable]") ?? content
   );
-}
-
-/** A box the user can actually scroll vertically right now. */
-export function isScrollableY(el: Element): boolean {
-  const overflowY = getComputedStyle(el).overflowY;
-  if (overflowY !== "auto" && overflowY !== "scroll") return false;
-  return el.scrollHeight - el.clientHeight > 1;
 }
 
 export function classifyTarget(
@@ -84,7 +90,7 @@ function regionOf(target: Element, body: HTMLElement): Region {
     el && el !== body;
     el = el.parentElement
   ) {
-    if (isScrollableY(el)) return "nested";
+    if (canScrollY(el)) return "nested";
   }
   return "body";
 }

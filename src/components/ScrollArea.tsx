@@ -16,6 +16,7 @@ import {
   useRef,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react";
 import { EASE, useReducedMotion } from "../styles/motion";
 import { BAR, thumbGeometry } from "../styles/overlayScrollbar";
@@ -25,6 +26,7 @@ import { BAR, thumbGeometry } from "../styles/overlayScrollbar";
 // the numbers are what they are.
 
 export function ScrollArea({
+  ref,
   children,
   color,
   className,
@@ -32,6 +34,8 @@ export function ScrollArea({
   scrollStyle,
   alwaysVisible = false,
 }: {
+  /** The outer (positioning) box. */
+  ref?: Ref<HTMLDivElement>;
   children: ReactNode;
   /** Thumb colour. Pass a theme value — usually `theme.muted`. */
   color: string;
@@ -172,7 +176,11 @@ export function ScrollArea({
   );
 
   return (
-    <div className={className} style={{ position: "relative", ...style }}>
+    <div
+      ref={ref}
+      className={className}
+      style={{ position: "relative", ...style }}
+    >
       <div
         ref={scrollRef}
         className="no-scrollbar"

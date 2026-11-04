@@ -183,9 +183,9 @@ describe("dragging", () => {
     expect(move.defaultPrevented).toBe(true);
   });
 
-  it("height=auto sizes the box to its content and cannot expand", () => {
+  it("fitContent sizes the box to its content and cannot expand", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(420);
-    show(sheet({ open: true, height: "auto" }));
+    show(sheet({ open: true, fitContent: true }));
     const box = q("[data-sheet-box]");
     const grabber = q("[data-sheet-grabber]");
     expect(box.style.height).toBe("auto");
@@ -264,6 +264,33 @@ describe("closing", () => {
     show(sheet({ open: false, onExited }));
     expect(q('[role="dialog"]')).toBeNull();
     expect(onExited).toHaveBeenCalledOnce();
+  });
+
+  // Review M6: during its exit the sheet is gone as far as the user is
+  // concerned — a re-tap on ⋮ must reach ⋮, not the departing scrim.
+  it("a closing sheet lets taps through to the page", () => {
+    setReduceMotionOverride("auto");
+    const anim = { finished: new Promise(() => {}), cancel: vi.fn() };
+    HTMLElement.prototype.animate = vi.fn(
+      () => anim,
+    ) as unknown as typeof HTMLElement.prototype.animate;
+    try {
+      show(sheet({ open: true }));
+      const root = q(".riwaq-clip-window");
+      expect(root.style.pointerEvents).not.toBe("none");
+      show(sheet({ open: false }));
+      expect(root.style.pointerEvents).toBe("none");
+    } finally {
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    }
+  });
+
+  // Review M5: the update sheet flips `expandable` along with its height.
+  it("changing only `expandable` re-lays the sheet out", () => {
+    show(sheet({ open: true, height: "52%", expandable: false }));
+    const before = q("[data-sheet-box]").style.height;
+    show(sheet({ open: true, height: "52%", expandable: true }));
+    expect(q("[data-sheet-box]").style.height).not.toBe(before);
   });
 
   it("keeps showing the last children while it exits", () => {

@@ -807,7 +807,7 @@ export function ContextMenu({
           open={sheetOpen}
           onClose={requestClose}
           onExited={handleExited}
-          height="auto"
+          fitContent
           label={title || tr("common.untitled")}
         >
           <div
@@ -981,8 +981,6 @@ interface SheetRowProps {
   iconClassName?: string;
   trailing?: ReactNode;
   destructive?: boolean;
-  centered?: boolean;
-  bold?: boolean;
   muted?: boolean;
   /** Skip the hover-state background swap. Set on coarse-pointer devices so a
       synthetic mouseenter from the touch that opened the menu can't auto-
@@ -1008,8 +1006,6 @@ function SheetRow({
   iconClassName,
   trailing,
   destructive,
-  centered,
-  bold,
   muted,
   suppressHover,
   compact,
@@ -1055,12 +1051,12 @@ function SheetRow({
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        justifyContent: centered ? "center" : "space-between",
+        justifyContent: "space-between",
         gap: 12,
         color: labelColor,
         background: bg,
         fontSize,
-        fontWeight: bold ? 600 : 400,
+        fontWeight: 400,
         // Pressed transitions instantly in, eases out — feels responsive on
         // tap, gentle on release.
         transition: pressed ? "background 0ms" : "background 160ms ease",
@@ -1072,8 +1068,8 @@ function SheetRow({
           alignItems: "center",
           gap: 14,
           minWidth: 0,
-          flex: centered ? "none" : "1 1 auto",
-          justifyContent: centered ? "center" : "flex-start",
+          flex: "1 1 auto",
+          justifyContent: "flex-start",
         }}
       >
         {icon && (

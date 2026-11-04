@@ -17,7 +17,6 @@ import {
   snapY,
   springSamples,
   topSnap,
-  velocityFromSamples,
 } from "./physics";
 
 const G: SheetGeometry = {
@@ -112,42 +111,21 @@ describe("pickSnap", () => {
   });
 });
 
-describe("velocityFromSamples", () => {
-  it("is the slope over the last 120 ms", () => {
-    expect(
-      velocityFromSamples([
-        { y: 0, t: 0 },
-        { y: 50, t: 100 },
-      ]),
-    ).toBeCloseTo(500);
-    expect(velocityFromSamples([{ y: 0, t: 0 }])).toBe(0);
-  });
-
-  it("ignores samples older than the window", () => {
-    // The first sample is 300ms before the last: only the last two count.
-    expect(
-      velocityFromSamples([
-        { y: 0, t: 0 },
-        { y: 100, t: 200 },
-        { y: 110, t: 300 },
-      ]),
-    ).toBeCloseTo(100);
-  });
-});
-
 describe("springSamples", () => {
   it("starts at from, ends exactly at to, and does not overshoot from rest", () => {
-    const s = springSamples(160, 0, 0);
+    const { values: s, durationMs } = springSamples(160, 0, 0);
     expect(s[0]).toBe(160);
     expect(s[s.length - 1]).toBe(0);
     expect(Math.min(...s)).toBeGreaterThanOrEqual(-0.5);
     expect(s.length).toBeGreaterThan(10);
     expect(s.length).toBeLessThanOrEqual(120);
+    // One sample per 60Hz frame.
+    expect(durationMs).toBeCloseTo(((s.length - 1) * 1000) / 60);
   });
 
   it("keeps the release velocity at its start", () => {
-    const flung = springSamples(100, 0, -2000);
-    const still = springSamples(100, 0, 0);
+    const flung = springSamples(100, 0, -2000).values;
+    const still = springSamples(100, 0, 0).values;
     expect(100 - flung[1]).toBeGreaterThan(100 - still[1]);
     // About one frame's worth of a 2000 px/s fling: ~33px.
     expect(100 - flung[1]).toBeGreaterThan(20);
@@ -155,11 +133,17 @@ describe("springSamples", () => {
 });
 
 describe("easeSamples", () => {
-  it("follows the curve between from and to", () => {
-    const s = easeSamples(760, 160, 240, [0.32, 0.72, 0, 1]);
+  it("follows the curve between from and to, over the given duration", () => {
+    const { values: s, durationMs } = easeSamples(
+      760,
+      160,
+      240,
+      [0.32, 0.72, 0, 1],
+    );
     expect(s[0]).toBe(760);
     expect(s[s.length - 1]).toBe(160);
     expect(s.length).toBe(16);
+    expect(durationMs).toBe(240);
     // Decelerating: the first step is the biggest.
     expect(s[0] - s[1]).toBeGreaterThan(s[14] - s[15]);
   });

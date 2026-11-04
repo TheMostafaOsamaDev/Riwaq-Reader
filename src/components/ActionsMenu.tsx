@@ -116,7 +116,7 @@ export function ActionsMenu<Id extends string>({
         label={label}
         // Sized to its content: a header plus a few rows, with nothing to
         // expand into. The sheet caps it on short phones.
-        height="auto"
+        fitContent
       >
         {/* The bottom padding clears the gesture bar: content-sized, the
             last row would otherwise sit right on the screen edge. */}

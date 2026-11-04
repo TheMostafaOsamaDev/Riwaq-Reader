@@ -153,9 +153,11 @@ New props on `MobileSheet`:
 
 - `expandable?: boolean` (default `true`). When false there is no full snap.
 - `height` keeps today's grammar (`"82%"`, `"min(80%, 500px)"`, any CSS
-  length). It also accepts `"auto"`: the sheet is as tall as its content,
-  capped at 90% of the viewport (the builder may tune the cap). `"auto"`
-  implies `expandable={false}`.
+  length).
+- `fitContent: true` (as implemented; it replaced the planned `height="auto"`
+  after review, so the type system rules out combining it with `height` or
+  `expandable`): the sheet is as tall as its content, capped at 90% of the
+  viewport, and never expands.
 
 The sheet box is laid out once and moved only with `transform: translateY`:
 
@@ -367,8 +369,8 @@ normal programmatic exit.
 |---|---|---|---|
 | Reader panels, `MobileReader` | `82%` | yes | inner wrapper `overflow: auto` → `hidden` (one scroller) |
 | PDF/DOCX panels, `FixedPageReader` | `82%` | yes | same |
-| `ActionsMenu` (⋮ menus, volume menu) | `auto` | no | — |
-| `ContextMenu` touch path (library long-press book menu) | `auto` | no | Rebuilt on `MobileSheet`: the owner chose this over keeping the floating cards. The rows keep their content. The status panel slide stays inside the sheet. The sheet follows its content-height change (bottom-anchored, so no transform change). The two-card layout, its own enter/exit and the separate Cancel card go; drag, the scrim and Back cover dismissal. The desktop popover path is untouched. |
+| `ActionsMenu` (⋮ menus, volume menu) | `fitContent` | no | — |
+| `ContextMenu` touch path (library long-press book menu) | `fitContent` | no | Rebuilt on `MobileSheet`: the owner chose this over keeping the floating cards. The rows keep their content. The status panel slide stays inside the sheet. The sheet follows its content-height change (bottom-anchored, so no transform change). The two-card layout, its own enter/exit and the separate Cancel card go; drag, the scrim and Back cover dismissal. The desktop popover path is untouched. |
 | `DownloadRangeDialog` (mobile) | `min(80%, 500px)` | yes | button → `SheetFooter`; drop `--sheet-overhang` padding; untag the nested picker list (it becomes a nested scroller, `overscroll-behavior: contain`) |
 | `UpdateSheet` notes view | `86%` | yes | `Foot` → `SheetFooter`; drop `--sheet-overhang` padding |
 | `UpdateSheet` other views | `52%` | no | same |
@@ -482,7 +484,7 @@ is displaced.
 ## Left to the builder
 
 - File and module names, and the exact constants: slop, flick threshold,
-  projection factor, spring stiffness and damping, overdraw, and the `auto`
+  projection factor, spring stiffness and damping, overdraw, and the content-fit
   height cap. Tune them on the device.
 - The JS momentum curve for the expand-then-scroll tail.
 - Whether `sheetSnap.ts` is deleted or reduced to a re-export during the

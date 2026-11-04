@@ -226,6 +226,7 @@ export function FontSelect({
   const { tr } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   const sheet = useSheet();
 
@@ -235,10 +236,7 @@ export function FontSelect({
   useEffect(() => {
     if (!open || !sheet) return;
     const raf = requestAnimationFrame(() => {
-      const pop = ref.current?.querySelector<HTMLElement>(
-        ".riwaq-font-popover",
-      );
-      if (pop) sheet.reveal(pop);
+      if (popoverRef.current) sheet.reveal(popoverRef.current);
     });
     return () => cancelAnimationFrame(raf);
   }, [open, sheet]);
@@ -307,7 +305,7 @@ export function FontSelect({
       {open && (
         <ScrollArea
           alwaysVisible
-          className="riwaq-font-popover"
+          ref={popoverRef}
           color={theme.muted}
           style={{
             position: "absolute",

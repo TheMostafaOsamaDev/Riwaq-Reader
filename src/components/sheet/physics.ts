@@ -27,14 +27,13 @@ export interface SheetGeometry {
   expandable: boolean;
 }
 
-export interface MoveSample {
-  y: number;
-  /** performance.now() in ms. */
-  t: number;
+/** One animation's worth of sampled positions, played evenly over
+ *  `durationMs` (see animate.ts). */
+export interface Samples {
+  values: number[];
+  durationMs: number;
 }
 
-/** Movement under this many px is still a tap, not a drag. */
-export const SLOP_PX = 6;
 /** A release at least this fast always moves on to the next snap. */
 export const FLICK_PX_PER_S = 700;
 /** How far ahead a release is projected to pick its snap: y + v × this. */
@@ -44,13 +43,8 @@ export const RUBBER_COEFF = 0.55;
 /** Sheet-coloured box below the screen edge, so overshoot past the top never
  *  lifts the sheet's bottom off the screen. */
 export const OVERDRAW_PX = 120;
-/** A `height="auto"` sheet is capped at this fraction of the viewport. */
-export const AUTO_HEIGHT_CAP = 0.9;
-/** Release velocity is measured over the last this-many ms of the drag. */
-export const VELOCITY_WINDOW_MS = 120;
-/** Per-millisecond decay of a list still coasting after a sheet gesture
- *  (iOS "normal" deceleration). */
-export const MOMENTUM_DECAY_PER_MS = 0.998;
+/** A content-sized sheet is capped at this fraction of the viewport. */
+export const FIT_HEIGHT_CAP = 0.9;
 /** Near-critically damped (ζ ≈ 1, mass 1): settles in ~0.4s from rest with
  *  no overshoot, and carries a release velocity without bouncing. */
 export const SHEET_SPRING = { stiffness: 380, damping: 39 } as const;
@@ -110,21 +104,6 @@ export function displayY(rawY: number, g: SheetGeometry): number {
   return Math.min(rawY, bottom);
 }
 
-/** Finger velocity (px/s, positive downward) over the last
- *  VELOCITY_WINDOW_MS of samples. 0 when there is not enough data. */
-export function velocityFromSamples(samples: MoveSample[]): number {
-  if (samples.length < 2) return 0;
-  const last = samples[samples.length - 1];
-  let oldest = samples[samples.length - 2];
-  for (let i = samples.length - 2; i >= 0; i--) {
-    if (last.t - samples[i].t <= VELOCITY_WINDOW_MS) oldest = samples[i];
-    else break;
-  }
-  const dt = (last.t - oldest.t) / 1000;
-  if (dt <= 0) return 0;
-  return (last.y - oldest.y) / dt;
-}
-
 /** Which snap a release at `y` with `velocity` settles to. The release is
  *  projected forward and the nearest snap wins; a flick also always reaches
  *  at least the next snap in its direction, however short the drag. */
@@ -160,7 +139,7 @@ export function springSamples(
   to: number,
   v0: number,
   frameMs = FRAME_MS,
-): number[] {
+): Samples {
   const { stiffness: k, damping: c } = SHEET_SPRING;
   const SUBSTEPS = 4;
   const h = frameMs / 1000 / SUBSTEPS;
@@ -177,7 +156,7 @@ export function springSamples(
     values.push(x);
   }
   values.push(to);
-  return values;
+  return { values, durationMs: (values.length - 1) * frameMs };
 }
 
 /** Values of a cubic-bezier ease from `from` to `to`, sampled at even
@@ -189,14 +168,14 @@ export function easeSamples(
   durationMs: number,
   points: readonly [number, number, number, number],
   frameMs = FRAME_MS,
-): number[] {
+): Samples {
   const ease = cubicBezier(...points);
   const steps = Math.max(1, Math.ceil(durationMs / frameMs));
   const values: number[] = [];
   for (let i = 0; i <= steps; i++) {
     values.push(i === steps ? to : from + (to - from) * ease(i / steps));
   }
-  return values;
+  return { values, durationMs };
 }
 
 export interface DistributeInput {

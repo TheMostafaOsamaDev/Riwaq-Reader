@@ -87,7 +87,7 @@ describe("ActionsMenu presentation", () => {
     expect(popover()).toBeNull();
   });
 
-  it("the phone sheet fits its content and does not expand", () => {
+  it("the phone sheet is sized to its content", () => {
     // A three-row menu has nothing more to show at full screen; a fixed
     // percentage left empty space under the rows on tall phones.
     render();

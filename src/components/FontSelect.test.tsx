@@ -63,7 +63,7 @@ describe("FontSelect", () => {
       return 1;
     });
     const reveal = vi.fn();
-    render({ reveal, footerSlot: null });
+    render({ reveal });
     act(() => trigger()?.click());
     expect(reveal).toHaveBeenCalledOnce();
     const el = reveal.mock.calls[0][0] as HTMLElement;
