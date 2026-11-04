@@ -1,0 +1,62 @@
+{
+  "version": "0.8.2",
+  "date": "2026-11-04",
+  "highlight": {
+    "image": "0.8.2-text-color.webp",
+    "title": {
+      "en": "Choose the colour of the text",
+      "ar": "اختر لون النص"
+    },
+    "body": {
+      "en": "Every theme now has five colours for the book's text, from a softer ink on Sepia to amber on OLED for reading at night. Pick one under Theme in the reading settings, and each theme remembers its own.",
+      "ar": "صار لكل سمة خمسة ألوان لنص الكتاب، من حبر أنعم في سمة سيبيا إلى الكهرماني في سمة OLED للقراءة ليلًا. اختر لونك تحت السمة في إعدادات القراءة، وتتذكّر كل سمة اختيارها."
+    }
+  },
+  "items": [
+    {
+      "kind": "improved",
+      "en": "On the phone and tablet, menus and panels move like the system's own: swipe up to open one fully and keep scrolling in the same swipe, or flick it away.",
+      "ar": "على الهاتف والجهاز اللوحي، صارت القوائم واللوحات تتحرك كقوائم النظام نفسه: اسحب لأعلى لتفتحها كاملة وتابع التمرير في السحبة نفسها، أو ادفعها بسرعة لتغلقها."
+    },
+    {
+      "kind": "improved",
+      "en": "The Back button closes an open panel or menu instead of leaving the book.",
+      "ar": "صار زر الرجوع يغلق اللوحة أو القائمة المفتوحة بدلًا من مغادرة الكتاب."
+    },
+    {
+      "kind": "improved",
+      "en": "The menu you open by pressing and holding a book is now a sheet you can drag away, like the others.",
+      "ar": "صارت القائمة التي تفتحها بالضغط المطوّل على كتاب لوحةً يمكنك سحبها لإغلاقها، مثل غيرها."
+    },
+    {
+      "kind": "fixed",
+      "en": "Reaching the end of the font list no longer scrolls the reading settings behind it.",
+      "ar": "لم يعد الوصول إلى نهاية قائمة الخطوط يحرّك إعدادات القراءة التي خلفها."
+    },
+    {
+      "kind": "new",
+      "en": "Search your extensions, and filter sites by language once the list mixes Arabic and English.",
+      "ar": "ابحث في الإضافات، وصفِّ المواقع حسب اللغة حين تجمع القائمة بين العربية والإنجليزية."
+    },
+    {
+      "kind": "fixed",
+      "en": "Covers on some sites in the store now appear straight away instead of after a long wait.",
+      "ar": "صارت الأغلفة في بعض مواقع المصادر تظهر فورًا بدلًا من أن تتأخر طويلًا."
+    },
+    {
+      "kind": "fixed",
+      "en": "On a tablet, the page holds still when the reading bars hide and show.",
+      "ar": "على الجهاز اللوحي، تبقى الصفحة ثابتة حين تختفي أشرطة القراءة وتظهر."
+    },
+    {
+      "kind": "fixed",
+      "en": "On Android, coming back to the app no longer flashes a blank screen.",
+      "ar": "على أندرويد، لم يعد الرجوع إلى التطبيق يُظهر وميض شاشة فارغة."
+    },
+    {
+      "kind": "improved",
+      "en": "A fresh install opens books in Markazi Text, with a little margin either side of the text.",
+      "ar": "صار التثبيت الجديد يفتح الكتب بخط Markazi Text، مع هامش صغير على جانبي النص."
+    }
+  ]
+}
