@@ -10,6 +10,8 @@
 // it settled ~140px too high, with its tail off-screen. Computing the target
 // ourselves keeps the scroll inside the list it belongs to.
 
+import { canScrollY } from "../lib/scrollable";
+
 export interface RevealInput {
   /** Current scroll offset of the list's scroll container. */
   scrollTop: number;
@@ -51,13 +53,7 @@ export function contentOffsetTop(
 export function nearestScrollableAncestor(el: Element): HTMLElement | null {
   let node = el.parentElement;
   while (node) {
-    const overflowY = getComputedStyle(node).overflowY;
-    if (
-      (overflowY === "auto" || overflowY === "scroll") &&
-      node.scrollHeight - node.clientHeight > 1
-    ) {
-      return node;
-    }
+    if (canScrollY(node)) return node;
     node = node.parentElement;
   }
   return null;

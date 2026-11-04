@@ -22,6 +22,7 @@
 // render. Opt a container out with `data-no-overlay-scrollbar` (the fixed-page
 // viewer and ScrollArea do, since they ship their own bar).
 
+import { canScrollY } from "../lib/scrollable";
 import {
   EASE,
   MOTION,
@@ -192,11 +193,7 @@ type Thumb = {
   abort: AbortController;
 };
 
-const isScrollable = (el: Element): boolean => {
-  if (el.scrollHeight <= el.clientHeight + SLACK) return false;
-  const overflow = getComputedStyle(el).overflowY;
-  return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
-};
+const isScrollable = (el: Element): boolean => canScrollY(el, SLACK);
 
 /** Nearest ancestor (self included) that actually scrolls vertically and
  *  hasn't opted out. */
