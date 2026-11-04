@@ -37,6 +37,7 @@ import { BrandMark } from "../BrandMark";
 import { Button } from "../Button";
 import { Icon, type IconProps } from "../Icon";
 import { MobileSheet } from "../MobileSheet";
+import { SheetFooter } from "../sheet/SheetContext";
 import { NotesView } from "./NotesView";
 import {
   IconBadge,
@@ -177,21 +178,23 @@ function Body({ children }: { children: ReactNode }) {
   );
 }
 
-/** Actions, pinned to the visible bottom edge. */
+/** Actions, pinned to the visible bottom edge: the sheet's footer slot keeps
+ *  them on screen at every snap, so Update is reachable without expanding. */
 function Foot({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        marginTop: "auto",
-        padding: "14px 20px max(16px, calc(var(--safe-bottom) + 12px))",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        flex: "none",
-      }}
-    >
-      {children}
-    </div>
+    <SheetFooter>
+      <div
+        style={{
+          padding: "14px 20px max(16px, calc(var(--safe-bottom) + 12px))",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          fontFamily: FONT_STACKS.sans,
+        }}
+      >
+        {children}
+      </div>
+    </SheetFooter>
   );
 }
 
@@ -559,6 +562,9 @@ export function UpdateSheet({
         open={open}
         onClose={closeSheet}
         height={view === "notes" ? "86%" : "52%"}
+        // Only the release notes have more to show; the progress, mobile-data
+        // and failure sheets are complete at their height.
+        expandable={view === "notes"}
         label={title || undefined}
       >
         <div
@@ -567,7 +573,6 @@ export function UpdateSheet({
             display: "flex",
             flexDirection: "column",
             boxSizing: "border-box",
-            paddingBottom: "var(--sheet-overhang, 0px)",
             fontFamily: FONT_STACKS.sans,
             color: theme.ink,
           }}

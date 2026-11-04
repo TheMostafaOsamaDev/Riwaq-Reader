@@ -87,6 +87,14 @@ describe("ActionsMenu presentation", () => {
     expect(popover()).toBeNull();
   });
 
+  it("the phone sheet fits its content and does not expand", () => {
+    // A three-row menu has nothing more to show at full screen; a fixed
+    // percentage left empty space under the rows on tall phones.
+    render();
+    const box = document.querySelector<HTMLElement>("[data-sheet-box]");
+    expect(box?.style.height).toBe("auto");
+  });
+
   it("defaults to an anchored popover on desktop", () => {
     render({ layout: "desktop" });
     expect(popover()).not.toBeNull();

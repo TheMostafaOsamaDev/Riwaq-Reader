@@ -1540,7 +1540,7 @@ export function MobileReader({
           active={sheet}
           onSelect={setSheet}
         />
-        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+        <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
           {sheet === "toc" && (
             <TOCPanel
               theme={theme}

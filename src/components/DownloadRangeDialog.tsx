@@ -26,6 +26,7 @@ import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { AnimatedDialog } from "./AnimatedDialog";
 import { MobileSheet } from "./MobileSheet";
+import { SheetFooter } from "./sheet/SheetContext";
 import {
   ACCENT,
   FONT_SERIF_DISPLAY,
@@ -415,14 +416,11 @@ function DownloadRangeContent({
   if (isMobile) {
     // Header / scrolling body / pinned footer.
     //
-    // The action button used to be the last inline child of one big scroll
-    // column. MobileSheet renders the sheet at FULL height and translates it
-    // down to reach a partial snap, so that column's tail — the button —
-    // physically sat below the screen: the user had to drag the sheet to full
-    // before they could queue anything. Reserving `--sheet-overhang` (the
-    // published distance the sheet hangs off-screen at the current snap) on
-    // this container puts the footer exactly on the visible bottom edge at
-    // every snap, so the primary action is always in reach.
+    // MobileSheet lays an expandable sheet out at FULL height and translates
+    // it down to its default snap, so a button at the end of this column
+    // would sit below the screen until the sheet was dragged to full. The
+    // button goes in the sheet's footer slot instead (SheetFooter), which the
+    // sheet keeps on the visible bottom edge at every snap.
     return (
       <div
         role="dialog"
@@ -432,7 +430,6 @@ function DownloadRangeContent({
           display: "flex",
           flexDirection: "column",
           boxSizing: "border-box",
-          paddingBottom: "var(--sheet-overhang, 0px)",
           fontFamily: FONT_STACKS.sans,
           color: theme.ink,
         }}
@@ -491,11 +488,11 @@ function DownloadRangeContent({
             display: "flex",
             flexDirection: "column",
             gap: 14,
-            // flex + minHeight:0 is what keeps this the ONLY scrolling region:
-            // it absorbs the leftover height and scrolls internally instead of
-            // pushing the footer past the sheet's visible edge. MobileSheet's
-            // drag handoff reads scrollTop off [data-sheet-scrollable], so the
-            // attribute has to travel with the overflow.
+            // flex + minHeight:0 keeps this the sheet's one list: it absorbs
+            // the leftover height and scrolls internally. MobileSheet treats
+            // the outermost [data-sheet-scrollable] as the list a swipe hands
+            // over to once the sheet is full, so the attribute has to travel
+            // with the overflow.
             flex: 1,
             minHeight: 0,
             overflowY: "auto",
@@ -504,25 +501,27 @@ function DownloadRangeContent({
         >
           {body}
         </div>
-        <div
-          style={{
-            // The floor is deliberate: where the gesture inset is unknown or
-            // 0 (desktop), max() still supplies some clearance.
-            padding: "10px 18px max(20px, var(--safe-bottom))",
-            flexShrink: 0,
-          }}
-        >
-          <Button
-            theme={theme}
-            variant="primary"
-            size="lg"
-            fullWidth
-            disabled={submitDisabled}
-            onClick={submit}
+        <SheetFooter>
+          <div
+            style={{
+              // The floor is deliberate: where the gesture inset is unknown or
+              // 0 (desktop), max() still supplies some clearance.
+              padding: "10px 18px max(20px, var(--safe-bottom))",
+              fontFamily: FONT_STACKS.sans,
+            }}
           >
-            {submitLabel}
-          </Button>
-        </div>
+            <Button
+              theme={theme}
+              variant="primary"
+              size="lg"
+              fullWidth
+              disabled={submitDisabled}
+              onClick={submit}
+            >
+              {submitLabel}
+            </Button>
+          </div>
+        </SheetFooter>
       </div>
     );
   }
@@ -757,10 +756,15 @@ function ChapterRangeField({
               />
             </div>
           </div>
+          {/* A list inside the sheet's list: it scrolls on its own and stops
+              at its ends, never moving the sheet or the form behind it. */}
           <div
-            data-sheet-scrollable
             className="riwaq-scroll-hidden"
-            style={{ maxHeight: 260, overflowY: "auto" }}
+            style={{
+              maxHeight: 260,
+              overflowY: "auto",
+              overscrollBehaviorY: "contain",
+            }}
           >
             {filtered.length === 0 ? (
               <div
