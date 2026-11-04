@@ -109,9 +109,33 @@ let seq = 0;
 let state: NavState = compute();
 const listeners = new Set<() => void>();
 
+// Layers: history entries pushed by a bottom sheet (pushLayer) so the system
+// Back closes the sheet instead of leaving the screen under it. A layer entry
+// carries the same snapshot as the screen it sits on, so popping one changes
+// nothing about the destination: no commit, no page transition.
+//
+// Keyed by the entry's navIndex. `onBack` is null for a DEAD layer: one whose
+// sheet closed while another layer sat above it, so its entry could not be
+// popped yet. A dead entry is skipped (popped again) whenever history lands
+// on it, so the user never spends a Back press on a sheet that is gone.
+interface LayerRecord {
+  id: string;
+  onBack: (() => void) | null;
+}
+const layers = new Map<number, LayerRecord>();
+let layerSeq = 0;
+// history.back() calls we made ourselves to drop a closed sheet's entry. Their
+// popstate is swallowed. Until it arrives (a task later in a real WebView) any
+// navigation or new layer waits in `deferred`: pushing first would let the
+// queued traversal pop the NEW entry instead of the old one.
+let pendingSelfPops = 0;
+const deferred: Array<() => void> = [];
+
 interface StampedState {
   navIndex: number;
   snapshot: NavSnapshot;
+  /** Present on a layer entry: the id of the layer that pushed it. */
+  layer?: string;
 }
 
 function isStamped(s: unknown): s is StampedState {
@@ -155,8 +179,70 @@ function init(): void {
   commit();
 }
 
+function selfPop(): void {
+  pendingSelfPops += 1;
+  window.history.back();
+}
+
+function flushDeferred(): void {
+  // One at a time: an action may itself start a self-pop, and everything
+  // after it must then wait for that one too.
+  while (pendingSelfPops === 0 && deferred.length > 0) {
+    const next = deferred.shift();
+    next?.();
+  }
+}
+
+/** Forget every layer above `at`, top first, returning the live ones'
+ *  onBack callbacks in that order. */
+function dropLayersAbove(at: number): Array<() => void> {
+  const closers: Array<() => void> = [];
+  const above = [...layers.keys()].filter((k) => k > at).sort((a, b) => b - a);
+  for (const k of above) {
+    const rec = layers.get(k);
+    layers.delete(k);
+    if (rec?.onBack) closers.push(rec.onBack);
+  }
+  return closers;
+}
+
+/** If history now sits on a dead layer's entry, pop past it. */
+function skipDeadLayer(): boolean {
+  const rec = layers.get(index);
+  if (!rec || rec.onBack !== null) return false;
+  layers.delete(index);
+  selfPop();
+  return true;
+}
+
 function onPopState(e: PopStateEvent): void {
   const s = e.state;
+  if (pendingSelfPops > 0) {
+    // Our own release() dropping a closed sheet's entry. The screen under it
+    // is unchanged, so this is not a navigation.
+    pendingSelfPops -= 1;
+    index = isStamped(s) ? s.navIndex : 0;
+    entries.length = index + 1;
+    dropLayersAbove(index);
+    if (skipDeadLayer()) return;
+    flushDeferred();
+    return;
+  }
+  const landing = isStamped(s) ? s.navIndex : 0;
+  const closers = dropLayersAbove(landing);
+  if (
+    closers.length > 0 &&
+    isStamped(s) &&
+    snapshotsEqual(s.snapshot, snapshot)
+  ) {
+    // Back closed the sheet(s) on this screen. Truncate so Forward never
+    // re-enters a sheet that is gone.
+    index = landing;
+    entries.length = index + 1;
+    for (const close of closers) close();
+    skipDeadLayer();
+    return;
+  }
   if (isStamped(s)) {
     move = s.navIndex < index ? "pop" : "push";
     index = s.navIndex;
@@ -171,6 +257,8 @@ function onPopState(e: PopStateEvent): void {
   // Entries above us are untouched: forward still reaches them.
   entries[index] = snapshot;
   commit();
+  for (const close of closers) close();
+  skipDeadLayer();
 }
 
 function snapshotsEqual(a: NavSnapshot, b: NavSnapshot): boolean {
@@ -190,7 +278,26 @@ export function navigate(
   opts?: { replace?: boolean },
 ): void {
   init();
+  if (pendingSelfPops > 0) {
+    deferred.push(() => navigate(next, opts));
+    return;
+  }
   if (!opts?.replace && snapshotsEqual(next, snapshot)) return;
+  if (layers.has(index)) {
+    // A sheet's entry is on top. Take it over for the destination rather than
+    // stacking on it: "Open full settings" closes the reader's settings sheet
+    // and navigates in one handler, before the sheet's own close could pop
+    // its entry, and that pop would otherwise undo the navigation. No A→B→A
+    // collapse here either: stepping back would only pop the sheet.
+    layers.delete(index);
+    window.history.replaceState({ navIndex: index, snapshot: next }, "");
+    snapshot = next;
+    entries.length = index + 1;
+    entries[index] = next;
+    move = opts?.replace ? "replace" : "push";
+    commit();
+    return;
+  }
   if (opts?.replace) {
     window.history.replaceState({ navIndex: index, snapshot: next }, "");
     snapshot = next;
@@ -221,13 +328,71 @@ export function navigate(
  *  than doing nothing, so a close button can never be dead. */
 export function back(): void {
   init();
+  if (pendingSelfPops > 0) {
+    deferred.push(back);
+    return;
+  }
   if (index > 0) window.history.back();
   else if (!snapshotsEqual(snapshot, ROOT)) navigate(ROOT, { replace: true });
 }
 
 export function forward(): void {
   init();
+  if (pendingSelfPops > 0) {
+    deferred.push(forward);
+    return;
+  }
   if (index < entries.length - 1) window.history.forward();
+}
+
+/** Give a bottom sheet a history entry of its own, so the system Back (and
+ *  back() from a mouse side button or Alt+←) closes it rather than leaving the
+ *  screen under it. Call when the sheet opens; `onBack` runs when Back pops
+ *  the entry. Returns `release`, to call when the sheet closes any other way:
+ *  it drops the entry without calling `onBack` and without navigating, and is
+ *  safe to call twice or after Back already popped the entry. */
+export function pushLayer(onBack: () => void): () => void {
+  init();
+  layerSeq += 1;
+  // Random suffix: module instances reloaded in dev (or tests) must never
+  // mistake each other's entries for their own.
+  const id = `${layerSeq}-${Math.random().toString(36).slice(2)}`;
+  let at = -1;
+  let placed = false;
+  let released = false;
+  const place = () => {
+    if (released) return;
+    placed = true;
+    const here = layers.get(index);
+    if (here && here.onBack === null) {
+      // A dead layer's entry is on top: reuse it rather than stacking.
+      window.history.replaceState({ navIndex: index, snapshot, layer: id }, "");
+    } else {
+      index += 1;
+      entries.length = index;
+      entries[index] = snapshot;
+      window.history.pushState({ navIndex: index, snapshot, layer: id }, "");
+    }
+    layers.set(index, { id, onBack });
+    at = index;
+  };
+  if (pendingSelfPops > 0) deferred.push(place);
+  else place();
+  return () => {
+    if (released) return;
+    released = true;
+    if (!placed) return;
+    const rec = layers.get(at);
+    // Gone already: popped by Back, or taken over by a navigation.
+    if (!rec || rec.id !== id) return;
+    if (at === index) {
+      layers.delete(at);
+      selfPop();
+    } else {
+      // Another sheet sits above this one; its entry can't be popped yet.
+      rec.onBack = null;
+    }
+  };
 }
 
 // --- Convenience navigators (keep call-sites in App/Library declarative) ---
