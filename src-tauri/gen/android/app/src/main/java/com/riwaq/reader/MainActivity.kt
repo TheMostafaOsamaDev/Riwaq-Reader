@@ -3,15 +3,23 @@ package com.riwaq.reader
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.Paint
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.ActionMode
 import android.view.Gravity
+import android.view.PixelCopy
 import android.view.Window
 import android.webkit.JavascriptInterface
 import androidx.activity.enableEdgeToEdge
@@ -91,6 +99,119 @@ class MainActivity : TauriActivity() {
         if (window.callback !is SuppressFloatingActionModeCallback) {
             window.callback = SuppressFloatingActionModeCallback(window.callback)
         }
+        // Paused without being left (a dialog-style activity on top), or
+        // already put to use by coverReturn: either way, let it go.
+        leftPicture = null
+        pictureGeneration++
+    }
+
+    /** What the window showed when Riwaq was last left, for [coverReturn];
+     *  null when there is nothing usable. */
+    private var leftPicture: LeftPicture? = null
+
+    /** Bumped on every leave and every resume, so a picture that lands after
+     *  the moment it was taken for is dropped instead of shown. */
+    private var pictureGeneration = 0
+
+    /** Whether the window background is currently the left picture. */
+    private var covered = false
+    private var coverGeneration = 0
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    override fun onPause() {
+        super.onPause()
+        captureLeftPicture()
+    }
+
+    /** Coming back to Riwaq from the home screen, Recents or another app.
+     *  Not called on a cold start, which has the launch window instead. */
+    override fun onRestart() {
+        super.onRestart()
+        coverReturn()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        uncoverReturn()
+    }
+
+    /** Copy what is on screen as Riwaq is left — the page, since the WebView
+     *  covers the whole window — for [coverReturn] to put behind the WebView
+     *  if the app is come back to.
+     *
+     *  Full size, ~10MB on a 1080x2400 phone, in native memory and held only
+     *  from leaving until coming back (plus [COVER_MS]). Half size was tried:
+     *  it can be on screen for ~7 frames on a return from Recents, long
+     *  enough to see the text sharpen when the page takes over. */
+    private fun captureLeftPicture() {
+        leftPicture = null
+        val generation = ++pictureGeneration
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val decor = window.decorView
+        val width = decor.width
+        val height = decor.height
+        if (width == 0 || height == 0) return
+        val bitmap =
+            try {
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            } catch (e: OutOfMemoryError) {
+                return
+            }
+        try {
+            PixelCopy.request(window, bitmap, { result ->
+                if (result == PixelCopy.SUCCESS && generation == pictureGeneration) {
+                    leftPicture = LeftPicture(bitmap, width, height)
+                }
+            }, mainHandler)
+        } catch (e: IllegalArgumentException) {
+            // The window has no surface to copy from any more.
+        }
+    }
+
+    /** Put the page Riwaq was left on behind the WebView while it comes back
+     *  — the blink when returning to the app.
+     *
+     *  Android brings an app back by showing its own picture of it (the
+     *  Recents snapshot) and crossfading into the live window once that has
+     *  drawn. The WebView is transparent until it has a page to draw, and
+     *  after some time in the background it does not have one in time:
+     *  measured on a Galaxy A73 (Android 16, WebView 156), the window's first
+     *  frame came ~35ms after onRestart, the WebView only reported itself
+     *  ready at ~85-150ms, and its first frames back could be empty for
+     *  several frames after that. Each empty frame showed the window
+     *  background — the launch window, the reading theme's colour with the
+     *  phoenix — so the page blinked out to it and back. Coming back after a
+     *  visit to Chrome, or from Recents after 20s away, it blinked every time.
+     *
+     *  Holding the window's draws until the WebView reported ready was tried
+     *  first. It cleared the Chrome case but still blinked on about one
+     *  return from Recents in four: the WebView can report ready and still
+     *  draw its first frames empty, and it does not repaint until it is
+     *  drawn, so no amount of holding draws gets it there.
+     *
+     *  With the left picture as the window background, an empty frame shows
+     *  the same page instead, so there is nothing to see. It goes back to the
+     *  launch window after [COVER_MS], by when the page has long been drawn
+     *  over it — and is not drawn at all if the window size changed while
+     *  away (a rotation), since a stretched picture would be its own glitch. */
+    private fun coverReturn() {
+        val picture = leftPicture ?: return
+        leftPicture = null
+        covered = true
+        val generation = ++coverGeneration
+        window.setBackgroundDrawable(LeftPictureDrawable(picture, launchWindowDrawable()))
+        Log.d("RiwaqResume", "covered with the left picture")
+        mainHandler.postDelayed({
+            if (generation == coverGeneration) uncoverReturn()
+        }, COVER_MS)
+    }
+
+    private fun uncoverReturn() {
+        if (!covered) return
+        covered = false
+        coverGeneration++
+        applyRememberedLaunchBackground()
     }
 
     private fun rememberLaunchIntent(intent: Intent) {
@@ -367,6 +488,12 @@ class MainActivity : TauriActivity() {
         private const val KEY_LAUNCH_BACKGROUND = "windowBackground"
         private const val KEY_LAUNCH_DARK = "windowIsDark"
 
+        /** How long the left picture stays behind the WebView on a return.
+         *  The page was back over it well inside 400ms in every measured
+         *  return; the rest is margin, and costs nothing, as the page hides
+         *  it. */
+        private const val COVER_MS = 1500L
+
         /** The boot mark's size on the launch window, in dp. Must equal the
          *  `#boot-mark` width/height in index.html, which are CSS px — the
          *  same unit, since the webview's devicePixelRatio is the display
@@ -491,4 +618,44 @@ private class SuppressFloatingActionModeCallback(
         if (type == ActionMode.TYPE_FLOATING) return null
         return delegate.onWindowStartingActionMode(callback, type)
     }
+}
+
+/** The page as Riwaq was left, and the window size it was taken at. */
+private class LeftPicture(val bitmap: Bitmap, val width: Int, val height: Int)
+
+/** The window background while coming back: [picture], or [fallback] (the
+ *  launch window) if the window is no longer the size the picture was taken
+ *  at. Decided at draw time, against the bounds the window actually has. */
+private class LeftPictureDrawable(
+    private val picture: LeftPicture,
+    private val fallback: Drawable,
+) : Drawable() {
+    private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    override fun draw(canvas: Canvas) {
+        val area = bounds
+        if (area.width() == picture.width && area.height() == picture.height) {
+            canvas.drawBitmap(picture.bitmap, null, area, paint)
+        } else {
+            fallback.bounds = area
+            fallback.draw(canvas)
+        }
+    }
+
+    override fun setAlpha(alpha: Int) {
+        paint.alpha = alpha
+    }
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {
+        paint.colorFilter = colorFilter
+    }
+
+    /** The launch window's own opacity, never a different one: the window
+     *  takes its pixel format from its background's opacity (DecorView
+     *  hands it to setDefaultWindowFormat), and a change of format means a
+     *  new surface for the window — and with it the WebView's last frame,
+     *  just as it comes back. */
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
+    override fun getOpacity(): Int = fallback.opacity
 }
