@@ -38,7 +38,7 @@ moves the sidebar, flips the icons and translates every label.
 | Themes | Light, Sepia, Dark, and a true black for OLED. Or follow the system. |
 | Focus mode | Everything but the page goes, including Android's system bars. On desktop your progress stays as a thin rail along the top. Double tap, or tap the lock, to come back. |
 | Highlight | Eight colours, notes, and a sidebar that collects every one with the chapter it came from. |
-| Store | Browse Arabic web novel sites inside the app. Read online, add to the library, download a range of chapters, or bake the lot into one EPUB. |
+| Store | Browse Arabic and English web novel sites inside the app, filtered by language. Read online, add to the library, download a range of chapters, or bake the lot into one EPUB. |
 | Extensions | Sources install at runtime from a repository. Add your own. Nothing is compiled in. |
 | Languages | English and العربية, mirrored all the way down. |
 | Privacy | No account, no sync, no telemetry. Plain JSON on your disk. |
@@ -335,6 +335,9 @@ offers:
 | **ملوك الروايات** | [kolnovel.com](https://kolnovel.com) | Arabic translations of web novels from KolNovel. |
 | **بحر الروايات** | [seanovel.org](https://seanovel.org) | Korean, Chinese and Japanese web novels translated into Arabic. |
 | **شمس الروايات** | [sunovels.com](https://sunovels.com) | Arabic translated and original web novels, updated daily. |
+| **NovelBuddy** | [novelbuddy.me](https://novelbuddy.me) | Translated web novels and light novels in English, with new chapters every day. |
+| **Novel Archive** | [novelarchive.st](https://novelarchive.st) | A large archive of English web novels and translations, gathered from many sources. |
+| **chikari.moe** | [chikari.moe](https://chikari.moe) | English web novels. Novels only; the site's manga is not included. |
 
 Riwaq hosts and redistributes nothing. The Store reads publicly available pages so you can
 read them offline. Support the translators and official releases where they exist.

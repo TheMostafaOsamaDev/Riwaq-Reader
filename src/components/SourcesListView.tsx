@@ -4,9 +4,10 @@
 // no loading state to manage. Sideloaded extensions (planned future work)
 // would slot in here the same way.
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useI18n } from "../i18n/useI18n";
 import { pickDescription } from "../sources/description";
+import { languageName, useSiteFilter } from "../sources/filter";
 import { listSources } from "../sources/registry";
 import type { SourceMetadata } from "../sources/types";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../styles/tokens";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
+import { SiteFilterBar } from "./SiteFilterBar";
 import { SourceIcon } from "./SourceIcon";
 
 interface Props {
@@ -40,26 +42,12 @@ export function SourcesListView({
   layout = "desktop",
 }: Props) {
   const isMobile = layout === "mobile";
-  const { locale, tr } = useI18n();
+  const { tr } = useI18n();
   const sources = useMemo(() => listSources(), []);
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-
-  // Live filter over the installed sources by name / URL / description.
-  // An extension ships its description as a locale map, so resolve it to
-  // the display string before matching — otherwise the user would be
-  // searching a stringified object.
-  const filtered = useMemo(() => {
-    if (!q) return sources;
-    return sources.filter((s) => {
-      const desc = pickDescription(s.description, locale) ?? "";
-      return (
-        s.name.toLowerCase().includes(q) ||
-        s.baseUrl.toLowerCase().includes(q) ||
-        desc.toLowerCase().includes(q)
-      );
-    });
-  }, [sources, q, locale]);
+  // Live filter over the installed sources by name / URL / description,
+  // and by language once one is chosen.
+  const filter = useSiteFilter(sources);
+  const filtered = sources.filter(filter.matches);
 
   return (
     <div
@@ -123,55 +111,11 @@ export function SourcesListView({
       </div>
 
       {sources.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: theme.bg,
-            border: `1px solid ${theme.rule}`,
-            borderRadius: 11,
-            padding: "10px 13px",
-            marginBottom: 22,
-          }}
-        >
-          <span style={{ color: theme.muted, display: "flex", flexShrink: 0 }}>
-            <Icon name="search" size={16} />
-          </span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={tr("store.filterWebsites")}
-            aria-label={tr("store.filterWebsites")}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              border: 0,
-              outline: "none",
-              background: "transparent",
-              font: "inherit",
-              fontSize: 14,
-              color: theme.ink,
-            }}
-          />
-          {query && (
-            <button
-              onClick={() => setQuery("")}
-              aria-label={tr("common.close")}
-              style={{
-                display: "flex",
-                flexShrink: 0,
-                border: 0,
-                background: "transparent",
-                color: theme.muted,
-                cursor: "pointer",
-                padding: 2,
-              }}
-            >
-              <Icon name="close" size={15} />
-            </button>
-          )}
-        </div>
+        <SiteFilterBar
+          theme={theme}
+          filter={filter}
+          placeholder={tr("store.filterWebsites")}
+        />
       )}
 
       {sources.length === 0 ? (
@@ -194,7 +138,7 @@ export function SourcesListView({
             fontSize: 13,
           }}
         >
-          {tr("store.noMatchingWebsites", { query: query.trim() })}
+          {tr("store.noMatchingWebsites", { query: filter.query.trim() })}
         </div>
       ) : (
         <div
@@ -226,6 +170,7 @@ interface SourceCardProps {
 
 function SourceCard({ theme, source, onClick }: SourceCardProps) {
   const { locale } = useI18n();
+  const language = languageName(source.language, locale);
   // An extension ships its own description as a locale map — it cannot
   // reach the app's message catalogue, so this is not an i18n key.
   const description = pickDescription(source.description, locale);
@@ -280,12 +225,10 @@ function SourceCard({ theme, source, onClick }: SourceCardProps) {
               fontSize: 11,
               color: theme.muted,
               marginTop: 2,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
               fontWeight: 500,
             }}
           >
-            {source.language} · v{source.version}
+            {language} · v{source.version}
           </div>
         </div>
         <Icon

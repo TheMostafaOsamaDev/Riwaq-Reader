@@ -662,6 +662,8 @@ export const en = {
   "store.noSources": "No sources installed yet.",
   "store.filterWebsites": "Search websites…",
   "store.noMatchingWebsites": "No websites match “{query}”.",
+  "store.languageFilter": "Language",
+  "store.allLanguages": "All",
   "store.searchPlaceholder": "Search…",
   "store.searching": "Searching…",
   "store.loadSourceError": "Couldn't load this source — {error}",
@@ -689,6 +691,8 @@ export const en = {
     "Couldn't load the extensions catalogue — press Retry. ({error})",
   "extensions.installedHeading": "Installed",
   "extensions.availableHeading": "Available",
+  "extensions.searchPlaceholder": "Search extensions…",
+  "extensions.noMatches": "No extensions match these filters.",
   "extensions.reposHeading": "Repositories",
   "extensions.noneInstalled":
     "No extensions installed yet — install one from Available below.",

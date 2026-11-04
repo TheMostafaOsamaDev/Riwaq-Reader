@@ -39,7 +39,9 @@ import {
   type RepoIndexEntry,
   resolveAssetUrl,
 } from "../extensions/repos";
+import type { MsgKey } from "../i18n";
 import { useI18n } from "../i18n/useI18n";
+import { useSiteFilter } from "../sources/filter";
 import {
   getExtensionError as realGetError,
   getExtensionStatus as realGetStatus,
@@ -67,6 +69,7 @@ import {
   RepoList,
 } from "./extensions/RepoList";
 import { Icon } from "./Icon";
+import { SiteFilterBar } from "./SiteFilterBar";
 import { ThemedSkeleton } from "./Skeleton";
 
 export interface CatalogData {
@@ -115,6 +118,10 @@ interface Props {
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// Stable while the catalogue is loading, so the filter's language list is
+// not rebuilt on every render.
+const NO_ENTRIES: CatalogEntry[] = [];
+
 export function ExtensionsView({
   theme,
   onBack,
@@ -123,6 +130,7 @@ export function ExtensionsView({
 }: Props) {
   const { tr } = useI18n();
   const [data, setData] = useState<CatalogData | null>(null);
+  const filter = useSiteFilter(data?.catalog ?? NO_ENTRIES);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, CardAction>>({});
   const [cardError, setCardError] = useState<Record<string, string>>({});
@@ -321,6 +329,21 @@ export function ExtensionsView({
     />
   );
 
+  /** A section's cards, or why there are none: nothing there at all, or
+   *  nothing the search and language filter let through. */
+  const renderList = (all: CatalogEntry[], noneKey: MsgKey) => {
+    if (all.length === 0) return <Empty theme={theme}>{tr(noneKey)}</Empty>;
+    const shown = all.filter(filter.matches);
+    if (shown.length === 0) {
+      return <Empty theme={theme}>{tr("extensions.noMatches")}</Empty>;
+    }
+    return (
+      <div role="list" style={{ display: "grid", gap: 10 }}>
+        {shown.map(renderCard)}
+      </div>
+    );
+  };
+
   const installed = data?.catalog.filter((c) => c.installed) ?? [];
   const available = data?.catalog.filter((c) => !c.installed) ?? [];
 
@@ -499,6 +522,14 @@ export function ExtensionsView({
             </div>
           )}
 
+          {data.catalog.length > 0 && (
+            <SiteFilterBar
+              theme={theme}
+              filter={filter}
+              placeholder={tr("extensions.searchPlaceholder")}
+            />
+          )}
+
           <Section
             theme={theme}
             title={tr("extensions.installedHeading")}
@@ -520,23 +551,11 @@ export function ExtensionsView({
               )
             }
           >
-            {installed.length === 0 ? (
-              <Empty theme={theme}>{tr("extensions.noneInstalled")}</Empty>
-            ) : (
-              <div role="list" style={{ display: "grid", gap: 10 }}>
-                {installed.map(renderCard)}
-              </div>
-            )}
+            {renderList(installed, "extensions.noneInstalled")}
           </Section>
 
           <Section theme={theme} title={tr("extensions.availableHeading")}>
-            {available.length === 0 ? (
-              <Empty theme={theme}>{tr("extensions.noneAvailable")}</Empty>
-            ) : (
-              <div role="list" style={{ display: "grid", gap: 10 }}>
-                {available.map(renderCard)}
-              </div>
-            )}
+            {renderList(available, "extensions.noneAvailable")}
           </Section>
 
           <Section theme={theme} title={tr("extensions.reposHeading")}>

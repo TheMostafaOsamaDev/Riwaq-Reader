@@ -1,12 +1,13 @@
 // Image URL helpers shared across the Sources subsystem.
 //
-// The big win here is `optimizedCoverUrl` — WordPress (the platform every
-// source we ship for so far is built on) auto-generates resized variants
-// for every image upload, named `<basename>-<W>x<H>.<ext>`. Cards display
-// at ~140px wide, so feeding them the original 1500×2000 file is 30–50×
-// more bandwidth + decode cost than necessary. We rewrite the URL to a
-// thumbnail variant and rely on the caller's image error-handler to fall
-// back to the original when the specific size wasn't generated.
+// The big win here is `optimizedCoverUrl` — WordPress (what cenele and
+// kolnovel run on) auto-generates resized variants for every image upload,
+// named `<basename>-<W>x<H>.<ext>`. Cards display at ~140px wide, so
+// feeding them the original 1500×2000 file is 30–50× more bandwidth +
+// decode cost than necessary. We rewrite the URL to a thumbnail variant and
+// rely on the caller's image error-handler to fall back to the original
+// when the specific size wasn't generated. Other platforms generate no such
+// variants, so only a `/wp-content/uploads/` URL is rewritten.
 
 /**
  * Try to derive a thumbnail URL for a WordPress-served image. Returns
@@ -42,7 +43,12 @@ export function optimizedCoverUrl(
 
 function isResizableImage(url: string): boolean {
   const lower = url.toLowerCase().split("?")[0];
-  return /\.(jpe?g|png|webp)$/i.test(lower);
+  // Only WordPress generates `-WxH` variants. Anywhere else the rewrite
+  // names a file that cannot exist, and every cover pays for a 404 before
+  // its fallback loads the original.
+  return (
+    lower.includes("/wp-content/uploads/") && /\.(jpe?g|png|webp)$/.test(lower)
+  );
 }
 
 function alreadyHasThumbnailSuffix(url: string): boolean {

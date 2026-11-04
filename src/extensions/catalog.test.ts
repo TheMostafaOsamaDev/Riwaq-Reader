@@ -151,3 +151,48 @@ describe("buildCatalog", () => {
     expect(c[0].entry?.version).toBe("1.0.0");
   });
 });
+
+describe("buildCatalog — what an entry describes itself as", () => {
+  const described = <T extends object>(o: T, language: string, en: string) => ({
+    ...o,
+    language,
+    description: { en },
+  });
+
+  it("takes a not-installed entry's language, address and description from the repo", () => {
+    const [entry] = buildCatalog(
+      [],
+      [
+        {
+          repoUrl: "https://repo.test/index.min.json",
+          entries: [described(idx("buddy", "1.0.0"), "en", "From the repo")],
+        },
+      ],
+    );
+    expect(entry).toMatchObject({
+      language: "en",
+      baseUrl: "https://buddy.test",
+      description: { en: "From the repo" },
+    });
+  });
+
+  it("describes an installed extension by its manifest, even when the repo offers a newer one", () => {
+    // The manifest is the code that is actually running; the repo entry is
+    // only an offer. Same rule `name` already follows.
+    const record = inst("buddy", "1.0.0");
+    const [entry] = buildCatalog(
+      [{ ...record, manifest: described(record.manifest, "en", "Installed") }],
+      [
+        {
+          repoUrl: "https://repo.test/index.min.json",
+          entries: [described(idx("buddy", "1.1.0"), "ar", "Offered")],
+        },
+      ],
+    );
+    expect(entry).toMatchObject({
+      updateAvailable: true,
+      language: "en",
+      description: { en: "Installed" },
+    });
+  });
+});
