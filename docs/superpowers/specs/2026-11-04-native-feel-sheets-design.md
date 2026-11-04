@@ -1,7 +1,7 @@
 # Bottom sheets that feel native (phone and tablet)
 
-Status: behaviour approved in conversation; builder-check answers folded in;
-awaiting the owner's approval of this document
+Status: implemented on `feat/native-sheets`; verified on the A73 (see the
+plan's Task 9). Spike 1 was kept.
 Owner: Mostafa Osama
 Scope: rebuild the gesture and motion engine of `MobileSheet`, the one bottom
 sheet every phone/tablet surface uses, so it moves and responds like the
@@ -420,6 +420,12 @@ The builder tries this on the A73:
 
 Keep this only if it is smooth on the device. Otherwise keep the fallback and
 note it in the PR.
+
+**Outcome: kept.** Measured on the A73 over CDP, touchmoves keep arriving at
+the input rate after `scrollTop` reaches 0: 24 moves about 33 ms apart, which
+was the driver's own cadence. They are uncancelable, as expected. The
+hand-off works from full and from 82%, and the list is frozen while the sheet
+is displaced.
 
 ## Constraints
 
