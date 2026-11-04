@@ -34,6 +34,7 @@ import {
 import { glassBar, phoneBarMotion } from "../reader/chrome/glass";
 import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
 import { chapterReadFraction } from "../reader/scroll/usePositionReporter";
+import { holdPosition } from "../reader/scroll/holdPosition";
 import { useReadingProgress } from "../reader/useReadingProgress";
 import {
   attachTouchPanFallback,
@@ -489,14 +490,20 @@ export function MobileReader({
     // top padding cleared the bar. The save never added it back, so every
     // reopen landed a bar higher than the last and saved THAT, and the drift
     // compounded. See mobileReaderResume.test.tsx.
-    jumpScrollTop(
-      el,
-      restoreScrollTop(
-        target.offsetTop,
-        target.offsetHeight,
-        resumeOffsetRef.current,
-      ),
-    );
+    const paragraph = resumeRef.current;
+    const offset = resumeOffsetRef.current;
+    const place = () => {
+      const at = el.querySelector<HTMLElement>(`[data-p-index="${paragraph}"]`);
+      if (at)
+        jumpScrollTop(
+          el,
+          restoreScrollTop(at.offsetTop, at.offsetHeight, offset),
+        );
+    };
+    place();
+    // And keep it there while the page settles: the reading font arrives
+    // after this and the text grows under the scrollTop. See holdPosition.
+    return holdPosition(el, place);
     // book.chapters[currentChapter]?.id changes when a streamed chapter's
     // content is spliced in (its `#0` → `#<n>` id bump), re-running this so
     // resume fires once the paragraphs are actually in the DOM.

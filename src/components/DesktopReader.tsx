@@ -99,6 +99,7 @@ import type {
 import { isTextEntry } from "../lib/isTextEntry";
 import { attachSmoothWheel } from "../reader/scroll/smoothWheel";
 import { chapterReadFraction } from "../reader/scroll/usePositionReporter";
+import { holdPosition } from "../reader/scroll/holdPosition";
 import { useReadingProgress } from "../reader/useReadingProgress";
 
 interface Props {
@@ -412,25 +413,33 @@ export function DesktopReader({
     const target = el.querySelector<HTMLElement>(
       `[data-p-index="${livePara.current}"]`,
     );
-    if (target) {
-      jumpScrollTop(
-        el,
-        restoreScrollTop(
-          target.offsetTop,
-          target.offsetHeight,
-          liveOffset.current,
-        ),
-      );
-      logEvent("position:restore", {
-        targetOffsetTop: target.offsetTop,
-        scrollTopAfter: Math.round(el.scrollTop),
-      });
-    } else {
+    if (!target) {
       jumpScrollTop(el, 0);
       logEvent("position:noTarget", {
         scrollTopAfter: Math.round(el.scrollTop),
       });
+      return;
     }
+    // Captured now: livePara follows every report, and a report taken while
+    // the page is still settling is exactly the slid position to undo.
+    const paragraph = livePara.current;
+    const offset = liveOffset.current;
+    const place = () => {
+      const at = el.querySelector<HTMLElement>(`[data-p-index="${paragraph}"]`);
+      if (at)
+        jumpScrollTop(
+          el,
+          restoreScrollTop(at.offsetTop, at.offsetHeight, offset),
+        );
+    };
+    place();
+    logEvent("position:restore", {
+      targetOffsetTop: target.offsetTop,
+      scrollTopAfter: Math.round(el.scrollTop),
+    });
+    // And keep it there while the page settles: the reading font arrives
+    // after this and the text grows under the scrollTop. See holdPosition.
+    return holdPosition(el, place);
     // book.chapters[currentChapter]?.id changes when a streamed chapter's
     // content is spliced in (its `#0` → `#<n>` id bump), re-running this so
     // resume fires once the paragraphs are actually in the DOM.
