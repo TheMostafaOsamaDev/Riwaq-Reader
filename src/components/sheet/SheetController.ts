@@ -111,6 +111,26 @@ interface Passed {
   id: number;
 }
 
+/** A downward native scroll of the list. Watched rather than owned: if the
+ *  list reaches its top while the finger keeps pulling, the sheet takes the
+ *  rest of the pull, as native sheets do. The moves can no longer be
+ *  cancelled by then, so the sheet only follows them; measured on the A73,
+ *  they keep arriving at the input rate after the top. */
+interface NativeScroll {
+  kind: "native";
+  id: number;
+  body: HTMLElement;
+  lastY: number;
+  /** The sheet has taken over the pull. */
+  handed: boolean;
+  /** Where the sheet was when it took over; it never rises above this. */
+  startY: number;
+  rawY: number;
+  samples: MoveSample[];
+  /** The list's own inline overflow-y, restored when the pull ends. */
+  prevOverflowY: string;
+}
+
 export class SheetController {
   private readonly els: SheetElements;
   private readonly cb: SheetCallbacks;
@@ -122,7 +142,7 @@ export class SheetController {
   private resting = true;
   private exiting = false;
   private playback: Playback | null = null;
-  private gesture: Pending | Drag | Passed | null = null;
+  private gesture: Pending | Drag | Passed | NativeScroll | null = null;
   private momentumFrame = 0;
   private suppressClickUntil = 0;
   private cleanups: Array<() => void> = [];
@@ -297,6 +317,10 @@ export class SheetController {
     const g = this.g;
     const gs = this.gesture;
     if (!g || !gs || gs.id !== p.id || gs.kind === "pass") return false;
+    if (gs.kind === "native") {
+      this.followNativePull(gs, p, g);
+      return false;
+    }
     if (gs.kind === "pending") {
       const dx = p.x - gs.x0;
       const dy = p.y - gs.y0;
@@ -313,7 +337,20 @@ export class SheetController {
         bodyScrollable: isScrollableY(gs.body),
       });
       if (owner === "pass") {
-        this.gesture = { kind: "pass", id: gs.id };
+        this.gesture =
+          gs.region === "body" && dy > 0
+            ? {
+                kind: "native",
+                id: gs.id,
+                body: gs.body,
+                lastY: p.y,
+                handed: false,
+                startY: this.shownY,
+                rawY: this.shownY,
+                samples: [],
+                prevOverflowY: "",
+              }
+            : { kind: "pass", id: gs.id };
         return false;
       }
       this.resting = false;
@@ -358,7 +395,19 @@ export class SheetController {
     const gs = this.gesture;
     if (!gs || gs.id !== p.id) return;
     this.gesture = null;
+    if (gs.kind === "native") this.unfreezeList(gs);
     if (!g || this.exiting) return;
+    if (gs.kind === "native" && gs.handed && gs.rawY > gs.startY + 0.5) {
+      const v = this.releaseVelocity(gs.samples, p.t);
+      const target = pickSnap(this.shownY, v, g);
+      if (target === "dismissed") {
+        this.cb.onDismiss();
+        this.close(v);
+      } else {
+        this.settleTo(target, v);
+      }
+      return;
+    }
     if (gs.kind !== "drag") {
       if (gs.kind === "pending" && gs.caught) {
         this.suppressClickUntil = p.t + CLICK_SUPPRESS_MS;
@@ -371,10 +420,7 @@ export class SheetController {
       return;
     }
     this.suppressClickUntil = p.t + CLICK_SUPPRESS_MS;
-    // A finger that stopped before lifting carries no velocity.
-    const last = gs.samples[gs.samples.length - 1];
-    const v =
-      p.t - last.t > VELOCITY_WINDOW_MS ? 0 : velocityFromSamples(gs.samples);
+    const v = this.releaseVelocity(gs.samples, p.t);
     const top = snapY(topSnap(g), g);
     if (gs.mover === "body" && gs.rawY === top) {
       // "Expand, then keep scrolling": the sheet rests at its top snap and
@@ -632,8 +678,55 @@ export class SheetController {
   }
 
   private cancelGesture(): void {
+    if (this.gesture?.kind === "native") this.unfreezeList(this.gesture);
     this.gesture = null;
     this.mouseCleanup?.();
+  }
+
+  /** A finger that stopped before lifting carries no velocity. */
+  private releaseVelocity(samples: MoveSample[], t: number): number {
+    const last = samples[samples.length - 1];
+    if (!last || t - last.t > VELOCITY_WINDOW_MS) return 0;
+    return velocityFromSamples(samples);
+  }
+
+  private followNativePull(
+    gs: NativeScroll,
+    p: { y: number; t: number },
+    g: SheetGeometry,
+  ): void {
+    const delta = p.y - gs.lastY;
+    gs.lastY = p.y;
+    if (!gs.handed) {
+      // Still the list's scroll until it is at its top and the finger keeps
+      // pulling down. This move's travel went into the list; the sheet takes
+      // over from the next one.
+      if (delta <= 0 || gs.body.scrollTop > 0) return;
+      gs.handed = true;
+      gs.startY = this.shownY;
+      gs.rawY = this.shownY;
+      gs.samples = [{ y: p.y, t: p.t }];
+      this.resting = false;
+      // Freeze the list while the sheet is off its snap: the browser still
+      // owns this gesture, and a reversal would otherwise scroll the list
+      // underneath the moving sheet.
+      gs.prevOverflowY = gs.body.style.overflowY;
+      gs.body.style.overflowY = "hidden";
+      return;
+    }
+    gs.rawY = Math.min(
+      snapY("dismissed", g),
+      Math.max(gs.startY, gs.rawY + delta),
+    );
+    gs.samples.push({ y: p.y, t: p.t });
+    while (gs.samples.length > 2 && p.t - gs.samples[0].t > SAMPLE_KEEP_MS) {
+      gs.samples.shift();
+    }
+    this.apply(gs.rawY);
+  }
+
+  private unfreezeList(gs: NativeScroll): void {
+    if (gs.handed) gs.body.style.overflowY = gs.prevOverflowY;
   }
 }
 

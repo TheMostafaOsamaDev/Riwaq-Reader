@@ -216,6 +216,66 @@ describe("dragging", () => {
     expect(c.y).toBe(140);
   });
 
+  // Spike 1, measured on the A73: touchmoves keep arriving (uncancelable) at
+  // the input rate after a native scroll reaches the list's top, so the sheet
+  // can follow the rest of the pull, as native sheets do.
+  describe("a native scroll that reaches the top", () => {
+    /** Full sheet, list scrolled 100px, finger pulling down: the list
+     *  scrolls back natively (simulated by setting scrollTop) until it hits
+     *  its top at y 400. */
+    function pullListToTop() {
+      c.open();
+      c.settleTo("full", 0);
+      body.style.overflowY = "auto";
+      body.scrollTop = 100;
+      c.touchStart(pt(0, 300, 0));
+      expect(c.touchMove(mv(0, 320, 16))).toBe(false);
+      body.scrollTop = 80;
+      body.scrollTop = 0;
+      expect(c.touchMove({ ...mv(0, 400, 32), cancelable: false })).toBe(false);
+      expect(c.y).toBe(0);
+    }
+
+    it("hands the rest of the pull to the sheet", () => {
+      pullListToTop();
+      c.touchMove({ ...mv(0, 450, 48), cancelable: false });
+      expect(c.y).toBe(50);
+      // Frozen while the sheet is displaced, so a reversal can't scroll the
+      // list underneath it.
+      expect(body.style.overflowY).toBe("hidden");
+    });
+
+    it("settles like a drag and unfreezes the list on release", () => {
+      pullListToTop();
+      c.touchMove({ ...mv(0, 600, 48), cancelable: false });
+      expect(c.y).toBe(200);
+      c.touchEnd({ id: 1, t: 600 });
+      expect(c.snap).toBe("default");
+      expect(c.y).toBe(160);
+      expect(body.style.overflowY).toBe("auto");
+    });
+
+    it("a reversal lifts the sheet back to full and stops there", () => {
+      pullListToTop();
+      c.touchMove({ ...mv(0, 450, 48), cancelable: false });
+      c.touchMove({ ...mv(0, 380, 64), cancelable: false });
+      expect(c.y).toBe(0);
+      expect(body.scrollTop).toBe(0);
+    });
+
+    it("an upward native scroll is never handed over", () => {
+      c.open();
+      c.settleTo("full", 0);
+      body.scrollTop = 100;
+      c.touchStart(pt(0, 400, 0));
+      c.touchMove(mv(0, 380, 16));
+      body.scrollTop = 120;
+      c.touchMove({ ...mv(0, 300, 32), cancelable: false });
+      expect(c.y).toBe(0);
+      expect(body.style.overflowY).toBe("auto");
+    });
+  });
+
   it("after expanding, the list keeps coasting when the finger lifts mid-fling", () => {
     const frames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((f) => {
