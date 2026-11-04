@@ -36,7 +36,9 @@ export const DEFAULT_TWEAKS: Tweaks = {
   textAlign: "auto",
   readingMode: "scroll",
   focusMode: false,
-  contentWidth: 100,
+  // A little margin either side of the text on a fresh install. Like the font
+  // above, anyone who has opened the app keeps the width they already have.
+  contentWidth: 95,
   uiFont: "readex",
   paragraphSpacing: 1.1,
   hyphenation: false,

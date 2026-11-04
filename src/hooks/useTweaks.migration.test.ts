@@ -188,3 +188,19 @@ describe("default book font", () => {
     localStorage.clear();
   });
 });
+
+describe("default content width", () => {
+  it("a fresh install reads at 95% width; a saved width is kept", () => {
+    localStorage.clear();
+    expect(loadTweaks().contentWidth).toBe(95);
+    // The whole settings object is written on first launch, so anyone who
+    // has opened the app before keeps the width they already read at —
+    // including the old 100% default.
+    localStorage.setItem(
+      "riwaq:tweaks:v1",
+      JSON.stringify({ contentWidth: 100 }),
+    );
+    expect(loadTweaks().contentWidth).toBe(100);
+    localStorage.clear();
+  });
+});
